@@ -49,7 +49,7 @@ export const MetricsComparisonContent = ({ universe, visible }) => {
   queryParams.end = filters.endMoment.unix();
   queryParams.nodePrefix = universe.universeDetails.nodePrefix;
   if (nodeNameFirst !== 'all') {
-    queryParams.nodeName = nodeNameFirst;
+    queryParams.nodeNames = [nodeNameFirst];
   }
   queryParams.metrics = selectedMetrics;
   queryParams.isRecharts = true;
@@ -64,7 +64,7 @@ export const MetricsComparisonContent = ({ universe, visible }) => {
   });
 
   if (nodeNameSecond !== 'all') {
-    queryParams.nodeName = nodeNameSecond;
+    queryParams.nodeNames = [nodeNameSecond];
   } else {
     delete queryParams.nodeName;
   }

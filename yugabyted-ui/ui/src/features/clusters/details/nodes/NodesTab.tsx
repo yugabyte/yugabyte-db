@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { YBTable, YBLoadingBox, YBStatus, STATUS_TYPES } from '@app/components';
 import { getMemorySizeUnits, roundDecimal } from '@app/helpers';
 import { useGetClusterNodesQuery } from '@app/api/src';
+import { getHumanVersion } from '@app/features/clusters/ClusterDBVersionBadge';
 
 const StatusComponent = (isHealthy: boolean) => (
   <YBStatus type={isHealthy ? STATUS_TYPES.SUCCESS : STATUS_TYPES.FAILED} />
@@ -37,8 +38,10 @@ export const NodesTab: FC = () => {
         name: node.name,
         is_master: node.is_master,
         is_tserver: node.is_tserver,
+        cloud: node.cloud_info.cloud,
         region: node.cloud_info.region,
         zone: node.cloud_info.zone,
+        software_version: node.software_version ? getHumanVersion(node.software_version) : '-',
         ram_used: getMemorySizeUnits(node.metrics?.memory_used_bytes),
         sst_size: getMemorySizeUnits(node.metrics?.total_sst_file_size_bytes),
         uncompressed_sst_size: getMemorySizeUnits(node.metrics?.uncompressed_sst_file_size_bytes),
@@ -79,6 +82,13 @@ export const NodesTab: FC = () => {
       }
     },
     {
+      name: 'cloud',
+      label: t('clusterDetail.nodes.cloud'),
+      options: {
+        filter: true
+      }
+    },
+    {
       name: 'region',
       label: t('clusterDetail.nodes.region'),
       options: {
@@ -88,6 +98,13 @@ export const NodesTab: FC = () => {
     {
       name: 'zone',
       label: t('clusterDetail.nodes.zone'),
+      options: {
+        filter: true
+      }
+    },
+    {
+      name: 'software_version',
+      label: t('clusterDetail.nodes.version'),
       options: {
         filter: true
       }

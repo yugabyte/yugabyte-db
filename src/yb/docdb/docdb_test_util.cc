@@ -20,6 +20,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/common/transaction.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
@@ -103,6 +104,14 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
     Fail();
+  }
+
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override {
+    Fail();
+  }
+
+  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+    return boost::none;
   }
 
   HybridTime MinRunningHybridTime() const override {

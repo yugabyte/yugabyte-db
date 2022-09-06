@@ -375,9 +375,13 @@ void TabletSplitManager::DisableSplittingForSmallKeyRangeTablet(const TabletId& 
   }
 }
 
-bool AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
+bool AllReplicasHaveFinishedCompaction(
+    const TabletId& tablet_id, const TabletReplicaMap& replicas) {
   for (const auto& replica : replicas) {
     if (replica.second.drive_info.may_have_orphaned_post_split_data) {
+      VLOG_WITH_FUNC(4) << Format(
+          "Tablet $0 replica $1 may have orphaned post split data", tablet_id,
+          replica.second.ToString());
       return false;
     }
   }
@@ -428,6 +432,7 @@ bool CheckLiveReplicasForSplit(
 }
 
 void TabletSplitManager::ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule) {
+  VLOG_WITH_FUNC(4) << "Start";
   for (const auto& tablet_id : splits_to_schedule) {
     auto s = driver_->SplitTablet(tablet_id, ManualSplit::kFalse);
     if (!s.ok()) {
@@ -468,11 +473,17 @@ class OutstandingSplitState {
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
   bool CanSplitMoreGlobal() const {
-    uint64_t outstanding_splits = splits_with_task_.size() +
-                                  compacting_splits_.size() +
-                                  splits_to_schedule_.size();
-    return FLAGS_outstanding_tablet_split_limit == 0 ||
-           outstanding_splits < FLAGS_outstanding_tablet_split_limit;
+    const auto outstanding_splits =
+        splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
+    if (FLAGS_outstanding_tablet_split_limit != 0 &&
+        outstanding_splits >= FLAGS_outstanding_tablet_split_limit) {
+      VLOG_WITH_FUNC(4) << Format(
+          "Number of outstanding splits will be $0 ($1 + $2 + $3) >= $4, can't do more splits",
+          outstanding_splits, splits_with_task_.size(), compacting_splits_.size(),
+          splits_to_schedule_.size(), FLAGS_outstanding_tablet_split_limit);
+      return false;
+    }
+    return true;
   }
 
   bool CanSplitMoreOnReplicas(const TabletReplicaMap& replicas) const {
@@ -483,6 +494,9 @@ class OutstandingSplitState {
       auto it = ts_to_ongoing_splits_.find(location.first);
       if (it != ts_to_ongoing_splits_.end() &&
           it->second.size() >= FLAGS_outstanding_tablet_split_limit_per_tserver) {
+        VLOG_WITH_FUNC(4) << Format(
+            "TServer $0 already has $1 >= $2 ongoing splits, can't do more splits there",
+            location.first, it->second.size(), FLAGS_outstanding_tablet_split_limit_per_tserver);
         return false;
       }
     }
@@ -554,6 +568,7 @@ class OutstandingSplitState {
   }
 
   void ProcessCandidates() {
+    VLOG_WITH_FUNC(4) << "Start";
     // Add any new splits to the set of splits to schedule (while respecting the max number of
     // outstanding splits).
     if (CanSplitMoreGlobal()) {
@@ -618,6 +633,7 @@ class OutstandingSplitState {
 
 void TabletSplitManager::DoSplitting(
     const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
+  VLOG_WITH_FUNC(4) << "Start";
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
   // splits, to avoid missing outstanding splits for tables that have recently become invalid for
   // splitting. This is most critical for tables that frequently switch between being valid and
@@ -691,7 +707,8 @@ void TabletSplitManager::DoSplitting(
         // If this (running) tablet is the child of a split and is still compacting, track it as a
         // compacting split but do not schedule a restart (we assume that this split will eventually
         // complete for both tablets).
-        if (!AllReplicasHaveFinishedCompaction(*replica_cache.GetOrAdd(*tablet))) {
+        if (!AllReplicasHaveFinishedCompaction(
+                tablet->tablet_id(), *replica_cache.GetOrAdd(*tablet))) {
           LOG(INFO) << Substitute("Found split child ($0) that is compacting. Adding parent ($1) "
                                   "to list of compacting splits.", tablet->id(), parent_id);
           state.AddCompactingSplit(parent_id, *tablet);
@@ -710,12 +727,18 @@ void TabletSplitManager::DoSplitting(
       // Check if this tablet is a valid candidate for splitting, and if so, add it to the list of
       // split candidates.
       const auto replicas = replica_cache.GetOrAdd(*tablet);
-      if (ValidateSplitCandidateTablet(*tablet, parent).ok() &&
-          CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()) &&
-          filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get()) &&
-          AllReplicasHaveFinishedCompaction(*replicas) &&
-          state.CanSplitMoreOnReplicas(*replicas)) {
-        state.AddCandidate(tablet, drive_info_opt.get().sst_files_size);
+      const auto s = ValidateSplitCandidateTablet(*tablet, parent);
+      if (s.ok()) {
+        if (CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()) &&
+            filter_->ShouldSplitValidCandidate(*tablet, drive_info_opt.get()) &&
+            AllReplicasHaveFinishedCompaction(tablet->tablet_id(), *replicas) &&
+            state.CanSplitMoreOnReplicas(*replicas)) {
+          state.AddCandidate(tablet, drive_info_opt.get().sst_files_size);
+        }
+      } else {
+        VLOG_WITH_FUNC(4) << Format(
+            "ValidateSplitCandidateTablet for tablet $0 returned: $1. should_split: 0",
+            tablet->tablet_id(), s);
       }
     }
     if (!state.CanSplitMoreGlobal()) {
@@ -779,6 +802,7 @@ void TabletSplitManager::DisableSplittingFor(
 void TabletSplitManager::MaybeDoSplitting(
     const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
+    VLOG_WITH_FUNC(4) << "enable_automatic_tablet_splitting is not set, skipping split";
     return;
   }
 
@@ -790,6 +814,7 @@ void TabletSplitManager::MaybeDoSplitting(
     auto now = CoarseMonoClock::Now();
     for (const auto& pair : splitting_disabled_until_) {
       if (now <= pair.second) {
+        VLOG_WITH_FUNC(4) << Format("Automatic tablet splitting is disabled till $0", pair.second);
         return;
       }
     }
@@ -797,6 +822,9 @@ void TabletSplitManager::MaybeDoSplitting(
 
   auto time_since_last_run = CoarseMonoClock::Now() - last_run_time_;
   if (time_since_last_run < (FLAGS_process_split_tablet_candidates_interval_msec * 1ms)) {
+    VLOG_WITH_FUNC(4) << Format(
+        "Time since last run $0 is less than $1 ms", time_since_last_run,
+        FLAGS_process_split_tablet_candidates_interval_msec);
     return;
   }
 

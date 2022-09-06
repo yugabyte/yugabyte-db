@@ -77,6 +77,7 @@ class CatalogManagerBgTasks final {
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
   enterprise::CatalogManager *catalog_manager_;
+  bool was_leader_ = false;
 };
 
 }  // namespace master

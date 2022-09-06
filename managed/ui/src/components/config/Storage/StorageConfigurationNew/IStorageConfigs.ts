@@ -1,5 +1,6 @@
 export enum IStorageProviders {
     GCS = 'gcs',
     AWS = 's3',
-    NFS = 'nfs'
+    NFS = 'nfs',
+    AZURE = 'AZ'
 }

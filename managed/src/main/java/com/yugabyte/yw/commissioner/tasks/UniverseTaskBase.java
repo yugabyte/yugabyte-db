@@ -5,16 +5,17 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Objects;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYbc;
@@ -249,7 +251,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
     }
     return universe -> {
-      if (isFirstTryForTask(taskParams())) {
+      if (isFirstTry()) {
         // Universe already has a reference to the last task UUID in case of retry.
         // Check version only when it is a first try.
         verifyUniverseVersion(expectedUniverseVersion, universe);
@@ -270,9 +272,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Check this condition only on retry to retain same behavior as before.
       if (!isForceUpdate
           && !universeDetails.updateSucceeded
-          && taskParams().previousTaskUUID != null
-          && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
-        String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
+          && taskParams().getPreviousTaskUUID() != null
+          && !Objects.equal(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
+        String msg = "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -2374,15 +2376,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.
-  public boolean instanceExists(NodeTaskParams taskParams) {
-    Optional<Boolean> optional = instanceExists(taskParams, null);
-    return optional.isPresent();
+  public static boolean instanceExists(NodeTaskParams taskParams) {
+    ImmutableMap.Builder<String, String> expectedTags = ImmutableMap.builder();
+    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    NodeDetails node = universe.getNodeOrBadRequest(taskParams.getNodeName());
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster.userIntent.providerType != CloudType.onprem) {
+      expectedTags.put("universe_uuid", taskParams.universeUUID.toString());
+      if (taskParams.nodeUuid == null) {
+        taskParams.nodeUuid = node.nodeUuid;
+      }
+      if (taskParams.nodeUuid != null) {
+        expectedTags.put("node_uuid", taskParams.nodeUuid.toString());
+      }
+    }
+    Optional<Boolean> optional = instanceExists(taskParams, expectedTags.build());
+    if (!optional.isPresent()) {
+      return false;
+    }
+    if (optional.get()) {
+      return true;
+    }
+    // False means not matching the expected tags.
+    throw new RuntimeException(
+        String.format("Node %s already exist. Pick different universe name.", taskParams.nodeName));
   }
 
   // It returns 3 states - empty for not found, false for not matching and true for matching.
-  public Optional<Boolean> instanceExists(
+  public static Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
+    log.info("Expected tags: {}", expectedTags);
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
     if (Strings.isNullOrEmpty(response.message)) {
@@ -2400,16 +2424,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         Streams.stream(jsonNode.fields())
             .filter(
                 e -> {
+                  String expectedTagValue = expectedTags.get(e.getKey());
+                  if (expectedTagValue == null) {
+                    return false;
+                  }
                   log.info(
-                      "Node: {}, Key: {}, Value: {}",
+                      "Node: {}, Key: {}, Value: {}, Expected: {}",
                       taskParams.nodeName,
                       e.getKey(),
-                      e.getValue());
-                  String expectedTagValue = expectedTags.get(e.getKey());
-                  return expectedTagValue != null && expectedTagValue.equals(e.getValue().asText());
+                      e.getValue(),
+                      expectedTagValue);
+                  return expectedTagValue.equals(e.getValue().asText());
                 })
+            .limit(expectedTags.size())
             .count();
-    log.info("Expected tags: {}", expectedTags);
     return Optional.of(matchCount == expectedTags.size());
   }
 
@@ -2772,6 +2800,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.debug("Cancelling any active health-checks for universe {}", universe.universeUUID);
       healthChecker.cancelHealthCheck(universe.universeUUID);
     }
+  }
+
+  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RebootServer", executor);
+    for (NodeDetails node : nodes) {
+
+      RebootServer.Params params = new RebootServer.Params();
+      params.nodeName = node.nodeName;
+      params.universeUUID = taskParams().universeUUID;
+      params.azUuid = node.azUuid;
+
+      RebootServer task = createTask(RebootServer.class);
+      task.initialize(params);
+
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public int getSleepTimeForProcess(ServerType processType) {
+    return processType == ServerType.MASTER
+        ? taskParams().sleepAfterMasterRestartMillis
+        : taskParams().sleepAfterTServerRestartMillis;
   }
 
   // XCluster: All the xCluster related code resides in this section.

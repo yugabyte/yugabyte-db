@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -129,6 +130,7 @@ public class CustomerConfig extends Model {
   @NotNull
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
+  @Encrypted
   @ApiModelProperty(
       value = "Configuration data",
       required = true,

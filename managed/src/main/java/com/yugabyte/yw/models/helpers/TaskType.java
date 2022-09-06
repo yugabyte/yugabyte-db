@@ -107,6 +107,8 @@ public enum TaskType {
 
   RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
 
+  RebootNodeInUniverse("RebootNodeInUniverse"),
+
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
   RotateAccessKey("RotateAccessKey"),
@@ -380,7 +382,9 @@ public enum TaskType {
 
   UpgradeUniverseYbc("UpgradeUniverseYbc"),
 
-  DisableYbc("DisableYbc");
+  DisableYbc("DisableYbc"),
+
+  InstanceExistCheck("subtasks.InstanceExistCheck");
 
   private String relativeClassPath;
 

@@ -1,0 +1,32 @@
+@import '../../../_style/colors.scss';
+
+.throttle-parameters-modal {
+  width: 800px;
+  background: $YB_BG_WHITE_3;
+  border-radius: 8px;
+
+  .modal-header {
+    padding: 22px 24px;
+  }
+
+  .modal-body {
+    padding: 24px !important;
+  }
+  .field-header {
+    display: flex;
+    align-items: center;
+    height: 42px;
+  }
+  .row {
+    margin-bottom: 15px;
+  }
+  .err-msg {
+    color: $YB_ERROR_TEXT_COLOR;
+    margin-bottom: 5px;
+    margin-top: 5px;
+  }
+}
+.throttle-parameters-config {
+  position: fixed;
+  z-index: 99999 !important;
+}

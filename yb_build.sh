@@ -1595,8 +1595,7 @@ if [[ ${build_cxx} == "true" ||
   run_cxx_build
 fi
 
-if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]] ||
-   is_jenkins; then
+if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then
   run_yugabyted-ui_build
 fi
 

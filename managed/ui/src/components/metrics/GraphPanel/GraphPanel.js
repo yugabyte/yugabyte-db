@@ -265,7 +265,7 @@ class GraphPanel extends Component {
       params.nodePrefix = nodePrefix;
     }
     if (isNonEmptyString(nodeName) && nodeName !== 'all' && nodeName !== 'top') {
-      params.nodeName = nodeName;
+      params.nodeNames = [nodeName];
     }
     // In case of universe metrics , nodePrefix comes from component itself
     if (isNonEmptyArray(this.props.nodePrefixes)) {

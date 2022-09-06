@@ -1,34 +1,25 @@
 /*
  * Copyright 2019 YugaByte, Inc. and Contributors
  *
- * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
- * may not use this file except in compliance with the License. You
- * may obtain a copy of the License at
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
+ * except in compliance with the License. You may obtain a copy of the License at
  *
- *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ * https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
-
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -63,7 +54,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     log.info("Started {} task.", getName());
     try {
-      if (isFirstTryForTask(taskParams())) {
+      if (isFirstTry()) {
         // Verify the task params.
         verifyParams(UniverseOpType.CREATE);
       }
@@ -77,7 +68,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Store the passwords in the temporary variables first.
       // DB does not store the actual passwords.
       if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
-        if (isFirstTryForTask(taskParams())) {
+        if (isFirstTry()) {
           if (isYCQLAuthEnabled) {
             ycqlPassword = primaryCluster.userIntent.ycqlPassword;
           }
@@ -94,7 +85,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                if (isFirstTryForTask(taskParams())) {
+                if (isFirstTry()) {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
                   fetchTaskDetailsFromDB();
@@ -116,7 +107,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
               });
 
       if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
-        if (isFirstTryForTask(taskParams())) {
+        if (isFirstTry()) {
           if (isYCQLAuthEnabled) {
             taskParams().getPrimaryCluster().userIntent.ycqlPassword =
                 Util.redactString(ycqlPassword);
@@ -141,8 +132,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      // TODO this can be moved to subtasks.
-      validateNodeExistence(universe);
+      createInstanceExistsCheckTasks(universe.universeUUID, universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -154,7 +144,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           taskParams().nodeDetailsSet,
           false /* isShell */,
           false /* ignore node status check */,
-          false /*ignoreUseCustomImageConfig*/);
+          false /* ignoreUseCustomImageConfig */);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
@@ -195,36 +185,5 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
-  }
-
-  private void validateNodeExistence(Universe universe) {
-    for (NodeDetails node : universe.getNodes()) {
-      if (node.placementUuid == null) {
-        String errMsg = String.format("Node %s does not have placement.", node.nodeName);
-        throw new RuntimeException(errMsg);
-      }
-      Cluster cluster = universe.getCluster(node.placementUuid);
-      if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
-        continue;
-      }
-      Map<String, String> expectedTags = new HashMap<>();
-      expectedTags.put("universe_uuid", universe.universeUUID.toString());
-      if (node.nodeUuid != null) {
-        expectedTags.put("node_uuid", node.nodeUuid.toString());
-      }
-      NodeTaskParams nodeParams = new NodeTaskParams();
-      nodeParams.universeUUID = universe.universeUUID;
-      nodeParams.expectedUniverseVersion = universe.version;
-      nodeParams.nodeName = node.nodeName;
-      nodeParams.nodeUuid = node.nodeUuid;
-      nodeParams.azUuid = node.azUuid;
-      nodeParams.placementUuid = node.placementUuid;
-      Optional<Boolean> optional = instanceExists(nodeParams, expectedTags);
-      if (optional.isPresent() && !optional.get()) {
-        String errMsg =
-            String.format("Node %s already exist. Pick different universe name.", node.nodeName);
-        throw new RuntimeException(errMsg);
-      }
-    }
   }
 }

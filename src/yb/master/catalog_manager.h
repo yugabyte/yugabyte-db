@@ -770,6 +770,10 @@ class CatalogManager :
   Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const override;
 
+  // Get the disk size of tables (Used for YSQL \d+ command)
+  Status GetTableDiskSize(
+      const GetTableDiskSizeRequestPB* req, GetTableDiskSizeResponsePB* resp, rpc::RpcContext* rpc);
+
   Result<scoped_refptr<UDTypeInfo>> FindUDTypeById(
       const UDTypeId& udt_id) const EXCLUDES(mutex_);
 
@@ -1361,6 +1365,8 @@ class CatalogManager :
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
 
+  // Removes all tasks from jobs_tracker_ and tasks_tracker_.
+  void ResetTasksTrackers();
   // Aborts all tasks belonging to 'tables' and waits for them to finish.
   void AbortAndWaitForAllTasks(const std::vector<scoped_refptr<TableInfo>>& tables);
 

@@ -2028,6 +2028,11 @@ Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_in
   return data_->ValidateReplicationInfo(replication_info, deadline);
 }
 
+Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->GetTableDiskSize(table_id, deadline);
+}
+
 Result<bool> YBClient::CheckIfPitrActive() {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->CheckIfPitrActive(deadline);

@@ -105,8 +105,6 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     .tablet_splitter = nullptr,
     .allowed_history_cutoff_provider = {},
     .transaction_manager_provider = nullptr,
-    .post_split_compaction_pool = nullptr,
-    .split_compaction_added = nullptr
   };
 }
 

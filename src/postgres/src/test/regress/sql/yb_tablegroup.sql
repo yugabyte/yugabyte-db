@@ -107,7 +107,7 @@ CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
 --
 -- Test CREATE INDEX with hash columns
 --
-CREATE TABLEGROUP tgroup_hash_index_test; 
+CREATE TABLEGROUP tgroup_hash_index_test;
 CREATE TABLE tbl (r1 int, r2 int, v1 int, v2 int,
 PRIMARY KEY (r1, r2)) TABLEGROUP tgroup_hash_index_test;
 CREATE INDEX idx_tbl ON tbl (r1 hash);

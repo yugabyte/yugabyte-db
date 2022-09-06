@@ -532,11 +532,40 @@ Status PgClientSession::RollbackToSubTransaction(
     const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Rollback sub transaction $0, when not transaction is running",
-                req.sub_transaction_id()));
-  return Transaction(PgClientSessionKind::kPlain)->RollbackToSubTransaction(
-      req.sub_transaction_id(), context->GetClientDeadline());
+  /*
+   * Currently we do not support a transaction block that has both DDL and DML statements (we
+   * support it syntactically but not semantically). Thus, when a DDL is encountered in a
+   * transaction block, a separate transaction is created for the DDL statement, which is
+   * committed at the end of that statement. This is why there are 2 session objects here, one
+   * corresponds to the DML transaction, and the other to a possible separate transaction object
+   * created for the DDL. However, subtransaction-id increases across both sessions. Also,
+   * it is not possible to rollback to a savepoint created for the DML transaction from the DDL
+   * statement, i.e. the following sequence of events is not possible:
+   * -- Start DML
+   * ---- Commands...
+   * ---- Savepoint 1
+   * ---- Start DDL
+   * ------ Commands
+   * ------ Savepoint 2
+   * ------ Commands
+   * ------ Rollback to Savepoint 1 -- Not possible, can only rollback to Savepoint 1.
+   * ---- DDL committed at this point
+   * ---- Rollback to Savepoint 2 -- Again not possible, the DDL is already committed.
+   * The above is not possible because we do not allow multiple statements in a single DDL txn.
+   * Because of the above properties, when we need to rollback to a savepoint, the subtransaction-id
+   * can only have been part of one session.
+   */
+  for (auto& session : sessions_) {
+    auto transaction = session.transaction;
+    if (transaction
+        && transaction->HasSubTransaction(req.sub_transaction_id())) {
+      return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
+                                                   context->GetClientDeadline());
+    }
+  }
+  return STATUS(IllegalState,
+                Format("Rollback sub transaction $0, when no transaction is running",
+                       req.sub_transaction_id()));
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -544,16 +573,23 @@ Status PgClientSession::SetActiveSubTransaction(
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
 
+  auto kind = PgClientSessionKind::kPlain;
   if (req.has_options()) {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
-    txn_serial_no_ = req.options().txn_serial_no();
+    if (req.options().ddl_mode()) {
+      kind = PgClientSessionKind::kDdl;
+    } else {
+      RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
+      txn_serial_no_ = req.options().txn_serial_no();
+    }
   }
 
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Set active sub transaction $0, when not transaction is running",
+  auto transaction = Transaction(kind);
+
+  SCHECK(transaction, IllegalState,
+         Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
-  Transaction(PgClientSessionKind::kPlain)->SetActiveSubTransaction(req.sub_transaction_id());
+  transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
 

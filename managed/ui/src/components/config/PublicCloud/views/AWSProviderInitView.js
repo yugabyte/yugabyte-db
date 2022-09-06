@@ -467,7 +467,7 @@ class AWSProviderInitView extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      networkSetupType: 'new_vpc',
+      networkSetupType: 'existing_vpc',
       setupHostedZone: false,
       credentialInputType: 'custom_keys',
       sshPrivateKeyContent: {},
@@ -871,7 +871,7 @@ class AWSProviderInitView extends Component {
     // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
-        {'Create a new VPC'}
+        {'Create a new VPC (Beta)'}
       </option>,
       <option key={2} value={'existing_vpc'}>
         {'Specify an existing VPC'}
@@ -1020,7 +1020,8 @@ let awsProviderConfigForm = reduxForm({
   validate,
   initialValues: {
     ntp_option: NTP_TYPES.PROVIDER,
-    ntpServers: []
+    ntpServers: [],
+    network_setup : 'existing_vpc'
   },
   touchOnChange: true
 })(AWSProviderInitView);

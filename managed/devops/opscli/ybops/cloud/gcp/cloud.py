@@ -138,11 +138,16 @@ class GcpCloud(AbstractCloud):
             if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
                 logging.error("Host {} UUID does not match.".format(args.search_pattern))
                 return
-        elif host_info['private_ip'] != args.node_ip:
+        elif host_info.get('private_ip') != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
         self.get_admin().delete_instance(
             args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
+
+    def reboot_instance(self, args, ssh_ports):
+        args_as_dict = vars(args)
+        self.stop_instance(args_as_dict)
+        self.start_instance(args_as_dict, ssh_ports)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()

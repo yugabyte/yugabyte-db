@@ -2090,9 +2090,10 @@ tserver_rpc_queue_size_redis:
 tserver_async_replication_lag_micros:
   metric: ""
   operator: "/ 1000"
-  function: "max by (exported_instance, saved_name)"
+  function: "max by (exported_instance, saved_name)|avg"
   filters:
     saved_name: "async_replication_sent_lag_micros|async_replication_committed_lag_micros"
+  group_by: "exported_instance,saved_name"
   panel_group: "Tablet Server"
   layout:
     title: "Async Replication Lag"
@@ -2106,10 +2107,11 @@ tserver_async_replication_lag_micros:
 
 master_overall_rpc_rate:
   metric: "rpc_inbound_calls_created_irate"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range : true
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "Overall RPCs / sec"
@@ -2138,12 +2140,13 @@ master_latency:
 
 master_get_tablet_location:
   metric: "rpc_irate_rps"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range: true
   filters:
     export_type: "master_export"
     service_type: "MasterService|MasterClient"
     service_method: "GetTabletLocations"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "GetTabletLocations / sec"
@@ -2155,12 +2158,13 @@ master_get_tablet_location:
 
 master_tsservice_reads:
   metric: "rpc_irate_rps"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range: true
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
     service_method: "Read"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "Master TSService Reads / sec"
@@ -2191,12 +2195,13 @@ master_tsservice_reads_latency:
 
 master_tsservice_writes:
   metric: "rpc_irate_rps"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range: true
   filters:
     export_type: "master_export"
     service_type: "TabletServerService"
     service_method: "Write"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "Master TSService Writes / sec"
@@ -2227,12 +2232,13 @@ master_tsservice_writes_latency:
 
 master_ts_heartbeats:
   metric: "rpc_irate_rps"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range: true
   filters:
     export_type: "master_export"
     service_type: "MasterService|MasterHeartbeat"
     service_method: "TSHeartbeat"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "TS Heartbeats / sec"
@@ -2244,12 +2250,13 @@ master_ts_heartbeats:
 
 master_consensus_update:
   metric: "rpc_irate_rps"
-  function: "avg_over_time"
+  function: "avg_over_time|avg"
   range: true
   filters:
     export_type: "master_export"
     service_type: "ConsensusService"
     service_method: "UpdateConsensus"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "UpdateConsensus / sec"
@@ -2279,12 +2286,13 @@ master_consensus_update_latency:
 
 master_multiraft_consensus_update:
   metric: "rpc_latency_count"
-  function: "rate"
+  function: "rate|avg"
   range : true
   filters:
     export_type: "master_export"
     service_type: "ConsensusService"
     service_method: "MultiRaftUpdateConsensus"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "MultiRaftUpdateConsensus / sec"
@@ -2393,9 +2401,10 @@ tserver_yb_rpc_connections:
 
 master_yb_rpc_connections:
   metric: "rpc_connections_alive"
-  function: ""
+  function: "avg"
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master"
   layout:
     title: "Inbound RPC Connections Alive"
@@ -2441,10 +2450,11 @@ master_log_latency:
 
 master_log_bytes_written:
   metric: "log_bytes_logged"
-  function: "rate|sum by (exported_instance)"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master Advanced"
   layout:
     title: "WAL Bytes Written / Sec / Node"
@@ -2456,10 +2466,11 @@ master_log_bytes_written:
 
 master_log_bytes_read:
   metric: "log_reader_bytes_read"
-  function: "rate|sum by (exported_instance)"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master Advanced"
   layout:
     title: "WAL Bytes Read / Sec / Node"
@@ -2563,7 +2574,7 @@ master_lsm_rocksdb_total_sst_per_node:
 
 master_lsm_rocksdb_avg_num_sst_per_node:
   metric: "rocksdb_current_version_num_sst_files"
-  function: "sum by (exported_instance)"
+  function: "sum by (exported_instance)|avg"
   filters:
     export_type: "master_export"
   group_by: "exported_instance"
@@ -2634,11 +2645,12 @@ master_lsm_rocksdb_blooms_checked_and_useful:
 
 master_lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
-  function: "rate|sum by (exported_instance)"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   operator: "/ 1048576"
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master Advanced"
   layout:
     title: "Flush write"
@@ -2671,10 +2683,11 @@ master_lsm_rocksdb_compaction:
 
 master_lsm_rocksdb_compaction_numfiles:
   metric: "rocksdb_numfiles_in_singlecompaction.avg"
-  function: "rate|sum by (exported_instance)"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master Advanced"
   layout:
     title: "Compaction num files"
@@ -2686,10 +2699,11 @@ master_lsm_rocksdb_compaction_numfiles:
 
 master_lsm_rocksdb_compaction_time:
   metric: "rocksdb_compaction_times_micros.avg"
-  function: "rate|sum by (exported_instance)"
+  function: "rate|sum by (exported_instance)|avg"
   range : true
   filters:
     export_type: "master_export"
+  group_by: "exported_instance"
   panel_group: "Master Advanced"
   layout:
     title: "Compaction time"

@@ -109,8 +109,9 @@ class MetricsCollector : public Collector {
   void Collect(CollectionLevel collection_level) {
     std::stringstream s;
     JsonWriter w(&s, JsonWriter::COMPACT);
-
-    Status status = server_->metric_registry()->WriteAsJson(&w, {"*"}, MetricJsonOptions());
+    MetricEntityOptions entity_opts;
+    entity_opts.metrics.push_back("*");
+    Status status = server_->metric_registry()->WriteAsJson(&w, entity_opts, MetricJsonOptions());
     if (!status.ok()) {
       json_ = "\"metrics\":{}";
       return;

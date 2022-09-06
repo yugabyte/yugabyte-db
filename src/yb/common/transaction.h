@@ -44,7 +44,7 @@
 
 namespace yb {
 
-YB_STRONGLY_TYPED_UUID(TransactionId);
+YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
 
@@ -91,6 +91,16 @@ struct TransactionStatusResult {
   }
 };
 
+// Stores a transaction id and the TabletId of the status tablet which manages this transaction.
+struct BlockingTransactionData {
+  TransactionId id;
+  TabletId status_tablet;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(id, status_tablet);
+  }
+};
+
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
   return out << "{ status: " << TransactionStatus_Name(result.status)
              << " status_time: " << result.status_time << " }";
@@ -133,8 +143,8 @@ class TransactionStatusManager {
   // transaction. Otherwise, returns HybridTime::kInvalid.
   virtual HybridTime LocalCommitTime(const TransactionId& id) = 0;
 
-  // If this tablet is aware that this transaction has committed, returns the CommitMetadata for the
-  // transaction. Otherwise, returns boost::none.
+  // If this tablet is aware that this transaction has committed, returns the TransactionLocalState
+  // for the transaction. Otherwise, returns boost::none.
   virtual boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
@@ -160,6 +170,10 @@ class TransactionStatusManager {
   // For each pair fills second with priority of transaction with id equals to first.
   virtual void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
+
+  virtual void FillStatusTablets(std::vector<BlockingTransactionData>* inout) = 0;
+
+  virtual boost::optional<TabletId> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;

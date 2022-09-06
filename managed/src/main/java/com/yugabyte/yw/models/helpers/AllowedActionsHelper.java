@@ -68,7 +68,9 @@ public class AllowedActionsHelper {
    * @return error string if the node is not allowed to perform the action otherwise null.
    */
   private String nodeActionErrOrNull(NodeActionType action) {
-    if (action == NodeActionType.STOP || action == NodeActionType.REMOVE) {
+    if (action == NodeActionType.STOP
+        || action == NodeActionType.REMOVE
+        || action == NodeActionType.REBOOT) {
       String errorMsg = removeMasterErrOrNull(action);
       if (errorMsg != null) return errorMsg;
       errorMsg = removeSingleNodeErrOrNull(action);

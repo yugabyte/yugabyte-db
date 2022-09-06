@@ -272,11 +272,13 @@ create_backup() {
   if [[ "${verbose}" = true ]]; then
     find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
               -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
+              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
               -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
               -o -path "${include_releases_flag}" \) -exec tar -rvf "${tar_name}" {} +
   else
     find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
               -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
+              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
               -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
               -o -path "${include_releases_flag}" \) -exec tar -rf "${tar_name}" {} +
   fi

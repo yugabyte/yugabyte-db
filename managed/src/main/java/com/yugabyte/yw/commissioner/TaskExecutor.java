@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.password.RedactingService;
@@ -32,7 +33,6 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -43,13 +43,11 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -62,7 +60,6 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.api.Play;
-import play.inject.ApplicationLifecycle;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -225,10 +222,7 @@ public class TaskExecutor {
   static boolean isTaskAbortable(Class<? extends ITask> taskClass) {
     checkNotNull(taskClass, "Task class must be non-null");
     Optional<Abortable> optional = CommonUtils.isAnnotatedWith(taskClass, Abortable.class);
-    if (optional.isPresent()) {
-      return optional.get().enabled();
-    }
-    return false;
+    return optional.map(Abortable::enabled).orElse(false);
   }
 
   // It looks for the annotation starting from the current class to its super classes until it
@@ -237,10 +231,7 @@ public class TaskExecutor {
   static boolean isTaskRetryable(Class<? extends ITask> taskClass) {
     checkNotNull(taskClass, "Task class must be non-null");
     Optional<Retryable> optional = CommonUtils.isAnnotatedWith(taskClass, Retryable.class);
-    if (optional.isPresent()) {
-      return optional.get().enabled();
-    }
-    return false;
+    return optional.map(Retryable::enabled).orElse(false);
   }
 
   /**
@@ -256,18 +247,18 @@ public class TaskExecutor {
 
   @Inject
   public TaskExecutor(
-      ApplicationLifecycle lifecycle,
+      ShutdownHookHandler shutdownHookHandler,
       ExecutorServiceProvider executorServiceProvider,
       PlatformReplicationManager replicationManager) {
     this.executorServiceProvider = executorServiceProvider;
     this.replicationManager = replicationManager;
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
-    lifecycle.addStopHook(
-        () ->
-            CompletableFuture.supplyAsync(
-                () -> TaskExecutor.this.shutdown(Duration.ofMinutes(5)),
-                Executors.newCachedThreadPool()));
+    shutdownHookHandler.addShutdownHook(
+        100 /* weight */,
+        () -> {
+          TaskExecutor.this.shutdown(Duration.ofMinutes(5));
+        });
   }
 
   // Shuts down the task executor.
@@ -294,6 +285,7 @@ public class TaskExecutor {
     } catch (InterruptedException e) {
       log.error("Wait for task completion interrupted", e);
     }
+    log.debug("TaskExecutor shutdown in time");
     return false;
   }
 
@@ -519,7 +511,7 @@ public class TaskExecutor {
    */
   public class SubTaskGroup {
     private final Set<RunnableSubTask> subTasks =
-        Collections.newSetFromMap(new ConcurrentHashMap<RunnableSubTask, Boolean>());
+        Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final String name;
     private final boolean ignoreErrors;
     private final AtomicInteger numTasksCompleted;
@@ -833,7 +825,7 @@ public class TaskExecutor {
 
     protected abstract Instant getAbortTime();
 
-    protected abstract TaskExecutionListener getTaskExecutionLister();
+    protected abstract TaskExecutionListener getTaskExecutionListener();
 
     Duration getTimeLimit() {
       return timeLimit;
@@ -880,18 +872,23 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getTaskDetails().deepCopy());
-      Throwable cause = t;
-      // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
-      // this can find the actual cause.
-      while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
-        cause = cause.getCause();
+      String errorString;
+      if (state == TaskInfo.State.Aborted && isShutdown.get()) {
+        errorString = "Platform shutdown";
+      } else {
+        Throwable cause = t;
+        // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
+        // this can find the actual cause.
+        while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
+          cause = cause.getCause();
+        }
+        errorString =
+            "Failed to execute task "
+                + StringUtils.abbreviate(taskDetails.toString(), 500)
+                + ", hit error:\n\n"
+                + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
+                + ".";
       }
-      String errorString =
-          "Failed to execute task "
-              + StringUtils.abbreviate(taskDetails.toString(), 500)
-              + ", hit error:\n\n"
-              + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
-              + ".";
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
@@ -900,9 +897,7 @@ public class TaskExecutor {
           t);
 
       if (log.isDebugEnabled()) {
-        log.debug(
-            "Task creator callstack:\n{}",
-            Arrays.stream(creatorCallstack).collect(Collectors.joining("\n")));
+        log.debug("Task creator callstack:\n{}", String.join("\n", creatorCallstack));
       }
 
       ObjectNode details = taskDetails.deepCopy();
@@ -914,14 +909,14 @@ public class TaskExecutor {
     }
 
     void publishBeforeTask() {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionLister();
+      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.beforeTask(taskInfo);
       }
     }
 
     void publishAfterTask(Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionLister();
+      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
       }
@@ -1002,7 +997,7 @@ public class TaskExecutor {
     }
 
     @Override
-    protected TaskExecutionListener getTaskExecutionLister() {
+    protected TaskExecutionListener getTaskExecutionListener() {
       return taskExecutionListener;
     }
 
@@ -1060,10 +1055,10 @@ public class TaskExecutor {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (RuntimeException e) {
             if (subTaskGroup.ignoreErrors) {
-              log.error("Ignoring error for " + subTaskGroup.toString(), e);
+              log.error("Ignoring error for " + subTaskGroup, e);
             } else {
               // Postpone throwing this error later when all the subgroups are done.
-              throw new RuntimeException(subTaskGroup.toString() + " failed.", e);
+              throw new RuntimeException(subTaskGroup + " failed.", e);
             }
             anyRe = e;
           }
@@ -1088,7 +1083,7 @@ public class TaskExecutor {
       try {
         if (waiterLatch.await(waitTime.toMillis(), TimeUnit.MILLISECONDS)) {
           // Count reached zero first, another thread must have decreased it.
-          throw new CancellationException(toString() + " is aborted while waiting.");
+          throw new CancellationException(this + " is aborted while waiting.");
         }
       } catch (InterruptedException e) {
         throw new CancellationException(e.getMessage());
@@ -1128,7 +1123,24 @@ public class TaskExecutor {
     public void run() {
       // Sets the top-level user task UUID.
       task.setUserTaskUUID(parentRunnableTask.getTaskUUID());
-      super.run();
+      int currentAttempt = 0;
+      int retryLimit = task.getRetryLimit();
+
+      while (currentAttempt < retryLimit) {
+        try {
+          super.run();
+          break;
+        } catch (Exception e) {
+          if ((currentAttempt == retryLimit - 1) || e instanceof CancellationException) {
+            throw e;
+          }
+
+          log.warn("Task {} attempt {} has failed", task, currentAttempt);
+          task.onFailure(taskInfo, e);
+        }
+
+        currentAttempt++;
+      }
     }
 
     @Override
@@ -1137,8 +1149,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected synchronized TaskExecutionListener getTaskExecutionLister() {
-      return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionLister();
+    protected synchronized TaskExecutionListener getTaskExecutionListener() {
+      return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionListener();
     }
 
     public synchronized void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {

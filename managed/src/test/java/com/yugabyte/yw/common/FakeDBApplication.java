@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static play.inject.Bindings.bind;
 
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -48,7 +49,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
   public AccessManager mockAccessManager = mock(AccessManager.class);
   public TemplateManager mockTemplateManager = mock(TemplateManager.class);
-  public MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+  public MetricQueryHelper mockMetricQueryHelper = spy(MetricQueryHelper.class);
   public CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
   public CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
   public ReleaseManager mockReleaseManager = mock(ReleaseManager.class);

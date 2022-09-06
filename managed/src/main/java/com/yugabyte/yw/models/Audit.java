@@ -454,7 +454,10 @@ public class Audit extends Model {
     UpgradeYbc,
 
     @EnumValue("Install Ybc")
-    InstallYbc
+    InstallYbc,
+
+    @EnumValue("Set YB-Controller throttle params")
+    SetThrottleParams
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

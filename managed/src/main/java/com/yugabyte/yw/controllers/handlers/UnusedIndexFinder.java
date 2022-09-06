@@ -69,7 +69,8 @@ public class UnusedIndexFinder {
   private static final String GET_UNUSED_INDEXES_STATEMENT =
       "select jsonb_agg(t) from (select current_database(), relname as table_name, "
           + "indexrelname as index_name, pg_get_indexdef(indexrelid) as index_command, "
-          + "'perf tuning' as comment from pg_stat_user_indexes where idx_scan = 0) as t;";
+          + "'perf tuning' as comment from pg_stat_user_indexes stat, pg_index idx where "
+          + "stat.indexrelid = idx.indexrelid and idx.indisunique = 'f' and idx_scan = 0) as t;";
 
   private static final String DEFAULT_DB_NAME = "yugabyte";
 

@@ -134,6 +134,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
+
+      if (!wasDecommissioned) {
+        // Validate instance existence and connectivity before changing the state.
+        createInstanceExistsCheckTasks(universe.universeUUID, nodeSet);
+      }
+
       // Update Node State to being added.
       createSetNodeStateTask(currentNode, NodeState.Adding)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);

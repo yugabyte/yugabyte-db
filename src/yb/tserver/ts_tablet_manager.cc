@@ -73,6 +73,8 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/rocksdb/util/task_metrics.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 
@@ -190,6 +192,9 @@ DEFINE_test_flag(bool, pause_apply_tablet_split, false,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
+
 DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
@@ -197,6 +202,10 @@ DEFINE_int32(verify_tablet_data_interval_sec, 0,
 DEFINE_int32(cleanup_metrics_interval_sec, 60,
              "The tick interval time for the metrics cleanup background task. "
              "If set to 0, it disables the background task.");
+
+DEFINE_int32(send_wait_for_report_interval_ms, 60000,
+             "The tick interval time to trigger updating all transaction coordinators with wait-for"
+             " relationships.");
 
 DEFINE_bool(skip_tablet_data_verification, false,
             "Skip checking tablet data for corruption.");
@@ -225,6 +234,11 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
+
+DEFINE_bool(enable_pessimistic_locking, false,
+            "If true, use pessimistic locking behavior in conflict resolution.");
+TAG_FLAG(enable_pessimistic_locking, evolving);
+TAG_FLAG(enable_pessimistic_locking, hidden);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -285,6 +299,8 @@ THREAD_POOL_METRICS_DEFINE(
 THREAD_POOL_METRICS_DEFINE(
     server, admin_triggered_compaction_pool, "Thread pool for tablet compaction jobs.");
 
+ROCKSDB_PRIORITY_THREAD_POOL_METRICS_DEFINE(server);
+
 using consensus::ConsensusMetadata;
 using consensus::RaftConfigPB;
 using consensus::StartRemoteBootstrapRequestPB;
@@ -336,6 +352,10 @@ void TSTabletManager::VerifyTabletData() {
 void TSTabletManager::CleanupOldMetrics() {
   VLOG(2) << "Cleaning up old metrics";
   metric_registry_->RetireOldMetrics();
+}
+
+void TSTabletManager::PollWaitingTxnRegistry() {
+  DCHECK_NOTNULL(waiting_txn_registry_)->SendWaitForGraph();
 }
 
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
@@ -393,16 +413,16 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_metrics(std::move(read_metrics))
                .Build(&read_pool_));
   CHECK_OK(ThreadPoolBuilder("tablet-split-compaction")
-               .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
-               .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
-               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
-                   server_->metric_entity(), post_split_trigger_compaction_pool))
-               .Build(&post_split_trigger_compaction_pool_));
+              .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
+              .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), post_split_trigger_compaction_pool))
+              .Build(&post_split_trigger_compaction_pool_));
   CHECK_OK(ThreadPoolBuilder("admin-compaction")
-               .set_max_threads(std::max(docdb::GetGlobalRocksDBPriorityThreadPoolSize(), 0))
-               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
-                   server_->metric_entity(), admin_triggered_compaction_pool))
-               .Build(&admin_triggered_compaction_pool_));
+              .set_max_threads(std::max(docdb::GetGlobalRocksDBPriorityThreadPoolSize(), 0))
+              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                  server_->metric_entity(), admin_triggered_compaction_pool))
+              .Build(&admin_triggered_compaction_pool_));
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_split_compaction_added_ =
       METRIC_ts_split_compaction_added.Instantiate(server_->metric_entity(), 0);
@@ -413,6 +433,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       kDefaultTserverBlockCacheSizePercentage,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
+
+  tablet_options_.priority_thread_pool_metrics =
+      std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
+          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(server_->metric_entity()));
 }
 
 TSTabletManager::~TSTabletManager() {
@@ -462,6 +486,11 @@ Status TSTabletManager::Init() {
   multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(server_->messenger(),
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
+
+  if (FLAGS_enable_pessimistic_locking) {
+    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+        client_future(), scoped_refptr<server::Clock>(server_->clock()));
+  }
 
   deque<RaftGroupMetadataPtr> metas;
 
@@ -523,6 +552,9 @@ Status TSTabletManager::Init() {
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
+  waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
+
   return Status::OK();
 }
 
@@ -580,6 +612,11 @@ Status TSTabletManager::Start() {
   } else {
     LOG(INFO)
         << "Old metrics cleanup is disabled by cleanup_metrics_interval_sec flag set to 0";
+  }
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_poller_->Start(
+        &server_->messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
   }
 
   return Status::OK();
@@ -1442,8 +1479,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
         return server->TransactionManager();
       },
-      .post_split_compaction_pool = post_split_trigger_compaction_pool_.get(),
-      .split_compaction_added = ts_split_compaction_added_
+      .waiting_txn_registry = waiting_txn_registry_.get(),
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1505,6 +1541,21 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
+  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
+    auto status =
+        tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+          return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+        });
+    if (status.ok()) {
+      ts_split_compaction_added_->Increment();
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet:"
+          << status.ToString();
+    }
+  } else {
+    LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
+  }
+
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard<RWMutex> lock(mutex_);
     tablets_blocked_from_lb_.insert(tablet->tablet_id());
@@ -1556,6 +1607,8 @@ void TSTabletManager::StartShutdown() {
 
   metrics_cleaner_->Shutdown();
 
+  waiting_txn_registry_poller_->Shutdown();
+
   mem_manager_->Shutdown();
 
   // Wait for all RBS operations to finish.
@@ -1604,6 +1657,10 @@ void TSTabletManager::StartShutdown() {
   }
 
   multi_raft_manager_->StartShutdown();
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_->StartShutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {
@@ -1646,6 +1703,10 @@ void TSTabletManager::CompleteShutdown() {
   }
 
   multi_raft_manager_->CompleteShutdown();
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_->CompleteShutdown();
+  }
 }
 
 std::string TSTabletManager::LogPrefix() const {

@@ -837,10 +837,8 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
         InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
         req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
-
   RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
-      txn_snapshot_id, req->list_deleted_snapshots(), resp));
-
+      txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
   if (req->prepare_for_backup()) {
     RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
   }
@@ -3483,6 +3481,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     LOG(INFO) << "Created CDC stream " << stream->ToString();
 
     RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+    TRACE("Created CDC state table");
+
     if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
         (!req->has_initial_state() ||
          (req->initial_state() == master::SysCDCStreamEntryPB::ACTIVE)) &&
@@ -3510,10 +3510,19 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
         cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
         cdc_table.AddTimestampColumnValue(
             req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+
+        if (id_type_option_value == cdc::kNamespaceId) {
+          // For cdcsdk cases, we also need to persist last_active_time in the 'cdc_state' table. We
+          // will store this info in the map in the 'kCdcData' column.
+          auto column_id = cdc_table.ColumnId(master::kCdcData);
+          cdc_table.AddMapColumnValue(req, column_id, "active_time", "0");
+        }
+
         session->Apply(op);
       }
       // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
       RETURN_NOT_OK(session->TEST_Flush());
+      TRACE("Created CDC state entries");
     }
   } else {
     // Update and add table_id.
@@ -3539,6 +3548,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     // Also need to persist changes in sys catalog.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
     stream_lock.Commit();
+
+    TRACE("Updated CDC stream in sys-catalog");
   }
 
   // Now that the stream is set up, mark the entire cluster as a cdc enabled.

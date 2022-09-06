@@ -172,9 +172,12 @@ def main():
     if not args.skip_build:
         # TODO: figure out the dependency issues in our CMake build instead.
         # TODO: move this into yb_build.sh itself.
+        # yugabyted-ui build only needs to run once, so avoid wasting time building it in these
+        # preliminary builds.
         for preliminary_target in ['protoc-gen-insertions', 'bfql_codegen']:
             preliminary_step_cmd_list = [
-                    arg for arg in build_cmd_list if arg != 'packaged_targets'
+                    arg for arg in build_cmd_list
+                    if arg not in ('--build-yugabyted-ui', 'packaged_targets',)
                 ] + ['--target', preliminary_target]
 
             # Skipping Java in these "preliminary" builds whether or not we are building YugaWare.

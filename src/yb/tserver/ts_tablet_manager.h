@@ -50,6 +50,8 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
+#include "yb/docdb/local_waiting_txn_registry.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
@@ -512,6 +514,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class Key>
   tablet::TabletPeerPtr LookupTabletUnlocked(const Key& tablet_id) const REQUIRES_SHARED(mutex_);
 
+  void PollWaitingTxnRegistry();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -589,8 +593,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<ThreadPool> read_pool_;
 
   // Thread pool for manually triggering compactions for tablets created from a split.
-  // This is used by a tablet method to schedule compactions on the child tablets after
-  // a split so each tablet has a reference to this pool.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
@@ -603,6 +605,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
+
+  std::unique_ptr<tablet::LocalWaitingTxnRegistry> waiting_txn_registry_;
+
+  std::unique_ptr<rpc::Poller> waiting_txn_registry_poller_;
 
   // For block cache and memory monitor shared across tablets
   tablet::TabletOptions tablet_options_;

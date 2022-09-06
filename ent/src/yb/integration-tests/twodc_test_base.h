@@ -82,8 +82,8 @@ class TwoDCTestBase : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
+    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;

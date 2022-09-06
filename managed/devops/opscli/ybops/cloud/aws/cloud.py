@@ -337,7 +337,8 @@ class AwsCloud(AbstractCloud):
             filters = [
                 {
                     "Name": "instance-state-name",
-                    "Values": ["running"]
+                    # Include all non-terminating states.
+                    "Values": ["rebooting", "pending", "running", "stopping", "stopped"]
                 }
             ]
 
@@ -392,7 +393,8 @@ class AwsCloud(AbstractCloud):
                 elif interface.get("Attachment").get("DeviceIndex") == 1:
                     secondary_private_ip = interface.get("PrivateIpAddress")
                     secondary_subnet = interface.get("SubnetId")
-
+            instance_state = data["State"].get("Name") if data.get("State") is not None else None
+            logging.info("VM state {}".format(instance_state))
             result = dict(
                 id=data.get("InstanceId", None),
                 name=name_tags[0] if name_tags else None,
@@ -412,7 +414,9 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                ami=data.get("ImageId", None)
+                ami=data.get("ImageId", None),
+                instance_state=instance_state,
+                is_running=True if instance_state == "running" else False
             )
 
             disks = data.get("BlockDeviceMappings")
@@ -471,6 +475,23 @@ class AwsCloud(AbstractCloud):
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
         instance.terminate()
         instance.wait_until_terminated()
+
+    def reboot_instance(self, args, ssh_ports):
+        host_info = self.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False
+        )
+
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+
+        boto3.client('ec2', region_name=args.region).reboot_instances(
+          InstanceIds=[host_info["id"]]
+        )
+
+        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
 
     def mount_disk(self, host_info, vol_id, label):
         ec2 = boto3.client('ec2', region_name=host_info['region'])

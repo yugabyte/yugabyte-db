@@ -31,8 +31,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   // When a transaction is performed on a table that is altered,
   // "need_global_cache_refresh" is set to true and raise
   // transaction conflict error in YBPrepareCacheRefreshIfNeeded().
-  private static final String TRANSACTION_CONFLICT_ERROR =
-      "expired or aborted by a conflict";
+  private static final String[] TRANSACTION_ABORT_ERRORS =
+      { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
   private static final String SCHEMA_VERSION_MISMATCH_ERROR =
       "schema version mismatch for table";
   private static final String NO_SEQUENCE_FOUND_ERROR =
@@ -42,6 +42,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   private static final String NO_ERROR = "";
   private static final boolean executeDmlBeforeAlter = true;
   private static final boolean executeDmlAfterAlter = false;
+  private static final boolean cacheMetadataSetTrue = true;
   private static enum Dml { INSERT, SELECT }
   private static enum AlterCommand {
       ADD_CONSTRAINT, DROP_CONSTRAINT,
@@ -354,7 +355,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
                                                    AlterCommand alterCommand,
                                                    boolean withCachedMetadata,
                                                    boolean executeDmlBeforeAlter,
-                                                   String expectedErrorMessage) throws Exception {
+                                                   String... expectedErrorMessages)
+      throws Exception {
     String tableName = dmlToExecute + "OnTable" +
         (executeDmlBeforeAlter ? "Before" : "After") + "AlterTable" + alterCommand + "On" +
         (withCachedMetadata ? "PgCached" : "NonPgCached");
@@ -396,43 +398,43 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           // execute ALTER in ddlConnection
           ddlStmt.execute(alterQuery);
           // execute COMMIT in txnConnection1
-          if (expectedErrorMessage.isEmpty()) {
+          if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
             txnStmt1.execute("COMMIT");
           } else {
-            runInvalidQuery(txnStmt1, "COMMIT", expectedErrorMessage);
+            runInvalidQuery(txnStmt1, "COMMIT", expectedErrorMessages);
           }
         } else {
           // execute ALTER in ddlConnection
           ddlStmt.execute(alterQuery);
           // execute DML in txnConnection1
-          if (expectedErrorMessage.isEmpty()) {
+          if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
             txnStmt1.execute(dmlQuery);
           } else {
-            runInvalidQuery(txnStmt1, dmlQuery, expectedErrorMessage);
+            runInvalidQuery(txnStmt1, dmlQuery, expectedErrorMessages);
           }
           // execute COMMIT in txnConnection1
           txnStmt1.execute("COMMIT");
         }
       } else {
-        String expectedErrorMessageOnDependentTable = expectedErrorMessage;
+        String[] expectedErrorMessagesOnDependentTable = expectedErrorMessages.clone();
         if (alterCommand == AlterCommand.ATTACH_PARTITION) {
           if (executeDmlBeforeAlter) {
             if (dmlToExecute == Dml.INSERT) {
-              expectedErrorMessageOnDependentTable = TRANSACTION_CONFLICT_ERROR;
+              expectedErrorMessagesOnDependentTable = TRANSACTION_ABORT_ERRORS;
             } else {
-              expectedErrorMessageOnDependentTable = NO_ERROR;
+              expectedErrorMessagesOnDependentTable = new String[]{ NO_ERROR };
             }
           } else {
             if (withCachedMetadata) {
-              expectedErrorMessageOnDependentTable = SCHEMA_VERSION_MISMATCH_ERROR;
+              expectedErrorMessagesOnDependentTable = new String[]{ SCHEMA_VERSION_MISMATCH_ERROR };
             } else {
-              expectedErrorMessageOnDependentTable = NO_ERROR;
+              expectedErrorMessagesOnDependentTable = new String[]{ NO_ERROR };
             }
           }
         } else if (alterCommand == AlterCommand.DETACH_PARTITION) {
           if (!executeDmlBeforeAlter) {
             if (!withCachedMetadata && dmlToExecute == Dml.INSERT) {
-              expectedErrorMessageOnDependentTable = NO_ERROR;
+              expectedErrorMessagesOnDependentTable = new String[]{ NO_ERROR };
             }
           }
         }
@@ -451,38 +453,41 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           // execute ALTER in ddlConnection
           ddlStmt.execute(alterQuery);
           // execute COMMIT in txnConnection1 & 2
-          if (expectedErrorMessage.isEmpty()) {
+          if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
             txnStmt1.execute("COMMIT");
-            if (expectedErrorMessageOnDependentTable.isEmpty()) {
+            if (expectedErrorMessagesOnDependentTable.length == 1 &&
+                expectedErrorMessagesOnDependentTable[0].isEmpty()) {
               txnStmt2.execute("COMMIT");
             } else {
-              runInvalidQuery(txnStmt2, "COMMIT", expectedErrorMessageOnDependentTable);
+              runInvalidQuery(txnStmt2, "COMMIT", expectedErrorMessagesOnDependentTable);
             }
           } else {
-            runInvalidQuery(txnStmt1, "COMMIT", expectedErrorMessage);
-            runInvalidQuery(txnStmt2, "COMMIT", expectedErrorMessageOnDependentTable);
+            runInvalidQuery(txnStmt1, "COMMIT", expectedErrorMessages);
+            runInvalidQuery(txnStmt2, "COMMIT", expectedErrorMessagesOnDependentTable);
           }
         } else {
           // execute ALTER in ddlConnection
           ddlStmt.execute(alterQuery);
           // execute DML in txnConnection1 & 2
-          if (expectedErrorMessage.isEmpty()) {
+          if (expectedErrorMessages.length == 1 && expectedErrorMessages[0].isEmpty()) {
             txnStmt1.execute(dmlQuery);
-            if (expectedErrorMessageOnDependentTable.equals(NO_ERROR)) {
+            if (expectedErrorMessagesOnDependentTable.length == 1 &&
+                expectedErrorMessagesOnDependentTable[0].equals(NO_ERROR)) {
               txnStmt2.execute(dmlQueryOnDependentTable);
             } else {
               runInvalidQuery(txnStmt2,
                               dmlQueryOnDependentTable,
-                              expectedErrorMessageOnDependentTable);
+                              expectedErrorMessagesOnDependentTable);
             }
           } else {
-            runInvalidQuery(txnStmt1, dmlQuery, expectedErrorMessage);
-            if (expectedErrorMessageOnDependentTable.equals(NO_ERROR)) {
+            runInvalidQuery(txnStmt1, dmlQuery, expectedErrorMessages);
+            if (expectedErrorMessagesOnDependentTable.length == 1 &&
+                expectedErrorMessagesOnDependentTable[0].equals(NO_ERROR)) {
               txnStmt2.execute(dmlQueryOnDependentTable);
             } else {
               runInvalidQuery(txnStmt2,
                               dmlQueryOnDependentTable,
-                              expectedErrorMessageOnDependentTable);
+                              expectedErrorMessagesOnDependentTable);
             }
           }
           // execute COMMIT in txnConnection1 & 2
@@ -560,9 +565,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
       ddlStmt.execute(getAlterSql(dropColumn, tableName));
 
-      runInvalidQuery(txnStmt1, "COMMIT", TRANSACTION_CONFLICT_ERROR);
-      runInvalidQuery(txnStmt2, "COMMIT", TRANSACTION_CONFLICT_ERROR);
-      runInvalidQuery(txnStmt3, "COMMIT", TRANSACTION_CONFLICT_ERROR);
+      runInvalidQuery(txnStmt1, "COMMIT", TRANSACTION_ABORT_ERRORS);
+      runInvalidQuery(txnStmt2, "COMMIT", TRANSACTION_ABORT_ERRORS);
+      runInvalidQuery(txnStmt3, "COMMIT", TRANSACTION_ABORT_ERRORS);
 
       assertQuery(txnStmt1, "SELECT COUNT(*) FROM " + tableName, new Row(1));
     }
@@ -627,7 +632,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   /**
    * Test dimensions:
-   * -- DDL types (ALTER TABLE [ADD/DROP] COLUMN)
+   * -- DDL types ALTER TABLE
    * -- DML types INSERT vs. SELECT
    * -- Perform DML before vs. after DDL
    * -- PG metadata cached vs. non-cached
@@ -649,70 +654,77 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     //    picks a read time and doesn't take a distributed transaction lock.
     // Note when performing DML before DDL, there is no need to separately cache
     // the table metadata since caching will happen when executing DML query.
-    boolean withCachedMetadata = true;
     for (AlterCommand alterType : AlterCommand.values()) {
-      String expectedErrorOnInsert;
+
+      String[] expectedErrorOnInsert =  TRANSACTION_ABORT_ERRORS;
       if (alterType == AlterCommand.ATTACH_PARTITION) {
-        expectedErrorOnInsert = NO_ERROR;
-      } else {
-        expectedErrorOnInsert = TRANSACTION_CONFLICT_ERROR;
+        expectedErrorOnInsert = new String[]{ NO_ERROR };
       }
+
       LOG.info("Run INSERT txn before ALTER " + alterType);
-      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !withCachedMetadata,
+      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !cacheMetadataSetTrue,
           executeDmlBeforeAlter, expectedErrorOnInsert);
       LOG.info("Run SELECT txn before ALTER " + alterType);
-      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !withCachedMetadata,
+      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !cacheMetadataSetTrue,
           executeDmlBeforeAlter, NO_ERROR);
     }
   }
 
   @Test
-  public void testDmlTransactionAfterAlterOnCurrentResource() throws Exception {
+  public void testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata() throws Exception {
     // Scenario 2. Execute any DML type after DDL.
     // a) For PG metadata cached table:
     //    Transaction should conflict since we are using
     //    the original schema for DML operation.
+    for (AlterCommand alterType : AlterCommand.values()) {
+
+      String expectedErrorOnInsert;
+      if (alterType == AlterCommand.DROP_IDENTITY) {
+        expectedErrorOnInsert = NO_SEQUENCE_FOUND_ERROR;
+      } else if (alterType == AlterCommand.DETACH_PARTITION) {
+        expectedErrorOnInsert = NO_TUPLE_FOUND_ERROR;
+      } else if (alterType == AlterCommand.ATTACH_PARTITION) {
+        expectedErrorOnInsert = NO_ERROR;
+      } else {
+        expectedErrorOnInsert = SCHEMA_VERSION_MISMATCH_ERROR;
+      }
+      String expectedErrorOnSelect;
+      if (alterType == AlterCommand.ATTACH_PARTITION) {
+        expectedErrorOnSelect = NO_ERROR;
+      } else {
+        expectedErrorOnSelect = SCHEMA_VERSION_MISMATCH_ERROR;
+      }
+
+      LOG.info("Run INSERT txn after ALTER " + alterType + " cache set " + cacheMetadataSetTrue);
+      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, cacheMetadataSetTrue,
+          executeDmlAfterAlter, expectedErrorOnInsert);
+      LOG.info("Run SELECT txn after ALTER " + alterType + " cache set " + cacheMetadataSetTrue);
+      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, cacheMetadataSetTrue,
+          executeDmlAfterAlter, expectedErrorOnSelect);
+    }
+  }
+
+  @Test
+  public void testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata()
+      throws Exception {
+    // Scenario 2. Execute any DML type after DDL.
     // b) For non PG metadata cached table:
     //    Transaction should not conflict because new schema is used for
     //    DML operation and the original schema is not already cached.
-    boolean withCachedMetadata = true;
     for (AlterCommand alterType : AlterCommand.values()) {
-      String expectedErrorOnInsertWithCachedMetadata;
-      if (alterType == AlterCommand.DROP_IDENTITY) {
-        expectedErrorOnInsertWithCachedMetadata = NO_SEQUENCE_FOUND_ERROR;
-      } else if (alterType == AlterCommand.DETACH_PARTITION) {
-        expectedErrorOnInsertWithCachedMetadata = NO_TUPLE_FOUND_ERROR;
-      } else if (alterType == AlterCommand.ATTACH_PARTITION) {
-        expectedErrorOnInsertWithCachedMetadata = NO_ERROR;
-      } else {
-        expectedErrorOnInsertWithCachedMetadata = SCHEMA_VERSION_MISMATCH_ERROR;
-      }
-      String expectedErrorOnSelectWithCachedMetadata;
-      if (alterType == AlterCommand.ATTACH_PARTITION) {
-        expectedErrorOnSelectWithCachedMetadata = NO_ERROR;
-      } else {
-        expectedErrorOnSelectWithCachedMetadata = SCHEMA_VERSION_MISMATCH_ERROR;
-      }
 
-      LOG.info("Run INSERT txn after ALTER " + alterType + " cache set to " + withCachedMetadata);
-      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, withCachedMetadata,
-          executeDmlAfterAlter, expectedErrorOnInsertWithCachedMetadata);
-      LOG.info("Run SELECT txn after ALTER " + alterType + " cache set to " + withCachedMetadata);
-      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, withCachedMetadata,
-          executeDmlAfterAlter, expectedErrorOnSelectWithCachedMetadata);
-
-      String expectedErrorOnInsertWithoutCachedMetadata;
+      String expectedErrorOnInsert;
       if (alterType == AlterCommand.DETACH_PARTITION) {
-        expectedErrorOnInsertWithoutCachedMetadata = NO_TUPLE_FOUND_ERROR;
+        expectedErrorOnInsert = NO_TUPLE_FOUND_ERROR;
       } else {
-        expectedErrorOnInsertWithoutCachedMetadata = NO_ERROR;
+        expectedErrorOnInsert = NO_ERROR;
       }
 
-      LOG.info("Run INSERT txn after ALTER " + alterType + " cache set to " + !withCachedMetadata);
-      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !withCachedMetadata,
-          executeDmlAfterAlter, expectedErrorOnInsertWithoutCachedMetadata);
-      LOG.info("Run SELECT txn after ALTER " + alterType + " cache set to " + !withCachedMetadata);
-      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !withCachedMetadata,
+      LOG.info("Run INSERT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
+      runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !cacheMetadataSetTrue,
+          executeDmlAfterAlter, expectedErrorOnInsert);
+      LOG.info("Run SELECT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
+      runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !cacheMetadataSetTrue,
           executeDmlAfterAlter, NO_ERROR);
     }
   }
@@ -729,16 +741,19 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testDmlTransactionWithAlterOnDifferentResource() throws Exception {
-    boolean withCachedMetadata = true;
     LOG.info("Run insert transaction before/after altering another resource");
     AlterCommand addColumn = AlterCommand.ADD_COLUMN;
-    runInsertTxnWithAlterOnUnrelatedResource(addColumn, withCachedMetadata, executeDmlBeforeAlter);
-    runInsertTxnWithAlterOnUnrelatedResource(addColumn, withCachedMetadata, executeDmlAfterAlter);
+    runInsertTxnWithAlterOnUnrelatedResource(addColumn,
+        cacheMetadataSetTrue, executeDmlBeforeAlter);
+    runInsertTxnWithAlterOnUnrelatedResource(addColumn,
+        cacheMetadataSetTrue, executeDmlAfterAlter);
 
     LOG.info("Run insert transaction before/after altering another resource");
     AlterCommand dropColumn = AlterCommand.DROP_COLUMN;
-    runInsertTxnWithAlterOnUnrelatedResource(dropColumn, withCachedMetadata, executeDmlBeforeAlter);
-    runInsertTxnWithAlterOnUnrelatedResource(dropColumn, withCachedMetadata, executeDmlAfterAlter);
+    runInsertTxnWithAlterOnUnrelatedResource(dropColumn,
+        cacheMetadataSetTrue, executeDmlBeforeAlter);
+    runInsertTxnWithAlterOnUnrelatedResource(dropColumn,
+        cacheMetadataSetTrue, executeDmlAfterAlter);
   }
 
   @Test

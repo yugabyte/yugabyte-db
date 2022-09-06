@@ -24,6 +24,22 @@
 namespace yb {
 namespace docdb {
 
+class ScopedWaitingTxnRegistration {
+ public:
+  virtual Status Register(
+    const TransactionId& waiting,
+    std::vector<BlockingTransactionData>&& blocking,
+    const TabletId& status_tablet) = 0;
+  virtual int64 GetDataUseCount() const = 0;
+  virtual ~ScopedWaitingTxnRegistration() = default;
+};
+
+class WaitingTxnRegistry {
+ public:
+  virtual std::unique_ptr<ScopedWaitingTxnRegistration> Create() = 0;
+  virtual ~WaitingTxnRegistry() = default;
+};
+
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
 using WaitDoneCallback = std::function<void(const Status&)>;
@@ -35,7 +51,8 @@ class WaitQueue {
  public:
   WaitQueue(
       TransactionStatusManager* txn_status_manager,
-      const std::string& permanent_uuid);
+      const std::string& permanent_uuid,
+      WaitingTxnRegistry* waiting_txn_registry);
 
   ~WaitQueue();
 
@@ -47,10 +64,11 @@ class WaitQueue {
   // callback, re-lock the provided locks. If re-locking fails, signal failure to the provided
   // callback.
   Status WaitOn(
-      const TransactionId& waiter, LockBatch* locks, const std::vector<TransactionId>& blockers,
+      const TransactionId& waiter, LockBatch* locks,
+      std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
       WaitDoneCallback callback);
 
-  void PollBlockerStatus(HybridTime now);
+  void Poll(HybridTime now);
 
   void StartShutdown();
 
