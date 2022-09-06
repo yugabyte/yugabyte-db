@@ -140,9 +140,9 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 
 The following copy options may help to speed up copying, or allow for faster recovery from a partial state:
 
-* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
-* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
-* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.
+* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table (default false, i.e FK_check is done).
+* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row (by default conflict error is reported).
+* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer (default 0).
 * `ROWS_PER_TRANSACTION n` split the copy process into many smaller transactions (rather than one large transaction) (default 20000). 
 
 Example using the `users` table as previously in the doc:
