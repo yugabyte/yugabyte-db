@@ -23,7 +23,7 @@ Extensions are either pre-bundled with YugabyteDB, or require installation:
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 * **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](#install-extensions).
 
-For information about using a specific extension in YugabyteDB, follow the Examples links in the following tables.
+For information about using a specific extension in YugabyteDB, use the Example links in the following tables.
 
 ### PostgreSQL modules
 
