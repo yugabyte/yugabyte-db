@@ -27,7 +27,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Latest happenings
 
-- Latest Apache AGE release, [Apache AGE 1.0.0 (https://github.com/apache/age/releases/tag/v1.1.0-rc1).
+- Latest Apache AGE release, [Apache AGE 1.1.0 (https://github.com/apache/age/releases/tag/v1.1.0-rc0).
 - The latest Apache AGE documentation is now available at [here](https://age.apache.org/docs/master/index.html).
 - The roadmap has been updated, please check out the [Apache AGE website](http://age.apache.org/).
 - Send all your comments and inquiries to the user mailing list, users@age.apache.org.
