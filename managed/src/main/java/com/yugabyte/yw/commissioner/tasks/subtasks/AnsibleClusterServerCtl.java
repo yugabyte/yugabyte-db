@@ -74,7 +74,12 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     }
 
     if (taskParams().sleepAfterCmdMills > 0) {
-      waitFor(Duration.ofMillis(getSleepMultiplier() * taskParams().sleepAfterCmdMills));
+      waitFor(Duration.ofMillis((long) getSleepMultiplier() * taskParams().sleepAfterCmdMills));
     }
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

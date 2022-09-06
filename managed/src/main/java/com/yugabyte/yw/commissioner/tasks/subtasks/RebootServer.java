@@ -16,7 +16,9 @@ public class RebootServer extends NodeTaskBase {
     super(baseTaskDependencies, nodeManager);
   }
 
-  public static class Params extends NodeTaskParams {}
+  public static class Params extends NodeTaskParams {
+    public boolean useSSH = true;
+  }
 
   @Override
   protected Params taskParams() {
