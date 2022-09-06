@@ -222,7 +222,8 @@ class LogCache {
 
   std::string LogPrefixUnlocked() const;
 
-  void LogCallback(int64_t last_idx_in_batch,
+  void LogCallback(bool overwrite,
+                   int64_t last_idx_in_batch,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 
@@ -231,6 +232,8 @@ class LogCache {
     int64_t mem_required = 0;
     // Last idx in batch of provided operations.
     int64_t last_idx_in_batch = -1;
+    // If log cache has been overwritten when preparing append.
+    bool overwritten_cache = false;
   };
 
   PrepareAppendResult PrepareAppendOperations(const ReplicateMsgs& msgs);
@@ -242,6 +245,8 @@ class LogCache {
 
   // The id of the tablet.
   const std::string tablet_id_;
+
+  const std::string log_prefix_;
 
   mutable simple_spinlock lock_;
 
@@ -260,6 +265,9 @@ class LogCache {
   // to prevent ops from being evicted until they successfully have been appended to the underlying
   // log.  Protected by lock_.
   int64_t min_pinned_op_index_;
+
+  // Number of batches in progress of preparing that have overwritten min_pinned_op_index_.
+  int64_t num_batches_overwritten_cache_;
 
   // Pointer to a parent memtracker for all log caches. This exists to compute server-wide cache
   // size and enforce a server-wide memory limit.  When the first instance of a log cache is
