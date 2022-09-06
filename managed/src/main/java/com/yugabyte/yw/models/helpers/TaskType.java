@@ -67,6 +67,8 @@ public enum TaskType {
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
 
+  KubernetesOverridesUpgrade("upgrade.KubernetesOverridesUpgrade"),
+
   GFlagsUpgrade("upgrade.GFlagsUpgrade"),
 
   GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
@@ -204,6 +206,8 @@ public enum TaskType {
   UniverseUpdateSucceeded("subtasks.UniverseUpdateSucceeded"),
 
   UpdateAndPersistGFlags("subtasks.UpdateAndPersistGFlags"),
+
+  UpdateAndPersistKubernetesOverrides("subtasks.UpdateAndPersistKubernetesOverrides"),
 
   UpdatePlacementInfo("subtasks.UpdatePlacementInfo"),
 
