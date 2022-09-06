@@ -20,8 +20,9 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.metrics.MetricLabelFilter;
 import com.yugabyte.yw.metrics.MetricLabelFilters;
 import com.yugabyte.yw.metrics.MetricQueryContext;
-import com.yugabyte.yw.metrics.MetricQueryExecutor;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricSettings;
+import com.yugabyte.yw.metrics.NodeSplitMode;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -172,10 +173,12 @@ public class MetricConfigTest extends FakeDBApplication {
     metricConfig.save();
     String query =
         metricConfig.getSingleMetricQuery(
-            MetricSettings.defaultSettings("rpc_latency.avg").setSplitTopNodes(2),
+            MetricSettings.defaultSettings("rpc_latency.avg")
+                .setNodeSplitMode(NodeSplitMode.TOP)
+                .setNodeSplitCount(2),
             MetricQueryContext.builder()
                 .topKQuery(true)
-                .additionalGroupBy(ImmutableSet.of(MetricQueryExecutor.EXPORTED_INSTANCE))
+                .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
                 .queryRangeSecs(DEFAULT_RANGE_SECS)
                 .build());
     assertThat(
@@ -209,7 +212,7 @@ public class MetricConfigTest extends FakeDBApplication {
                 ImmutableList.of(
                     new MetricLabelFilter("service_method", "Read"),
                     new MetricLabelFilter(
-                        MetricQueryExecutor.EXPORTED_INSTANCE, "instance1|instance2")))
+                        MetricQueryHelper.EXPORTED_INSTANCE, "instance1|instance2")))
             .build();
     MetricLabelFilters writeFilters =
         MetricLabelFilters.builder()
@@ -217,15 +220,15 @@ public class MetricConfigTest extends FakeDBApplication {
                 ImmutableList.of(
                     new MetricLabelFilter("service_method", "Write"),
                     new MetricLabelFilter(
-                        MetricQueryExecutor.EXPORTED_INSTANCE, "instance3|instance4")))
+                        MetricQueryHelper.EXPORTED_INSTANCE, "instance3|instance4")))
             .build();
     String query =
         metricConfig.getSingleMetricQuery(
-            MetricSettings.defaultSettings("rpc_latency.avg").setSplitTopNodes(2),
+            MetricSettings.defaultSettings("rpc_latency.avg").setNodeSplitCount(2),
             MetricQueryContext.builder()
                 .metricOrFilters(
                     ImmutableMap.of("rpc_latency.avg", ImmutableList.of(readFilters, writeFilters)))
-                .additionalGroupBy(ImmutableSet.of(MetricQueryExecutor.EXPORTED_INSTANCE))
+                .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
                 .queryRangeSecs(DEFAULT_RANGE_SECS)
                 .build());
     assertThat(

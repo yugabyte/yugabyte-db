@@ -21,6 +21,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -580,8 +582,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         route(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
@@ -614,8 +617,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -661,8 +665,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -688,7 +693,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    params.put("nodeName", "demo-n1");
+    ArrayNode nodeNames = Json.newArray();
+    nodeNames.add("demo-n1");
+    params.put("nodeNames", nodeNames);
     Universe u1 = createUniverse("demo", customer.getCustomerId());
     u1 =
         Universe.saveDetails(
@@ -712,8 +719,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -740,8 +748,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response =
         Json.newObject().put("success", false).put("error", "something went wrong");
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         routeWithYWErrHandler(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
@@ -794,8 +803,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -828,8 +838,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -874,8 +885,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -921,8 +933,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     final String uri = baseRoute + customer.uuid + "/metrics";
     YBPError expectedYBPError = new YBPError(method, uri, userVisibleMessage, null);
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenThrow(new PlatformServiceException(BAD_REQUEST, userVisibleMessage));
+    doThrow(new PlatformServiceException(BAD_REQUEST, userVisibleMessage))
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         routeWithYWErrHandler(fakeRequest(method, uri).cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
@@ -980,8 +993,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -1012,14 +1026,17 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
     params.put("nodePrefix", "host-1");
-    params.put("nodeName", "host-n1");
+    ArrayNode nodeNames = Json.newArray();
+    nodeNames.add("host-n1");
+    params.put("nodeNames", nodeNames);
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     FakeApiHelper.doRequestWithAuthTokenAndBody(

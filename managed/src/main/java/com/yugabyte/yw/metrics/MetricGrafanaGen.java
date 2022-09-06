@@ -186,7 +186,7 @@ public class MetricGrafanaGen {
     // Case 1: Queries created for each "|" separated filter value
     if (group_by_filter != null
         && !group_by_filter.contains(",")
-        && !metricConfig.getConfig().filters.isEmpty()) {
+        && metricConfig.getConfig().filters.containsKey(group_by_filter)) {
       Map<String, String> filters = metricConfig.getConfig().filters;
       String groupedFilters = filters.get(group_by_filter);
       String[] filterValues = new String[] {};
