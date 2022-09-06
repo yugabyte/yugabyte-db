@@ -149,3 +149,22 @@ EXCEPTION WHEN unique_violation THEN
 END;
 $body$;
 SELECT * FROM subtrans_test ORDER BY 1;
+
+
+-- Test calling a stored function from DDL statement
+
+CREATE OR REPLACE FUNCTION inverse(float8) RETURNS float8 AS
+$$
+BEGIN
+	RETURN 1::float8 / $1;
+EXCEPTION WHEN others THEN
+	RAISE NOTICE 'caught exception % %', sqlstate, sqlerrm;
+        RETURN 'NaN';
+END$$ LANGUAGE plpgsql;
+
+CREATE TABLE ddl_subtrans_test (c1 float8);
+INSERT INTO ddl_subtrans_test VALUES (0);
+ALTER TABLE ddl_subtrans_test ADD CONSTRAINT c1_not_nan CHECK (inverse(c1) <> 'NaN');
+-- Verify that the check constraint has not been added
+\d ddl_subtrans_test
+DROP TABLE ddl_subtrans_test;

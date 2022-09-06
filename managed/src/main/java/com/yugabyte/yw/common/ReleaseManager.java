@@ -664,7 +664,8 @@ public class ReleaseManager {
       File ybcReleasePathFile = new File(ybcReleasePath);
       File ybcReleasesPathFile = new File(ybcReleasesPath);
       if (ybcReleasePathFile.exists() && ybcReleasesPathFile.exists()) {
-        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, currentYbcReleases.keySet());
+        // No need to skip copying packages as we want to allow multiple arch type of a ybc-version.
+        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, null);
         Map<String, ReleaseMetadata> localYbcReleases = getLocalYbcReleases(ybcReleasesPath);
         localYbcReleases.keySet().removeAll(currentYbcReleases.keySet());
         LOG.info("Current ybc releases: [ {} ]", currentYbcReleases.keySet().toString());
@@ -749,7 +750,7 @@ public class ReleaseManager {
           .forEach(
               match -> {
                 String version = match.group(1);
-                if (skipVersions.contains(version)) {
+                if (skipVersions != null && skipVersions.contains(version)) {
                   LOG.debug("Skipping re-copy of release files for {}", version);
                   return;
                 }

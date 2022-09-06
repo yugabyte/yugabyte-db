@@ -366,6 +366,13 @@ bool Rpcs::RegisterAndStart(RpcCommandPtr call, Handle* handle) {
   return true;
 }
 
+Status Rpcs::RegisterAndStartStatus(RpcCommandPtr call, Handle* handle) {
+  if (RegisterAndStart(call, handle)) {
+    return Status::OK();
+  }
+  return STATUS(InternalError, "Failed to send RPC");
+}
+
 RpcCommandPtr Rpcs::Unregister(Handle* handle) {
   if (*handle == calls_.end()) {
     return RpcCommandPtr();

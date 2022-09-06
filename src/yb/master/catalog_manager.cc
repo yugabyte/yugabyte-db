@@ -2707,11 +2707,17 @@ Status CatalogManager::TEST_SendTestRetryRequest(
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
+    VLOG_WITH_PREFIX(4) << Format(
+        "Tablet $0 may have orphaned post split data, should_split: 0", tablet_info.tablet_id());
     return false;
   }
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
+    VLOG_WITH_PREFIX(4) << Format(
+        "Tablet $0 size ($1) is less than "
+        "tablet_split_low_phase_size_threshold_bytes ($2), should_split: 0",
+        tablet_info.tablet_id(), size, FLAGS_tablet_split_low_phase_size_threshold_bytes);
     return false;
   }
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
@@ -2744,12 +2750,34 @@ bool CatalogManager::ShouldSplitValidCandidate(
   int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
-    return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
+    const auto should_split = size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
+    VLOG_WITH_PREFIX(4) << Format(
+        "Table $0 num_tablets_per_server ($1) is less than "
+        "tablet_split_low_phase_shard_count_per_node "
+        "($2). Tablet $3 size: $4, tablet_split_low_phase_size_threshold_bytes: $5, "
+        "should_split: $6",
+        tablet_info.table()->id(), num_tablets_per_server,
+        FLAGS_tablet_split_low_phase_shard_count_per_node, tablet_info.tablet_id(), size,
+        FLAGS_tablet_split_low_phase_size_threshold_bytes, AsString(should_split));
+    return should_split;
   }
   if (num_tablets_per_server < FLAGS_tablet_split_high_phase_shard_count_per_node) {
-    return size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
+    const auto should_split = size > FLAGS_tablet_split_high_phase_size_threshold_bytes;
+    VLOG_WITH_PREFIX(4) << Format(
+        "Table $0 num_tablets_per_server ($1) is less than "
+        "tablet_split_high_phase_shard_count_per_node "
+        "($2). Tablet $3 size: $4, tablet_split_high_phase_size_threshold_bytes: $5, "
+        "should_split: $6",
+        tablet_info.table()->id(), num_tablets_per_server,
+        FLAGS_tablet_split_high_phase_shard_count_per_node, tablet_info.tablet_id(), size,
+        FLAGS_tablet_split_high_phase_size_threshold_bytes, should_split);
+    return should_split;
   }
-  return size > FLAGS_tablet_force_split_threshold_bytes;
+  auto should_split = size > FLAGS_tablet_force_split_threshold_bytes;
+  VLOG_WITH_PREFIX(4) << Format(
+      "Tablet $0 size: $1, tablet_force_split_threshold_bytes: $2, should_split: $3",
+      tablet_info.tablet_id(), size, FLAGS_tablet_force_split_threshold_bytes, should_split);
+  return should_split;
 }
 
 Status CatalogManager::DoSplitTablet(
@@ -2765,7 +2793,13 @@ Status CatalogManager::DoSplitTablet(
   //
   // If this is a manual split, then we should select all potential tablets for the split
   // (i.e. ignore the disabled tablets list and ignore TTL validation).
-  RETURN_NOT_OK(ValidateSplitCandidate(source_tablet_info, is_manual_split));
+  auto s = ValidateSplitCandidate(source_tablet_info, is_manual_split);
+  if (!s.ok()) {
+    VLOG_WITH_FUNC(4) << Format(
+        "ValidateSplitCandidate for tablet $0 returned: $1. should_split: 0",
+        source_tablet_info->tablet_id(), s);
+    return s;
+  }
 
   auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
   if (!is_manual_split &&

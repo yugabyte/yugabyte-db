@@ -4,15 +4,21 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +26,12 @@ import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
 import java.util.regex.Matcher;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
@@ -29,6 +41,11 @@ import org.yb.ybc.BackupServiceTaskDeleteRequest;
 import org.yb.ybc.BackupServiceTaskDeleteResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
+import org.yb.ybc.ControllerObjectTaskThrottleParameters;
 import org.yb.ybc.ControllerStatus;
 
 @Singleton
@@ -288,5 +305,139 @@ public class YbcManager {
               ybcServerPackage, NodeManager.YBC_PACKAGE_REGEX));
     }
     return ybcServerPackage;
+  }
+
+  public void setThrottleParams(UUID universeUUID, YbcThrottleParameters throttleParams) {
+    try {
+      BackupServiceTaskThrottleParametersSetRequest.Builder throttleParamsSetterBuilder =
+          BackupServiceTaskThrottleParametersSetRequest.newBuilder();
+      ControllerObjectTaskThrottleParameters.Builder controllerObjectThrottleParams =
+          ControllerObjectTaskThrottleParameters.newBuilder();
+      List<String> toRemove = new ArrayList<>();
+      Map<String, String> toAddModify = new HashMap<>();
+      Map<String, Integer> paramsToSet = throttleParams.getThrottleFlagsMap();
+      if (throttleParams.resetDefaults) {
+        // Nothing required to do for controllerObjectThrottleParams,
+        // empty object sets default values on YB-Controller.
+        toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
+      } else {
+        Map<FieldDescriptor, Object> currentThrottleParamsMap =
+            getThrottleParamsAsFieldDescriptor(universeUUID);
+        if (MapUtils.isEmpty(currentThrottleParamsMap)) {
+          throw new RuntimeException(
+              "Got empty map for current throttle params from YB-Controller");
+        }
+        currentThrottleParamsMap.forEach(
+            (k, v) -> {
+              if (paramsToSet.get(k.getName()) > 0) {
+                controllerObjectThrottleParams.setField(k, paramsToSet.get(k.getName()));
+                toAddModify.put(k.getName(), paramsToSet.get(k.getName()).toString());
+              } else {
+                controllerObjectThrottleParams.setField(k, v);
+              }
+            });
+      }
+      throttleParamsSetterBuilder.setParams(controllerObjectThrottleParams.build());
+      throttleParamsSetterBuilder.setPersistAcrossReboots(true);
+      BackupServiceTaskThrottleParametersSetRequest throttleParametersSetRequest =
+          throttleParamsSetterBuilder.build();
+
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+      String certFile = universe.getCertificateNodetoNode();
+      universe
+          .getNodes()
+          .stream()
+          .forEach(
+              (n) -> {
+                YbcClient client = null;
+                try {
+                  String nodeIp = n.cloudInfo.private_ip;
+                  client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+                  BackupServiceTaskThrottleParametersSetResponse throttleParamsSetResponse =
+                      client.backupServiceTaskThrottleParametersSet(throttleParametersSetRequest);
+                  if (throttleParamsSetResponse != null
+                      && !throttleParamsSetResponse
+                          .getStatus()
+                          .getCode()
+                          .equals(ControllerStatus.OK)) {
+                    throw new RuntimeException(
+                        String.format(
+                            "Failed to set throttle params on node {} universe {} with error: {}",
+                            nodeIp,
+                            universeUUID.toString(),
+                            throttleParamsSetResponse.getStatus()));
+                  }
+                } finally {
+                  ybcClientService.closeClient(client);
+                }
+              });
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+              params.clusters.forEach(
+                  c -> {
+                    Map<String, String> ybcFlags = new HashMap<>(c.userIntent.ybcFlags);
+                    ybcFlags.putAll(toAddModify);
+                    ybcFlags.keySet().removeAll(toRemove);
+                    c.userIntent.ybcFlags = ybcFlags;
+                  });
+              universe.setUniverseDetails(params);
+            }
+          };
+      Universe.saveDetails(universeUUID, updater, false);
+    } catch (Exception e) {
+      LOG.info(
+          "Setting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<String, String> getThrottleParams(UUID universeUUID) {
+    try {
+      Map<String, String> throttleParamMap =
+          getThrottleParamsAsFieldDescriptor(universeUUID)
+              .entrySet()
+              .stream()
+              .collect(Collectors.toMap(k -> k.getKey().getName(), v -> v.getValue().toString()));
+      return throttleParamMap;
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<FieldDescriptor, Object> getThrottleParamsAsFieldDescriptor(UUID universeUUID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = ybcBackupUtil.getYbcClient(universeUUID);
+      BackupServiceTaskThrottleParametersGetRequest throttleParametersGetRequest =
+          BackupServiceTaskThrottleParametersGetRequest.getDefaultInstance();
+      BackupServiceTaskThrottleParametersGetResponse throttleParametersGetResponse =
+          ybcClient.backupServiceTaskThrottleParametersGet(throttleParametersGetRequest);
+      if (throttleParametersGetResponse == null) {
+        throw new RuntimeException("Get throttle parameters: No response from YB-Controller");
+      }
+      if (!throttleParametersGetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        throw new RuntimeException(
+            String.format(
+                "Getting throttle params failed with exception: {}",
+                throttleParametersGetResponse.getStatus()));
+      }
+      ControllerObjectTaskThrottleParameters throttleParams =
+          throttleParametersGetResponse.getParams();
+      return throttleParams.getAllFields();
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    } finally {
+      if (ybcClient != null) {
+        ybcClientService.closeClient(ybcClient);
+      }
+    }
   }
 }
