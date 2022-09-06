@@ -32,11 +32,49 @@ CREATE EXTENSION fuzzystrmatch;
 SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 ```
 
-```
+```output
  levenshtein | metaphone
 -------------+-----------
            2 | YKBT
 (1 row)
+```
+
+### passwordcheck
+
+The `passwordcheck` extension checks users' passwords whenever they are set with CREATE ROLE or ALTER ROLE.
+
+#### passwordcheck example
+
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [`--ysql_pg_conf`](../../../reference/configuration/yb-tserver/#ysql-pg-conf) flag:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
+```
+
+When enabled, if a password is considered too weak, it's rejected with an error. For example:
+
+```sql
+yugabyte=# create role test_role password 'tooshrt';
+```
+
+```output
+ERROR:  password is too short
+```
+
+```sql
+yugabyte=# create role test_role password 'nonumbersinpassword';
+```
+
+```output
+ERROR:  password must contain both letters and nonletters
+```
+
+```sql
+yugabyte=# create role test_role password '123test_role123';
+```
+
+```output
+ERROR:  password must not contain user name
 ```
 
 <!--

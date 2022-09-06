@@ -12,6 +12,7 @@ menu:
     weight: 4400
 aliases:
   - /preview/explore/ysql-language-features/advanced-features/extensions/
+  - /preview/api/ysql/extensions/
 type: docs
 ---
 
@@ -23,7 +24,7 @@ This page describes the PostgreSQL extensions supported by YugabyteDB.
 Extensions are either pre-bundled with YugabyteDB, or require installation:
 
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
-* **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Installing extensions](#installing-extensions).
+* **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](#install-extensions).
 
 For information about using a specific extension in YugabyteDB, follow the Example links in the following tables.
 
