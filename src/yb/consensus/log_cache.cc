@@ -112,8 +112,10 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
   : log_(log),
     local_uuid_(local_uuid),
     tablet_id_(tablet_id),
+    log_prefix_(MakeTabletLogPrefix(tablet_id_, local_uuid_)),
     next_sequential_op_index_(0),
     min_pinned_op_index_(0),
+    num_batches_overwritten_cache_(0),
     metrics_(metric_entity) {
 
   const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1_MB;
@@ -178,36 +180,48 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   int64_t first_idx_in_batch = msgs.front()->id().index();
   result.last_idx_in_batch = msgs.back()->id().index();
 
+  // Capture the evicted messages and release the memory outside of lock.
+  ReplicateMsgVector evicted_messages;
+
   std::unique_lock<simple_spinlock> lock(lock_);
   // If we're not appending a consecutive op we're likely overwriting and need to replace operations
   // in the cache.
   if (first_idx_in_batch != next_sequential_op_index_) {
     // If the index is not consecutive then it must be lower than or equal to the last index, i.e.
     // we're overwriting.
-    CHECK_LE(first_idx_in_batch, next_sequential_op_index_);
+    CHECK_LT(first_idx_in_batch, next_sequential_op_index_);
 
     // Now remove the overwritten operations.
     for (int64_t i = first_idx_in_batch; i < next_sequential_op_index_; ++i) {
       auto it = cache_.find(i);
       if (it != cache_.end()) {
         AccountForMessageRemovalUnlocked(it->second);
+        evicted_messages.push_back(it->second.msg);
         cache_.erase(it);
       }
     }
-  }
 
-  // Set back min_pinned_op_index_ in case the newly inserted ops are evicted.
-  if (first_idx_in_batch < min_pinned_op_index_) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
-        "Updating min_pinned_op_index_ from $0 to $1", min_pinned_op_index_, first_idx_in_batch);
-    min_pinned_op_index_ = first_idx_in_batch;
+    if (min_pinned_op_index_ < next_sequential_op_index_) {
+      // There are ops in progress of flushing, increment the counter to avoid ops in the
+      // current batch evicted before being flushed.
+      result.overwritten_cache = true;
+      num_batches_overwritten_cache_++;
+    }
+
+    // Set back min_pinned_op_index_ in case the newly inserted ops are evicted.
+    if (first_idx_in_batch < min_pinned_op_index_) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+          "Updating min_pinned_op_index_ from $0 to $1", min_pinned_op_index_, first_idx_in_batch);
+      min_pinned_op_index_ = first_idx_in_batch;
+    }
   }
 
   for (auto& e : entries_to_insert) {
     auto index = e.msg->id().index();
     EmplaceOrDie(&cache_, index, std::move(e));
-    next_sequential_op_index_ = index + 1;
   }
+
+  next_sequential_op_index_ = result.last_idx_in_batch + 1;
 
   return result;
 }
@@ -222,7 +236,11 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
 
   Status log_status = log_->AsyncAppendReplicates(
     msgs, committed_op_id, batch_mono_time,
-    Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch, callback));
+    Bind(&LogCache::LogCallback,
+         Unretained(this),
+         prepare_result.overwritten_cache,
+         prepare_result.last_idx_in_batch,
+         callback));
 
   if (!log_status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status;
@@ -235,12 +253,20 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
   return Status::OK();
 }
 
-void LogCache::LogCallback(int64_t last_idx_in_batch,
+void LogCache::LogCallback(bool overwritten_cache,
+                           int64_t last_idx_in_batch,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
-  if (log_status.ok()) {
+  if (overwritten_cache || log_status.ok()) {
     std::lock_guard<simple_spinlock> l(lock_);
-    if (min_pinned_op_index_ <= last_idx_in_batch) {
+    if (overwritten_cache) {
+      CHECK_GT(num_batches_overwritten_cache_, 0)
+          << "num_batches_overwritten_cache_ is expected to be greater than 0, but actually is "
+          << num_batches_overwritten_cache_;
+      num_batches_overwritten_cache_--;
+    }
+    if (log_status.ok() && num_batches_overwritten_cache_ == 0 &&
+        min_pinned_op_index_ <= last_idx_in_batch) {
       VLOG_WITH_PREFIX_UNLOCKED(1) << "Updating pinned index to " << (last_idx_in_batch + 1);
       min_pinned_op_index_ = last_idx_in_batch + 1;
     }
@@ -548,7 +574,7 @@ std::string LogCache::ToStringUnlocked() const {
 }
 
 std::string LogCache::LogPrefixUnlocked() const {
-  return MakeTabletLogPrefix(tablet_id_, local_uuid_);
+  return log_prefix_;
 }
 
 void LogCache::DumpToLog() const {
