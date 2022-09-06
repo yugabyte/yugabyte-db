@@ -14,7 +14,7 @@ import logging
 import os
 import subprocess
 
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
 from ybops.utils.ssh import SSH, SSH2, parse_private_key, check_ssh2_bin_present
 
@@ -60,13 +60,18 @@ class AnsibleProcess(object):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
 
-    def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
+    def run(self, filename, extra_vars=None, host_info=None, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
             extra_args: A dictionary of KVs to pass as extra-vars to ansible-playbook
             host_info: A dictionary of host level attributes which is empty for localhost.
         """
+
+        if host_info is None:
+            host_info = {}
+        if extra_vars is None:
+            extra_vars = dict()
 
         playbook_args = self.playbook_args
         vars = extra_vars.copy()
@@ -175,11 +180,18 @@ class AnsibleProcess(object):
                                                                     separators=(' ', ' '))))
         p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
+
         if print_output:
             print(stdout.decode('utf-8'))
-        EXCEPTION_MSG_FORMAT = ("Playbook run of {} against {} with args {} " +
-                                "failed with return code {} and error '{}'")
+
         if p.returncode != 0:
-            raise YBOpsRuntimeError(EXCEPTION_MSG_FORMAT.format(
-                    filename, inventory_target, redacted_process_args, p.returncode, stderr))
+            errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
+                     f"{redacted_process_args} failed with return code {p.returncode} " \
+                     f"and error '{stderr}'"
+
+            if p.returncode == 4:  # host unreachable
+                raise YBOpsRecoverableError(errmsg)
+            else:
+                raise YBOpsRuntimeError(errmsg)
+
         return p.returncode

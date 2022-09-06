@@ -16,6 +16,7 @@ public class ShellResponse {
   public static final int ERROR_CODE_SUCCESS = 0;
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
   public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
+  public static final int ERROR_CODE_RECOVERABLE_ERROR = 3;
 
   public int code = ERROR_CODE_SUCCESS;
   public String message = null;
@@ -51,6 +52,9 @@ public class ShellResponse {
           case ERROR_CODE_EXECUTION_CANCELLED:
             formatted = String.format("%s. Command is cancelled.", formatted);
             throw new CancellationException(formatted);
+          case ERROR_CODE_RECOVERABLE_ERROR:
+            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            throw new RecoverableException(formatted);
           default:
             formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
             throw new RuntimeException(formatted);
