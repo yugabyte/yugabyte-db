@@ -69,6 +69,7 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_percentage);
 DECLARE_bool(TEST_pause_before_wal_sync);
+DECLARE_bool(TEST_set_pause_before_wal_sync);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -220,19 +221,25 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
 
 // Test cache entry shouldn't be evicted until it's synced to disk.
 TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
-  // Write one NoOp and wait sync done, min_pinned_op_index_ should be 2.
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 1, /* index = */ 1));
   ASSERT_OK(log_->WaitUntilAllFlushed());
-  // Gc the first op from cache.
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 0);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
 
-  // Overwrite the op to simulate the leader change.
+  // Append (1.2).
+  ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 1, /* index = */ 2));
+  // Append (2.1) and (1.2) should be erased from log cache.
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
+  ASSERT_EQ(cache_->num_cached_ops(), 1);
 
-  // Shouldn't evict the second NoOp.
+  // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  // Shouldn't evict (2.1).
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
@@ -241,7 +248,17 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   EXPECT_EQ(1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
 
+  ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 3, /* index = */ 1));
+  ASSERT_EQ(cache_->num_cached_ops(), 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  // Shouldn't evict (3.1).
+  cache_->EvictThroughOp(1);
+  ASSERT_EQ(cache_->num_cached_ops(), 1);
+
   // Let Appender continue doing Log::Sync and normally exit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
 }
 
