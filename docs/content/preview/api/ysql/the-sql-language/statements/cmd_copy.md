@@ -142,6 +142,7 @@ The following copy options may help to speed up copying, or allow for faster rec
 
 * `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table (default false, i.e FK_check is done).
 * `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row (by default conflict error is reported).
+Note that `REPLACE` doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687))
 * `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer (default 0).
 * `ROWS_PER_TRANSACTION n` split the copy process into many smaller transactions (rather than one large transaction) (default 20000). 
 
