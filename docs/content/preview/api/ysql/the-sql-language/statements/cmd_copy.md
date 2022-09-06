@@ -149,5 +149,5 @@ Example using the `users` table as previously in the doc:
 
 ```plpgsql
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
-HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 20000, DISABLE_FK_CHECK, REPLACE, SKIP 1);
+HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, DISABLE_FK_CHECK, REPLACE, SKIP 1);
 ```
