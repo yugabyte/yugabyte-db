@@ -228,6 +228,9 @@ public class Audit extends Model {
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
 
+    @EnumValue("Upgrade Kubernetes Overrides")
+    UpgradeKubernetesOverrides,
+
     @EnumValue("Upgrade Certs")
     UpgradeCerts,
 

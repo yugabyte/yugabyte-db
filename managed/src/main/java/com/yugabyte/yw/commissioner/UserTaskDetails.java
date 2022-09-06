@@ -201,6 +201,9 @@ public class UserTaskDetails {
 
     // Upgrading Yb-Controller
     UpgradingYbc,
+
+    // Updating kubernetes overrides.
+    UpdatingKubernetesOverrides
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -273,6 +276,10 @@ public class UserTaskDetails {
       case UpdatingGFlags:
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
+        break;
+      case UpdatingKubernetesOverrides:
+        title = "Updating kubernetes overrides";
+        description = "Updating kubernetes overrides on kubernetes pods.";
         break;
       case BootstrappingCloud:
         title = "Bootstrapping Cloud";
