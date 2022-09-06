@@ -413,8 +413,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
-                    "{{repl ConfigOption "support_origin_url"}}"
+                  allowedOrigins = [
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}",
+                    "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
