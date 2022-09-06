@@ -6,10 +6,12 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.metrics.MetricAggregation;
 import com.yugabyte.yw.metrics.MetricLabelFilters;
 import com.yugabyte.yw.metrics.MetricQueryContext;
 import com.yugabyte.yw.metrics.MetricSettings;
+import com.yugabyte.yw.metrics.NodeAggregation;
+import com.yugabyte.yw.metrics.NodeSplitMode;
+import com.yugabyte.yw.metrics.TimeAggregation;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -135,17 +137,29 @@ public class MetricConfig extends Model {
   public String getSingleMetricQuery(MetricSettings settings, MetricQueryContext context) {
     String query = getQuery(settings, context);
     if (context.isTopKQuery()) {
-      String topGroupBy = "";
+      String topGroupBy = StringUtils.EMPTY;
       if (getConfig().group_by != null) {
-        topGroupBy = " by (" + getConfig().group_by + ")";
+        Set<String> topGroupByLabels =
+            Arrays.stream(getConfig().group_by.split(","))
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+        // No need to group by additional labels for top K query
+        topGroupByLabels.removeAll(context.getAdditionalGroupBy());
+        if (CollectionUtils.isNotEmpty(topGroupByLabels)) {
+          topGroupBy = " by (" + String.join(", ", topGroupByLabels) + ")";
+        }
       }
-      if (settings.getAggregation() == MetricAggregation.MIN) {
-        return "bottomk(" + settings.getSplitTopNodes() + ", " + query + ")" + topGroupBy;
+      switch (settings.getNodeSplitMode()) {
+        case TOP:
+          return "topk(" + settings.getNodeSplitCount() + ", " + query + ")" + topGroupBy;
+        case BOTTOM:
+          return "bottomk(" + settings.getNodeSplitCount() + ", " + query + ")" + topGroupBy;
+        default:
+          throw new IllegalArgumentException(
+              "Unexpected node split mode "
+                  + settings.getNodeSplitMode().name()
+                  + " for top/bottom K query");
       }
-      // For now we only want to search for bottom k in case user
-      // is interested in min values explicitly. We don't have min as default
-      // aggregation in any of our metrics.
-      return "topk(" + settings.getSplitTopNodes() + ", " + query + ")" + topGroupBy;
     }
     return query;
   }
@@ -185,6 +199,18 @@ public class MetricConfig extends Model {
       orQueries.add(
           getOrQuery(
               settings, context.toBuilder().additionalFilters(newAdditionalFilters).build()));
+    }
+    if (settings.getNodeSplitMode() != NodeSplitMode.NONE && settings.isReturnAggregatedValue()) {
+      // In case of mean query we need to remove exported_instance grouping to get average from
+      // the metrics, which initially has this grouping
+      orQueries.add(
+          getOrQuery(
+              settings,
+              context
+                  .toBuilder()
+                  .removeGroupBy(context.getAdditionalGroupBy())
+                  .additionalGroupBy(Collections.emptySet())
+                  .build()));
     }
     return "(" + String.join(") or (", orQueries) + ")";
   }
@@ -264,12 +290,14 @@ public class MetricConfig extends Model {
       Scenario 2:
         function: rate
         query str: rate(metric{memory="used"}[30m]). */
-      if (settings.getAggregation() != MetricAggregation.DEFAULT) {
-        if (MetricAggregation.TIME_AGGREGATIONS.contains(functions[0])) {
-          functions[0] = settings.getAggregation().getTimeAggregationFunc();
+      if (settings.getTimeAggregation() != TimeAggregation.DEFAULT) {
+        if (TimeAggregation.AGGREGATION_FUNCTIONS.contains(functions[0])) {
+          functions[0] = settings.getTimeAggregation().getAggregationFunction();
         }
-        if (MetricAggregation.NODE_AGGREGATIONS.contains(functions[functions.length - 1])) {
-          functions[functions.length - 1] = settings.getAggregation().getNodeAggregationFunc();
+      }
+      if (settings.getNodeAggregation() != NodeAggregation.DEFAULT) {
+        if (NodeAggregation.AGGREGATION_FUNCTIONS.contains(functions[functions.length - 1])) {
+          functions[functions.length - 1] = settings.getNodeAggregation().getAggregationFunction();
         }
       }
       if (functions.length > 1) {
@@ -292,7 +320,7 @@ public class MetricConfig extends Model {
                 .collect(Collectors.toSet()));
       }
       groupBy.addAll(context.getAdditionalGroupBy());
-      // Need to append exported_instance to group by list in case we search for top K nodes.
+      groupBy.removeAll(context.getRemoveGroupBy());
       queryStr = String.format("%s by (%s)", queryStr, String.join(", ", groupBy));
     }
     if (getConfig().operator != null) {
