@@ -120,6 +120,11 @@ components:
         ports:
           - private_port: "5432"
             public_port: '{{repl ConfigOption "db_external_port"}}'
+            interface: docker0
+            when: '{{repl ConfigOptionEquals "expose_db_port" "0"}}'
+          - private_port: "5432"
+            public_port: '{{repl ConfigOption "db_external_port"}}'
+            when: '{{repl ConfigOptionEquals "expose_db_port" "1"}}'
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
             container_path: /var/lib/postgresql/data
@@ -199,7 +204,7 @@ components:
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
-                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "app_external_port"}}'
+                      '{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}}'
                     ]
 
                 - job_name: "node"
@@ -352,6 +357,11 @@ components:
         ports:
           - private_port: "9000"
             public_port: '{{repl ConfigOption "app_external_port"}}'
+            interface: docker0
+            when: '{{repl ConfigOptionEquals "expose_app_port" "0"}}'
+          - private_port: "9000"
+            public_port: '{{repl ConfigOption "app_external_port"}}'
+            when: '{{repl ConfigOptionEquals "expose_app_port" "1"}}'
         publish_events:
           - name: YugaWare started
             trigger: container-start
@@ -364,13 +374,13 @@ components:
             contents: |
               include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
-              play.http.forwarded.trustedProxies = ["172.17.0.1"]
+              play.http.forwarded.trustedProxies = ["{{repl ConfigOption "docker_gateway"}}"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
               log.override.path = "/opt/yugabyte/yugaware/data/logs"
 
               db {
-                default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
+                default.host="{{repl ConfigOption "docker_gateway"}}"
                 default.port="{{repl ConfigOption "db_external_port"}}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
@@ -403,8 +413,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
-                    "{{repl ConfigOption "support_origin_url"}}"
+                  allowedOrigins = [
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}",
+                    "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
@@ -485,10 +496,10 @@ components:
 
 
                 location / {
-                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
                 }
                 location ~ /settings/ha/internal/upload$ {
-                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
                   # HA backp upload endpoint needs to allow bigger request size
                   # Broaden the location match regex to cover more endpoints as needed
                   client_max_body_size {{repl ConfigOption "upload_size"}};
@@ -515,11 +526,17 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+      - name: expose_db_port
+        title: Expose Postgres Database Port
+        help_text: When enabled you can access postgres database on host ip
+        type: bool
+        default: "0"
       - name: db_external_port
         title: Postgres Database Port
         type: text
         value: ""
         default: "5432"
+        when: '{{repl ConfigOptionEquals "expose_db_port" "1" }}'
   - name: app
     title: Application config
     description: Configure your yugaware application
@@ -553,11 +570,17 @@ config:
         value: ""
         default: http://localhost
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
+      - name: expose_app_port
+        title: Expose Yugaware HTTP Port
+        help_text: DEBUG ONLY - When enabled you can access yugaware directly (bypassing the nginx)
+        type: bool
+        default: "0"
       - name: app_external_port
         title: Yugaware Application Port
         type: text
         value: ""
         default: "9000"
+        when: '{{repl ConfigOptionEquals "expose_app_port" "1" }}'
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
@@ -583,16 +606,19 @@ config:
         help_text: Specify the setting for HTTP_PROXY
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: https_proxy
         title: HTTPS Proxy setting
         help_text: Specify the setting for HTTPS_PROXY
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: no_proxy
         title: HTTP no proxy setting
         help_text: Specify the setting for NO_PROXY
         type: text
         default: ""
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend
@@ -614,6 +640,11 @@ config:
         help_text: Enable the use of sudo when executing custom hooks on Platform
         type: bool
         default: "0"
+      - name: docker_gateway
+        title: Docker Gateway IP Address
+        type: text
+        value: ""
+        default: 172.17.0.1
 
   - name: metrics
     title: Metrics config

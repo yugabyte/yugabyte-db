@@ -22,7 +22,6 @@ import play.libs.Json;
 @Slf4j
 public class MetricQueryExecutor implements Callable<JsonNode> {
 
-  public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
   private final ApiHelper apiHelper;
 
@@ -119,8 +118,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
               .additionalFilters(additionalFilters)
               .metricOrFilters(topNodeFilters)
               .additionalGroupBy(
-                  metricSettings.splitTopNodes > 0
-                      ? ImmutableSet.of(EXPORTED_INSTANCE)
+                  metricSettings.getNodeSplitMode() != NodeSplitMode.NONE
+                      ? ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE)
                       : Collections.emptySet())
               .build();
       Map<String, String> queries = config.getQueries(this.metricSettings, context);
@@ -164,7 +163,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private Map<String, List<MetricLabelFilters>> getTopNodesFilters(
       MetricConfig config, ObjectNode responseJson) {
-    if (metricSettings.getSplitTopNodes() <= 0) {
+    if (metricSettings.getNodeSplitMode() == NodeSplitMode.NONE) {
       return Collections.emptyMap();
     }
     int range = Integer.parseInt(queryParam.get("range"));
@@ -173,7 +172,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
             .topKQuery(true)
             .queryRangeSecs(range)
             .additionalFilters(additionalFilters)
-            .additionalGroupBy(ImmutableSet.of(EXPORTED_INSTANCE))
+            .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
             .build();
     Map<String, String> queries = config.getQueries(this.metricSettings, context);
     Map<String, String> topKQueryParams = new HashMap<>(queryParam);

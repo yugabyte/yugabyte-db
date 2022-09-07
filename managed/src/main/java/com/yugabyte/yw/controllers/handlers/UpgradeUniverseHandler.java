@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -214,6 +215,22 @@ public class UpgradeUniverseHandler {
             ? TaskType.GFlagsKubernetesUpgrade
             : TaskType.GFlagsUpgrade,
         CustomerTask.TaskType.GFlagsUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID upgradeKubernetesOverrides(
+      KubernetesOverridesUpgradeParams requestParams, Customer customer, Universe universe) {
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
+    requestParams.verifyParams(universe);
+    return submitUpgradeTask(
+        TaskType.KubernetesOverridesUpgrade,
+        CustomerTask.TaskType.KubernetesOverridesUpgrade,
         requestParams,
         customer,
         universe);
