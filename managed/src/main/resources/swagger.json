@@ -1368,6 +1368,10 @@
           "description" : "Disable checksum",
           "type" : "boolean"
         },
+        "disableMultipart" : {
+          "description" : "Disable multipart upload",
+          "type" : "boolean"
+        },
         "disableParallelism" : {
           "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
@@ -1718,6 +1722,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableMultipart" : {
+          "description" : "Disable multipart upload",
           "type" : "boolean"
         },
         "disableParallelism" : {
@@ -4337,6 +4345,10 @@
           "description" : "Disable checksum",
           "type" : "boolean"
         },
+        "disableMultipart" : {
+          "description" : "Disable multipart upload",
+          "type" : "boolean"
+        },
         "disableParallelism" : {
           "description" : "Don't add -m flag during gsutil upload dir command",
           "type" : "boolean"
@@ -6002,6 +6014,10 @@
         },
         "disableChecksum" : {
           "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableMultipart" : {
+          "description" : "Disable multipart upload",
           "type" : "boolean"
         },
         "enableVerboseLogs" : {
