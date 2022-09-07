@@ -209,18 +209,20 @@ class LogCache {
   // 'stop_after_index' has been evicted, whichever comes first.
   size_t EvictSomeUnlocked(int64_t stop_after_index,
       int64_t bytes_to_evict,
-      ReplicateMsgVector* evicted_messages);
+      ReplicateMsgVector* evicted_messages) REQUIRES(lock_);
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
-  void AccountForMessageRemovalUnlocked(const CacheEntry& entry);
+  void AccountForMessageRemovalUnlocked(const CacheEntry& entry) REQUIRES(lock_);
 
   // Return a string with stats
   std::string StatsStringUnlocked() const;
 
-  std::string ToStringUnlocked() const;
+  std::string ToStringUnlocked() const REQUIRES(lock_);
 
-  std::string LogPrefixUnlocked() const;
+  std::string LogPrefix() const;
+
+  std::string LogPrefixUnlocked() const REQUIRES(lock_);
 
   void LogCallback(bool overwrite,
                    int64_t last_idx_in_batch,
@@ -255,16 +257,16 @@ class LogCache {
   // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
   // CacheEntry
   typedef std::map<int64_t, CacheEntry> MessageCache;
-  MessageCache cache_;
+  MessageCache cache_ GUARDED_BY(lock_);
 
   // The next log index to append. Each append operation must either start with this log index, or
   // go backward (but never skip forward).
-  int64_t next_sequential_op_index_;
+  int64_t next_sequential_op_index_ GUARDED_BY(lock_);
 
   // Any operation with an index >= min_pinned_op_ may not be evicted from the cache. This is used
   // to prevent ops from being evicted until they successfully have been appended to the underlying
   // log.  Protected by lock_.
-  int64_t min_pinned_op_index_;
+  int64_t min_pinned_op_index_ GUARDED_BY(lock_);
 
   // Number of batches in progress of preparing that have overwritten min_pinned_op_index_.
   int64_t num_batches_overwritten_cache_;
