@@ -151,7 +151,7 @@ After the cluster has been created, clients can connect to the YSQL and YCQL API
 
 If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
-### Check cluster status
+### Check the cluster status
 
 Execute the following command to check the cluster status:
 
@@ -176,7 +176,7 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### Check cluster status with Admin UI
+### Use the Admin UI
 
 The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
