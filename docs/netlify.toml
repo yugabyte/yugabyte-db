@@ -239,7 +239,7 @@
 
 [[redirects]]
   from = "/:version/migrate/yb-voyager/*"
-  to = "/:version/migrate/*"
+  to = "/:version/migrate/:splat"
   force = true
 
 # Redirect older versions of specific sections
