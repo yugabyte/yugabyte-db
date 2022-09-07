@@ -85,7 +85,6 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(pgsql_proxy_webserver_port);
@@ -109,6 +108,7 @@ DECLARE_bool(xcluster_wait_on_ddl_alter);
 
 namespace yb {
 
+using namespace std::chrono_literals;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
@@ -155,22 +155,10 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     MiniClusterOptions opts;
     opts.num_tablet_servers = replication_factor;
     opts.num_masters = num_masters;
-    FLAGS_replication_factor = replication_factor;
-    opts.cluster_id = "producer";
-    producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
-    RETURN_NOT_OK(producer_cluster()->StartSync());
-    RETURN_NOT_OK(producer_cluster()->WaitForTabletServerCount(replication_factor));
-    RETURN_NOT_OK(WaitForInitDb(producer_cluster()));
 
-    opts.cluster_id = "consumer";
-    consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
-    RETURN_NOT_OK(consumer_cluster()->StartSync());
-    RETURN_NOT_OK(consumer_cluster()->WaitForTabletServerCount(replication_factor));
-    RETURN_NOT_OK(WaitForInitDb(consumer_cluster()));
+    RETURN_NOT_OK(InitClusters(opts));
 
-    producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
-    consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
-
+    RETURN_NOT_OK(RunOnBothClusters([](MiniCluster* cluster) { return WaitForInitDb(cluster); }));
     RETURN_NOT_OK(InitPostgres(&producer_cluster_));
     RETURN_NOT_OK(InitPostgres(&consumer_cluster_));
 
@@ -192,12 +180,13 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
                            num_consumer_tablets.size(), num_producer_tablets.size()));
     }
 
-    RETURN_NOT_OK(CreateDatabase(&producer_cluster_, kNamespaceName, colocated));
-    RETURN_NOT_OK(CreateDatabase(&consumer_cluster_, kNamespaceName, colocated));
+    RETURN_NOT_OK(RunOnBothClusters(
+        [&](Cluster* cluster) { return CreateDatabase(cluster, kNamespaceName, colocated); }));
 
     if (tablegroup_name.has_value()) {
-      RETURN_NOT_OK(CreateTablegroup(&producer_cluster_, kNamespaceName, tablegroup_name.get()));
-      RETURN_NOT_OK(CreateTablegroup(&consumer_cluster_, kNamespaceName, tablegroup_name.get()));
+      RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) {
+        return CreateTablegroup(cluster, kNamespaceName, tablegroup_name.get());
+      }));
     }
 
     std::vector<YBTableName> tables;
@@ -567,12 +556,11 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
 
   auto producer_table = tables[0];
   auto consumer_table = tables[1];
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
 
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
@@ -594,12 +582,11 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransact
   ASSERT_NO_FATALS(WriteGenerateSeries(51, 100, &producer_cluster_, producer_table->name()));
   ASSERT_NO_FATALS(WriteGenerateSeries(101, 150, &producer_cluster_, producer_table->name()));
   ASSERT_NO_FATALS(WriteGenerateSeries(151, 200, &producer_cluster_, producer_table->name()));
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
 
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
@@ -618,12 +605,11 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
   for (size_t i = 0; i < tables.size(); i += 2) {
     producer_tables.push_back(tables[i]);
   }
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
 
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
   ASSERT_EQ(resp.entry().tables_size(), producer_tables.size());
   for (size_t i = 0; i < producer_tables.size(); i++) {
@@ -683,13 +669,11 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   }
 
   // 2. Setup replication.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
       consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
@@ -1136,8 +1120,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
       consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
@@ -1258,8 +1241,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNTabletsPerColocatedTable));
 
   // 4. Check that colocated tables are being replicated.
@@ -1302,9 +1284,8 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   // Wait until we have 2 tables (colocated tablet + regular table) logged.
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     master::GetUniverseReplicationResponsePB tmp_resp;
-    return VerifyUniverseReplication(consumer_cluster(), consumer_client(),
-        kUniverseId, &tmp_resp).ok() &&
-        tmp_resp.entry().tables_size() == 2;
+    return VerifyUniverseReplication(kUniverseId, &tmp_resp).ok() &&
+           tmp_resp.entry().tables_size() == 2;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
 
   ASSERT_OK(CorrectlyPollingAllTablets(
@@ -1351,11 +1332,9 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   ASSERT_OK(producer_client()->OpenTable(table_info, &producer_table));
 
   // Try to setup replication, should fail on schema validation due to different colocation ids.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, {producer_table}));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_NOK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
 }
 
 TEST_P(TwoDCYsqlTest, TablegroupReplication) {
@@ -1413,8 +1392,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 1));
 
   // 4. Check that tables are being replicated.
@@ -1499,8 +1477,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
 
   // The schema validation should fail.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_NOK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_NOK(VerifyUniverseReplication(&get_universe_replication_resp));
 }
 
 // Checks that in regular replication set up, bootstrap is not required
@@ -1543,11 +1520,9 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
 
   // 2. Setup replication.
   FLAGS_check_bootstrap_required = true;
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::GetUniverseReplicationResponsePB verify_resp;
-  ASSERT_OK(VerifyUniverseReplication(
-    consumer_cluster(), consumer_client(), kUniverseId, &verify_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_resp));
 
   std::unique_ptr<client::YBClient> client;
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
@@ -1686,8 +1661,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
 
   // Setup replication should fail if this check is enabled.
   FLAGS_check_bootstrap_required = true;
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
                                             kUniverseId, &is_resp));
@@ -1743,13 +1717,11 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
   consumer_tables.pop_back();
 
   // 2a. Setup replication.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
 
   // Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
       consumer_cluster(), narrow_cast<uint32_t>(producer_tables.size() * kNT)));
 
@@ -1771,8 +1743,7 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
     ASSERT_OK(LoggedWaitFor(
         [&]() -> Result<bool> {
           master::GetUniverseReplicationResponsePB tmp_resp;
-          RETURN_NOT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
-                                                  kUniverseId, &tmp_resp));
+          RETURN_NOT_OK(VerifyUniverseReplication(kUniverseId, &tmp_resp));
           return tmp_resp.entry().tables_size() == static_cast<int64>(producer_tables.size() + 1);
         },
         MonoDelta::FromSeconds(kRpcTimeout), "Verify table created with alter."));
@@ -1865,13 +1836,11 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   }
 
   // 2. Setup replication.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
       consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
@@ -2074,9 +2043,7 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
   }
 
   // 2. Setup replication.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(),
-                                     consumer_cluster(), consumer_client(),
-                                     kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
 
   // 3. Create cdc proxy according the flag.
   rpc::ProxyCache* proxy_cache;
@@ -2132,8 +2099,7 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-                                      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
   ASSERT_OK(CorrectlyPollingAllTablets(
       consumer_cluster(), narrow_cast<uint32_t>(tables_vector.size() * kNTabletsPerTable)));
 
@@ -2291,8 +2257,7 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   std::reverse(consumer_table_names.begin(), consumer_table_names.end());
 
   // Setup universe replication for the 3 tables.
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
 
   // Write different numbers of records to the 3 producers, and verify that the
   // corresponding receivers receive the records.
@@ -2301,7 +2266,7 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
     ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
   }
 
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(DeleteUniverseReplication());
 }
 
 } // namespace enterprise

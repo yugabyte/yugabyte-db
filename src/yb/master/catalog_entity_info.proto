@@ -532,3 +532,8 @@ message SysUniverseReplicationEntryPB {
   optional NamespaceIdentifierPB producer_namespace = 8;
   optional NamespaceIdentifierPB consumer_namespace = 9;
 }
+
+message XClusterSafeTimePB {
+  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  map<string, fixed64> safe_time_map = 1;
+}

@@ -558,5 +558,23 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   return Status::OK();
 }
 
+////////////////////////////////////////////////////////////
+// XClusterSafeTime Loader
+////////////////////////////////////////////////////////////
+
+Status XClusterSafeTimeLoader::Visit(
+    const std::string& unused_id, const XClusterSafeTimePB& metadata) {
+  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
+  // not visit multiple rows.
+  auto l = catalog_manager_->xcluster_safe_time_info_.LockForWrite();
+  DCHECK(l->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
+
+  VLOG_WITH_FUNC(2) << "Loading XCluster Safe Time data: " << metadata.DebugString();
+  l.mutable_data()->pb.CopyFrom(metadata);
+  l.Commit();
+
+  return Status::OK();
+}
+
 }  // namespace master
 }  // namespace yb

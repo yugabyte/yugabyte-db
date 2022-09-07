@@ -35,6 +35,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
@@ -227,6 +228,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
+  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const
+      EXCLUDES(xcluster_safe_time_mutex_);
+
+  void UpdateXClusterSafeTime(
+      const google::protobuf::Map<std::string, google::protobuf::uint64>& safe_time_map)
+      EXCLUDES(xcluster_safe_time_mutex_);
+
  protected:
   virtual Status RegisterServices();
 
@@ -303,6 +311,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
+
+  mutable rw_spinlock xcluster_safe_time_mutex_;
+  std::unordered_map<NamespaceId, HybridTime> xcluster_safe_time_map_
+      GUARDED_BY(xcluster_safe_time_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
