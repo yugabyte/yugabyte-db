@@ -137,7 +137,7 @@ To set DNS settings:
 
 To accept the peering request, do the following:
 
-1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is Pending request.
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is Pending acceptance.
 1. Click **Actions** and choose **Accept request** to display the **Accept VPC peering connection request** window.
     ![Accept peering in AWS](/images/yb-cloud/cloud-peer-aws-accept.png)
 1. Click **Accept request**.
