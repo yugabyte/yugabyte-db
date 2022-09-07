@@ -225,6 +225,8 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
 									 		 * within a certain transaction (e.g. TEMP
 									 		 * TABLES/WITH HOLD CURSORS)*/
+	bool		ybIsInternalRcSubTransaction; /* Whether this sub transaction was started internally for
+																				* READ COMMITTED isolation */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -257,10 +259,11 @@ static TransactionStateData TopTransactionStateData = {
 	.state = TRANS_DEFAULT,
 	.blockState = TBLOCK_DEFAULT,
 	.topXidLogged = false,
-	.ybDataSent = false,						/* ybDataSent */
-	.ybDataSentForCurrQuery = false,			/* ybDataSentForCurrQuery */
-	.isYBTxnWithPostgresRel = false,			/* isYBTxnWithPostgresRel */
-	.YBPostponedDdlOps = NULL,					/* YBPostponedDdlOps */
+	.ybDataSent = false,
+	.ybDataSentForCurrQuery = false,
+	.isYBTxnWithPostgresRel = false,
+	.YBPostponedDdlOps = NULL,
+	.ybIsInternalRcSubTransaction = false,
 };
 
 /*
@@ -4941,6 +4944,7 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 
 	StartSubTransaction();
 	s->blockState = TBLOCK_SUBINPROGRESS;
+	s->ybIsInternalRcSubTransaction = true;
 }
 
 /*
@@ -6688,4 +6692,18 @@ void increment_sticky_object_count()
 void decrement_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
+}
+
+/*
+ * Check if all sub transactions are internal ones started before each statement for READ COMMITTED
+ * isolation level.
+ */
+bool YbHasOnlyInternalRcSubTransactions()
+{
+	for (TransactionState s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		if (s->nestingLevel >= 2 && !s->ybIsInternalRcSubTransaction)
+			return false;
+	}
+	return true;
 }
