@@ -91,13 +91,13 @@
   url = "/benchmark/"
   parent = "documentation"
 
-[[main]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/apache-kafka/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
+# [[main]]
+#   name = "Integrations"
+#   weight = 11
+#   url = "/preview/integrations/apache-kafka/"
+#   parent = "documentation"
+#   [main.params]
+#     excludeVersion = true
 
 [[main]]
   name = "Reference"
@@ -146,6 +146,13 @@
   name = "Release Notes"
   weight = 4
   url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Integrations"
+  weight = 5
+  url = "/preview/integrations/apache-kafka/"
   [main.params]
     excludeVersion = true
 
