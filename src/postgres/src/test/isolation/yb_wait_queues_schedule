@@ -11,3 +11,4 @@ test: yb-user-managed-constraint
 test: yb-fk-relationship
 test: yb-check-constraint-locking
 test: yb-deadlock
+test: modify-transaction-characteristics
