@@ -371,11 +371,6 @@ void ShutdownLoggingSafe() {
   logging_initialized = false;
 }
 
-void LogCommandLineFlags() {
-  LOG(INFO) << "Flags (see also /varz are on debug webserver):" << endl
-            << google::CommandlineFlagsIntoString();
-}
-
 // Support for the special THROTTLE_MSG token in a log message stream.
 ostream& operator<<(ostream &os, const PRIVATE_ThrottleMsg&) {
   using google::LogMessage;

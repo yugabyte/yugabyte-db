@@ -743,7 +743,7 @@ class YBTSConfig:
         if self.backup.args.verbose:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
-        url = "{}:{}/varz".format(tserver_ip, web_port)
+        url = "{}:{}/varz?raw=1".format(tserver_ip, web_port)
         output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
@@ -770,7 +770,7 @@ class YBTSConfig:
                 break
 
         if not data_dirs:
-            msg = "Did not find any data directories in tserver by querying /varz endpoint"\
+            msg = "Did not find any data directories in tserver by querying /varz?raw=1 endpoint"\
                   " on tserver '{}:{}'. Was looking for '{}', got this: [[ {} ]]".format(
                       tserver_ip, web_port, self.FS_DATA_DIRS_ARG_PREFIX, output)
             logging.error("[app] {}".format(msg))
@@ -2117,8 +2117,8 @@ class YBBackup:
 
     def find_data_dirs(self, tserver_ip):
         """
-        Finds the data directories on the given tserver. This queries the /varz endpoint of tserver
-        and extracts --fs_data_dirs flag from response.
+        Finds the data directories on the given tserver. This queries the /varz?raw=1 endpoint of
+        tserver and extracts --fs_data_dirs flag from response.
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
