@@ -1810,7 +1810,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     PgMiniTest::SetUp();
   }
 
-  void Run(int rows, int block_size, int reads, bool compact = false) {
+  void Run(int rows, int block_size, int reads, bool compact = false, bool select = false) {
     auto conn = ASSERT_RESULT(Connect());
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1834,7 +1834,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
       FlushAndCompactTablets();
     }
 
-    LOG(INFO) << "Perform read";
+    LOG(INFO) << "Perform read. Row count: " << rows;
 
     if (VLOG_IS_ON(4)) {
       google::SetVLOGLevel("intent_aware_iterator", 4);
@@ -1843,8 +1843,14 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     }
 
     for (int i = 0; i != reads; ++i) {
+      int64_t fetched_rows;
       auto start = MonoTime::Now();
-      auto fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      if(!select) {
+        fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      } else {
+        auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+        fetched_rows = PQntuples(res.get());
+      }
       auto finish = MonoTime::Now();
       ASSERT_EQ(rows, fetched_rows);
       LOG(INFO) << i << ") Full Time: " << finish - start;
@@ -1874,6 +1880,22 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
   constexpr int kReads = 1;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ false, /*select*/ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
