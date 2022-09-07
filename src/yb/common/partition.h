@@ -287,8 +287,8 @@ class PartitionSchema {
   static void ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out);
 
   // Encoded (sub)doc keys that belong to partition with partition_key lower bound
-  // are starting with this prefix or greater than it
-  static std::string GetEncodedKeyPrefix(
+  // are starting with this prefix or greater than it.
+  static Result<std::string> GetEncodedKeyPrefix(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
 
   // YugaByte partition creation
