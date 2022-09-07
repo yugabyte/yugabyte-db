@@ -176,7 +176,7 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### Check cluster status with Admin UI
+### Use the Admin UI
 
 The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 

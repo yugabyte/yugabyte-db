@@ -197,21 +197,15 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
-{{<note title="Note for macOS Monterey" >}}
-
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. To resolve the issue, you can disable AirPlay receiving, then start YugabyteDB, and then, optionally, re-enable AirPlay receiving. Alternatively, you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+If you are running macOS Monterey, run the following command:
 
 ```sh
 ./bin/yugabyted start --master_webserver_port=9999
 ```
 
-{{< /note >}}
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Using the [--master_webserver_port flag](../reference/configuration/yugabyted/#advanced-flags) when you start the cluster changes the default port number. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
-
-### Check cluster status
+### Check the cluster status
 
 Execute the following command to check the cluster status:
 
@@ -237,7 +231,11 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### Check cluster status with Admin UI
+After the cluster has been created, clients can [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+
+If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+
+### Use the Admin UI
 
 The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
