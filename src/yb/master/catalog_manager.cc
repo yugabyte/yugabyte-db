@@ -474,7 +474,11 @@ DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
 DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
-                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert");
+                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert.");
+
+DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
+                 "Return an error inside CatalogManager::RegisterNewTabletForSplit "
+                 "after calling Upsert.");
 
 DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
@@ -2838,8 +2842,8 @@ Status CatalogManager::DoSplitTablet(
 
     // Re-compute the encoded key
     // to ensure we use the same partition boundary for both child tablets
-    split_encoded_key = PartitionSchema::GetEncodedKeyPrefix(
-      split_partition_key, source_table_lock->pb.partition_schema());
+    split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
+        split_partition_key, source_table_lock->pb.partition_schema()));
   }
 
   LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
@@ -6251,8 +6255,11 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
-    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
     TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
+    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+    if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+      return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
+    }
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
