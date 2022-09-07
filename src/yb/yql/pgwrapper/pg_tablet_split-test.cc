@@ -72,12 +72,6 @@ class PgTabletSplitTest : public PgMiniTestBase {
     return Status::OK();
   }
 
-  Status WaitForAnySstFiles(tablet::TabletPeer* tablet_peer) {
-    return WaitFor([&] {
-        return tablet_peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
-    }, 5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1));
-  }
-
  private:
   virtual size_t NumTabletServers() override {
     return 1;
@@ -156,7 +150,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   auto peer = *peer_it;
 
   // Make sure SST files appear to be able to split.
-  ASSERT_OK(WaitForAnySstFiles(peer.get()));
+  ASSERT_OK(WaitForAnySstFiles(peer));
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto result = peer->tablet()->GetEncodedMiddleSplitKey();
@@ -207,6 +201,10 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(ManualSplitIndexTablet)) {
     ASSERT_EQ(1, tablets.size());
 
     auto parent_tablet = tablets.front();
+
+    // Make sure SST files appear to be able to split.
+    ASSERT_OK(WaitForAnySstFiles(parent_tablet));
+
     auto status = InvokeSplitTabletRpc(parent_tablet->tablet_id());
 
     auto version = parent_tablet->tablet()->schema()->table_properties().partition_key_version();
@@ -230,6 +228,10 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(ManualSplitIndexTablet)) {
     ASSERT_EQ(1, tablets.size());
 
     auto parent_tablet = tablets.front();
+
+    // Make sure SST files appear to be able to split.
+    ASSERT_OK(WaitForAnySstFiles(parent_tablet));
+
     ASSERT_OK(InvokeSplitTabletRpc(parent_tablet->tablet_id()));
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
@@ -244,6 +246,10 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(ManualSplitIndexTablet)) {
     ASSERT_EQ(1, tablets.size());
 
     auto parent_tablet = tablets.front();
+
+    // Make sure SST files appear to be able to split.
+    ASSERT_OK(WaitForAnySstFiles(parent_tablet));
+
     ASSERT_OK(InvokeSplitTabletRpc(parent_tablet->tablet_id()));
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
