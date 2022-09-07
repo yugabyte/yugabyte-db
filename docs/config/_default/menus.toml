@@ -143,18 +143,19 @@
     excludeVersion = true
 
 [[main]]
-  name = "Release Notes"
+  name = "Integrations"
   weight = 4
-  url = "/preview/releases/"
+  url = "/preview/integrations/apache-kafka/"
   [main.params]
     excludeVersion = true
 
 [[main]]
-  name = "Integrations"
+  name = "Release Notes"
   weight = 5
-  url = "/preview/integrations/apache-kafka/"
+  url = "/preview/releases/"
   [main.params]
     excludeVersion = true
+
 
 ########## Bottom menu for left navigation
 
