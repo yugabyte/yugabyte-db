@@ -565,8 +565,11 @@ class S3BackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         # If 's3cmd get' fails it creates zero-length file, '--force' is needed to
         # override this empty file on the next retry-step.
-        return ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
+        args = ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
                 % self.options.cloud_cfg_file_path]
+        if self.options.args.disable_multipart:
+            args.append('--disable-multipart')
+        return args
 
     def upload_file_cmd(self, src, dest):
         cmd_list = ["put", src, dest]
@@ -1133,6 +1136,9 @@ class YBBackup:
         parser.add_argument(
             '--disable_xxhash_checksum', action='store_true', default=False,
             help="Disables xxhash algorithm for checksum computation.")
+        parser.add_argument(
+            '--disable_multipart', required=False, action='store_true', default=False,
+            help="Disable multipart upload for S3 backups")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(

@@ -288,6 +288,9 @@ public class RestoreManagerYb extends DevopsBase {
     if (restoreBackupParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
     }
+    if (restoreBackupParams.disableMultipart) {
+      commandArgs.add("--disable_multipart");
+    }
   }
 
   private String getCertsDir(Region region, Provider provider) {

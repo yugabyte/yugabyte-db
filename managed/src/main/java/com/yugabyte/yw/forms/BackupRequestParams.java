@@ -50,6 +50,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
 
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
+
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
 
