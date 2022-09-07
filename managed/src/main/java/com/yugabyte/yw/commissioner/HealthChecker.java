@@ -245,7 +245,7 @@ public class HealthChecker {
    * @param report Health report.
    * @return true if success
    */
-  private boolean processMetrics(Customer c, Universe u, Details report) {
+  private void processMetrics(Customer c, Universe u, Details report) {
 
     boolean hasErrors = false;
     // This is hacky, but health check data items only make sense if you know order.
@@ -341,7 +341,6 @@ public class HealthChecker {
       metricService.setFailureStatusMetric(
           buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
     }
-    return true;
   }
 
   private boolean sendEmailReport(
@@ -762,13 +761,28 @@ public class HealthChecker {
     long durationMs = System.currentTimeMillis() - startTime.getTime();
     boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
 
-    boolean succeeded = processMetrics(params.customer, params.universe, fullReport);
+    processMetrics(params.customer, params.universe, fullReport);
 
     log.info(
         "Health check for universe {} reported {}. [ {} ms ]",
         params.universe.name,
         (healthCheckReport.getHasError() ? "errors" : "success"),
         durationMs);
+    if (healthCheckReport.getHasError()) {
+      List<NodeData> failedChecks =
+          healthCheckReport
+              .getData()
+              .stream()
+              .filter(NodeData::getHasError)
+              .collect(Collectors.toList());
+      log.warn(
+          "Following checks failed for universe {}:\n{}",
+          params.universe.name,
+          failedChecks
+              .stream()
+              .map(NodeData::toHumanReadableString)
+              .collect(Collectors.joining("\n")));
+    }
 
     if (!params.onlyMetrics) {
       if (sendEmailReport(
@@ -786,10 +800,8 @@ public class HealthChecker {
           params.universe.universeUUID, params.universe.customerId, healthCheckReport);
     }
 
-    if (succeeded) {
-      metricService.setOkStatusMetric(
-          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
-    }
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
   }
 
   private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {
