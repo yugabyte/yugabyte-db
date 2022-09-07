@@ -695,5 +695,32 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
+Result<HybridTime> TabletServer::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
+  HybridTime safe_ht = HybridTime::kInvalid;
+
+  {
+    SharedLock l(xcluster_safe_time_mutex_);
+    auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);
+    if (safe_time) {
+      safe_ht = *safe_time;
+    }
+  }
+
+  if (safe_ht.is_special()) {
+    return STATUS(NotFound, Format("XCluster safe time not found for namespace $0", namespace_id));
+  }
+
+  return safe_ht;
+}
+
+void TabletServer::UpdateXClusterSafeTime(
+    const google::protobuf::Map<std::string, google::protobuf::uint64>& safe_time_map) {
+  std::lock_guard l(xcluster_safe_time_mutex_);
+  xcluster_safe_time_map_.clear();
+  for (auto& entry : safe_time_map) {
+    xcluster_safe_time_map_[entry.first] = HybridTime(entry.second);
+  }
+}
+
 }  // namespace tserver
 }  // namespace yb

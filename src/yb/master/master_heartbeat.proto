@@ -253,6 +253,9 @@ message TSHeartbeatResponsePB {
 
   // Specify whether or not the cluster is a producer of a valid replication stream.
   optional bool xcluster_enabled_on_producer = 19;
+
+  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  map<string, fixed64> xcluster_namespace_to_safe_time = 21;
 }
 
 service MasterHeartbeat {

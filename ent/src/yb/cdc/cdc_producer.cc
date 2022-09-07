@@ -433,13 +433,21 @@ Status PopulateChangeMetadataRecord(const ReplicateMsgPtr& msg, CDCRecordPB* rec
   return Status::OK();
 }
 
-Result<HybridTime> GetSafeTimeForTarget(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                        HybridTime ht_of_last_returned_message,
-                                        HaveMoreMessages have_more_messages) {
-  if (ht_of_last_returned_message != HybridTime::kInvalid && have_more_messages) {
+HybridTime GetSafeTimeForTarget(
+    const HybridTime leader_safe_time,
+    HybridTime ht_of_last_returned_message,
+    HaveMoreMessages have_more_messages) {
+  if (have_more_messages) {
     return ht_of_last_returned_message;
   }
-  return tablet_peer->LeaderSafeTime();
+
+  if (ht_of_last_returned_message.is_valid()) {
+    if (!leader_safe_time.is_valid() || ht_of_last_returned_message > leader_safe_time) {
+      return ht_of_last_returned_message;
+    }
+  }
+
+  return leader_safe_time;
 }
 
 Status GetChangesForXCluster(const std::string& stream_id,
@@ -476,12 +484,23 @@ Status GetChangesForXCluster(const std::string& stream_id,
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
   }
+  auto leader_safe_time = tablet_peer->LeaderSafeTime();
+  if (!leader_safe_time.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10)
+        << "Could not compute safe time: " << leader_safe_time.status();
+    leader_safe_time = HybridTime::kInvalid;
+  }
+
   ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
       read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
-  auto first_unreplicated_index = messages.size();
-  bool exit_early = false;
+  HaveMoreMessages have_more_messages =
+      PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue
+                                                                    : read_ops.have_more_messages;
+  auto ht_of_last_returned_message = HybridTime::kInvalid;
+
   for (size_t i = 0; i < messages.size(); ++i) {
+    bool exit_early = false;
     const auto msg = messages[i];
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
@@ -521,7 +540,6 @@ Status GetChangesForXCluster(const std::string& stream_id,
             } else {
               checkpoint = from_op_id;
             }
-            first_unreplicated_index = i;
             exit_early = true;
           }
         }
@@ -536,7 +554,6 @@ Status GetChangesForXCluster(const std::string& stream_id,
           RETURN_NOT_OK(PopulateChangeMetadataRecord(msg, resp->add_records()));
           // This should be the last record we send to the Consumer.
           checkpoint = OpId::FromPB(msg->id());
-          first_unreplicated_index = i+1;
           exit_early = true;
         }
         break;
@@ -545,26 +562,21 @@ Status GetChangesForXCluster(const std::string& stream_id,
         break;
     }
     if (exit_early) {
+      have_more_messages = HaveMoreMessages::kTrue;
       break;
     }
+
+    ht_of_last_returned_message = HybridTime(msg->hybrid_time());
   }
 
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
   }
-  auto ht_of_last_returned_message = first_unreplicated_index == 0 ?
-      HybridTime::kInvalid : HybridTime(messages[first_unreplicated_index - 1]->hybrid_time());
-  auto have_more_messages =
-      exit_early || PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ?
-          HaveMoreMessages::kTrue : read_ops.have_more_messages;
-  auto safe_time_result = GetSafeTimeForTarget(
-      tablet_peer, ht_of_last_returned_message, have_more_messages);
-  if (safe_time_result.ok()) {
-    resp->set_safe_hybrid_time((*safe_time_result).ToUint64());
-  } else {
-    YB_LOG_EVERY_N_SECS(WARNING, 10) <<
-        "Could not compute safe time: " << safe_time_result.status();
-  }
+
+  auto safe_time =
+      GetSafeTimeForTarget(leader_safe_time.get(), ht_of_last_returned_message, have_more_messages);
+  resp->set_safe_hybrid_time(safe_time.ToUint64());
+
   *msgs_holder = consensus::ReplicateMsgsHolder(
       nullptr, std::move(messages), std::move(consumption));
   (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(

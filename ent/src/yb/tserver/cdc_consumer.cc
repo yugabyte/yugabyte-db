@@ -14,7 +14,13 @@
 #include <shared_mutex>
 #include <chrono>
 
+#include "yb/client/session.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_defaults.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -27,6 +33,7 @@
 
 #include "yb/cdc/cdc_consumer.pb.h"
 
+#include "yb/client/error.h"
 #include "yb/client/client.h"
 
 #include "yb/gutil/map-util.h"
@@ -44,6 +51,13 @@ DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
              "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
+DEFINE_int32(xcluster_safe_time_update_interval_secs, 5,
+    "The interval at which xcluster safe time is computed. This controls the staleness of the data "
+    "seen when performing xcluster atomic reads. If there is any additional lag in the "
+    "replication, then it will add to the overall staleness of the data. Setting this to 0 will "
+    "disable xcluster atomic reads.");
+TAG_FLAG(xcluster_safe_time_update_interval_secs, runtime);
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(use_node_to_node_encryption);
@@ -54,6 +68,8 @@ using namespace std::chrono_literals;
 namespace yb {
 
 namespace tserver {
+using cdc::ProducerTabletInfo;
+
 namespace enterprise {
 
 CDCClient::~CDCClient() {
@@ -70,7 +86,6 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
     TabletServer* tserver) {
-  LOG(INFO) << "Creating CDC Consumer";
   auto master_addrs = tserver->options().GetMasterAddresses();
   std::vector<std::string> hostport_strs;
   hostport_strs.reserve(master_addrs->size());
@@ -117,7 +132,9 @@ CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_t
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   rpcs_(new rpc::Rpcs),
   log_prefix_(Format("[TS $0]: ", ts_uuid)),
-  local_client_(std::move(local_client)) {}
+  local_client_(std::move(local_client)),
+  last_safe_time_published_at_(MonoTime::Now()),
+  xcluster_safe_time_table_ready_(false) {}
 
 CDCConsumer::~CDCConsumer() {
   Shutdown();
@@ -156,15 +173,21 @@ void CDCConsumer::Shutdown() {
 
 void CDCConsumer::RunThread() {
   while (true) {
-    std::unique_lock<std::mutex> l(should_run_mutex_);
-    if (!should_run_) {
-      return;
+    {
+      std::unique_lock<std::mutex> l(should_run_mutex_);
+      if (!should_run_) {
+        return;
+      }
+      cond_.wait_for(l, 1000ms);
+      if (!should_run_) {
+        return;
+      }
     }
-    cond_.wait_for(l, 1000ms);
-    if (!should_run_) {
-      return;
-    }
+
     TriggerPollForNewTablets();
+
+    auto s = PublishXClusterSafeTime();
+    YB_LOG_IF_EVERY_N(WARNING, !s.ok(), 10) << "PublishXClusterSafeTime failed: " << s;
   }
 }
 
@@ -252,7 +275,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
         const auto& consumer_tablet_id = tablet_entry.first;
         for (const auto& producer_tablet_id : tablet_entry.second.tablets()) {
-          cdc::ProducerTabletInfo producer_tablet_info(
+          ProducerTabletInfo producer_tablet_info(
               {producer_map.first, stream_entry.first, producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
@@ -372,7 +395,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
   }
 }
 
-void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info) {
+void CDCConsumer::RemoveFromPollersMap(const ProducerTabletInfo producer_tablet_info) {
   LOG_WITH_PREFIX(INFO) << Format("Stop polling for producer tablet $0",
                                   producer_tablet_info.tablet_id);
   std::shared_ptr<CDCClient> client_to_delete; // decrement refcount to 0 outside lock
@@ -394,11 +417,14 @@ void CDCConsumer::RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_ta
   }
 }
 
-bool CDCConsumer::ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
-                                        const cdc::ConsumerTabletInfo consumer_tablet_info) {
-  std::lock_guard<std::mutex> l(should_run_mutex_);
-  if (!should_run_) {
-    return false;
+bool CDCConsumer::ShouldContinuePolling(
+    const ProducerTabletInfo producer_tablet_info,
+    const cdc::ConsumerTabletInfo consumer_tablet_info) {
+  {
+    std::lock_guard<std::mutex> l(should_run_mutex_);
+    if (!should_run_) {
+      return false;
+    }
   }
 
   SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
@@ -444,6 +470,72 @@ Status CDCConsumer::ReloadCertificates() {
     RETURN_NOT_OK(server::ReloadSecureContextKeysAndCertificates(
         client->secure_context.get(), cert_dir, "" /* node_name */));
   }
+
+  return Status::OK();
+}
+
+Status CDCConsumer::PublishXClusterSafeTime() {
+  const client::YBTableName safe_time_table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
+
+  std::lock_guard<std::mutex> l(safe_time_update_mutex_);
+
+  int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
+  if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {
+    return Status::OK();
+  }
+
+  auto& client = local_client_->client;
+
+  if (!xcluster_safe_time_table_ready_) {
+    // Master has not created the table yet. Nothing to do for now.
+    if (!VERIFY_RESULT(client->TableExists(safe_time_table_name))) {
+      return Status::OK();
+    }
+    RETURN_NOT_OK(client->WaitForCreateTableToFinish(safe_time_table_name));
+
+    xcluster_safe_time_table_ready_ = true;
+  }
+
+  if (!safe_time_table_) {
+    auto table = std::make_unique<client::TableHandle>();
+    RETURN_NOT_OK(table->Open(safe_time_table_name, client.get()));
+    safe_time_table_.swap(table);
+  }
+
+  std::unordered_map<ProducerTabletInfo, HybridTime, ProducerTabletInfo::Hash> safe_time_map;
+
+  {
+    SharedLock<rw_spinlock> read_lock(producer_pollers_map_mutex_);
+    for (auto& poller : producer_pollers_map_) {
+      safe_time_map[poller.first] = poller.second->GetSafeTime();
+    }
+  }
+
+  std::shared_ptr<client::YBSession> session = client->NewSession();
+  session->SetTimeout(client->default_rpc_timeout());
+  for (auto& safe_time_info : safe_time_map) {
+    const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    auto* const req = op->mutable_request();
+    QLAddStringHashValue(req, safe_time_info.first.universe_uuid);
+    QLAddStringHashValue(req, safe_time_info.first.tablet_id);
+    safe_time_table_->AddInt64ColumnValue(
+        req, master::kXCSafeTime, safe_time_info.second.ToUint64());
+
+    VLOG_WITH_FUNC(2) << "UniverseID: " << safe_time_info.first.universe_uuid
+                      << ", TabletId: " << safe_time_info.first.tablet_id
+                      << ", SafeTime: " << safe_time_info.second.ToDebugString();
+    session->Apply(op);
+  }
+
+  auto future = session->FlushFuture();
+  auto future_status = future.wait_for(client->default_rpc_timeout().ToChronoMilliseconds());
+  SCHECK(
+      future_status == std::future_status::ready, IOError,
+      "Timed out waiting for flush to XClusterSafeTime table");
+  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to flush to XClusterSafeTime table");
+
+  last_safe_time_published_at_ = MonoTime::Now();
 
   return Status::OK();
 }

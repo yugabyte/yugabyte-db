@@ -16,6 +16,7 @@
 
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"
@@ -70,6 +71,8 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 
   std::string LogPrefixUnlocked() const;
 
+  HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
+
  private:
   bool CheckOnline();
 
@@ -83,6 +86,7 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   void HandleApplyChanges(cdc::OutputClientResponse response);
   // Does the work of polling for new changes.
   void DoHandleApplyChanges(cdc::OutputClientResponse response);
+  void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
@@ -106,6 +110,9 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle poll_handle_;
   CDCConsumer* cdc_consumer_;
+
+  mutable rw_spinlock safe_time_lock_;
+  HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
   std::atomic<bool> is_polling_{true};
   int poll_failures_ GUARDED_BY(data_mutex_){0};

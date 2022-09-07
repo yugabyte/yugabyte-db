@@ -874,6 +874,15 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
   return result;
 }
 
+tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id) {
+  for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
+    if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      return cluster->mini_tablet_server(i);
+    }
+  }
+  return nullptr;
+}
+
 Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MiniCluster* cluster, const TableId& table_id,
     const size_t num_active_leaders, const MonoDelta timeout) {
