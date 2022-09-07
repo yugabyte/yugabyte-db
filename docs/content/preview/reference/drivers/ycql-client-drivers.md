@@ -16,6 +16,10 @@ The following client drivers are supported for use with the [Yugabyte Cloud Quer
 
 For tutorials on building a sample application with the following client drivers, click the relevant link included below for each driver.
 
+{{< note title="Use YugabyteDB client drivers" >}}
+You should always use the YugabyteDB YCQL client drivers. Using generic Cassandra drivers can lead to errors and performance issues.
+{{< /note >}}
+
 ## C/C++
 
 ### Yugabyte C/C++ Driver for YCQL

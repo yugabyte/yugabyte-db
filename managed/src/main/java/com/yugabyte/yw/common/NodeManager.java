@@ -249,7 +249,8 @@ public class NodeManager extends DevopsBase {
       // We only need to include keyPair name for create instance method and if this is aws.
       if ((params instanceof AnsibleCreateServer.Params
               || params instanceof AnsibleSetupServer.Params)
-          && providerType.equals(Common.CloudType.aws)) {
+          && providerType.equals(Common.CloudType.aws)
+          && type != NodeCommandType.Wait_For_SSH) {
         subCommand.add("--key_pair_name");
         subCommand.add(accessKeyCode);
         // Also we will add the security group information for create
@@ -264,7 +265,9 @@ public class NodeManager extends DevopsBase {
       }
     }
     // security group is only used during Azure create instance method
-    if (params instanceof AnsibleCreateServer.Params && providerType.equals(Common.CloudType.azu)) {
+    if (params instanceof AnsibleCreateServer.Params
+        && providerType.equals(Common.CloudType.azu)
+        && type != NodeCommandType.Wait_For_SSH) {
       Region r = params.getRegion();
       String customSecurityGroupId = r.getSecurityGroupId();
       if (customSecurityGroupId != null) {
@@ -1871,6 +1874,11 @@ public class NodeManager extends DevopsBase {
           }
           RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+
+          if (taskParam.useSSH) {
+            commandArgs.add("--use_ssh");
+          }
+
           break;
         }
       case RunHooks:

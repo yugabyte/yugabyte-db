@@ -228,6 +228,9 @@ public class Audit extends Model {
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
 
+    @EnumValue("Upgrade Kubernetes Overrides")
+    UpgradeKubernetesOverrides,
+
     @EnumValue("Upgrade Certs")
     UpgradeCerts,
 
@@ -454,7 +457,10 @@ public class Audit extends Model {
     UpgradeYbc,
 
     @EnumValue("Install Ybc")
-    InstallYbc
+    InstallYbc,
+
+    @EnumValue("Set YB-Controller throttle params")
+    SetThrottleParams
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

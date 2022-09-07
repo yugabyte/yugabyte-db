@@ -1094,10 +1094,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      // Verify k8s overrides.
+      // Verify kubernetes overrides.
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
         if (cluster.clusterType == ClusterType.ASYNC) {
-          // Readonly cluster should not have k8s overrides.
+          // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
               || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
@@ -1118,15 +1118,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             if (!(curUnivOverrides.equals(newUnivOverrides)
                 && curAZOverrides.equals(newAZOverrides))) {
               throw new IllegalArgumentException(
-                  "Universe overrides can't be modifed during the edit operation.");
+                  "Universe overrides can't be modified during the edit operation.");
             }
           }
         }
       } else {
-        // Non k8s universes should not have k8s overrides.
+        // Non k8s universes should not have kubernetes overrides.
         if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
             || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
-          throw new IllegalArgumentException("Non k8s Universe can't have k8s overrides defined");
+          throw new IllegalArgumentException(
+              "Non kubernetes universe can't have kubernetes overrides defined");
         }
       }
     }

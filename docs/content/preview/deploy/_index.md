@@ -63,7 +63,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
@@ -78,7 +78,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-dc/">
       <div class="head">

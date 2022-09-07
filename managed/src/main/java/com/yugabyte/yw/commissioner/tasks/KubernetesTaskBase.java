@@ -341,7 +341,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
 
     Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
-    Map<String, Object> azsOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
+    Map<String, Object> azsOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;

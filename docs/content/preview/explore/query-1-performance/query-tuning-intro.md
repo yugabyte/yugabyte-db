@@ -1,9 +1,9 @@
 ---
-title: Tuning queries in YugabyteDB
+title: Tune queries in YugabyteDB
 linkTitle: Introduction
-description: Tuning queries in YugabyteDB
+description: Tune queries in YugabyteDB
 aliases:
-headerTitle: Tuning queries in YugabyteDB
+headerTitle: Tune queries in YugabyteDB
 image: /images/section_icons/index/develop.png
 menu:
   preview:

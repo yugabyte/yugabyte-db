@@ -169,6 +169,10 @@ class TransactionParticipant : public TransactionStatusManager {
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
+
+  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override;
+
   void GetStatus(const TransactionId& transaction_id,
                  size_t required_num_replicated_batches,
                  int64_t term,

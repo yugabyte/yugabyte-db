@@ -20,7 +20,6 @@ namespace yb {
 namespace util {
 
 YB_STRONGLY_TYPED_UUID(TestUuid);
-YB_STRONGLY_TYPED_UUID_IMPL(TestUuid);
 
 TEST(TestStronglyTypedUuid, TestBasic) {
   // Assert that constant kUndefined.IsValid() is false and that undefined == undefined.

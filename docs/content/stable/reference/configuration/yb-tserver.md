@@ -496,6 +496,10 @@ To set the flag, join the fields using a comma (`,`) and enclose the final flag 
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
+##### --ysql_pg_conf
+
+  Deprecated. Use `--ysql_pg_conf_csv` instead.
+
 ##### --ysql_pg_conf_csv
 
 Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file.
