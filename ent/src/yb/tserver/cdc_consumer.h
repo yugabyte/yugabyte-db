@@ -19,7 +19,9 @@
 #include <unordered_set>
 
 #include "yb/cdc/cdc_util.h"
+#include "yb/client/client_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
@@ -75,7 +77,7 @@ class CDCConsumer {
       std::unique_ptr<CDCClient> local_client);
 
   ~CDCConsumer();
-  void Shutdown();
+  void Shutdown() EXCLUDES(should_run_mutex_);
 
   // Refreshes the in memory state when we receive a new registry from master.
   void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
@@ -101,9 +103,11 @@ class CDCConsumer {
 
   Status ReloadCertificates();
 
+  Status PublishXClusterSafeTime();
+
  private:
   // Runs a thread that periodically polls for any new threads.
-  void RunThread();
+  void RunThread() EXCLUDES(should_run_mutex_);
 
   // Loops through all the entries in the registry and creates a producer -> consumer tablet
   // mapping.
@@ -114,20 +118,22 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
-  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
-                             const cdc::ConsumerTabletInfo consumer_tablet_info);
+  bool ShouldContinuePolling(
+      const cdc::ProducerTabletInfo producer_tablet_info,
+      const cdc::ConsumerTabletInfo consumer_tablet_info) EXCLUDES(should_run_mutex_);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
   // Mutex and cond for should_run_ state.
   std::mutex should_run_mutex_;
   std::condition_variable cond_;
+  bool should_run_ = true;
 
   // Mutex for producer_consumer_tablet_map_from_master_.
-  rw_spinlock master_data_mutex_ ACQUIRED_AFTER(should_run_mutex_);
+  rw_spinlock master_data_mutex_;
 
   // Mutex for producer_pollers_map_.
-  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(should_run_mutex_, master_data_mutex_);
+  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
 
@@ -159,11 +165,15 @@ class CDCConsumer {
     GUARDED_BY(master_data_mutex_);
   std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
-  bool should_run_ = true;
-
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
+
+  std::mutex safe_time_update_mutex_;
+  MonoTime last_safe_time_published_at_ GUARDED_BY(safe_time_update_mutex_);
+
+  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_);
+  std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
 };
 
 } // namespace enterprise

@@ -47,4 +47,5 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   cql-backup-test
   twodc_ysql-test
   twodc-test
+  xcluster_safe_time-itest
   PARENT_SCOPE)

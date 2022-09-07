@@ -294,6 +294,8 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
 std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     MiniCluster* cluster, const TableId& table_id);
 
+tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id);
+
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(
     MiniCluster* cluster);
 
