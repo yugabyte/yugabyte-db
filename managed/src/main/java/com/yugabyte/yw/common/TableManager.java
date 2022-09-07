@@ -267,9 +267,7 @@ public class TableManager extends DevopsBase {
                 commandArgs.add("--region_location");
                 commandArgs.add(
                     BackupUtil.getExactRegionLocation(
-                        backupTableParams.storageLocation,
-                        customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText(),
-                        regionLocation.asText()));
+                        backupTableParams.storageLocation, regionLocation.asText()));
               }
             }
           }

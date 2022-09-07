@@ -1918,7 +1918,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             Backup.BackupVersion.V2);
     backup.setTaskUUID(userTaskUUID);
     backupTableParams.backupUuid = backup.backupUUID;
-
+    backupTableParams.baseBackupUUID = backup.baseBackupUUID;
     for (BackupTableParams backupParams : backupTableParams.backupList) {
       createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
     }

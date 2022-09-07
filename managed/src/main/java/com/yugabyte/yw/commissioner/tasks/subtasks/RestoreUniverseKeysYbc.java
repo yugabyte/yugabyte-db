@@ -67,7 +67,8 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
           ybcBackupUtil.getYbcTaskID(
               userTaskUUID, backupStorageInfo.backupType.toString(), backupStorageInfo.keyspace);
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
-          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId, true);
+          ybcBackupUtil.createDsmRequest(
+              taskParams().customerUUID, taskParams().storageConfigUUID, taskId, backupStorageInfo);
       String successMarkerString =
           ybcManager.downloadSuccessMarker(
               downloadSuccessMarkerRequest, taskParams().universeUUID, taskId);

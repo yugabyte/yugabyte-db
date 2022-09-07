@@ -54,6 +54,8 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+
 @Singleton
 @Slf4j
 public class AWSUtil implements CloudUtil {
@@ -78,6 +80,7 @@ public class AWSUtil implements CloudUtil {
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
   // This method is a way to check if given S3 config can extract objects.
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
@@ -91,7 +94,8 @@ public class AWSUtil implements CloudUtil {
         if (bucketSplit.length == 1) {
           Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
           if (!doesBucketExist) {
-            log.error("No bucket exists with name {}", bucketName);
+            throw new RuntimeException(
+                String.format("No S3 bucket found with name %s", bucketName));
           }
         } else {
           ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
@@ -102,12 +106,26 @@ public class AWSUtil implements CloudUtil {
       } catch (AmazonS3Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s", location),
+                "Credential cannot list objects in the specified backup location %s: {}", location),
             e.getErrorMessage());
         return false;
       }
     }
     return true;
+  }
+
+  @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+    // Buckets should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config bucket %s and backup location bucket %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
   }
 
   @Override
@@ -347,17 +365,41 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
             ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
+    cloudDir = BackupUtil.appendSlash(cloudDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
+    }
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+    return YbcBackupUtil.buildCloudStoreSpec(
+        bucket, cloudDir, previousCloudDir, s3CredsMap, Util.S3);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String[] splitValues = getSplitLocationValue(storageLocation);
+    String bucket = splitValues[0];
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    if (isDsm) {
+      String location = BackupUtil.appendSlash(splitValues[1]);
+      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", s3CredsMap, Util.S3);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", s3CredsMap, Util.S3);
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {
