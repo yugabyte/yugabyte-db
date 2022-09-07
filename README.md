@@ -40,7 +40,10 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Graph visualization tool for AGE
 
-Apache AGE Viewer is a subproject of the Apache AGE project:  <https://github.com/apache/age-viewer>
+Apache AGE Viewer is a user interface for Apache AGE to provide visualization and exploration of data.
+It provides a simple web visualization tool for users to enter complex graph queries and explore the results in graph and table forms.
+Apache AGE Viewer is enhanced to proceed with large graph data and discover the insights through various graph algorithms.
+Apache AGE Viewer will become a graph data administration and development platform for Apache AGE to support multiple relational databases: <https://github.com/apache/age-viewer>.
 
 - This is a visualization tool.
 After AGE Extension Installation
@@ -50,7 +53,7 @@ Under Connect to Database , select database type as "Apache AGE"
 
 ## Documentation
 
-Here is the link to the latest [Apache AGE documentation](https://age.apache.org/docs/master/index.html).
+Here is the link to the latest [Apache AGE documentation](https://age.apache.org/age-manual/master/index.html).
 You can learn about how to install Apache AGE, its features and built-in functions and how to use various Cypher queries.
 
 ## Language Specific Drivers
