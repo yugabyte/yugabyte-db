@@ -14,17 +14,18 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
+import io.fabric8.kubernetes.api.model.events.v1.Event;
+import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +43,19 @@ public class ShellKubernetesManager extends KubernetesManager {
   public static final Logger LOG = LoggerFactory.getLogger(ShellKubernetesManager.class);
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
+    return execCommand(config, command, true /*logCmdOutput*/);
+  }
+
+  private ShellResponse execCommand(
+      Map<String, String> config, List<String> command, boolean logCmdOutput) {
     String description = String.join(" ", command);
-    return shellProcessHandler.run(command, config, description);
+    return shellProcessHandler.run(
+        command,
+        ShellProcessContext.builder()
+            .description(description)
+            .extraEnvVars(config)
+            .logCmdOutput(logCmdOutput)
+            .build());
   }
 
   private <T> T deserialize(String json, Class<T> type) {
@@ -95,7 +107,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "json",
             "-l",
             "release=" + helmReleaseName);
-    ShellResponse response = execCommand(config, commandList).processErrors();
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
     return deserialize(response.message, PodList.class).getItems();
   }
 
@@ -123,7 +136,8 @@ public class ShellKubernetesManager extends KubernetesManager {
   public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
-    ShellResponse response = execCommand(config, commandList).processErrors();
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
     return deserialize(response.message, Pod.class).getStatus();
   }
 
@@ -156,12 +170,11 @@ public class ShellKubernetesManager extends KubernetesManager {
   public List<Node> getNodeInfos(Map<String, String> config) {
     List<String> commandList = ImmutableList.of("kubectl", "get", "nodes", "-o", "json");
     ShellResponse response =
-        execCommand(config, commandList).processErrors("Unable to get node information");
+        execCommand(config, commandList, false /*logCmdOutput*/)
+            .processErrors("Unable to get node information");
     return deserialize(response.message, NodeList.class).getItems();
   }
 
-  // TODO: disable the logging of stdout of this command if possibile,
-  // as it just leaks the secret content in the logs at DEBUG level.
   @Override
   public Secret getSecret(Map<String, String> config, String secretName, String namespace) {
     List<String> commandList = new ArrayList<String>();
@@ -170,7 +183,9 @@ public class ShellKubernetesManager extends KubernetesManager {
       commandList.add("--namespace");
       commandList.add(namespace);
     }
-    ShellResponse response = execCommand(config, commandList).processErrors("Unable to get secret");
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/)
+            .processErrors("Unable to get secret");
     return deserialize(response.message, Secret.class);
   }
 
@@ -228,7 +243,16 @@ public class ShellKubernetesManager extends KubernetesManager {
   public void deletePod(Map<String, String> config, String namespace, String podName) {
     List<String> masterCommandList =
         ImmutableList.of("kubectl", "--namespace", namespace, "delete", "pod", podName);
-    execCommand(config, masterCommandList);
+    execCommand(config, masterCommandList).processErrors("Unable to delete pod");
+  }
+
+  public List<Event> getEvents(Map<String, String> config, String namespace) {
+    List<String> commandList =
+        ImmutableList.of("kubectl", "get", "events", "-n", namespace, "-o", "json");
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/)
+            .processErrors("Unable to list events");
+    return deserialize(response.message, EventList.class).getItems();
   }
 
   // generateNamespaceYaml creates a namespace YAML file for given
