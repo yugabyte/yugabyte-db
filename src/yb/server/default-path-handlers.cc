@@ -52,8 +52,10 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <set>
 
 #include <boost/algorithm/string.hpp>
+#include "yb/util/string_case.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
@@ -107,7 +109,8 @@ namespace {
 
 // Html/Text formatting tags
 struct Tags {
-  string pre_tag, end_pre_tag, line_break, header, end_header;
+  string pre_tag, end_pre_tag, line_break, header, end_header, table, end_table, row, end_row,
+      table_header, end_table_header, cell, end_cell;
 
   // If as_text is true, set the html tags to a corresponding raw text representation.
   explicit Tags(bool as_text) {
@@ -116,13 +119,29 @@ struct Tags {
       end_pre_tag = "\n";
       line_break = "\n";
       header = "";
-      end_header = "";
+      end_header = "\n";
+      table = "";
+      end_table = "\n";
+      row = "";
+      end_row = "\n";
+      table_header = "";
+      end_table_header = "";
+      cell = "";
+      end_cell = "|";
     } else {
       pre_tag = "<pre>";
       end_pre_tag = "</pre>";
       line_break = "<br/>";
       header = "<h2>";
       end_header = "</h2>";
+      table = "<table class='table table-striped'>";
+      end_table = "</table>";
+      row = "<tr>";
+      end_row = "</tr>";
+      table_header = "<th>";
+      end_table_header = "</th>";
+      cell = "<td>";
+      end_cell = "</td>";
     }
   }
 };
@@ -157,13 +176,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-// Registered to handle "/varz", and prints out all command-line flags and their values.
-static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
-  Tags tags(as_text);
-  (*output) << tags.header << "Command-line Flags" << tags.end_header;
-  (*output) << tags.pre_tag;
+std::vector<google::CommandLineFlagInfo> GetAllFlags(const Webserver::WebRequest& req) {
   std::vector<google::CommandLineFlagInfo> flag_infos;
   google::GetAllFlags(&flag_infos);
 
@@ -177,7 +190,10 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
       for (auto& flag_info : flag_infos) {
         auto varz_it = varz.find(flag_info.name);
         if (varz_it != varz.end()) {
-          flag_info.current_value  = varz_it->second;
+          if (flag_info.current_value != varz_it->second) {
+            flag_info.current_value = varz_it->second;
+            flag_info.is_default = false;
+          }
           varz.erase(varz_it);
         }
       }
@@ -187,22 +203,138 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
         google::CommandLineFlagInfo flag_info;
         flag_info.name = flag.first;
         flag_info.current_value = flag.second;
+        flag_info.default_value = "";
+        flag_info.is_default = false;
         flag_infos.push_back(flag_info);
       }
     }
   }
 
+  return flag_infos;
+}
+
+YB_DEFINE_ENUM(FlagType, (kInvalid)(kNodeInfo)(kCustom)(kAuto)(kDefault));
+
+struct FlagInfo {
+  string name;
+  string value;
+  FlagType type;
+};
+
+void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* output) {
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+  jw.String("flags");
+  jw.StartArray();
+
   for (const auto& flag_info : flag_infos) {
-    (*output) << "--" << flag_info.name << "=";
-    std::unordered_set<FlagTag> tags;
-    GetFlagTags(flag_info.name, &tags);
-    if (PREDICT_FALSE(ContainsKey(tags, FlagTag::kSensitive_info))) {
-      (*output) << "****" << endl;
-    } else {
-      (*output) << flag_info.current_value << endl;
-    }
+    jw.StartObject();
+    jw.String("name");
+    jw.String(flag_info.name);
+    jw.String("value");
+    jw.String(flag_info.value);
+    jw.String("type");
+    // Remove the prefix 'k' from the type name
+    jw.String(ToString(flag_info.type).substr(1));
+    jw.EndObject();
   }
-  (*output) << tags.end_pre_tag;
+
+  jw.EndArray();
+  jw.EndObject();
+}
+
+vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req) {
+  const std::set<string> node_info_flags{
+      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
+      "placement_cloud", "placement_region",   "placement_zone"};
+
+  const auto flags = GetAllFlags(req);
+
+  vector<FlagInfo> flag_infos;
+  flag_infos.reserve(flags.size());
+
+  for (const auto& flag : flags) {
+    std::unordered_set<FlagTag> flag_tags;
+    GetFlagTags(flag.name, &flag_tags);
+
+    FlagInfo flag_info;
+    flag_info.name = flag.name;
+    flag_info.type = FlagType::kDefault;
+
+    if (PREDICT_FALSE(ContainsKey(flag_tags, FlagTag::kSensitive_info))) {
+      flag_info.value = "****";
+    } else {
+      flag_info.value = flag.current_value;
+    }
+
+    if (node_info_flags.contains(flag.name)) {
+      flag_info.type = FlagType::kNodeInfo;
+    } else if (flag.current_value != flag.default_value) {
+      flag_info.type = FlagType::kCustom;
+    } else if (flag_tags.contains(FlagTag::kAuto)) {
+      flag_info.type = FlagType::kAuto;
+    }
+
+    flag_infos.push_back(std::move(flag_info));
+  }
+
+  // Sort by type, name ascending
+  std::sort(flag_infos.begin(), flag_infos.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
+    if (lhs.type == rhs.type) {
+      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
+    }
+    return to_underlying(lhs.type) < to_underlying(rhs.type);
+  });
+
+  return flag_infos;
+}
+
+// Registered to handle "/api/v1/varz", and prints out all command-line flags and their values in
+// JSON format.
+static void GetFlagsJsonHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  const auto flag_infos = GetFlagInfos(req);
+  ConvertFlagsToJson(std::move(flag_infos), &resp->output);
+}
+
+// Registered to handle "/varz", and prints out all command-line flags and their values in tabular
+// format. If "raw" argument was passed ("/varz?raw") then prints it in "--name=value" format.
+static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  auto flag_infos = GetFlagInfos(req);
+  if (req.parsed_args.find("raw") != req.parsed_args.end()) {
+    for (const auto& flag_info : flag_infos) {
+      output << "--" << flag_info.name << "=" << flag_info.value << endl;
+    }
+    return;
+  }
+
+  Tags tags(false /* as_text */);
+
+  // List is sorted by type. Convert to HTML table for each type.
+  FlagType previous_type = FlagType::kInvalid;
+  bool first_table = true;
+  for (auto& flag_info : flag_infos) {
+    if (previous_type != flag_info.type) {
+      if (!first_table) {
+        output << tags.end_table;
+      }
+      first_table = false;
+
+      previous_type = flag_info.type;
+
+      string type_str = ToString(flag_info.type).substr(1);
+      output << tags.header << type_str << " Flags" << tags.end_header;
+      output << tags.table << tags.row << tags.table_header << "Name" << tags.end_table_header
+             << tags.table_header << "Value" << tags.end_table_header << tags.end_row;
+    }
+
+    output << tags.row << tags.cell << flag_info.name << tags.end_cell;
+    output << tags.cell << flag_info.value << tags.end_cell << tags.end_row;
+  }
+
+  if (!first_table) {
+    output << tags.end_table;
+  }
 }
 
 // Registered to handle "/status", and simply returns empty JSON.
@@ -432,6 +564,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
                                  MemTrackersHandler, true, false);
+  webserver->RegisterPathHandler("/api/v1/varz", "Flags", GetFlagsJsonHandler, false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
                                  HandleGetVersionInfo, false, false);
 
