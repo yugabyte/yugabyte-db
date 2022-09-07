@@ -438,14 +438,25 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(Slice partition_key) {
   return BigEndian::Load16(partition_key.data());
 }
 
-string PartitionSchema::GetEncodedKeyPrefix(
-    const string& partition_key, const PartitionSchemaPB& partition_schema) {
+Result<std::string> PartitionSchema::GetEncodedKeyPrefix(
+    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
   if (partition_schema.has_hash_schema()) {
     const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-    docdb::KeyBytes split_encoded_key_bytes;
-    docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
-      .Hash(doc_key_hash, std::vector<docdb::KeyEntryValue>());
-    return split_encoded_key_bytes.ToStringBuffer();
+
+    // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
+    // in order to be guarded from any possible future update in the flow.
+    docdb::KeyBytes prefix_bytes;
+    docdb::DocKeyEncoderAfterTableIdStep(&prefix_bytes)
+        .Hash(doc_key_hash, std::vector<docdb::KeyEntryValue>());
+    const auto prefix_size = VERIFY_RESULT(docdb::DocKey::EncodedSize(
+        prefix_bytes, docdb::DocKeyPart::kUpToHashCode));
+    if (PREDICT_FALSE((prefix_size == 0))) {
+      // Sanity check, should not happen for normal state.
+      return STATUS(IllegalState,
+          Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
+    }
+    prefix_bytes.Truncate(prefix_size);
+    return prefix_bytes.ToStringBuffer();
   }
   return partition_key;
 }

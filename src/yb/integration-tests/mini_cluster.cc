@@ -1213,4 +1213,13 @@ Status WaitAllReplicasSynchronizedWithLeader(
   return Status::OK();
 }
 
+Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
+  CHECK_NOTNULL(peer.get());
+  return LoggedWaitFor([peer] {
+        return peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
+    },
+    timeout,
+    Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
+}
+
 }  // namespace yb

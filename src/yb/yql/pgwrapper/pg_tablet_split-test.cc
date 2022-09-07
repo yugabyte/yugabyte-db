@@ -94,12 +94,6 @@ class PgTabletSplitTest : public PgMiniTestBase {
     }, 15s * kTimeMultiplier, "Wait for split completion.");
   }
 
-  Status WaitForAnySstFiles(tablet::TabletPeer* tablet_peer) {
-    return WaitFor([&] {
-        return tablet_peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
-    }, 5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1));
-  }
-
   Status DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
     for (auto& peer : *peers) {
       RETURN_NOT_OK(peer->tablet()->doc_db().regular->SetOptions({
@@ -187,7 +181,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   auto peer = *peer_it;
 
   // Make sure SST files appear to be able to split.
-  ASSERT_OK(WaitForAnySstFiles(peer.get()));
+  ASSERT_OK(WaitForAnySstFiles(peer));
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto result = peer->tablet()->GetEncodedMiddleSplitKey();
@@ -241,7 +235,7 @@ class PgPartitioningVersionTest :
                       expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
-    RETURN_NOT_OK(WaitForAnySstFiles(peer.get()));
+    RETURN_NOT_OK(WaitForAnySstFiles(peer));
     return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer);
   }
 
@@ -415,7 +409,7 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
-    ASSERT_OK(WaitForAnySstFiles(peer.get()));
+    ASSERT_OK(WaitForAnySstFiles(peer));
 
     auto status = InvokeSplitTabletRpc(peer->tablet_id());
     if (partitioning_version == 0) {
@@ -491,7 +485,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
       // Make sure SST files appear to be able to split
-      ASSERT_OK(WaitForAnySstFiles(parent_peer.get()));
+      ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
       const auto encoded_split_key =
@@ -599,7 +593,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
-    ASSERT_OK(WaitForAnySstFiles(parent_peer.get()));
+    ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
     auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());

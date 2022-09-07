@@ -363,6 +363,10 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_
 
 Status WaitAllReplicasSynchronizedWithLeader(
     MiniCluster* cluster, CoarseTimePoint deadline);
+
+Status WaitForAnySstFiles(
+    tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

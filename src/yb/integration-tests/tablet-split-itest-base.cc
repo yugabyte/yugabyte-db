@@ -447,9 +447,8 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::
 
 Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpcSync(
     const std::string& tablet_id) {
-  auto master = cluster_->mini_master();
-  auto master_admin_proxy =
-      std::make_unique<master::MasterAdminProxy>(proxy_cache_.get(), master->bound_rpc_addr());
+  auto master_admin_proxy = master::MasterAdminProxy(
+      proxy_cache_.get(), VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
@@ -457,7 +456,7 @@ Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpc
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   master::SplitTabletResponsePB resp;
-  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
+  RETURN_NOT_OK(master_admin_proxy.SplitTablet(req, &resp, &controller));
   return resp;
 }
 
