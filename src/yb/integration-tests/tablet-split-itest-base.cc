@@ -49,6 +49,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -271,25 +272,64 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 }
 
 template <class MiniClusterType>
-Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
+Status TabletSplitITestBase<MiniClusterType>::FlushTable(const TableId& table_id) {
   return this->client_->FlushTables(
-      {this->table_->id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false);
+      {table_id}, /* add_indexes = */ false, /* timeout_secs = */ 30, /* is_compaction = */ false);
+}
+
+template <class MiniClusterType>
+Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
+  return FlushTable(this->table_->id());
+}
+
+Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
+  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() {
+          return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
+        },
+        30s, "Did not apply write transactions from intents db in time."));
+  }
+  return Status::OK();
+}
+
+Status TabletSplitExternalMiniClusterITest::WaitForTableIntentsApplied(const TableId& table_id) {
+  // TODO(jhe) - Check for just table_id, currently checking for all intents.
+  RETURN_NOT_OK(cluster_->WaitForAllIntentsApplied(30s));
+  return Status::OK();
+}
+
+template <class MiniClusterType>
+Status TabletSplitITestBase<MiniClusterType>::WaitForTestTableIntentsApplied() {
+  return WaitForTableIntentsApplied(this->table_->id());
 }
 
 template <class MiniClusterType>
 Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
-    TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
-        const uint32_t num_rows, const int32_t start_key) {
-  auto result = VERIFY_RESULT(WriteRows(num_rows, start_key));
-  RETURN_NOT_OK(FlushTestTable());
+TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
+    client::TableHandle* table, const uint32_t num_rows, const int32_t start_key,
+    bool wait_for_intents) {
+  auto result = VERIFY_RESULT(WriteRows(table, num_rows, start_key));
+  // Wait for the write transaction to move from intents db to regular db on each peer before
+  // trying to flush.
+  if (wait_for_intents) {
+    RETURN_NOT_OK(WaitForTableIntentsApplied(table->table()->id()));
+  }
+  RETURN_NOT_OK(FlushTable(table->table()->id()));
   return result;
 }
 
 template <class MiniClusterType>
+Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
+TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
+    const uint32_t num_rows, const int32_t start_key, bool wait_for_intents) {
+  return WriteRowsAndFlush(&this->table_, num_rows, start_key, wait_for_intents);
+}
+
+template <class MiniClusterType>
 Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGetMiddleHashCode(
-    uint32_t num_rows) {
-  auto min_max_hash_code = VERIFY_RESULT(WriteRowsAndFlush(num_rows, 1));
+    uint32_t num_rows, bool wait_for_intents) {
+  auto min_max_hash_code = VERIFY_RESULT(WriteRowsAndFlush(num_rows, 1, wait_for_intents));
   const auto split_hash_code = (min_max_hash_code.first + min_max_hash_code.second) / 2;
   LOG(INFO) << "Split hash code: " << split_hash_code;
 
@@ -383,9 +423,11 @@ Result<master::TabletInfos> TabletSplitITest::GetTabletInfosForTable(const Table
   return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
 }
 
-Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(uint32_t num_rows) {
+Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(
+    uint32_t num_rows, bool wait_for_intents) {
   CreateSingleTablet();
-  const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows));
+  const auto split_hash_code =
+      VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows, wait_for_intents));
   return SplitTabletAndValidate(split_hash_code, num_rows);
 }
 
