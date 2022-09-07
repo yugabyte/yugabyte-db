@@ -11,6 +11,7 @@ import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.events.v1.Event;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.slf4j.Logger;
@@ -149,7 +151,16 @@ public abstract class KubernetesManager {
 
   private void processHelmResponse(
       Map<String, String> config, String universePrefix, String namespace, ShellResponse response) {
-    if (response != null && response.code != ShellResponse.ERROR_CODE_SUCCESS) {
+
+    if (response != null && !response.isSuccess()) {
+
+      try {
+        List<Event> events = getEvents(config, namespace);
+
+        LOG.info("Events in namespace {} : \n {} ", namespace, toReadableString(events));
+      } catch (Exception ex) {
+        LOG.warn("Ignoring error listing events in namespace {}: {}", namespace, ex);
+      }
       String message;
       List<Pod> pods = getPodInfos(config, universePrefix, namespace);
       for (Pod pod : pods) {
@@ -241,6 +252,20 @@ public abstract class KubernetesManager {
     return null;
   }
 
+  private String toReadableString(Event event) {
+    return event.getAdditionalProperties().getOrDefault("firstTimestamp", "null first ts")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("lastTimestamp", "null last ts")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("message", "null msg")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("involvedObject", "null obj");
+  }
+
+  private String toReadableString(List<Event> events) {
+    return events.stream().map(x -> toReadableString(x)).collect(Collectors.joining("\n"));
+  }
+
   /* kubernetes interface */
 
   public abstract void createNamespace(Map<String, String> config, String universePrefix);
@@ -282,4 +307,6 @@ public abstract class KubernetesManager {
   public abstract void deleteNamespace(Map<String, String> config, String namespace);
 
   public abstract void deletePod(Map<String, String> config, String namespace, String podName);
+
+  public abstract List<Event> getEvents(Map<String, String> config, String namespace);
 }
