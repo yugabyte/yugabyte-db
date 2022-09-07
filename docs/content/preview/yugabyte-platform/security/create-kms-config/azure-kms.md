@@ -39,64 +39,48 @@ type: docs
 
 Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft Azure KMS. 
 
-The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
+Conceptually, Azure KMS consists of a key vault containing one or more keys, with each key capable of having multiple versions.
 
-- `kms:CreateKey`
-- `kms:ListAliases`
-- `kms:ListKeys`
-- `kms:CreateAlias`
-- `kms:DeleteAlias`
-- `kms:UpdateAlias`
-- `kms:TagResource`
+Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 
-You can create a KMS configuration that uses AWS KMS as follows:
+- Set the vault permission model as Vault access policy.
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get, List, Create, and cryptographic operations permissions of Unwrap Key, Wrap Key. 
+
+If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
+
+- The primary key version should be in the Enabled state.
+- The activation date should either be disabled or set to a date before the KMS configuration creation.
+- The expiration date should be disabled.
+- Permitted operations should have at least WRAP_KEY and UNWRAP_KEY.
+- The key rotation policy should not be defined in order to avoid automatic rotation.
+
+You can create a KMS configuration that uses Azure KMS, as follows:
 
 1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
-2. Click **Create New Config**.
+1. Click **Create New Config**.
 
 3. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
-    - **KMS Provider** — Select **AWS KMS**.
-    - **Use IAM Profile** — Specify whether or not to use an IAM profile attached to an Amazon Elastic Compute Cloud (EC2) instance running YugabyteDB. For more information, see [Using instance profiles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-ec2_instance-profiles.html).
-    - **Access Key Id** — Enter the identifier for the access key.
-    - **Secret Key Id** — Enter the identifier for the secret key.
-    - **Region** — Select the AWS region where the customer master key (CMK) that was used for generating the universe keys is to be located. This setting does not need to match the region where the encrypted universe resides on AWS.
-    - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
-    - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
+    - **KMS Provider** — Select **Azure KMS**.
+    - **Client ID** — Enter the Azure Active Directory (AD) application client ID.
+    - **Client Secret** — Enter the Azure AD application client secret.
+    - **Tenant ID** — Enter the Azure AD application tenant ID.
+    - **Key Vault URL** — Enter the key vault URI, as per your Azure portal Key Vault definition that should allow you to use the preceding three credentials to gain access to an application created in the Azure AD.
+    - **Key Name** — Enter the name of the master key. If a master key with the same name already exists in the key vault, the settings are validated and the existing key is used; otherwise, a new key is created automatically.
+    - **Key Algorithm** — The algorithm for the master key. Currently, only the RSA algorithm is supported.
+      Options: **RSA**
+    - **Key Size** — Select the size of the master key, in bits. Supported values are 2048 (default), 3072, and 4096.
 
-4. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
+    ![img](/images/yp/security/azurekms-config.png)
 
-    ```json
-        {
-            "Version": "2012-10-17",
-            "Id": "key-default-1",
-            "Statement": [
-                {
-                    "Sid": "Enable IAM User Permissions",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                },
-                {
-                    "Sid": "Allow access for Key Administrators",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                }
-            ]
-        }
-    ```
-
-5. Click **Save**.<br>
+3. Click **Save**.<br>
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+4. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+
+
+
+Note that YugabyteDB Anywhere does not manage the key vault.
