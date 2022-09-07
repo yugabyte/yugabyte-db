@@ -264,7 +264,7 @@ Status WaitForOpFromCurrentTerm(TServerDetails* replica,
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
-                             const string& tablet_id,
+                             const TabletId& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index,
                              MustBeCommitted must_be_committed) {
@@ -289,7 +289,7 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const vector<TServerDetails*>& servers,
-                             const string& tablet_id,
+                             const TabletId& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index,
                              MustBeCommitted must_be_committed) {
@@ -364,6 +364,52 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       "All replicas of tablet $0 could not converge on an index of at least $1 after $2. "
       "must_be_committed=$3. Latest received ids: $3, committed ids: $4",
       tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
+}
+
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const TabletServerMap& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid,
+                              MustBeCommitted must_be_committed) {
+  return WaitForServerToBeQuite(timeout,
+                                TServerDetailsVector(tablet_servers),
+                                tablet_id,
+                                last_logged_opid,
+                                must_be_committed);
+}
+
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const vector<TServerDetails*>& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid,
+                              MustBeCommitted must_be_committed) {
+  std::vector<consensus::OpIdType> opid_types{ consensus::OpIdType::RECEIVED_OPID };
+  if (must_be_committed) {
+    opid_types.push_back(consensus::OpIdType::COMMITTED_OPID);
+  }
+
+  OpId agreed_opid;
+  RETURN_NOT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        for (auto op_id_type : opid_types) {
+          const auto op_ids = VERIFY_RESULT(
+              itest::GetLastOpIdForEachReplica(tablet_id, tablet_servers, op_id_type, timeout));
+          for (auto op_id : op_ids) {
+            if (op_id > agreed_opid) {
+              agreed_opid = op_id;
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      timeout,
+      Format("Wait for replicas of tablet $0 to be quiet.", tablet_id)));
+
+  if (last_logged_opid) {
+    *last_logged_opid = agreed_opid;
+  }
+  return Status::OK();
 }
 
 // Wait until all specified replicas have logged the given index.
