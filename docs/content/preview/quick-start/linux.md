@@ -151,7 +151,7 @@ After the cluster has been created, clients can connect to the YSQL and YCQL API
 
 If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
-### Check cluster status
+### Check the cluster status
 
 Execute the following command to check the cluster status:
 
