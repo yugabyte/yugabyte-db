@@ -232,6 +232,7 @@ Gemojione
 Getter
 Getters
 gettext
+GFlag
 Git
 Gitaly
 Gitea
@@ -282,6 +283,7 @@ Iglu
 Immer
 inclusivity
 Ingress
+initdb
 initializer
 initializers
 innersource
@@ -571,6 +573,7 @@ scatterplot
 scatterplots
 Schemastore
 scrollable
+scrollbar
 Semgrep
 Sendmail
 Sentry
