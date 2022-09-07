@@ -1138,6 +1138,12 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "baseBackupUUID" : {
+          "description" : "Base backup UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "category" : {
           "description" : "Category of the backup",
           "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
@@ -1146,6 +1152,7 @@
         "completionTime" : {
           "description" : "Backup completion time",
           "format" : "date-time",
+          "readOnly" : true,
           "type" : "string"
         },
         "createTime" : {
@@ -1340,6 +1347,11 @@
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
           "type" : "string"
         },
+        "baseBackupUUID" : {
+          "description" : "UUID of the parent backup",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "cmkArn" : {
           "description" : "Amazon Resource Name (ARN) of the CMK",
           "type" : "string"
@@ -1417,6 +1429,16 @@
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
           "type" : "boolean"
+        },
+        "incrementalBackupFrequency" : {
+          "description" : "Frequency of incremental backups",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "incrementalBackupFrequencyTimeUnit" : {
+          "description" : "Time unit for user input incremental backup schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
         },
         "installYbc" : {
           "type" : "boolean"
@@ -1696,6 +1718,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "baseBackupUUID" : {
+          "description" : "Base backup UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "cmkArn" : {
           "description" : "Amazon Resource Name (ARN) of the CMK",
           "type" : "string"
@@ -1764,6 +1791,11 @@
         "firstTry" : {
           "description" : "Whether this task has been tried before",
           "type" : "boolean"
+        },
+        "fullChainSizeInBytes" : {
+          "description" : "Incremental backups chain size",
+          "format" : "int64",
+          "type" : "integer"
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",
@@ -4428,6 +4460,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "baseBackupUUID" : {
+          "description" : "Base backup UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "cmkArn" : {
           "description" : "Amazon Resource Name (ARN) of the CMK",
           "type" : "string"
@@ -4501,6 +4538,11 @@
         "firstTry" : {
           "description" : "Whether this task has been tried before",
           "type" : "boolean"
+        },
+        "fullChainSizeInBytes" : {
+          "description" : "Incremental backups chain size",
+          "format" : "int64",
+          "type" : "integer"
         },
         "ignoreErrors" : {
           "description" : "Should table backup errors be ignored",

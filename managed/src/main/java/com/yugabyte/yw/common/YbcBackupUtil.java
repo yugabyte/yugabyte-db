@@ -35,6 +35,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.ConstraintViolation;
 import javax.validation.Valid;
@@ -46,6 +48,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -67,12 +73,15 @@ public class YbcBackupUtil {
   // Time to wait (in millisec) between each poll to ybc.
   public static final int WAIT_EACH_ATTEMPT_MS = 15000;
   public static final int MAX_TASK_RETRIES = 10;
+  public static final String DEFAULT_REGION_STRING = "default_region";
 
   @Inject UniverseInfoHandler universeInfoHandler;
   @Inject YbcClientService ybcService;
   @Inject BackupUtil backupUtil;
   @Inject CustomerConfigService configService;
   @Inject EncryptionAtRestManager encryptionAtRestManager;
+
+  public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public static class YbcBackupResponse {
@@ -184,7 +193,7 @@ public class YbcBackupUtil {
           rL.REGION = r;
           rL.LOCATION =
               BackupUtil.getExactRegionLocation(
-                  tableParams.storageLocation, configData.backupLocation, regionLocationMap.get(r));
+                  tableParams.storageLocation, regionLocationMap.get(r));
           regionLocations.add(rL);
         });
     return regionLocations;
@@ -214,6 +223,18 @@ public class YbcBackupUtil {
    */
   public BackupServiceTaskCreateRequest createYbcBackupRequest(
       BackupTableParams backupTableParams) {
+    return createYbcBackupRequest(backupTableParams, null);
+  }
+
+  /**
+   * Creates backup task request compatible with YB-Controller
+   *
+   * @param backupTableParams This backup's params.
+   * @param previousTableParam Previous backup's params for incremental backup.
+   * @return BackupServiceTaskCreateRequest object
+   */
+  public BackupServiceTaskCreateRequest createYbcBackupRequest(
+      BackupTableParams backupTableParams, BackupTableParams previousTableParams) {
     CustomerConfig config =
         configService.getOrBadRequest(
             backupTableParams.customerUuid, backupTableParams.storageConfigUUID);
@@ -223,27 +244,20 @@ public class YbcBackupUtil {
             backupTableParams.backupType.name(),
             backupTableParams.getKeyspace());
 
-    // Redundant for now.
-    boolean setCompression = false;
-    String encryptionPassphrase = "";
-
     NamespaceType namespaceType = getNamespaceType(backupTableParams.backupType);
     String specificCloudDir =
-        BackupUtil.getBackupIdentifier(
-            ((CustomerConfigStorageData) config.getDataObject()).backupLocation,
-            backupTableParams.storageLocation,
-            true);
-    CloudStoreConfig cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
+        BackupUtil.getBackupIdentifier(backupTableParams.storageLocation, true);
+
+    // For previous backup location( default + regional)
+    Map<String, String> keyspacePreviousLocationsMap =
+        backupUtil.getKeyspaceLocationMap(previousTableParams);
+    CloudStoreConfig cloudStoreConfig =
+        createBackupConfig(config, specificCloudDir, keyspacePreviousLocationsMap);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
 
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
-        BackupServiceTaskCreateRequest.newBuilder()
-            .setTaskId(taskID)
-            .setCompression(setCompression)
-            .setCsConfig(cloudStoreConfig)
-            .setEncryptionPassphrase(encryptionPassphrase)
-            .setNsType(namespaceType)
-            .setExtendedArgs(extendedArgs);
+        backupServiceTaskCreateBuilder(taskID, namespaceType, extendedArgs);
+    backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
     if (CollectionUtils.isNotEmpty(backupTableParams.tableNameList)) {
       TableBackupSpec tableBackupSpec = getTableBackupSpec(backupTableParams);
       backupServiceTaskCreateRequestBuilder.setTbs(tableBackupSpec);
@@ -256,44 +270,56 @@ public class YbcBackupUtil {
   }
 
   public BackupServiceTaskCreateRequest createYbcRestoreRequest(
-      RestoreBackupParams restoreBackupParams,
+      UUID customerUUID,
+      UUID storageConfigUUID,
       BackupStorageInfo backupStorageInfo,
       String taskId,
-      boolean isSuccessFileOnly) {
-    CustomerConfig config =
-        configService.getOrBadRequest(
-            restoreBackupParams.customerUUID, restoreBackupParams.storageConfigUUID);
-    CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
-    String specificCloudDir =
-        BackupUtil.getBackupIdentifier(
-            configData.backupLocation, backupStorageInfo.storageLocation, true);
-
-    // Redundant for now.
-    boolean setCompression = false;
-    String encryptionPassphrase = "";
-
+      YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
     String keyspace = backupStorageInfo.keyspace;
     BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
+    BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
+        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
+    CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
+    CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
+    backupServiceTaskCreateRequestBuilder.setNs(keyspace).setCsConfig(cloudStoreConfig);
+    return backupServiceTaskCreateRequestBuilder.build();
+  }
+
+  public BackupServiceTaskCreateRequest createDsmRequest(
+      UUID customerUUID, UUID storageConfigUUID, String taskId, BackupStorageInfo storageInfo) {
+    BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
+    BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
+        backupServiceTaskCreateBuilder(
+            taskId, getNamespaceType(storageInfo.backupType), extendedArgs);
+    CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
+    CloudStoreConfig cloudStoreConfig = createDsmConfig(config, storageInfo.storageLocation);
+    backupServiceTaskCreateRequestBuilder.setDsm(true).setCsConfig(cloudStoreConfig);
+    return backupServiceTaskCreateRequestBuilder.build();
+  }
+
+  public BackupServiceTaskCreateRequest createDsmRequest(
+      UUID customerUUID, UUID storageConfigUUID, String taskId, BackupTableParams tableParams) {
+    BackupStorageInfo storageInfo = new BackupStorageInfo();
+    storageInfo.backupType = tableParams.backupType;
+    storageInfo.storageLocation = tableParams.storageLocation;
+    return createDsmRequest(customerUUID, storageConfigUUID, taskId, storageInfo);
+  }
+
+  public BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateBuilder(
+      String taskId, NamespaceType nsType, BackupServiceTaskExtendedArgs exArgs) {
+    // Redundant for now.
+    boolean setCompression = false;
+    String encryptionPassphrase = "";
 
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         BackupServiceTaskCreateRequest.newBuilder()
             .setTaskId(taskId)
             .setCompression(setCompression)
             .setEncryptionPassphrase(encryptionPassphrase)
-            .setNsType(namespaceType)
-            .setExtendedArgs(extendedArgs);
-
-    CloudStoreConfig cloudStoreConfig = null;
-    if (isSuccessFileOnly) {
-      cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, true);
-      backupServiceTaskCreateRequestBuilder.setDsm(true).setCsConfig(cloudStoreConfig);
-    } else {
-      cloudStoreConfig = createCloudStoreConfig(config, specificCloudDir, false);
-      backupServiceTaskCreateRequestBuilder.setNs(keyspace).setCsConfig(cloudStoreConfig);
-    }
-
-    return backupServiceTaskCreateRequestBuilder.build();
+            .setNsType(nsType)
+            .setExtendedArgs(exArgs);
+    return backupServiceTaskCreateRequestBuilder;
   }
 
   /**
@@ -327,12 +353,17 @@ public class YbcBackupUtil {
   }
 
   public static CloudStoreSpec buildCloudStoreSpec(
-      String bucket, String cloudDir, Map<String, String> credsMap, String configType) {
+      String bucket,
+      String cloudDir,
+      String prevCloudDir,
+      Map<String, String> credsMap,
+      String configType) {
     CloudStoreSpec cloudStoreSpec =
         CloudStoreSpec.newBuilder()
             .putAllCreds(credsMap)
             .setBucket(bucket)
             .setCloudDir(cloudDir)
+            .setPrevCloudDir(prevCloudDir)
             .setType(getCloudType(configType))
             .build();
     return cloudStoreSpec;
@@ -349,8 +380,21 @@ public class YbcBackupUtil {
    * @param commonSuffix
    * @return CloudStoreConfig object for YB-Controller task.
    */
-  public CloudStoreConfig createCloudStoreConfig(
-      CustomerConfig config, String commonSuffix, boolean isSuccessFileOnly) {
+  public CloudStoreConfig createBackupConfig(CustomerConfig config, String commonSuffix) {
+    return createBackupConfig(config, commonSuffix, new HashMap<>());
+  }
+
+  /**
+   * Create cloud store config for YB-Controller backup task with previous backup location.
+   *
+   * @param config
+   * @param commonSuffix
+   * @return CloudStoreConfig object for YB-Controller task.
+   */
+  public CloudStoreConfig createBackupConfig(
+      CustomerConfig config,
+      String commonSuffix,
+      Map<String, String> keyspacePreviousLocationsMap) {
     String configType = config.name;
     CustomerConfigData configData = config.getDataObject();
     CloudStoreSpec defaultSpec = null;
@@ -358,18 +402,21 @@ public class YbcBackupUtil {
     StorageUtil storageUtil = StorageUtil.getStorageUtil(configType);
     defaultSpec =
         storageUtil.createCloudStoreSpec(
-            ((CustomerConfigStorageData) configData).backupLocation, commonSuffix, configData);
+            ((CustomerConfigStorageData) configData).backupLocation,
+            commonSuffix,
+            keyspacePreviousLocationsMap.get(DEFAULT_REGION_STRING),
+            configData);
     cloudStoreConfigBuilder.setDefaultSpec(defaultSpec);
-    if (isSuccessFileOnly) {
-      return cloudStoreConfigBuilder.build();
-    }
     Map<String, String> regionLocationMap =
         StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
     Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
     if (MapUtils.isNotEmpty(regionLocationMap)) {
       regionLocationMap.forEach(
           (r, bL) -> {
-            regionSpecMap.put(r, storageUtil.createCloudStoreSpec(bL, commonSuffix, configData));
+            regionSpecMap.put(
+                r,
+                storageUtil.createCloudStoreSpec(
+                    bL, commonSuffix, keyspacePreviousLocationsMap.get(r), configData));
           });
     }
     if (MapUtils.isNotEmpty(regionSpecMap)) {
@@ -378,14 +425,64 @@ public class YbcBackupUtil {
     return cloudStoreConfigBuilder.build();
   }
 
+  public CloudStoreConfig createRestoreConfig(
+      CustomerConfig config, YbcBackupResponse successMarker) {
+    CustomerConfigData configData = config.getDataObject();
+
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation defaultBucketLocation =
+        successMarker.responseCloudStoreSpec.defaultLocation;
+    CloudStoreSpec defaultSpec =
+        storageUtil.createRestoreCloudStoreSpec(
+            ((CustomerConfigStorageData) configData).backupLocation,
+            defaultBucketLocation.cloudDir,
+            configData,
+            false);
+
+    CloudStoreConfig.Builder csConfigBuilder =
+        CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
+
+    Map<String, String> regionLocationMap =
+        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
+    Map<String, CloudStoreSpec> regionSpecMap = new HashMap<>();
+    if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
+      successMarker.responseCloudStoreSpec.regionLocations.forEach(
+          (r, bL) -> {
+            if (regionLocationMap.containsKey(r)) {
+              regionSpecMap.put(
+                  r,
+                  storageUtil.createRestoreCloudStoreSpec(
+                      regionLocationMap.get(r), bL.cloudDir, configData, false));
+            }
+          });
+    }
+    if (MapUtils.isNotEmpty(regionSpecMap)) {
+      csConfigBuilder.putAllRegionSpecMap(regionSpecMap);
+    }
+    return csConfigBuilder.build();
+  }
+
+  public CloudStoreConfig createDsmConfig(CustomerConfig config, String defaultBackupLocation) {
+    CustomerConfigData configData = config.getDataObject();
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    CloudStoreSpec defaultSpec =
+        storageUtil.createRestoreCloudStoreSpec(defaultBackupLocation, "", configData, true);
+
+    CloudStoreConfig.Builder csConfigBuilder =
+        CloudStoreConfig.newBuilder().setDefaultSpec(defaultSpec);
+    return csConfigBuilder.build();
+  }
+
   public void validateConfigWithSuccessMarker(
-      YbcBackupResponse successMarker, CloudStoreConfig config) throws PlatformServiceException {
-    CloudStoreSpec defaultSpec = config.getDefaultSpec();
-    if (!(StringUtils.equals(
-            successMarker.responseCloudStoreSpec.defaultLocation.bucket, defaultSpec.getBucket())
-        && StringUtils.equals(
-            successMarker.responseCloudStoreSpec.defaultLocation.cloudDir,
-            defaultSpec.getCloudDir()))) {
+      YbcBackupResponse successMarker, CloudStoreConfig config, boolean forPrevDir)
+      throws PlatformServiceException {
+    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
+        compareAndValidate =
+            forPrevDir
+                ? SuccessMarkerConfigValidator.compareForPrevCloudDir
+                : SuccessMarkerConfigValidator.compareForCloudDir;
+    if (!compareAndValidate.apply(
+        successMarker.responseCloudStoreSpec.defaultLocation, config.getDefaultSpec())) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED, "Default location validation failed.");
     }
@@ -395,10 +492,7 @@ public class YbcBackupUtil {
         successMarker.responseCloudStoreSpec.regionLocations.forEach(
             (r, rS) -> {
               if (!(config.containsRegionSpecMap(r)
-                  && StringUtils.equals(
-                      rS.cloudDir, config.getRegionSpecMapOrThrow(r).getCloudDir())
-                  && StringUtils.equals(
-                      rS.bucket, config.getRegionSpecMapOrThrow(r).getBucket()))) {
+                  && compareAndValidate.apply(rS, config.getRegionSpecMapOrThrow(r)))) {
                 throw new PlatformServiceException(
                     PRECONDITION_FAILED, "Region mapping validation failed.");
               }
@@ -408,6 +502,19 @@ public class YbcBackupUtil {
             PRECONDITION_FAILED, "Region mapping validation failed.");
       }
     }
+  }
+
+  private interface SuccessMarkerConfigValidator {
+    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
+        compareForCloudDir =
+            (sm, cs) ->
+                StringUtils.equals(sm.bucket, cs.getBucket())
+                    && StringUtils.equals(sm.cloudDir, cs.getCloudDir());
+    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
+        compareForPrevCloudDir =
+            (sm, cs) ->
+                StringUtils.equals(sm.bucket, cs.getBucket())
+                    && StringUtils.equals(sm.cloudDir, cs.getPrevCloudDir());
   }
 
   /**
@@ -459,6 +566,22 @@ public class YbcBackupUtil {
       default:
         throw new PlatformServiceException(BAD_REQUEST, "Invalid bucket type provided");
     }
+  }
+
+  /**
+   * Return the keyspace to table params mapping from the given table params list.
+   *
+   * @param backupList
+   * @return The mapping
+   */
+  public Map<ImmutablePair<TableType, String>, BackupTableParams> getBackupKeyspaceToParamsMap(
+      List<BackupTableParams> backupList) {
+    Map<ImmutablePair<TableType, String>, BackupTableParams> keyspaceToParamsMap = new HashMap<>();
+    backupList.forEach(
+        bL -> {
+          keyspaceToParamsMap.put(ImmutablePair.of(bL.backupType, bL.getKeyspace()), bL);
+        });
+    return keyspaceToParamsMap;
   }
 
   /**

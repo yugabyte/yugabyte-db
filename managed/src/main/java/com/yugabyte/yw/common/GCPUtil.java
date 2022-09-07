@@ -34,8 +34,10 @@ import java.util.StringJoiner;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 @Slf4j
@@ -69,6 +71,20 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+    // Buckets should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config bucket %s and backup location bucket %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
+  }
+
+  @Override
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception {
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
@@ -91,6 +107,7 @@ public class GCPUtil implements CloudUtil {
     }
   }
 
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
@@ -164,17 +181,42 @@ public class GCPUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
             ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
+    cloudDir = BackupUtil.appendSlash(cloudDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
+      log.info(previousCloudDir);
+    }
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
+    return YbcBackupUtil.buildCloudStoreSpec(
+        bucket, cloudDir, previousCloudDir, gcsCredsMap, Util.GCS);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    String[] splitValues = getSplitLocationValue(storageLocation);
+    String bucket = splitValues[0];
+    Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
+    if (isDsm) {
+      String location = BackupUtil.appendSlash(splitValues[1]);
+      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", gcsCredsMap, Util.GCS);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", gcsCredsMap, Util.GCS);
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData) {
