@@ -44,6 +44,7 @@
 #include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -169,9 +170,26 @@ TEST_F(WebserverTest, TestDefaultPaths) {
 #endif
 
   // Test varz -- check for one of the built-in gflags flags.
-  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)),
-                           &buf_));
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/varz?raw=1", ToString(addr_)), &buf_));
   ASSERT_STR_CONTAINS(buf_.ToString(), "--v=");
+
+  // Test varz json api
+  ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/api/v1/varz", ToString(addr_)), &buf_));
+  // Output is a JSON array of 'flags'
+  JsonReader jr(buf_.ToString());
+  ASSERT_OK(jr.Init());
+  vector<const rapidjson::Value *> entries;
+  ASSERT_OK(jr.ExtractObjectArray(jr.root(), "flags", &entries));
+
+  // Find flag with name 'v'
+  auto it = std::find_if(entries.begin(), entries.end(), [&](const rapidjson::Value *value) {
+    string name;
+    if (!jr.ExtractString(value, "name", &name).ok()) {
+      return false;
+    }
+    return name == "v";
+  });
+  ASSERT_NE(it, entries.end());
 
   // Test status.
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/status", ToString(addr_)),
