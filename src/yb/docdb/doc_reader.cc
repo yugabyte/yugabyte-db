@@ -354,7 +354,7 @@ class DocDBTableReader::GetHelper {
         reader_.encoded_projection_[column_index_].AsSlice());
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Seek next column: " << SubDocKey::DebugSliceToString(state_.front().key_entry);
-    reader_.iter_->SeekForward(state_.front().key_entry.AsSlice());
+    reader_.iter_->SeekForward(&state_.front().key_entry);
     state_.front().key_entry.Truncate(root_doc_key_.size());
   }
 
@@ -488,7 +488,9 @@ class DocDBTableReader::GetHelper {
 
   Status Prepare() {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
-    reader_.iter_->SeekForward(root_doc_key_);
+
+    state_.front().key_entry.AppendRawBytes(root_doc_key_);
+    reader_.iter_->SeekForward(&state_.front().key_entry);
 
     Slice value;
     DocHybridTime doc_ht = reader_.table_tombstone_time_;
