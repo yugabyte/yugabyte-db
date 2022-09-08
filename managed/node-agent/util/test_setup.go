@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"node-agent/model"
 	"os"
-	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -23,36 +22,30 @@ const (
 	dummyZone         = "zone_0"
 )
 
-func GetTestConfig() (*Config, error) {
-	//Sets the env to test to load test config.
-	os.Setenv("env", "TEST")
-	//Create test config
-	err := InitConfig("config_test")
-	if err != nil {
-		fmt.Printf("Failed to load test config - %s", err.Error())
-		return nil, err
-	}
-	Config := GetConfig()
-	server := MockServer()
-	serverUrl := strings.Split(server.URL, ":")
-	Config.Update(PlatformHost, string(serverUrl[0])+":"+string(serverUrl[1]))
-	Config.Update(PlatformPort, string(serverUrl[2]))
-	Config.Update(PlatformVersion, "1")
-	Config.Update(UserId, "u1234")
-	Config.Update(ProviderId, "p1234")
-	Config.Update(CustomerId, "c1234")
-	Config.Update(NodeIP, "127.0.0.1")
-	Config.Update(RequestTimeout, "100")
-	Config.Update(NodeName, "nodeName")
-	Config.Update(NodeAgentId, "n1234")
-	Config.Update(NodeRegion, dummyRegion)
-	Config.Update(NodeZone, dummyZone)
-	Config.Update(NodeAzId, "az1234")
-	Config.Update(NodeInstanceType, dummyInstanceType)
-	Config.Update(NodeLogger, "node_agent_test.log")
+func init() {
+	setUp()
+}
 
-	InitCommonLoggers()
-	return Config, nil
+func setUp() {
+	// Sets the env to test to load test config.
+	os.Setenv("env", "TEST")
+	SetCurrentConfig("test-config.conf")
+	config := CurrentConfig()
+	server := MockServer()
+	config.Update(PlatformUrlKey, server.URL)
+	config.Update(PlatformVersionKey, "1")
+	config.Update(UserIdKey, "u1234")
+	config.Update(ProviderIdKey, "p1234")
+	config.Update(CustomerIdKey, "c1234")
+	config.Update(NodeIpKey, "127.0.0.1")
+	config.Update(RequestTimeoutKey, "100")
+	config.Update(NodeNameKey, "nodeName")
+	config.Update(NodeAgentIdKey, "n1234")
+	config.Update(NodeRegionKey, dummyRegion)
+	config.Update(NodeZoneKey, dummyZone)
+	config.Update(NodeAzIdKey, "az1234")
+	config.Update(NodeInstanceTypeKey, dummyInstanceType)
+	config.Update(NodeLoggerKey, "node_agent_test.log")
 }
 
 //Sets up a mock server to test http client calls.

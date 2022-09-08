@@ -10,7 +10,6 @@ import (
 )
 
 func TestShellTaskProcess(t *testing.T) {
-	util.GetTestConfig()
 	testShellTask := NewShellTask("test_echo", "echo", []string{"test"})
 	ctx := context.Background()
 	result, err := testShellTask.Process(ctx)
@@ -24,11 +23,10 @@ func TestShellTaskProcess(t *testing.T) {
 }
 
 func TestPreflightCheckTask(t *testing.T) {
-	util.GetTestConfig()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	handler := HandlePreflightCheck(dummyInstanceType)
+	handler := NewPreflightCheckHandler(dummyInstanceType)
 	ctx := context.Background()
-	result, err := handler(ctx)
+	result, err := handler.Handle(ctx)
 	if err != nil {
 		t.Errorf("Error while running preflight checks test")
 	}

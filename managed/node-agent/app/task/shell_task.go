@@ -30,9 +30,9 @@ func (s shellTask) TaskName() string {
 	return s.name
 }
 
-//Runs the Shell Task
+// Runs the Shell Task.
 func (s *shellTask) Process(ctx context.Context) (string, error) {
-	util.FileLogger.Debugf("Starting the shell request - %s", s.name)
+	util.FileLogger().Debugf("Starting the shell request - %s", s.name)
 	shellCmd := exec.Command(s.cmd, s.args...)
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -40,56 +40,64 @@ func (s *shellTask) Process(ctx context.Context) (string, error) {
 	shellCmd.Stderr = &errOut
 	err := shellCmd.Run()
 	s.done = true
+	var output string
 	if err != nil {
-		util.FileLogger.Errorf("Shell Run - %s task failed - %s", s.name, err.Error())
-		//returns stderr and err
-		return errOut.String(), err
+		util.FileLogger().Errorf("Shell Run - %s task failed - %s", s.name, err.Error())
+		output = errOut.String()
 	} else {
-		util.FileLogger.Debugf("Shell Run - %s task successful", s.name)
-		return out.String(), nil
+		util.FileLogger().Debugf("Shell Run - %s task successful", s.name)
+		output = out.String()
 	}
+	util.FileLogger().Debugf("Shell command output %s", output)
+	return output, err
 }
 
 func (s shellTask) Done() bool {
 	return s.done
 }
 
-//This handler follows the Handler type signature so that
-//it can be passed to the task executor.
-//It runs the script for pre flight checks and unmarshalls the output.
-func HandlePreflightCheck(
-	instanceTypeConfig model.NodeInstanceType,
-) func(ctx context.Context) (any, error) {
-	return func(ctx context.Context) (any, error) {
-		util.FileLogger.Debug("Starting Preflight checks handler.")
-		var err error
-		preflightScriptPath := util.GetPreflightCheckPath()
-		shellCmdTask := NewShellTask(
-			"runPreflightCheckScript",
-			util.DefaultShell,
-			getOptions(preflightScriptPath, instanceTypeConfig),
-		)
-		output, err := shellCmdTask.Process(ctx)
-		if err != nil {
-			util.FileLogger.Errorf("Pre-flight checks processing failed - %s", err.Error())
-			return nil, err
-		}
-		var parsedOut map[string]model.PreflightCheckVal
-		err = json.Unmarshal([]byte(output), &parsedOut)
-		if err != nil {
-			util.FileLogger.Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
-			return nil, err
-		}
-		return parsedOut, nil
+type PreflightCheckHandler struct {
+	instanceTypeConfig model.NodeInstanceType
+	result             *map[string]model.PreflightCheckVal
+}
+
+func NewPreflightCheckHandler(instanceTypeConfig model.NodeInstanceType) *PreflightCheckHandler {
+	return &PreflightCheckHandler{instanceTypeConfig: instanceTypeConfig}
+}
+
+func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
+	util.FileLogger().Debug("Starting Preflight checks handler.")
+	var err error
+	preflightScriptPath := util.PreflightCheckPath()
+	shellCmdTask := NewShellTask(
+		"runPreflightCheckScript",
+		util.DefaultShell,
+		getOptions(preflightScriptPath, handler.instanceTypeConfig),
+	)
+	output, err := shellCmdTask.Process(ctx)
+	if err != nil {
+		util.FileLogger().Errorf("Pre-flight checks processing failed - %s", err.Error())
+		return nil, err
 	}
+	handler.result = &map[string]model.PreflightCheckVal{}
+	err = json.Unmarshal([]byte(output), handler.result)
+	if err != nil {
+		util.FileLogger().Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
+		return nil, err
+	}
+	return handler.result, nil
+}
+
+func (handler *PreflightCheckHandler) Result() *map[string]model.PreflightCheckVal {
+	return handler.result
 }
 
 func HandleUpgradeScript(config *util.Config, ctx context.Context, version string) error {
-	util.FileLogger.Debug("Initializing the upgrade script")
+	util.FileLogger().Debug("Initializing the upgrade script")
 	upgradeScriptTask := NewShellTask(
 		"upgradeScript",
 		util.DefaultShell,
-		[]string{util.GetUpgradeScriptPath(), "upgrade", version},
+		[]string{util.UpgradeScriptPath(), "upgrade", version},
 	)
 	errStr, err := upgradeScriptTask.Process(ctx)
 	if err != nil {
@@ -100,21 +108,21 @@ func HandleUpgradeScript(config *util.Config, ctx context.Context, version strin
 
 //Shell task process for downloading the node-agent build package
 func HandleDownloadPackageScript(config *util.Config, ctx context.Context) (string, error) {
-	util.FileLogger.Debug("Initializing the download package script")
+	util.FileLogger().Debug("Initializing the download package script")
 	jwtToken, err := util.GenerateJWT(config)
 	if err != nil {
-		util.FileLogger.Errorf("Failed to generate JWT during upgrade - %s", err.Error())
+		util.FileLogger().Errorf("Failed to generate JWT during upgrade - %s", err.Error())
 		return "", err
 	}
 	downloadPackageScript := NewShellTask(
 		"downloadPackageScript",
 		util.DefaultShell,
 		[]string{
-			util.GetInstallScriptPath(),
+			util.InstallScriptPath(),
 			"--type",
 			"upgrade",
 			"--url",
-			config.GetString(util.PlatformHost) + ":" + config.GetString(util.PlatformPort),
+			config.String(util.PlatformUrlKey),
 			"--jwt",
 			jwtToken,
 		},
