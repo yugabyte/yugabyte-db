@@ -266,4 +266,6 @@ public abstract class KubernetesManager {
       Map<String, String> config, String universePrefix, String namespace);
 
   public abstract void deleteNamespace(Map<String, String> config, String namespace);
+
+  public abstract void deletePod(Map<String, String> config, String namespace, String podName);
 }
