@@ -106,6 +106,24 @@ public class TlsToggleParams extends UpgradeTaskParams {
           "CustomCertHostPath certificates are only supported for on-prem providers.");
     }
 
+    // TODO: Add check that the userIntent is to use cert-manager
+    if (rootCA != null
+        && CertificateInfo.get(rootCA).certType == CertConfigType.K8SCertManager
+        && !userIntent.providerType.equals(CloudType.kubernetes)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
+    }
+
+    // TODO: Add check that the userIntent is to use cert-manager
+    if (clientRootCA != null
+        && CertificateInfo.get(clientRootCA).certType == CertConfigType.K8SCertManager
+        && !userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
+    }
+
     if (rootAndClientRootCASame != null
         && rootAndClientRootCASame
         && enableNodeToNodeEncrypt

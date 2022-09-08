@@ -131,6 +131,20 @@ public abstract class KubernetesManager {
     execCommand(config, commandList);
   }
 
+  public String helmShowValues(String ybSoftwareVersion, Map<String, String> config) {
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    List<String> commandList = ImmutableList.of("helm", "show", "values", helmPackagePath);
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    if (response != null) {
+      if (response.getCode() != ShellResponse.ERROR_CODE_SUCCESS) {
+        throw new RuntimeException(response.getMessage());
+      }
+      return response.getMessage();
+    }
+    return null;
+  }
+
   /* helm helpers */
 
   private void processHelmResponse(
