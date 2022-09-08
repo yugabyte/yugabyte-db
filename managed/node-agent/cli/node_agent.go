@@ -5,8 +5,8 @@ package cli
 import (
 	"os"
 
-	"node-agent/adapters/cli/node"
-	"node-agent/adapters/cli/server"
+	"node-agent/cli/node"
+	"node-agent/cli/server"
 	"node-agent/util"
 
 	"github.com/spf13/cobra"
@@ -33,13 +33,13 @@ func Execute() {
 	server.SetupServerCommand(rootCmd)
 	rootCmd.AddCommand(versionCmd)
 	if err := rootCmd.Execute(); err != nil {
-		util.CliLogger.Errorf(err.Error())
+		util.ConsoleLogger().Errorf(err.Error())
 		os.Exit(1)
 	}
 }
 
 func versionCmdHandler(cmd *cobra.Command, args []string) error {
-	config := util.GetConfig()
-	util.CliLogger.Infof(config.GetString(util.PlatformVersion))
+	config := util.CurrentConfig()
+	util.ConsoleLogger().Infof(config.String(util.PlatformVersionKey))
 	return nil
 }
