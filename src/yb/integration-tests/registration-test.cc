@@ -65,6 +65,7 @@
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
+DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 
 METRIC_DECLARE_counter(rows_inserted);
 
@@ -272,6 +273,27 @@ TEST_F(RegistrationTest, TestTabletReports) {
 
 TEST_F(RegistrationTest, TestCopartitionedTables) {
   CheckTabletReports(/* co_partition */ true);
+}
+
+class RegistrationFailedTest : public YBMiniClusterTestBase<MiniCluster> {
+  void SetUp() override {
+    // Cause waiting for tservers to register to master to fail.
+    FLAGS_TEST_mini_cluster_registration_wait_time_sec = 0;
+
+    YBMiniClusterTestBase::SetUp();
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
+
+    // Test that cluster starting fails gracefully.
+    Status s = cluster_->Start();
+    ASSERT_NOK(s);
+    ASSERT_TRUE(s.IsTimedOut()) << s;
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(), "TS(s) never registered with master");
+  }
+};
+
+TEST_F_EX(RegistrationTest, FailRegister, RegistrationFailedTest) {
+  // Do nothing: test happens in RegistrationFailedTest::SetUp.
+  // Logs should show "Shutdown when mini cluster is not running".
 }
 
 } // namespace yb
