@@ -218,7 +218,7 @@ public class NodeInstanceController extends AuthenticatedController {
             Audit.ActionType.Create,
             Json.toJson(nodeActionFormData),
             taskUUID);
-    return Results.status(OK);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
