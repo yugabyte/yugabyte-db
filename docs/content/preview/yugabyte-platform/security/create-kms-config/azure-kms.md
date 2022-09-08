@@ -83,4 +83,4 @@ You can create a KMS configuration that uses Azure KMS, as follows:
 
 
 
-Note that YugabyteDB Anywhere does not manage the key vault.
+Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure KMS.
