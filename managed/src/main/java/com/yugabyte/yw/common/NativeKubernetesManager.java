@@ -193,4 +193,11 @@ public class NativeKubernetesManager extends KubernetesManager {
       client.namespaces().withName(namespace).delete();
     }
   }
+
+  @Override
+  public void deletePod(Map<String, String> config, String namespace, String podName) {
+    try (KubernetesClient client = getClient(config)) {
+      client.pods().inNamespace(namespace).withName(podName).delete();
+    }
+  }
 }

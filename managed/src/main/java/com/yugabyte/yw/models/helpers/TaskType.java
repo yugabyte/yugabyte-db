@@ -63,6 +63,8 @@ public enum TaskType {
 
   RestartUniverse("upgrade.RestartUniverse"),
 
+  RestartUniverseKubernetesUpgrade("upgrade.RestartUniverseKubernetesUpgrade"),
+
   SoftwareUpgrade("upgrade.SoftwareUpgrade"),
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
