@@ -103,7 +103,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Start ybc process on all the nodes
       if (taskParams().enableYbc) {
-        createStartYbcProcessTasks(newTservers);
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
         createUpdateYbcTask(taskParams().ybcSoftwareVersion)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
