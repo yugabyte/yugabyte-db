@@ -58,6 +58,7 @@ public class ConcurrentLogConnector {
 
   private boolean stopExecution = false;
   private int pollingInterval;
+  private boolean bootstrap;
 
   public ConcurrentLogConnector(CmdLineOpts opts, OutputClient opClient) throws Exception {
     InputStream input = new FileInputStream(opts.configFile);
@@ -69,6 +70,8 @@ public class ConcurrentLogConnector {
     clientKeyFile = opts.clientKeyFile;
 
     pollingInterval = opts.pollingInterval;
+
+    bootstrap = opts.bootstrap;
 
     // Load a properties file.
     prop.load(input);
@@ -170,7 +173,7 @@ public class ConcurrentLogConnector {
                 try {
                   return new ConcurrentPoller(syncClient, client, outputClient, streamId,
                                               tableIdsToTabletIds, 2, format, stopExecution,
-                                              enableSnapshot);
+                                              enableSnapshot, bootstrap);
                 } catch (IOException e) {
                   e.printStackTrace();
                 }
