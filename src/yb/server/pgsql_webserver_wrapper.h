@@ -81,7 +81,8 @@ typedef struct {
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
-    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer);
+    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
+    int* too_many_conn_ptr);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
