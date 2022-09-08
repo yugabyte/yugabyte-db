@@ -138,9 +138,6 @@ class MiniCluster : public MiniClusterBase {
   Status SwitchMemtables();
   Status CleanTabletLogs();
 
-  // Shuts down masters only.
-  void ShutdownMasters();
-
   // Setup a consensus configuration of distributed masters, with count specified in
   // 'options'. Requires that a reserve RPC port is specified in
   // 'options' for each master.
