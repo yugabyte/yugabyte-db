@@ -60,6 +60,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -72,6 +73,8 @@ using strings::Substitute;
 
 DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
 DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
+                 "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int32(master_consensus_svc_num_threads);
@@ -438,17 +441,34 @@ Result<MiniMaster*> MiniCluster::GetLeaderMiniMaster() {
 }
 
 void MiniCluster::Shutdown() {
-  if (!running_)
-    return;
+  if (!running_) {
+    // It's possible for the cluster to not be running on shutdown when there's a bad status during
+    // startup.  We don't know how much initialization has been done, so continue with cleanup
+    // assuming the worst (that a lot of initialization was done).
+    LOG(INFO) << "Shutdown when mini cluster is not running (did mini cluster startup fail?)";
+  }
 
   for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-    tablet_server->Shutdown();
+    if (tablet_server) {
+      tablet_server->Shutdown();
+    } else {
+      // Unlike mini masters (below), it is not expected for this vector to have an uninitialized
+      // mini tserver.
+      LOG(ERROR) << "Found uninitialized mini tserver";
+    }
   }
   mini_tablet_servers_.clear();
 
   for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
-    master_server->Shutdown();
-    master_server.reset();
+    if (master_server) {
+      master_server->Shutdown();
+      master_server.reset();
+    } else {
+      // It's possible for a mini master in the vector to be uninitialized because the constructor
+      // initializes the vector with num_masters size and shutdown could happen before each mini
+      // master is initialized in case of a bad status during startup.
+      LOG(INFO) << "Found uninitialized mini master";
+    }
   }
   mini_masters_.clear();
 
@@ -481,13 +501,6 @@ Status MiniCluster::CleanTabletLogs() {
     RETURN_NOT_OK(tablet_server->CleanTabletLogs());
   }
   return Status::OK();
-}
-
-void MiniCluster::ShutdownMasters() {
-  for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
-    master_server->Shutdown();
-    master_server.reset();
-  }
 }
 
 MiniMaster* MiniCluster::mini_master(int idx) {
@@ -576,7 +589,7 @@ Status MiniCluster::WaitForTabletServerCount(int count,
                                              vector<shared_ptr<TSDescriptor> >* descs) {
   Stopwatch sw;
   sw.start();
-  while (sw.elapsed().wall_seconds() < kRegistrationWaitTimeSeconds) {
+  while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       (*leader)->master()->ts_manager()->GetAllDescriptors(descs);
