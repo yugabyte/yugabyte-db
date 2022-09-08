@@ -52,3 +52,4 @@ ui/junit.xml
 src/public/*
 
 client/*/generated
+lib

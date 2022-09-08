@@ -11,15 +11,14 @@ import (
 
 type HttpClient struct {
 	client *http.Client
-	host   string
-	port   string
+	url    string
 }
 
-func NewHttpClient(timeout int, host string, port string) *HttpClient {
+func NewHttpClient(timeout int, url string) *HttpClient {
 	client := &http.Client{
 		Timeout: time.Second * time.Duration(timeout),
 	}
-	return &HttpClient{client: client, host: host, port: port}
+	return &HttpClient{client: client, url: url}
 }
 
 func (c *HttpClient) Do(
@@ -29,14 +28,11 @@ func (c *HttpClient) Do(
 	queryParams map[string]string,
 	data any,
 ) (*http.Response, error) {
-	var (
-		req *http.Request
-		err error
-	)
-	basicUrl := fmt.Sprintf("%s:%s%s", c.host, c.port, url)
-	err = validate(method, queryParams, data)
+	var req *http.Request
+	basicUrl := fmt.Sprintf("%s%s", c.url, url)
+	err := validate(method, queryParams, data)
 	if err != nil {
-		FileLogger.Errorf("Validation failed for the method: %s, err: %s", method, err.Error())
+		FileLogger().Errorf("Validation failed for the method: %s, err: %s", method, err.Error())
 		return nil, err
 	}
 	//Add Query parameters to the request
@@ -52,11 +48,12 @@ func (c *HttpClient) Do(
 			basicUrl = fmt.Sprintf("%s%s=%s", basicUrl, k, v)
 		}
 	}
-
+	FileLogger().Infof("Sending request to %s", basicUrl)
 	if data == nil {
 		req, err = http.NewRequest(method, basicUrl, nil)
 	} else {
-		dataJson, err := json.Marshal(data)
+		var dataJson []byte
+		dataJson, err = json.Marshal(data)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +61,7 @@ func (c *HttpClient) Do(
 	}
 
 	if err != nil {
-		FileLogger.Errorf(
+		FileLogger().Errorf(
 			"Error while creating new request url: %s, method: %s, err: %s",
 			url,
 			method,
@@ -81,11 +78,11 @@ func (c *HttpClient) Do(
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		FileLogger.Errorf("Http url: %s method: %s call failed %s", url, method, err.Error())
+		FileLogger().Errorf("Http url: %s method: %s call failed %s", url, method, err.Error())
 		return nil, err
 	}
 
-	FileLogger.Infof("Http url: %s method: %s call succesful", url, method)
+	FileLogger().Infof("Http url: %s method: %s call succesful", url, method)
 
 	return res, nil
 }

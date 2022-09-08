@@ -3,7 +3,7 @@
 package server
 
 import (
-	"node-agent/app/service"
+	svc "node-agent/app/server"
 
 	"github.com/spf13/cobra"
 )
@@ -11,7 +11,7 @@ import (
 var (
 	startCmd = &cobra.Command{
 		Use:   "start ...",
-		Short: "Command for starting node-agent service",
+		Short: "Command for starting node-agent server",
 		Run:   startServerHandler,
 	}
 )
@@ -21,5 +21,5 @@ func SetupStartCommand(parentCmd *cobra.Command) {
 }
 
 func startServerHandler(cmd *cobra.Command, args []string) {
-	service.Start()
+	svc.Start()
 }
