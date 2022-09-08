@@ -6,6 +6,7 @@ import { OnPremProviderAndAccessKey } from '../../../config';
 import { setOnPremConfigData } from '../../../../actions/cloud';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import _ from 'lodash';
+import { specialChars } from '../../constants';
 
 const DEFAULT_NODE_EXPORTER_PORT = 9300;
 const DEFAULT_NODE_EXPORTER_USER = 'prometheus';
@@ -110,6 +111,12 @@ const validate = (values) => {
   const errors = {};
   if (!isDefinedNotNull(values.name)) {
     errors.name = 'Required';
+  }
+  else {
+    
+    if(!specialChars.test(values.name)){
+      errors.name = 'Cannot have special characters except - and _';
+    }
   }
   if (!isDefinedNotNull(values.sshUser)) {
     errors.sshUser = 'Required';

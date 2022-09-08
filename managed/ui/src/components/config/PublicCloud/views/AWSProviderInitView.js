@@ -30,6 +30,7 @@ import _ from 'lodash';
 import { regionsData } from './providerRegionsData';
 
 import './providerView.scss';
+import { specialChars } from '../../constants';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -950,6 +951,11 @@ function validate(values) {
   const errors = {};
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is required';
+  }
+  else {
+    if(!specialChars.test(values.accountName)){
+      errors.accountName = 'Account Name cannot have special characters except - and _';
+    }
   }
 
   if (!isNonEmptyArray(values.regionList)) {
