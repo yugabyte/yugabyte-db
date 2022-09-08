@@ -27,5 +27,8 @@ public enum CertConfigType {
   CustomServerCert,
 
   @EnumValue("HashicorpVault")
-  HashicorpVault
+  HashicorpVault,
+
+  @EnumValue("K8SCertManager")
+  K8SCertManager
 }
