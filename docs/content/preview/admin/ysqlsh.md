@@ -43,8 +43,13 @@ If you prefer, you can install a standalone version using any of the following m
 - Using a shell script:
 
     ```sh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    ```
+
+    If you have `wget`, you can use the following:
+
+    ```sh
     wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-    yugabyte*/bin/ysqlsh
     ```
 
 `ysqlsh` works best with servers of the same or an older major version. [Meta-commands](#meta-commands) are particularly likely to fail if the server is a newer version than `ysqlsh` itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
