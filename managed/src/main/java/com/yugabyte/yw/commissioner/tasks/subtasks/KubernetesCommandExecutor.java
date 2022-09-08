@@ -81,6 +81,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     HELM_DELETE,
     VOLUME_DELETE,
     NAMESPACE_DELETE,
+    POD_DELETE,
     POD_INFO,
     // The following flag is deprecated.
     INIT_YSQL;
@@ -103,6 +104,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
         case NAMESPACE_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
+        case POD_DELETE:
+          return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case INIT_YSQL:
@@ -142,6 +145,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public int masterPartition = 0;
     public Map<String, Object> universeOverrides;
     public Map<String, Object> azOverrides;
+    public String podName;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -243,6 +247,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case NAMESPACE_DELETE:
         kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
+        break;
+      case POD_DELETE:
+        kubernetesManagerFactory
+            .getManager()
+            .deletePod(config, taskParams().namespace, taskParams().podName);
         break;
       case POD_INFO:
         processNodeInfo();

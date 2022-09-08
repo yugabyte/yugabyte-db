@@ -2,6 +2,14 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
@@ -12,16 +20,18 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
-import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
+import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -35,17 +45,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 import com.yugabyte.yw.common.Util;
@@ -75,7 +75,7 @@ public class UpgradeUniverseHandler {
   }
 
   public UUID restartUniverse(
-      UpgradeTaskParams requestParams, Customer customer, Universe universe) {
+      RestartTaskParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -89,8 +89,11 @@ public class UpgradeUniverseHandler {
       requestParams.ybcInstalled = true;
     }
 
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        TaskType.RestartUniverse,
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.RestartUniverseKubernetesUpgrade
+            : TaskType.RestartUniverse,
         CustomerTask.TaskType.RestartUniverse,
         requestParams,
         customer,
