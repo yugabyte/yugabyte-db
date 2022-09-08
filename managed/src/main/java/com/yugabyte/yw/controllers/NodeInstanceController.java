@@ -177,7 +177,7 @@ public class NodeInstanceController extends AuthenticatedController {
         node.getNodeName());
 
     auditService().createAuditEntry(ctx(), request());
-    return Results.status(OK);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
