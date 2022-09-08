@@ -6,7 +6,7 @@
 [![forks badge](https://img.shields.io/github/forks/apache/age)](https://github.com/apache/age/network/members)
 [![stars badge](https://img.shields.io/github/stars/apache/age)](https://github.com/apache/age/stargazers)
 
-<img src="https://age.apache.org/docs/master/_static/logo.png" width="30%" height="30%">
+<img src="https://age.apache.org/age-manual/master/_static/logo.png" width="30%" height="30%">
 
 Apache AGE is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for A Graph Extension, and is inspired by Bitnine's fork of PostgreSQL 10, AgensGraph, which is a multi-model database. The goal of the project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language.
 
@@ -28,7 +28,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 ## Latest happenings
 
 - Latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc1).
-- The latest Apache AGE documentation is now available at [here](https://age.apache.org/docs/master/index.html).
+- The latest Apache AGE documentation is now available at [here](https://age.apache.org/age-manual/master/index.html).
 - The roadmap - [Apache AGE website](http://age.apache.org/).
 - Send all your comments and inquiries to the user mailing list, users@age.apache.org.
 - To focus more on implementing the openCypher specification, the support for PostgreSQL 12 will be added in the Q4 2022.
