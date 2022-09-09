@@ -56,6 +56,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -562,6 +563,79 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+  }
+
+  // Utility method so that the same tasks can be executed in StopNodeInUniverse.java
+  // part of the automatic restart process of a master, if applicable, as well as in
+  // StartMasterOnNode.java for any user-specified master starts.
+  public void createStartMasterOnNodeTasks(
+      Universe universe, NodeDetails currentNode, NodeDetails stoppedNode, boolean isStop) {
+
+    // Update node state to Starting Master.
+    createSetNodeStateTask(currentNode, NodeState.Starting)
+        .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    List<NodeDetails> nodeAsList = Arrays.asList(currentNode);
+
+    // Set gflags for master.
+    createGFlagsOverrideTasks(
+        nodeAsList,
+        ServerType.MASTER,
+        true /* isShell */,
+        VmUpgradeTaskType.None,
+        false /*ignoreUseCustomImageConfig*/);
+
+    // Check that installed MASTER software version is consistent.
+    createSoftwareInstallTasks(
+        nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
+
+    // Update master configuration on the node.
+    createConfigureServerTasks(
+            nodeAsList,
+            params -> {
+              params.isMasterInShellMode = true;
+              params.updateMasterAddrsOnly = true;
+              params.isMaster = true;
+            })
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Start a master process.
+    createStartMasterTasks(nodeAsList).setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    // Mark node as isMaster in YW DB.
+    createUpdateNodeProcessTask(currentNode.nodeName, ServerType.MASTER, true)
+        .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    // Wait for the master to be responsive.
+    createWaitForServersTasks(nodeAsList, ServerType.MASTER)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Add master to the quorum.
+    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+
+    if (isStop) {
+      // Update all server conf files with new master information, excluding the stoppedNode.
+      createMasterInfoUpdateTask(universe, currentNode, stoppedNode);
+    } else {
+
+      // Update all server conf files with new master information.
+      createMasterInfoUpdateTask(universe, currentNode);
+    }
+
+    // Update the master addresses on the target universes whose source universe belongs to
+    // this task.
+    createXClusterConfigUpdateMasterAddressesTask();
+
+    // Update node state to running.
+    createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
+        .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+    // Update the swamper target file.
+    createSwamperTargetUpdateTask(false /* removeFile */);
+
+    // Mark universe update success to true.
+    createMarkUniverseUpdateSuccessTasks()
+        .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
@@ -1147,6 +1221,55 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
       }
     }
+  }
+
+  /*
+   * Setup a configure task to update the masters list in the conf files of all
+   * servers, in the auto restart case specifically (where we have to exclude the stopped
+   * node from consideration).
+   */
+  protected void createMasterInfoUpdateTask(
+      Universe universe, NodeDetails addedNode, NodeDetails stoppedNode) {
+    Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
+    Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
+
+    // We need to add the node explicitly since the node wasn't marked as a master
+    // or tserver before the task is completed.
+    tserverNodes.add(addedNode);
+    masterNodes.add(addedNode);
+
+    // We need to remove the stopped node explicitly since the node wasn't marked as a master
+    // or tserver before the task is completed (auto-restart case specifically).
+    tserverNodes.remove(stoppedNode);
+    masterNodes.remove(stoppedNode);
+
+    // Configure all tservers to update the masters list as well.
+    createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // Update the master addresses in memory.
+    createSetFlagInMemoryTasks(
+            tserverNodes,
+            ServerType.TSERVER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+    // Change the master addresses in the conf file for the all masters to reflect
+    // the changes.
+    createConfigureServerTasks(
+            masterNodes,
+            params -> {
+              params.updateMasterAddrsOnly = true;
+              params.isMaster = true;
+            })
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    createSetFlagInMemoryTasks(
+            masterNodes,
+            ServerType.MASTER,
+            true /* force flag update */,
+            null /* no gflag to update */,
+            true /* updateMasterAddr */)
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
   /*
