@@ -1149,10 +1149,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           }
 
           LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          {
-            std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-            cluster_config_.reset();
-          }
+          cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
@@ -1257,10 +1254,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  {
-    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-    cluster_config_.reset();
-  }
+  cluster_config_.reset();
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1347,7 +1341,6 @@ Status CatalogManager::CheckResource(
 }
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
-  std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
   if (cluster_config_) {
     LOG_WITH_PREFIX(INFO)
         << "Cluster configuration has already been set up, skipping re-initialization.";
@@ -11645,7 +11638,6 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
-  yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
   return cluster_config_;
 }
 
