@@ -45,7 +45,7 @@ You can start using the driver in your code.
 
 ### Step 2: Connect to your cluster
 
-Before connecting to the YugabyteDB cluster, first import the `pg-yugabytedb` package.
+Before connecting to the YugabyteDB cluster, import the `pg-yugabytedb` package.
 
 ``` js
   const pg = require('pg-yugabytedb');
