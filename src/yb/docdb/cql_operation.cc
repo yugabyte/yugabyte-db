@@ -250,7 +250,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 }
 
 Status CheckUserTimestampForCollections(const UserTimeMicros user_timestamp) {
-  if (user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
+  if (user_timestamp != ValueControlFields::kInvalidTimestamp) {
     return STATUS(InvalidArgument, "User supplied timestamp is only allowed for "
         "replacing the whole collection");
   }
@@ -752,7 +752,7 @@ Status QLWriteOperation::InsertScalar(
 
   return data.doc_write_batch->InsertSubDocument(
       MakeSubPath(column_schema, column_id), value_ref, data.read_time, data.deadline,
-      request_.query_id(), control_fields.ttl, control_fields.user_timestamp);
+      request_.query_id(), control_fields.ttl, control_fields.timestamp);
 }
 
 Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
@@ -765,7 +765,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   ValueRef value(
       expr_result.Value(), column.sorting_type(), GetTSWriteInstruction(column_value.expr()));
-  RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.user_timestamp));
+  RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
 
   // Setting the value for a sub-column
   // Currently we only support two cases here: `map['key'] = v` and `list[index] = v`)
@@ -780,7 +780,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           column_value.subscript_args(0).value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           sub_path, value, data.read_time, data.deadline,
-          request_.query_id(), control_fields.ttl, control_fields.user_timestamp));
+          request_.query_id(), control_fields.ttl, control_fields.timestamp));
       break;
     }
     case LIST: {
@@ -829,7 +829,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
     case TSOpcode::kSetExtend:
     case TSOpcode::kMapRemove:
     case TSOpcode::kSetRemove:
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.user_timestamp));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
       RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(
         MakeSubPath(column, column_id), value, data.read_time, data.deadline, request_.query_id(),
         control_fields.ttl));
@@ -838,7 +838,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
       value.set_list_extend_order(ListExtendOrder::PREPEND_BLOCK);
       FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.user_timestamp));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
       RETURN_NOT_OK(data.doc_write_batch->ExtendList(
           MakeSubPath(column, column_id), value, data.read_time, data.deadline, request_.query_id(),
           control_fields.ttl));
@@ -848,10 +848,10 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
       // Currently list subtraction is computed in memory using builtin call so this
       // case should never be reached. Once it is implemented the corresponding case
       // from EvalQLExpressionPB should be uncommented to enable this optimization.
-      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.user_timestamp));
+      RETURN_NOT_OK(CheckUserTimestampForCollections(control_fields.timestamp));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           MakeSubPath(column, column_id), value, data.read_time, data.deadline,
-          request_.query_id(), control_fields.ttl, control_fields.user_timestamp));
+          request_.query_id(), control_fields.ttl, control_fields.timestamp));
       break;
     default:
       LOG(FATAL) << "Unsupported operation: " << static_cast<int>(write_instruction);
@@ -947,7 +947,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
 
 UserTimeMicros QLWriteOperation::user_timestamp() const {
   return request_.has_user_timestamp_usec() ?
-      request_.user_timestamp_usec() : ValueControlFields::kInvalidUserTimestamp;
+      request_.user_timestamp_usec() : ValueControlFields::kInvalidTimestamp;
 }
 
 DocPath QLWriteOperation::MakeSubPath(const ColumnSchema& column_schema, ColumnId column_id) {
@@ -959,7 +959,7 @@ Status QLWriteOperation::ApplyUpsert(
     const DocOperationApplyData& data, const QLTableRow& existing_row, QLTableRow* new_row) {
   const auto control_fields = ValueControlFields {
     .ttl = request_ttl(),
-    .user_timestamp = user_timestamp(),
+    .timestamp = user_timestamp(),
   };
 
   // Add the appropriate liveness column only for inserts.
