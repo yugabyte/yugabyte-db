@@ -1,3 +1,9 @@
+4.7.1
+BUG FIXES
+=========
+-- When part_config.retention_keep_table was set to false and part_config.retention_schema was not NULL, the retention_schema option being set was not properly overriding the retention_keep_table option. This was causing the child tables to not be detached from the partition set, even though they were properly moved to the retention_schema. This could also inadvertently cause undo_partition() to fail since it expects all child tables to exist in the same schema. Thank you to @gsrirangan on Github for reporting this issue. (Github Issue #481)
+
+
 4.7.0
 NEW FEATURES
 ============

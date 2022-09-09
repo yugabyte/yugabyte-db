@@ -178,7 +178,7 @@ LOOP
                                                 , v_row.partition_tablename
                                                 , p_parent_table));
         END IF;
-        IF v_retention_keep_table = true THEN
+        IF v_retention_keep_table = true OR v_retention_schema IS NOT NULL THEN
             -- No need to detach partition before dropping since it's going away anyway
             -- Avoids issue of FKs not allowing detachment (Github Issue #294).
             IF v_partition_type = 'native' THEN
