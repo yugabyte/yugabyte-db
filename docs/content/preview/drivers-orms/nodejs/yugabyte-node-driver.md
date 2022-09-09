@@ -41,7 +41,7 @@ Download and install the YugabyteDB node-postgres driver using the following com
 npm install pg-yugabytedb
 ```
 
-After this, you can start using the driver in your code.
+You can start using the driver in your code.
 
 ### Step 2: Connect to your cluster
 
