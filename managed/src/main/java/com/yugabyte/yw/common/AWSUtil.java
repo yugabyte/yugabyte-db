@@ -351,12 +351,11 @@ public class AWSUtil implements CloudUtil {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     String[] splitValues = getSplitLocationValue(backupLocation);
     String bucket = splitValues[0];
-    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
-    if (StringUtils.isNotBlank(cloudDir)) {
-      cloudDir = String.format("%s/%s/", splitValues[1], commonDir);
-    } else {
-      cloudDir = commonDir.concat("/");
-    }
+    String cloudDir =
+        splitValues.length > 1
+            ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
+            : commonDir;
+    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
   }
