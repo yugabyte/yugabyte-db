@@ -1,23 +1,20 @@
-package com.yugabyte.yw.controllers;
+// Copyright (c) YugaByte, Inc.
 
-import java.io.InputStream;
-import java.net.URL;
+package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
-
+import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.IOUtils;
 import play.Environment;
-import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import org.apache.commons.io.IOUtils;
-import java.nio.charset.StandardCharsets;
-import io.swagger.annotations.Authorization;
-import io.swagger.annotations.Api;
 
 @Api(
     value = "Grafana Dashboard",

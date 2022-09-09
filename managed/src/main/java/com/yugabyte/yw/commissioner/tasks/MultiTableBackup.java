@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_ATTEMPT_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_SUCCESS_COUNTER;
@@ -59,6 +60,7 @@ import play.libs.Json;
 
 @Slf4j
 @Abortable
+@Retryable
 public class MultiTableBackup extends UniverseTaskBase {
 
   @Inject
@@ -87,18 +89,13 @@ public class MultiTableBackup extends UniverseTaskBase {
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-    boolean isUniverseLocked = false;
     try {
       checkUniverseVersion();
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverse(-1 /* expectedUniverseVersion */);
-      isUniverseLocked = true;
+      universe = lockUniverseForUpdate(-1);
 
-      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
-      // already having a backup in progress.
-      lockedUpdateBackupState(true);
       try {
         String masterAddresses = universe.getMasterAddresses(true);
         String certificate = universe.getCertificateNodetoNode();
@@ -229,7 +226,6 @@ public class MultiTableBackup extends UniverseTaskBase {
         } catch (Exception e) {
           log.error("Failed to get list of tables in universe " + params().universeUUID, e);
           unlockUniverseForUpdate();
-          isUniverseLocked = false;
           // Do not lose the actual exception thrown.
           Throwables.propagate(e);
         } finally {
@@ -325,9 +321,6 @@ public class MultiTableBackup extends UniverseTaskBase {
 
         taskInfo = String.join(",", tablesToBackup);
 
-        unlockUniverseForUpdate();
-        isUniverseLocked = false;
-
         getRunnableTask().runSubTasks();
 
         if (params().actionType == ActionType.CREATE) {
@@ -346,8 +339,6 @@ public class MultiTableBackup extends UniverseTaskBase {
           getRunnableTask().runSubTasks();
         }
         throw t;
-      } finally {
-        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
@@ -357,12 +348,9 @@ public class MultiTableBackup extends UniverseTaskBase {
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      if (isUniverseLocked) {
-        unlockUniverseForUpdate();
-      }
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }
@@ -457,10 +445,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
             && config.get(Universe.TAKE_BACKUPS).equals("true");
-    if (alreadyRunning
-        || !shouldTakeBackup
-        || universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress) {
+    if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
 
       if (shouldTakeBackup) {
         schedule.updateBacklogStatus(true);

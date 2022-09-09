@@ -42,23 +42,21 @@ export const universeState = {
 export const getUniverseStatus = (universe) => {
   const {
     updateInProgress,
-    backupInProgress,
     updateSucceeded,
     universePaused,
     errorString
   } = universe.universeDetails;
 
-  const taskInProgress = updateInProgress || backupInProgress;
-  if (!taskInProgress && updateSucceeded && !universePaused) {
+  if (!updateInProgress && updateSucceeded && !universePaused) {
     return { state: universeState.GOOD, error: errorString };
   }
-  if (!taskInProgress && updateSucceeded && universePaused) {
+  if (!updateInProgress && updateSucceeded && universePaused) {
     return { state: universeState.PAUSED, error: errorString };
   }
-  if (taskInProgress) {
+  if (updateInProgress) {
     return { state: universeState.PENDING, error: errorString };
   }
-  if (!taskInProgress && !updateSucceeded) {
+  if (!updateInProgress && !updateSucceeded) {
     return errorString === 'Preflight checks failed.'
       ? { state: universeState.WARNING, error: errorString }
       : { state: universeState.BAD, error: errorString };

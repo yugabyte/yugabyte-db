@@ -27,7 +27,7 @@ export default class UniverseStatus extends Component {
     } = this.props;
 
     if (
-      (universeDetails.updateInProgress || universeDetails.backupInProgress) &&
+      (universeDetails.updateInProgress) &&
       !hasPendingTasksForUniverse(universeUUID, customerTaskList) &&
       hasPendingTasksForUniverse(universeUUID, prevProps.tasks.customerTaskList)
     ) {

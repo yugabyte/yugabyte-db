@@ -83,9 +83,6 @@ public class CreateBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
       isUniverseLocked = true;
-      // Update universe 'backupInProgress' flag to true or throw an exception if universe is
-      // already having a backup in progress.
-      lockedUpdateBackupState(true);
       try {
         // Check if the storage config is in active state or not.
         CustomerConfig customerConfig =
@@ -158,8 +155,6 @@ public class CreateBackup extends UniverseTaskBase {
           getRunnableTask().runSubTasks();
         }
         throw t;
-      } finally {
-        lockedUpdateBackupState(false);
       }
     } catch (Throwable t) {
       try {
@@ -212,10 +207,7 @@ public class CreateBackup extends UniverseTaskBase {
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
             && config.get(Universe.TAKE_BACKUPS).equals("true");
-    if (alreadyRunning
-        || !shouldTakeBackup
-        || universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress) {
+    if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
         if (baseBackupUUID == null) {
           // Update backlog status only for full backup as we don't store expected task time

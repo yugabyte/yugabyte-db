@@ -91,12 +91,6 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                   statusValue(universe.getUniverseDetails().updateInProgress)));
-          universeGroup.metric(
-              createUniverseMetric(
-                  customer,
-                  universe,
-                  PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
-                  statusValue(universe.getUniverseDetails().backupInProgress)));
           Double encryptionKeyExpiryDays =
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
