@@ -51,7 +51,7 @@ Before connecting to the YugabyteDB cluster, import the `pg-yugabytedb` package.
   const pg = require('pg-yugabytedb');
 ```
 
-Create a client to connect to the cluster using a connection string with enabling the uniform load balancing.
+Create a client to connect to the cluster with uniform load balancing using a connection string.
 
 ```javascript
 const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true"
