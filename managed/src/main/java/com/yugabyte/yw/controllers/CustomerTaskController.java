@@ -7,11 +7,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -43,6 +44,7 @@ import javax.inject.Inject;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -284,6 +286,82 @@ public class CustomerTaskController extends AuthenticatedController {
         nodeTaskParams.universeUUID = universeUUID;
         nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
+        break;
+      case BackupUniverse:
+        // V1 Restore Task
+        universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
+        universeUUID = UUID.fromString(universeUUIDStr);
+        // Build restore V1 task params for restore task.
+        BackupTableParams backupTableParams = new BackupTableParams();
+        backupTableParams.universeUUID = universeUUID;
+        backupTableParams.customerUuid = customerUUID;
+        backupTableParams.actionType =
+            BackupTableParams.ActionType.valueOf(oldTaskParams.get("actionType").textValue());
+        backupTableParams.storageConfigUUID =
+            UUID.fromString((oldTaskParams.get("storageConfigUUID").textValue()));
+        backupTableParams.storageLocation = oldTaskParams.get("storageLocation").textValue();
+        backupTableParams.backupType =
+            TableType.valueOf(oldTaskParams.get("backupType").textValue());
+        String restore_keyspace = oldTaskParams.get("keyspace").textValue();
+        backupTableParams.setKeyspace(restore_keyspace);
+        if (oldTaskParams.has("parallelism")) {
+          backupTableParams.parallelism = oldTaskParams.get("parallelism").asInt();
+        }
+        if (oldTaskParams.has("disableChecksum")) {
+          backupTableParams.disableChecksum = oldTaskParams.get("disableChecksum").asBoolean();
+        }
+        if (oldTaskParams.has("useTablespaces")) {
+          backupTableParams.useTablespaces = oldTaskParams.get("useTablespaces").asBoolean();
+        }
+        taskParams = backupTableParams;
+        break;
+      case MultiTableBackup:
+        // V1 Backup task
+        universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
+        universeUUID = UUID.fromString(universeUUIDStr);
+        // Build backup task params for backup actions.
+        MultiTableBackup.Params multiTableParams = new MultiTableBackup.Params();
+        multiTableParams.universeUUID = universeUUID;
+        multiTableParams.actionType =
+            BackupTableParams.ActionType.valueOf(oldTaskParams.get("actionType").textValue());
+        multiTableParams.storageConfigUUID =
+            UUID.fromString((oldTaskParams.get("storageConfigUUID").textValue()));
+        multiTableParams.backupType =
+            TableType.valueOf(oldTaskParams.get("backupType").textValue());
+        multiTableParams.customerUUID = customerUUID;
+        if (oldTaskParams.has("keyspace")) {
+          String backup_keyspace = oldTaskParams.get("keyspace").textValue();
+          multiTableParams.setKeyspace(backup_keyspace);
+        }
+        if (oldTaskParams.has("tableUUIDList")) {
+          JsonNode tableUUIDListJson = oldTaskParams.get("tableUUIDList");
+          if (tableUUIDListJson.isArray()) {
+            for (final JsonNode objNode : tableUUIDListJson) {
+              multiTableParams.tableUUIDList.add(UUID.fromString(String.valueOf(objNode)));
+            }
+          }
+        }
+        if (oldTaskParams.has("parallelism")) {
+          multiTableParams.parallelism = oldTaskParams.get("parallelism").asInt();
+        }
+        if (oldTaskParams.has("transactionalBackup")) {
+          multiTableParams.transactionalBackup =
+              oldTaskParams.get("transactionalBackup").asBoolean();
+        }
+        if (oldTaskParams.has("sse")) {
+          multiTableParams.sse = oldTaskParams.get("sse").asBoolean();
+        }
+        if (oldTaskParams.has("useTablespaces")) {
+          multiTableParams.useTablespaces = oldTaskParams.get("useTablespaces").asBoolean();
+        }
+        if (oldTaskParams.has("disableChecksum")) {
+          multiTableParams.disableChecksum = oldTaskParams.get("disableChecksum").asBoolean();
+        }
+        if (oldTaskParams.has("disableParallelism")) {
+          multiTableParams.disableParallelism = oldTaskParams.get("disableParallelism").asBoolean();
+        }
+
+        taskParams = multiTableParams;
         break;
       default:
         String errMsg =

@@ -218,6 +218,8 @@ public enum TaskType {
   DeleteTablesFromUniverse(
       com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse.class),
 
+  DeleteKeyspace(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace.class),
+
   LoadBalancerStateChange(
       com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange.class),
 

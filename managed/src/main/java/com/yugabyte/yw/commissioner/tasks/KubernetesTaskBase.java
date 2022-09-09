@@ -12,7 +12,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
