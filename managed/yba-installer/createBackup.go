@@ -5,7 +5,6 @@
  package main
 
  import (
-    "fmt"
     "os"
  )
 
@@ -16,12 +15,12 @@
  func CreateBackupScript(outputPath string, dataDir string,
     excludePrometheus bool, skipRestart bool, verbose bool) {
 
-    fileName := "/opt/yugabyte/packages/backup.sh"
+    fileName := INSTALL_VERSION_DIR+"/packages/backup.sh"
     err := os.Chmod(fileName, 0777)
     if err != nil {
-        fmt.Println(err)
+        LogError(err.Error())
     } else {
-        fmt.Println("Create Backup Script has now been given executable permissions!")
+        LogDebug("Create Backup Script has now been given executable permissions.")
     }
 
     command1 := "/bin/sh"
@@ -35,5 +34,6 @@
     if verbose {
         arg1 = append(arg1, "--verbose")
     }
+    LogInfo("Creating a backup of your Yugabyte Anywhere Installation.")
     ExecuteBashCommand(command1, arg1)
 }
