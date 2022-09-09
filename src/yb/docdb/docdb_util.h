@@ -169,7 +169,7 @@ class DocDBRocksDBUtil {
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   Status DeleteSubDoc(
       const DocPath& doc_path,
