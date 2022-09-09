@@ -43,7 +43,7 @@ Some distributed databases handle this uncertainty due to clock skew by using al
 
 However, for Read Committed isolation, YugabyteDB has stronger mechanisms in place to ensure that the ambiguity is always resolved internally, and `Read restart` errors are not surfaced to the client. So, in read committed transactions, clients don't have to add any retry logic for `Read restart` errors (similar to serialization errors).
 
-## Handling of serialization errors
+## Handling serialization errors
 
 To handle serialization errors in the database (without surfacing them to the client), PostgreSQL takes the following steps based on the statement type.
 
