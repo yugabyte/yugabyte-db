@@ -6,7 +6,6 @@
 
  import (
   "io/ioutil"
-  "log"
   "strings"
   yaml "sigs.k8s.io/yaml"
   yaml2 "github.com/goccy/go-yaml"
@@ -21,7 +20,7 @@
 
     inputYmlBytes, errYml := ioutil.ReadFile("yba-installer-input.yml")
     if errYml != nil {
-        log.Fatalf("error: %v", errYml)
+        LogError(fmt.Sprintf("Error: %v.", errYml))
     }
 
     // Check if the field exists via yamlPath, to confirm that it is configurable
@@ -32,7 +31,13 @@
     var val string
     err = path.Read(bytes.NewReader(inputYmlBytes), &val)
     if err != nil {
-        log.Fatalf("Parameter " + key + " not configurable!")
+        //Retain original CronJob in case parameter update is invalid.
+        if ! hasSudoAccess() {
+            prometheus.CreateCronJob()
+            postgres.CreateCronJob()
+            platform.CreateCronJob()
+        }
+        LogError("Parameter " + key + " not configurable.")
     }
 
     // Have restructured configuration file so that we no longer have old/new
@@ -45,7 +50,13 @@
 
     err = yaml.Unmarshal([]byte(data), &inputYml)
     if err != nil {
-        log.Fatalf("error: %v", err)
+        if ! hasSudoAccess() {
+            //Retain original CronJob in case parameter update is invalid.
+            prometheus.CreateCronJob()
+            postgres.CreateCronJob()
+            platform.CreateCronJob()
+        }
+        LogError(fmt.Sprintf("Error: %v.", err))
     }
 
     // Input the user's configuration setting into the configuration file, and verify that
@@ -68,12 +79,16 @@
 
     jsonString, jsonStringErr := yaml.YAMLToJSON(updatedBytes)
     if jsonStringErr != nil {
-        fmt.Printf("err: %v\n", jsonStringErr)
+        //Retain original CronJob in case parameter update is invalid.
+        prometheus.CreateCronJob()
+        postgres.CreateCronJob()
+        platform.CreateCronJob()
+        LogError(fmt.Sprintf("Error: %v.\n", jsonStringErr))
     }
 
     var jsonData map[string]interface{}
     if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
-        fmt.Printf("err: %v\n", jsonDataError)
+        LogError(fmt.Sprintf("Error: %v.\n", jsonDataError))
     }
 
     jsonBytesInput, _ := json.Marshal(jsonData)
@@ -88,16 +103,24 @@
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 
     if err != nil {
-        panic(err.Error())
+        //Retain original CronJob in case parameter update is invalid.
+        prometheus.CreateCronJob()
+        postgres.CreateCronJob()
+        platform.CreateCronJob()
+        LogError("Error: " + err.Error() + ".")
     }
 
     if result.Valid() {
-        fmt.Printf("Your configuration setting is valid!\n")
+        LogDebug("Your configuration setting is valid.\n")
         WriteBytes(updatedBytes, []byte("yba-installer-input.yml"))
     } else {
-        fmt.Printf("Your configuration setting is not valid! See Errors :\n")
+        LogInfo("Your configuration setting is not valid! See the below errors:\n")
+        //Retain original CronJob in case parameter update is invalid.
+        prometheus.CreateCronJob()
+        postgres.CreateCronJob()
+        platform.CreateCronJob()
         for _, desc := range result.Errors() {
-            log.Fatalf("- %s\n", desc)
+            LogError(fmt.Sprintf("- %s\n", desc))
         }
     }
 

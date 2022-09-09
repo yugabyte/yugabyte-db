@@ -5,13 +5,12 @@
  package main
 
  import (
-    "fmt"
  )
 
- // License prints out any licensing requirements that yba-installer currently has
+ // License prints out any licensing requirements that YBA Installer currently has
  // (none currently).
  func License() {
 
-    fmt.Println("Currently there is no licensing requirement for Yba-installer.")
+    LogInfo("Currently there is no licensing requirement for YBA Installer.")
 
  }

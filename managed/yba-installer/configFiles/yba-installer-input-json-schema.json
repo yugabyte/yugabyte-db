@@ -9,14 +9,6 @@
             "description": "Prometheus Config Parameters",
             "type": "object",
             "properties": {
-              "fileName": {
-                "type": "string",
-                "pattern": "^(/[^/]+)+$"
-              },
-              "storagePath": {
-                "type": "string",
-                "pattern": "^(/[^/]+)+(/)*$"
-              },
               "scrapeInterval": {
                 "type": "integer"
               },
@@ -29,37 +21,28 @@
               "externalPort": {
                 "type": "integer"
               },
-              "appExternalPort": {
+              "maxConcurrency": {
+                "type": "integer"
+              },
+              "maxSamples": {
+                "type": "integer"
+              },
+              "timeout": {
                 "type": "integer"
               }
             },
-            "required": ["fileName", "scrapeInterval", "evaluationInterval",
-          "scrapeTimeout", "externalPort", "appExternalPort"]
+            "required": ["scrapeInterval", "evaluationInterval",
+          "scrapeTimeout", "externalPort", "maxConcurrency", "maxSamples", 
+          "timeout"]
         }, "platform": {
       "description": "Platform Config Parameters",
       "type": "object",
       "properties": {
-        "fileName": {
-          "type": "string",
-          "pattern": "^(/[^/]+)+$"
-        },
         "platformDbUser": {
           "type": "string"
         },
         "platformDbPassword": {
           "type": "string"
-        },
-        "devopsHome": {
-          "type": "string",
-          "pattern": "^(/[^/]+)+(/)*$"
-        },
-        "swamperTargetPath": {
-          "type": "string",
-          "pattern": "^(/[^/]+)+(/)*$"
-        },
-        "metricsUrl": {
-          "type": "string",
-          "format": "uri"
         },
         "useOauth": {
           "type": "boolean"
@@ -115,38 +98,21 @@
         },
         "externalPort": {
           "type": "integer"
+        },
+        "containerExposedPort": {
+          "type": "integer"
+        } ,
+        "keyStorePassword": {
+          "type": "string"
         }
       },
-      "required": ["fileName", "platformDbUser",
-      "platformDbPassword", "devopsHome", "swamperTargetPath",
-      "metricsUrl", "useOauth","ybSecurityType", "ybOidcClientId",
+      "required": ["platformDbUser",
+      "platformDbPassword",
+      "useOauth", "ybSecurityType", "ybOidcClientId",
       "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
-      "ybOidcScope", "ybOidcEmailAttr", "externalPort"]
-  }, "nginx": {
-        "description": "Nginx Config parameters",
-        "type": "object",
-        "properties": {
-          "mode": {
-            "type": "string",
-            "pattern": "^(http|https)$"
-          },
-          "fileName": {
-            "type": "string",
-            "pattern": "^(/[^/]+)+$"
-          },
-          "serverName": {
-            "type": "string"
-          },
-          "containerExposedPort": {
-            "type": "integer"
-          },
-          "uploadSize": {
-            "type": "integer"
-          }
-        },
-        "required": [ "mode", "fileName", "serverName",
-        "containerExposedPort", "uploadSize"]
-      },
+      "ybOidcScope", "ybOidcEmailAttr", "externalPort",
+      "containerExposedPort", "keyStorePassword"]
+  },
       "preflight": {
           "description": "Preflight Config parameters",
           "type": "object",
@@ -158,5 +124,5 @@
           "required": [ "overrideWarning"]
       }
     },
-    "required": ["prometheus", "platform", "nginx", "preflight"]
+    "required": ["prometheus", "platform", "preflight"]
   }

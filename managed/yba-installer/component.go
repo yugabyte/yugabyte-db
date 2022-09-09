@@ -20,4 +20,5 @@
     Uninstall()
     VersionInfo()
     Upgrade()
+    CreateCronJob()
  }
