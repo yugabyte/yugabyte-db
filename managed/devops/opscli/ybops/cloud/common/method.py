@@ -272,8 +272,9 @@ class AbstractInstancesMethod(AbstractMethod):
             time.sleep(1)
             host_lookup_count += 1
 
-        raise YBOpsRecoverableError("Timed out waiting for instance: '{0}'".format(
-            args.search_pattern))
+        raise YBOpsRecoverableError("Timed out waiting for instance: '{0}'. {}@{}:{}".format(
+            args.search_pattern, self.extra_vars["ssh_user"],
+            self.extra_vars["ssh_host"], self.extra_vars["ssh_port"]))
 
     # Find the open ssh port and update the dictionary.
     def update_open_ssh_port(self, args):
@@ -1759,7 +1760,8 @@ class WaitForSSHConnection(AbstractInstancesMethod):
             get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
         # Update with the open port.
         self.update_open_ssh_port(args)
-        self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
+        # Update the ansible args (particularly ssh user).
+        self.update_ansible_vars_with_args(args)
         # Port is already open. Wait for ssh to succeed.
         connected = wait_for_ssh(self.extra_vars["ssh_host"],
                                  self.extra_vars["ssh_port"],
@@ -1767,5 +1769,7 @@ class WaitForSSHConnection(AbstractInstancesMethod):
                                  args.private_key_file,
                                  ssh2_enabled=args.ssh2_enabled)
         if not connected:
-            raise YBOpsRuntimeError("SSH connection to port {} failed"
-                                    .format(self.extra_vars["ssh_port"]))
+            raise YBOpsRuntimeError("SSH connection to {} at {}:{} failed"
+                                    .format(self.extra_vars["ssh_host"],
+                                            self.extra_vars["ssh_user"],
+                                            self.extra_vars["ssh_port"]))
