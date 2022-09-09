@@ -35,7 +35,7 @@ The following sections break down the quick start example to demonstrate how to 
 
 ### Step 1: Download the driver dependency
 
-Download and install the YugabyteDB node-postgres driver using the following command (you need to have Node.JS installed on your system):
+Download and install the YugabyteDB node-postgres driver using the following command (you need to have Node.js installed on your system):
 
 ```sh
 npm install pg-yugabytedb
