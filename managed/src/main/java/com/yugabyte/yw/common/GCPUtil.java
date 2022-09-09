@@ -170,8 +170,9 @@ public class GCPUtil implements CloudUtil {
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
-            ? String.format("%s/%s/", splitValues[1], commonDir)
-            : commonDir + "/";
+            ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
+            : commonDir;
+    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
   }
