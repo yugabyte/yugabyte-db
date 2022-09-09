@@ -28,6 +28,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Universe UUID", required = true)
   public UUID universeUUID = null;
 
+  @Constraints.Required
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
