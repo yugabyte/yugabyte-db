@@ -6,7 +6,6 @@ package main
 
 import (
     "strings"
-    "log"
 )
 
 // Reads info from input config file and sets all template parameters
@@ -16,8 +15,8 @@ func ValidateUserPython(filename string) (valid bool) {
     pythonPath := getYamlPathData(".python.path")
     pythonVersion := getYamlPathData(".python.version")
 
-    log.Println("User provided Python path: " + pythonPath)
-    log.Println("User provided Python version: " + pythonVersion)
+    LogDebug("User provided Python path: " + pythonPath)
+    LogDebug("User provided Python version: " + pythonVersion)
 
     command := "bash"
     args := []string{"-c", "command -v python3"}
@@ -29,8 +28,8 @@ func ValidateUserPython(filename string) (valid bool) {
 
     if "/usr"+ outputTrimmed != pythonPath {
 
-        log.Println("User provided Python path does not match " +
-        "actual Python path!")
+        LogInfo("User provided Python path does not match " +
+        "actual Python path.")
 
         return false
 
@@ -44,8 +43,8 @@ func ValidateUserPython(filename string) (valid bool) {
 
     if ! (strings.Contains(outputTrimmed, pythonVersion)) {
 
-        log.Println("User provided Python version does not match " +
-        "actual Python version!")
+        LogInfo("User provided Python version does not match " +
+        "actual Python version.")
 
         return false
 
