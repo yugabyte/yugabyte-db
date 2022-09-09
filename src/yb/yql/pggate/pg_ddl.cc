@@ -40,7 +40,8 @@ namespace pggate {
 using namespace std::literals;  // NOLINT
 
 // TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kDdlTimeout = 1s * static_cast<int>(60*kTimeMultiplierWithFraction);
+static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
+static MonoDelta kCreateDatabaseTimeout = 1s * RegularBuildVsDebugVsSanitizers(60, 150, 180);
 
 namespace {
 
@@ -48,6 +49,15 @@ CoarseTimePoint DdlDeadline() {
   auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
   if (timeout == MonoDelta::kZero) {
     timeout = kDdlTimeout;
+  }
+  return CoarseMonoClock::now() + timeout;
+}
+
+// Make a special case for create database because it is a well-known slow operation in YB.
+CoarseTimePoint CreateDatabaseDeadline() {
+  auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
+  if (timeout == MonoDelta::kZero) {
+    timeout = kCreateDatabaseTimeout;
   }
   return CoarseMonoClock::now() + timeout;
 }
@@ -76,7 +86,7 @@ PgCreateDatabase::~PgCreateDatabase() {
 }
 
 Status PgCreateDatabase::Exec() {
-  return pg_session_->pg_client().CreateDatabase(&req_, DdlDeadline());
+  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
