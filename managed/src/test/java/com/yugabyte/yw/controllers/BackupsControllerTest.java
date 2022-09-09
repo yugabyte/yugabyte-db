@@ -1503,7 +1503,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     details.ybcInstalled = true;
     ObjectNode bodyJson = Json.newObject();
-    details.backupInProgress = true;
+    details.updateInProgress = true;
     universe.setUniverseDetails(details);
     universe.save();
     Result result =

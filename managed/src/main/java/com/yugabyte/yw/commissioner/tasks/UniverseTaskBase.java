@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteKeyspace;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
@@ -293,6 +294,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           && !universeDetails.updateSucceeded
           && taskParams().getPreviousTaskUUID() != null
           && !Objects.equal(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
+        // else throw error.
         String msg = "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
         log.error(msg);
         throw new RuntimeException(msg);
@@ -609,7 +611,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             log.error(msg);
             throw new RuntimeException(msg);
           }
-          // Persist the updated information about the universe. Mark it as being edited.
+          // Persist the updated information about the universe. Mark it as being not edited.
           universeDetails.updateInProgress = false;
           universeDetails.updatingTask = null;
           universeDetails.errorString = err;
@@ -1497,6 +1499,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     DeleteTablesFromUniverse task = createTask(DeleteTablesFromUniverse.class);
     task.initialize(deleteTablesFromUniverseParams);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to delete a database/keyspace if it exists.
+   *
+   * @param keyspaceName : name of the database/keyspace to delete.
+   * @param tableType : Type of the Table YSQL/ YCQL
+   */
+  public SubTaskGroup createDeleteKeySpaceTask(String keyspaceName, TableType tableType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("DeleteKeyspace", executor);
+    // Create required params for this subtask.
+    DeleteKeyspace.Params params = new DeleteKeyspace.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.setKeyspace(keyspaceName);
+    params.backupType = tableType;
+    // Create the task.
+    DeleteKeyspace task = createTask(DeleteKeyspace.class);
+    // Initialize the task.
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
@@ -2795,41 +2821,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  // Update the Universe's 'backupInProgress' flag to new state.
-  private void updateBackupState(boolean state) {
-    UniverseUpdater updater =
-        universe -> {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          universeDetails.backupInProgress = state;
-          universe.setUniverseDetails(universeDetails);
-        };
-    if (state) {
-      // New state is to set backupInProgress to true.
-      // This method increments universe version if HA is enabled.
-      saveUniverseDetails(updater);
-    } else {
-      // New state is to set backupInProgress to false.
-      // This method simply updates the backupInProgress without changing the universe version.
-      // This is called at the end of backup to release the universe for other tasks.
-      Universe.saveDetails(taskParams().universeUUID, updater, false);
-    }
-  }
-
-  // Update the Universe's 'backupInProgress' flag to new state.
-  // It throws exception if the universe is already being locked by another task.
-  public void lockedUpdateBackupState(boolean newState) {
-    checkNotNull(taskParams().universeUUID, "Universe UUID must be set.");
-    if (Universe.getOrBadRequest(taskParams().universeUUID).getUniverseDetails().backupInProgress
-        == newState) {
-      if (newState) {
-        throw new IllegalStateException("A backup for this universe is already in progress.");
-      } else {
-        return;
-      }
-    }
-    updateBackupState(newState);
   }
 
   /**

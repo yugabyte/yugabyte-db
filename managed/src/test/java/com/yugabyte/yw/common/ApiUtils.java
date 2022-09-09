@@ -54,11 +54,6 @@ public class ApiUtils {
 
   public static Universe.UniverseUpdater mockUniverseUpdater(
       final String nodePrefix, final Common.CloudType cloudType) {
-    return mockUniverseUpdater(nodePrefix, cloudType, false);
-  }
-
-  public static Universe.UniverseUpdater mockUniverseUpdater(
-      final String nodePrefix, final Common.CloudType cloudType, final boolean backupState) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -80,7 +75,7 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
-        universeDetails.backupInProgress = backupState;
+        universeDetails.updateInProgress = true;
         universe.setUniverseDetails(universeDetails);
       }
     };

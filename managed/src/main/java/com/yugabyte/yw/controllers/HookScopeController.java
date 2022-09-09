@@ -1,4 +1,4 @@
-// Copyright (ch Yugabyte, Inc.
+// Copyright (c) Yugabyte, Inc.
 
 package com.yugabyte.yw.controllers;
 

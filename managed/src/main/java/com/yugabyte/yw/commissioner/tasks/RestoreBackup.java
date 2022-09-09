@@ -38,10 +38,6 @@ public class RestoreBackup extends UniverseTaskBase {
       // to prevent other updates from happening.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      if (universe.getUniverseDetails().backupInProgress) {
-        throw new RuntimeException("A backup for this universe is already in progress.");
-      }
-
       if (universe.isYbcEnabled()
           && !universe
               .getUniverseDetails()
