@@ -11,7 +11,7 @@ type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/nodejs/postgres-node-driver/" class="nav-link active">
+    <a href="/preview/drivers-orms/nodejs/yugabyte-node-driver/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB node-postgres Driver
     </a>
@@ -25,11 +25,11 @@ type: docs
 
 </ul>
 
-The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres). Although the upstream PostgreSQL node-postgres driver works with YugabyteDB, the YugabyteDB driver is cluster-aware and topology-aware, and eliminates the need for external load balancers.
+The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres). Although the upstream PostgreSQL node-postgres driver works with YugabyteDB, the YugabyteDB driver is cluster-aware and topology-aware, and eliminates the need for external load balancers.
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/nodejs/ysql-pg/) in the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres driver.
 
@@ -66,7 +66,7 @@ client.connect()
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| loadBalance | Enables uniform load balancing | false 
+| loadBalance | Enables uniform load balancing | false
 
 #### Use SSL
 
@@ -80,12 +80,12 @@ client.connect()
 
 For other ways to provide connection and SSL-related details, refer to the [node-postgres](https://node-postgres.com/) documentation.
 
-| JDBC Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| sslmode | SSL mode  | require
-| sslrootcert | path to the root certificate on your computer | ~/.postgresql/
+|  YugabyteDB node-postgres Parameter | Description |
+| :---------------------- | :---------- |
+| sslmode | SSL mode |
+| sslrootcert | path to the root certificate on your computer |
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
@@ -112,7 +112,7 @@ async function createTableAndInsertData(client){
                 }).catch((err) => {
                     console.log(err.stack);
                 })
-    
+
     var insert_emp1 = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')"
     await client.query(insert_emp1).then(() => {
         console.log("Inserted Employee 1");

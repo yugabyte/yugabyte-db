@@ -18,7 +18,8 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :----------------------- | :--------------------|
-| node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| PostgreSQL node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| YugabyteDB node-postgres Driver| [Documentation](yugabyte-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
