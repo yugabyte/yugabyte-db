@@ -8,7 +8,6 @@
      "strconv"
      "github.com/spf13/cobra"
      "os"
-     "strings"
      "text/tabwriter"
      log "github.com/sirupsen/logrus"
      pre "yba-installer/preflight"
@@ -82,8 +81,8 @@ var rootCmd = &cobra.Command{
     Long: `
     YBA Installer is your one stop shop for deploying Yugabyte Anywhere! Through
     YBA Installer, you can perform numerous actions related to your Yugabyte
-    Anywhere instance through our command line CLI, such as clean(), createBackup(),
-    restoreBackup(), install(), and upgrade()! View the CLI menu to learn more!`,
+    Anywhere instance through our command line CLI, such as clean, createBackup,
+    restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
  }
 
  var statusCmd = &cobra.Command{
@@ -97,21 +96,9 @@ var rootCmd = &cobra.Command{
     service, the port the service is associated with, the location of any
     applicable systemd and config files, and the running status of the service
     (active or inactive)`,
-    Args: func(cmd *cobra.Command, args []string) error {
-        if len(args) > 1{
-            LogInfo("Invalid provided arguments: " + strings.Join(args, " "))
-            LogError("The subcommand status only " +
-            "takes one optional argument, the service to view the " +
-             "status of!")
-         } else if len(args) == 1{
-            if ! Contains([]string{"postgres", "prometheus", "yb-platform"}, args[0]) {
-                LogError("Invalid service name passed in. Valid options: postgres, prometheus, " +
-                "yb-platform")
-            }
-        }
-        return nil
-      },
     Run: func(cmd *cobra.Command, args []string) {
+
+       ValidateArgLength("status", args, 0, 1)
 
        steps[common.Name] = []functionPointer{common.Status}
 
@@ -131,6 +118,9 @@ var rootCmd = &cobra.Command{
             order = []string{common.Name, prometheus.Name}
         } else if args[0] == "yb-platform" {
             order = []string{common.Name, platform.Name}
+        } else {
+            LogError("Invalid service name passed in. Valid options: postgres, prometheus, " +
+            "yb-platform")
         }
         }
 
