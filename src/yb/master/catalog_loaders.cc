@@ -472,8 +472,6 @@ Status ClusterConfigLoader::Visit(
   }
   // Debug confirm that there is no cluster_config_ set. This also ensures that this does not
   // visit multiple rows. Should update this, if we decide to have multiple IDs set as well.
-  std::lock_guard<decltype(catalog_manager_->config_mutex_)> config_lock(
-      catalog_manager_->config_mutex_);
   DCHECK(!catalog_manager_->cluster_config_) << "Already have config data!";
 
   // Prepare the config object.

@@ -1573,8 +1573,18 @@ class CatalogManager :
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
-  mutable rw_spinlock config_mutex_;
-  std::shared_ptr<ClusterConfigInfo> cluster_config_ GUARDED_BY(config_mutex_) = nullptr;
+  // IMPORTANT: The shared pointer that points to the cluster config
+  // is only written to with a new object during a catalog load.
+  // At all other times, the address pointed to remains the same
+  // (thus the value of this shared ptr remains the same), only
+  // the underlying object is read or modified via cow read/write lock mechanism.
+  // We don't need a lock guard for changing this pointer value since
+  // we already acquire the leader write lock during catalog loading,
+  // so all concurrent accesses of this shared ptr -- either external via RPCs or
+  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
+  // are locked out since they grab the scoped leader shared lock that
+  // depends on this leader lock.
+  std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
