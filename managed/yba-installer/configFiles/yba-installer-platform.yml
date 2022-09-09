@@ -1,12 +1,15 @@
 services:
 
   - name: platformConfig
-    fileName: {{ yamlPath ".platform.fileName" }}
+    fileName: {{ installRoot }}/yb-platform/conf/yb-platform.conf
     contents: |
       include classpath("application.common.conf")
 
-      play.crypto.secret="{{ yamlPath ".platform.config.appSecret" }}"
+      play.crypto.secret="{{ yamlPath ".platform.appSecret" }}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
+      play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"
+      play.server.https.keyStore.type = "JKS"
+      play.server.https.keyStore.password = "{{ yamlPath ".platform.keyStorePassword" }}"
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
@@ -24,17 +27,16 @@ services:
       }
 
       yb {
-        devops.home = "{{ yamlPath ".platform.devopsHome" }}"
-        swamper.targetPath = "{{ yamlPath ".platform.swamperTargetPath" }}"
-        swamper.rulesPath = "{{ yamlPath ".platform.swamperRulesPath" }}"
-        metrics.url = "{{ yamlPath ".platform.metricsUrl" }}"
-        metrics.management.url = "{{ yamlPath ".platform.metricsManagementUrl" }}"
-        storage.path = /opt/yugabyte/data
+        devops.home = "{{ installRoot }}/yb-platform/devops"
+        swamper.targetPath = "{{ installRoot }}/prometheus/swamper_targets"
+        swamper.rulesPath = "{{ installRoot }}/prometheus/swamper_rules"
+        metrics.url = "http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/api/v1"
+        metrics.management.url = "http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/-"
+        storage.path = {{ installRoot }}/yb-platform/data
         seedData = false
         multiTenant = false
-        releases.path = "/opt/yugabyte/releases"
-        thirdparty.packagePath = /opt/yugabyte/third-party
-
+        releases.path = "{{ installRoot }}/yb-platform/releases"
+        thirdparty.packagePath = {{ installRoot }}/yb-platform/third-party
         # Interval at which to check the status of every universe. Default: 5 minutes.
         health.check_interval_ms = 300000
         # Interval at which to send a status report email. Default: 12 hours.
@@ -109,25 +111,27 @@ services:
       Group=yugabyte
       Type=simple
 
-      Environment="PLATFORM_APP_SECRET={{ yamlPath ".platform.appSecret" }}"
-      Environment="CORS_ORIGIN={{ yamlPath ".platform.corsOrigin" }}"
-      Environment="DEVOPS_HOME={{ yamlPath ".platform.devopsHome" }}"
-      Environment="METRICS_URL={{ yamlPath ".platform.metricsUrl" }}"
-      Environment="METRICS_MANAGEMENT_URL={{ yamlPath ".platform.metricsManagementUrl" }}"
-      Environment="SWAMPER_TARGET_PATH={{ yamlPath ".platform.swamperTargetPath" }}"
-      Environment="SWAMPER_RULES_PATH={{ yamlPath ".platform.swamperRulesPath" }}"
-      Environment="PLATFORM_DB_USER={{ yamlPath ".platform.platformDbUser" }}"
-      Environment="PLATFORM_DB_PASSWORD={{ yamlPath ".platform.platformDbPassword" }}"
-      Environment="USE_OAUTH={{ yamlPath ".platform.useOauth" }}"
-      Environment="YB_SECURITY_TYPE={{ yamlPath ".platform.ybSecurityType" }}"
-      Environment="YB_OIDC_CLIENT_ID={{ yamlPath ".platform.ybOidcClientId" }}"
-      Environment="YB_OIDC_SECRET={{ yamlPath ".platform.ybOidcSecret" }}"
-      Environment="YB_OIDC_DISCOVERY_URI={{ yamlPath ".platform.ybOidcDiscoveryUri" }}"
-      Environment="YW_URL={{ yamlPath ".platform.ywUrl" }}"
-      Environment="YB_OIDC_SCOPE={{ yamlPath ".platform.ybOidcScope" }}"
-      Environment="YB_OIDC_EMAIL_ATTR={{ yamlPath ".platform.ybOidcEmailAttr" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.appSecret" }}={{ yamlPath ".platform.appSecret" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.corsOrigin" }}={{ yamlPath ".platform.corsOrigin" }}"
+      Environment="DEVOPS_HOME={{ installRoot }}/yb-platform/devops"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.metricsUrl" }}=http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/api/v1"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.metricsManagementUrl" }}=http://127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}/-"
+      Environment="SWAMPER_TARGET_PATH={{ installRoot }}/prometheus/swamper_targets"
+      Environment="SWAMPER_RULES_PATH={{ installRoot }}/prometheus/swamper_rules"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.platformDbUser" }}={{ yamlPath ".platform.platformDbUser" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.platformDbPassword" }}={{ yamlPath ".platform.platformDbPassword" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.useOauth" }}={{ yamlPath ".platform.useOauth" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybSecurityType" }}={{ yamlPath ".platform.ybSecurityType" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybOidcClientId" }}={{ yamlPath ".platform.ybOidcClientId" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybOidcSecret" }}={{ yamlPath ".platform.ybOidcSecret" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybOidcDiscoveryUri" }}={{ yamlPath ".platform.ybOidcDiscoveryUri" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ywUrl" }}={{ yamlPath ".platform.ywUrl" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybOidcScope" }}={{ yamlPath ".platform.ybOidcScope" }}"
+      Environment="{{ yamlSetEnv ".platform.environmentVariables.ybOidcEmailAttr" }}={{ yamlPath ".platform.ybOidcEmailAttr" }}"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk8u345-b01"
 
-      ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
+      ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware -Dconfig.file={{ installRoot }}/yb-platform/conf/yb-platform.conf \
+      -Dhttp.port=disabled -Dhttps.port={{ yamlPath ".platform.containerExposedPort" }}
 
       [Install]
       WantedBy=multi-user.target

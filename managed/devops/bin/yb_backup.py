@@ -743,7 +743,7 @@ class YBTSConfig:
         if self.backup.args.verbose:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
-        url = "{}:{}/varz".format(tserver_ip, web_port)
+        url = "{}:{}/varz?raw=1".format(tserver_ip, web_port)
         output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
@@ -770,7 +770,7 @@ class YBTSConfig:
                 break
 
         if not data_dirs:
-            msg = "Did not find any data directories in tserver by querying /varz endpoint"\
+            msg = "Did not find any data directories in tserver by querying /varz?raw=1 endpoint"\
                   " on tserver '{}:{}'. Was looking for '{}', got this: [[ {} ]]".format(
                       tserver_ip, web_port, self.FS_DATA_DIRS_ARG_PREFIX, output)
             logging.error("[app] {}".format(msg))
@@ -907,7 +907,7 @@ class YBManifest:
         properties['check-sums'] = not self.backup.args.disable_checksums
         if not self.backup.args.disable_checksums:
             properties['hash-algorithm'] = XXH64_FILE_EXT \
-                if self.backup.xxh64sum_binary_present else SHA_FILE_EXT
+                if self.backup.use_xxhash_checksum else SHA_FILE_EXT
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -995,7 +995,7 @@ class YBBackup:
         self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
-        self.xxh64sum_binary_present = None
+        self.use_xxhash_checksum = None
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
         self.parse_arguments()
@@ -1130,6 +1130,9 @@ class YBBackup:
         parser.add_argument(
             '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
                                                                           "pg based backup.")
+        parser.add_argument(
+            '--disable_xxhash_checksum', action='store_true', default=False,
+            help="Disables xxhash algorithm for checksum computation.")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
@@ -2117,8 +2120,8 @@ class YBBackup:
 
     def find_data_dirs(self, tserver_ip):
         """
-        Finds the data directories on the given tserver. This queries the /varz endpoint of tserver
-        and extracts --fs_data_dirs flag from response.
+        Finds the data directories on the given tserver. This queries the /varz?raw=1 endpoint of
+        tserver and extracts --fs_data_dirs flag from response.
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
@@ -2355,51 +2358,56 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
-    def check_if_xxh64bin_present(self):
+    def check_if_use_xxhash_checksum(self):
         # Checking the xxh64 binaries on single node(master leader).
         # In case if the binary is absent on other host, script will fail during execution.
-        try:
-            host_ip = self.get_main_host_ip()
-            if self.is_k8s():
-                k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
-                return self.run_program([
-                    'kubectl',
-                    'exec',
-                    '-t',
-                    '-n={}'.format(k8s_details.namespace),
-                    # For k8s, pick the first qualified name, if given a CNAME.
-                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
-                    env=k8s_details.env_config)
-            elif self.args.no_ssh:
-                self.run_program([
-                    'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
-                ])
-            else:
-                ssh_key_path = self.args.ssh_key_path
-                if self.ip_to_ssh_key_map:
-                    ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
-                self.run_program([
-                    'ssh',
-                    '-o', 'StrictHostKeyChecking=no',
-                    '-o', 'UserKnownHostsFile=/dev/null',
-                    '-o', 'ControlMaster=auto',
-                    '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
-                    '-o', 'ControlPersist=1m',
-                    '-i', ssh_key_path,
-                    '-p', self.args.ssh_port,
-                    '-q',
-                    '%s@%s' % (self.args.ssh_user, host_ip),
-                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
-                ])
-            self.xxh64sum_binary_present = True
-        except subprocess.CalledProcessError as e:
-            self.xxh64sum_binary_present = False
-            logging.warning(
-                "Tool {} not found on host {}. Error: {}".format(XXH64HASH_TOOL_PATH, host_ip, e))
+        if self.args.disable_xxhash_checksum:
+            # Disable the xxhash checksum in case client specifies so.
+            self.use_xxhash_checksum = False
+        else:
+            try:
+                host_ip = self.get_main_host_ip()
+                if self.is_k8s():
+                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
+                    return self.run_program([
+                        'kubectl',
+                        'exec',
+                        '-t',
+                        '-n={}'.format(k8s_details.namespace),
+                        # For k8s, pick the first qualified name, if given a CNAME.
+                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
+                        env=k8s_details.env_config)
+                elif self.args.no_ssh:
+                    self.run_program([
+                        'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
+                    ])
+                else:
+                    ssh_key_path = self.args.ssh_key_path
+                    if self.ip_to_ssh_key_map:
+                        ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
+                    self.run_program([
+                        'ssh',
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-o', 'ControlMaster=auto',
+                        '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
+                        '-o', 'ControlPersist=1m',
+                        '-i', ssh_key_path,
+                        '-p', self.args.ssh_port,
+                        '-q',
+                        '%s@%s' % (self.args.ssh_user, host_ip),
+                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
+                    ])
+                self.use_xxhash_checksum = True
+            except subprocess.CalledProcessError as e:
+                self.use_xxhash_checksum = False
+                logging.warning(
+                    "Tool {} not found on host {}. Error: {}"
+                    .format(XXH64HASH_TOOL_PATH, host_ip, e))
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        assert self.xxh64sum_binary_present is not None
-        tool_path = XXH64HASH_TOOL_PATH if self.xxh64sum_binary_present else SHA_TOOL_PATH
+        assert self.use_xxhash_checksum is not None
+        tool_path = XXH64HASH_TOOL_PATH if self.use_xxhash_checksum else SHA_TOOL_PATH
         prefix = pipes.quote(tool_path)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
@@ -2408,8 +2416,8 @@ class YBBackup:
             pipes.quote(file_path), pipes.quote(checksum_file_path))
 
     def checksum_path(self, file_path):
-        assert self.xxh64sum_binary_present is not None
-        ext = XXH64_FILE_EXT if self.xxh64sum_binary_present else SHA_FILE_EXT
+        assert self.use_xxhash_checksum is not None
+        ext = XXH64_FILE_EXT if self.use_xxhash_checksum else SHA_FILE_EXT
         return file_path + '.' + ext
 
     def checksum_path_downloaded(self, file_path):
@@ -2894,7 +2902,7 @@ class YBBackup:
         """
         if not self.args.disable_checksums:
             # Define a tool for checksum calculation.
-            self.check_if_xxh64bin_present()
+            self.check_if_use_xxhash_checksum()
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
@@ -3059,7 +3067,7 @@ class YBBackup:
 
         if not self.args.disable_checksums:
             # Define a tool for checksum calculation.
-            self.check_if_xxh64bin_present()
+            self.check_if_use_xxhash_checksum()
 
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
@@ -3067,11 +3075,11 @@ class YBBackup:
             try:
                 self.download_file(src_manifest_path, manifest_path)
             except subprocess.CalledProcessError as ex:
-                if self.xxh64sum_binary_present:
+                if self.use_xxhash_checksum:
                     # Possibly old checksum tool was used for the backup.
                     # Try again with the old tool.
                     logging.warning("Try to use " + SHA_TOOL_PATH + " for Manifest")
-                    self.xxh64sum_binary_present = False
+                    self.use_xxhash_checksum = False
                     self.download_file(src_manifest_path, manifest_path)
                 else:
                     raise ex
@@ -3088,11 +3096,11 @@ class YBBackup:
         if self.manifest.is_loaded():
             if not self.args.disable_checksums and \
                 self.manifest.get_hash_algorithm() == XXH64_FILE_EXT \
-                    and not self.xxh64sum_binary_present:
+                    and not self.use_xxhash_checksum:
                 raise BackupException("Manifest references unavailable tool " + XXH64HASH_TOOL_PATH)
         else:
             self.manifest.create_by_default(self.args.backup_location)
-            self.xxh64sum_binary_present = False
+            self.use_xxhash_checksum = False
 
         if self.args.verbose:
             logging.info("{} manifest: {}".format(

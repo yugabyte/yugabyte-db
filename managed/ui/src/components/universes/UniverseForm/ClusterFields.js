@@ -353,7 +353,10 @@ export default class ClusterFields extends Component {
       this.setState({ universeName: formValues['primary'].universeName });
       this.setState({ ybcSoftwareVersion: formValues['primary'].ybcSoftwareVersion });
       updateFormField(`${clusterType}.universeName`, formValues['primary'].universeName);
-      updateFormField(`${clusterType}.ybcSoftwareVersion`, formValues['primary'].ybcSoftwareVersion);
+      updateFormField(
+        `${clusterType}.ybcSoftwareVersion`,
+        formValues['primary'].ybcSoftwareVersion
+      );
     }
 
     // This flag will prevent configure from being fired on component load
@@ -526,13 +529,15 @@ export default class ClusterFields extends Component {
             this.setState({ enableEncryptionAtRest: formValues['primary'].enableEncryptionAtRest });
           }
           if (isNonEmptyArray(formValues[clusterType].regionList)) {
-            this.setState({ regionList: formValues[clusterType].regionList});
+            this.setState({ regionList: formValues[clusterType].regionList });
           }
           if (formValues[clusterType].defaultRegion) {
             this.setState({ defaultRegion: formValues[clusterType].defaultRegion });
           }
           if (formValues[clusterType].mastersInDefaultRegion) {
-            this.setState({ mastersInDefaultRegion: formValues[clusterType].mastersInDefaultRegion });
+            this.setState({
+              mastersInDefaultRegion: formValues[clusterType].mastersInDefaultRegion
+            });
           }
         }
       } else {
@@ -1872,6 +1877,7 @@ export default class ClusterFields extends Component {
             />
           );
         }
+
         const numVolumes = (
           <span className="volume-info-field volume-info-count">
             <Field
@@ -1879,7 +1885,11 @@ export default class ClusterFields extends Component {
               component={YBUnControlledNumericInput}
               label="Number of Volumes"
               onInputChanged={self.numVolumesChanged}
-              readOnly={fixedNumVolumes || !hasInstanceTypeChanged}
+              readOnly={
+                fixedNumVolumes ||
+                !hasInstanceTypeChanged ||
+                (this.props.type === 'Edit' && this.state.isKubernetesUniverse)
+              }
             />
           </span>
         );
@@ -1898,7 +1908,11 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
+              readOnly={
+                fixedVolumeInfo ||
+                (!hasInstanceTypeChanged && !smartResizePossible) ||
+                (this.props.type === 'Edit' && this.state.isKubernetesUniverse)
+              }
             />
           </span>
         );
@@ -2636,10 +2650,10 @@ export default class ClusterFields extends Component {
                 <Row>
                   <div className="form-right-aligned-labels">
                     {enableGeoPartitioning && (
-	                    <Field
-                        name={`${clusterType}.mastersInDefaultRegion`}C
+                      <Field
+                        name={`${clusterType}.mastersInDefaultRegion`}
                         component={YBToggle}
-                        isReadOnly={isFieldReadOnly || (this.state.defaultRegion === '')}
+                        isReadOnly={isFieldReadOnly || this.state.defaultRegion === ''}
                         disableOnChange={disableToggleOnChange}
                         checkedVal={this.state.mastersInDefaultRegion}
                         onToggle={this.toggleMastersInDefaultRegion}
@@ -2824,8 +2838,6 @@ export default class ClusterFields extends Component {
                     onInputChanged={this.softwareVersionChanged}
                     readOnlySelect={isSWVersionReadOnly}
                   />
-
-
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -70,7 +71,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     attachHooks("RestartUniverse");
   }
 
-  private TaskInfo submitTask(UpgradeTaskParams requestParams) {
+  private TaskInfo submitTask(RestartTaskParams requestParams) {
     return submitTask(requestParams, TaskType.RestartUniverse, commissioner);
   }
 
@@ -103,7 +104,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
   @Test
   public void testRollingRestart() {
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockNodeManager, times(30)).nodeCommand(any(), any());
 

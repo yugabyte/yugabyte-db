@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -81,6 +82,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     HELM_DELETE,
     VOLUME_DELETE,
     NAMESPACE_DELETE,
+    POD_DELETE,
     POD_INFO,
     // The following flag is deprecated.
     INIT_YSQL;
@@ -103,6 +105,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
         case NAMESPACE_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
+        case POD_DELETE:
+          return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case INIT_YSQL:
@@ -142,6 +146,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public int masterPartition = 0;
     public Map<String, Object> universeOverrides;
     public Map<String, Object> azOverrides;
+    public String podName;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -158,16 +163,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return (KubernetesCommandExecutor.Params) taskParams;
   }
 
-  @Override
-  public void run() {
-    String overridesFile;
-
+  protected Map<String, String> getConfig() {
     // In case no config is provided, assume it is at the provider level
     // (for backwards compatibility).
     Map<String, String> config = taskParams().config;
     if (config == null) {
       config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
+    return config;
+  }
+
+  @Override
+  public void run() {
+    String overridesFile;
+
+    Map<String, String> config = getConfig();
+
     if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
@@ -243,6 +254,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case NAMESPACE_DELETE:
         kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
+        break;
+      case POD_DELETE:
+        kubernetesManagerFactory
+            .getManager()
+            .deletePod(config, taskParams().namespace, taskParams().podName);
         break;
       case POD_INFO:
         processNodeInfo();
@@ -692,41 +708,52 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
-        CertificateProviderInterface certProvider =
-            EncryptionInTransitUtil.getCertificateProviderInstance(
-                certInfo, runtimeConfigFactory.staticApplicationConf());
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
-        rootCA.put("key", null);
+        rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
 
-        // Generate node cert from cert provider and set nodeCert param
-        // As we are using same node cert for all nodes, set wildcard commonName
-        String dnsWildCard1 = String.format("*.*.%s", taskParams().namespace);
-        String dnsWildCard2 = dnsWildCard1 + ".svc.cluster.local";
-        Map<String, Integer> subjectAltNames = new HashMap<>();
-        subjectAltNames.put(dnsWildCard1, GeneralName.dNSName);
-        subjectAltNames.put(dnsWildCard2, GeneralName.dNSName);
-        CertificateDetails nodeCertDetails =
-            certProvider.createCertificate(
-                null, dnsWildCard2, null, null, null, null, subjectAltNames);
-        Map<String, Object> nodeCert = new HashMap<>();
-        nodeCert.put(
-            "cert", Base64.getEncoder().encodeToString(nodeCertDetails.getCrt().getBytes()));
-        nodeCert.put(
-            "key", Base64.getEncoder().encodeToString(nodeCertDetails.getKey().getBytes()));
-        tlsInfo.put("nodeCert", nodeCert);
+        if (certInfo.certType == CertConfigType.K8SCertManager) {
+          // User configuring a K8SCertManager type of certificate on a Universe enables
+          // the cert-manager integration for this Universe. The name of
+          // Issuer/ClusterIssuer will come from the Provider yaml override. Rest of the
+          // setup happens here.
+          Map<String, Object> certManager = new HashMap<>();
+          certManager.put("enabled", true);
+          certManager.put("bootstrapSelfsigned", false);
+          tlsInfo.put("certManager", certManager);
+        } else {
+          CertificateProviderInterface certProvider =
+              EncryptionInTransitUtil.getCertificateProviderInstance(
+                  certInfo, runtimeConfigFactory.staticApplicationConf());
+          // Generate node cert from cert provider and set nodeCert param
+          // As we are using same node cert for all nodes, set wildcard commonName
+          String dnsWildCard1 = String.format("*.*.%s", taskParams().namespace);
+          String dnsWildCard2 = dnsWildCard1 + ".svc.cluster.local";
+          Map<String, Integer> subjectAltNames = new HashMap<>();
+          subjectAltNames.put(dnsWildCard1, GeneralName.dNSName);
+          subjectAltNames.put(dnsWildCard2, GeneralName.dNSName);
+          CertificateDetails nodeCertDetails =
+              certProvider.createCertificate(
+                  null, dnsWildCard2, null, null, null, null, subjectAltNames);
+          Map<String, Object> nodeCert = new HashMap<>();
+          nodeCert.put(
+              "cert", Base64.getEncoder().encodeToString(nodeCertDetails.getCrt().getBytes()));
+          nodeCert.put(
+              "key", Base64.getEncoder().encodeToString(nodeCertDetails.getKey().getBytes()));
+          tlsInfo.put("nodeCert", nodeCert);
 
-        // Generate client cert from cert provider and set clientCert value
-        CertificateDetails clientCertDetails =
-            certProvider.createCertificate(null, "yugabyte", null, null, null, null, null);
-        Map<String, Object> clientCert = new HashMap<>();
-        clientCert.put(
-            "cert", Base64.getEncoder().encodeToString(clientCertDetails.getCrt().getBytes()));
-        clientCert.put(
-            "key", Base64.getEncoder().encodeToString(clientCertDetails.getKey().getBytes()));
-        tlsInfo.put("clientCert", clientCert);
+          // Generate client cert from cert provider and set clientCert value
+          CertificateDetails clientCertDetails =
+              certProvider.createCertificate(null, "yugabyte", null, null, null, null, null);
+          Map<String, Object> clientCert = new HashMap<>();
+          clientCert.put(
+              "cert", Base64.getEncoder().encodeToString(clientCertDetails.getCrt().getBytes()));
+          clientCert.put(
+              "key", Base64.getEncoder().encodeToString(clientCertDetails.getKey().getBytes()));
+          tlsInfo.put("clientCert", clientCert);
+        }
       }
 
       overrides.put("tls", tlsInfo);
@@ -849,6 +876,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       annotations = (HashMap<String, Object>) yaml.load(overridesYAML);
       if (annotations != null) {
         mergeYaml(overrides, annotations);
+        validateOverrides(overrides, taskParams().universeOverrides, taskParams().azOverrides);
       }
     }
 
@@ -894,6 +922,37 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  /**
+   * Construct the final form of Values file as helm would see it, and run any necessary validations
+   * before it is applied.
+   */
+  private void validateOverrides(
+      Map<String, Object> providerOverrides,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides) {
+    // fetch the helm chart default values
+    String defaultValuesStr =
+        kubernetesManagerFactory
+            .getManager()
+            .helmShowValues(taskParams().ybSoftwareVersion, getConfig());
+    if (defaultValuesStr != null) {
+      Yaml defaultValuesYaml = new Yaml();
+      Map<String, Object> defaultValues = defaultValuesYaml.load(defaultValuesStr);
+      // apply overrides on the helm chart default values
+      mergeYaml(defaultValues, providerOverrides);
+      mergeYaml(defaultValues, universeOverrides);
+      mergeYaml(defaultValues, azOverrides);
+      log.trace("Running validations on merged yaml: {}", defaultValues);
+      // run any validations against the final values for helm install/upgrade
+      // allow K8SCertManager cert type only with override
+      allowK8SCertManagerOnlyWithOverride(defaultValues);
+      // make sure certManager settings are provided
+      ensureCertManagerSettings(defaultValues);
+      // do not allow selfsignedBootstrap to be enabled ever from YBA
+      preventBootstrapCA(defaultValues);
+    }
+  }
+
   // Recursively traverses the override map and updates or adds the
   // keys to source map.
   private void mergeYaml(Map<String, Object> source, Map<String, Object> override) {
@@ -908,6 +967,93 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         continue;
       }
       mergeYaml((Map<String, Object>) source.get(key), (Map<String, Object>) override.get(key));
+    }
+  }
+
+  /*
+   * Do not allow certManager bootstrapSelfsigned, as YBA will not be able to
+   * connect to the nodes. Instead, the YBA certificate should be used for TLS.
+   */
+  @SuppressWarnings("unchecked")
+  private void preventBootstrapCA(Map<String, Object> values) {
+    if (values.containsKey("tls")) {
+      Map<String, Object> tlsInfo = (Map<String, Object>) values.get("tls");
+      Boolean tlsEnabled = (Boolean) tlsInfo.getOrDefault("enabled", false);
+      if (tlsEnabled && tlsInfo.containsKey("certManager")) {
+        Map<String, Object> certManager = (Map<String, Object>) tlsInfo.get("certManager");
+        Boolean certManagerEnabled = (Boolean) certManager.getOrDefault("enabled", false);
+        Boolean bootstrapSelfsigned =
+            (Boolean) certManager.getOrDefault("bootstrapSelfsigned", true);
+        if (certManagerEnabled && bootstrapSelfsigned) {
+          throw new RuntimeException("bootstrapSelfsigned is not supported");
+        }
+      }
+    }
+  }
+
+  /*
+   * Allow a K8SCertManager type of certificate to be used on a Universe only if
+   * it also has the tls.certManager.enabled=true override. Note that when
+   * K8SCertManager type of certificate is used, we automatically set
+   * tls.certManager.enabled=true. However, the user could have specified an
+   * explicit override setting it to false. This validation makes sure that the
+   * user does not end up in such an unsupported configuration.
+   */
+  private void allowK8SCertManagerOnlyWithOverride(Map<String, Object> values) {
+    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    if (u.getUniverseDetails().rootCA == null) {
+      // nothing to validate on a Universe that does not have TLS enabled
+      return;
+    }
+    CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+    boolean isK8SCertManager = certInfo.certType == CertConfigType.K8SCertManager;
+    boolean hasCertManagerOverride = hasCertManagerOverride(values);
+    if (isK8SCertManager != hasCertManagerOverride) {
+      throw new RuntimeException(
+          "Use K8SCertManager type of certificate with the tls.certManager.enabled=true override.");
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private boolean hasCertManagerOverride(Map<String, Object> values) {
+    Map<String, Object> tlsInfo = (Map<String, Object>) values.getOrDefault("tls", null);
+    if (tlsInfo != null) {
+      Boolean tlsEnabled = (Boolean) tlsInfo.getOrDefault("enabled", false);
+      if (tlsEnabled && tlsInfo.containsKey("certManager")) {
+        Map<String, Object> certManager = (Map<String, Object>) tlsInfo.get("certManager");
+        return (Boolean) certManager.getOrDefault("enabled", false);
+      }
+    }
+    return false;
+  }
+
+  @SuppressWarnings("unchecked")
+  private void ensureCertManagerSettings(Map<String, Object> values) {
+    if (hasCertManagerOverride(values)) {
+      // make sure useClusterIssuer and the appropriate issuer/clusterissuer name is
+      // provided
+      Map<String, Object> certManager =
+          (Map<String, Object>) ((Map<String, Object>) values.get("tls")).get("certManager");
+      if (!certManager.containsKey("useClusterIssuer")) {
+        throw new RuntimeException(
+            "useClusterIssuer is required when tls.certManager.enabled=true");
+      }
+      Boolean useClusterIssuer = (Boolean) certManager.get("useClusterIssuer");
+      if (useClusterIssuer == null) {
+        throw new RuntimeException(
+            "useClusterIssuer is required when tls.certManager.enabled=true");
+      }
+      if (useClusterIssuer) {
+        String clusterIssuerName = (String) certManager.getOrDefault("clusterIssuer", "");
+        if (clusterIssuerName.isEmpty()) {
+          throw new RuntimeException("clusterIssuer is required when useClusterIssuer=true");
+        }
+      } else {
+        String issuerName = (String) certManager.getOrDefault("issuer", "");
+        if (issuerName.isEmpty()) {
+          throw new RuntimeException("issuer is required when useClusterIssuer=false");
+        }
+      }
     }
   }
 }

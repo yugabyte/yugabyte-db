@@ -117,6 +117,10 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add("--ssh2_enabled");
     }
 
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+      commandArgs.add("--disable_xxhash_checksum");
+    }
+
     commandArgs.add("--parallelism");
     commandArgs.add(Integer.toString(restoreBackupParams.parallelism));
     if (userIntent.enableYSQLAuth

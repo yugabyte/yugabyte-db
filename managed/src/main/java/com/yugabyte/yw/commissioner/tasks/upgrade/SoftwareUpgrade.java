@@ -16,9 +16,11 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -60,6 +62,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
           // Verify the request params and fail if invalid.
           taskParams().verifyParams(universe);
@@ -68,7 +71,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
               runtimeConfigFactory
                   .forUniverse(universe)
                   .getLong("yb.dbmem.checks.mem_available_limit_kb");
-          createAvailabeMemoryCheck(nodes.getRight(), Util.AVAILABLE_MEMORY, memAvailableLimit)
+          createAvailabeMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
               .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
           if (!universe
@@ -91,10 +94,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           }
 
           String newVersion = taskParams().ybSoftwareVersion;
-
-          createPackageInstallTasks(nodes.getRight());
+          createPackageInstallTasks(allNodes);
           // Download software to all nodes.
-          createDownloadTasks(nodes.getRight(), newVersion);
+          createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
           createUpgradeTaskFlow(
               (nodes1, processTypes) ->
@@ -107,7 +109,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           if (taskParams().installYbc && !isUniverseOnPremManualProvisioned) {
             createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
             // Start yb-controller process and wait for it to get responsive.
-            createStartYbcProcessTasks(new HashSet<>(nodes.getRight()));
+            createStartYbcProcessTasks(
+                new HashSet<>(nodes.getRight()),
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
             createUpdateYbcTask(taskParams().ybcSoftwareVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
@@ -123,7 +127,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
         });
   }
 
-  private void createDownloadTasks(List<NodeDetails> nodes, String softwareVersion) {
+  private void createDownloadTasks(Collection<NodeDetails> nodes, String softwareVersion) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
@@ -140,7 +144,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
-  private void createPackageInstallTasks(List<NodeDetails> nodes) {
+  private void createPackageInstallTasks(Collection<NodeDetails> nodes) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",

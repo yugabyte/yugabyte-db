@@ -21,11 +21,9 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collection;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
@@ -66,6 +64,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(currentNode.placementUuid);
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
@@ -85,15 +84,22 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // - Masters should be under replicated;
       // - If GP is on, currentNode should be in default region (when GP and default
       // region is defined, we can have masters only in the default region).
-      boolean masterAdded = false;
       String defaultRegionCode = PlacementInfoUtil.getDefaultRegionCode(taskParams());
-      if (areMastersUnderReplicated(currentNode, universe)
-          && ((defaultRegionCode == null)
-              || StringUtils.equals(defaultRegionCode, currentNode.cloudInfo.region))) {
+      boolean startMaster =
+          areMastersUnderReplicated(currentNode, universe)
+              && (defaultRegionCode == null
+                  || StringUtils.equals(defaultRegionCode, currentNode.cloudInfo.region));
+      boolean startTserver = true;
+      if (cluster.userIntent.dedicatedNodes) {
+        startTserver = currentNode.dedicatedTo == ServerType.TSERVER;
+        startMaster = !startTserver;
+      }
+      final Collection<NodeDetails> nodeCollection = ImmutableList.of(currentNode);
+      if (startMaster) {
         // Clean the master addresses in the conf file for the current node so that
         // the master comes up as a shell master.
         createConfigureServerTasks(
-                ImmutableList.of(currentNode),
+                nodeCollection,
                 params -> {
                   params.isMasterInShellMode = true;
                   params.updateMasterAddrsOnly = true;
@@ -103,14 +109,14 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
         // Set gflags for master.
         createGFlagsOverrideTasks(
-            ImmutableList.of(currentNode),
+            nodeCollection,
             ServerType.MASTER,
             true /*isShell */,
             VmUpgradeTaskType.None,
             false /*ignoreUseCustomImageConfig*/);
 
         // Start a master process.
-        createStartMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+        createStartMasterTasks(nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as isMaster in YW DB.
@@ -118,40 +124,37 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for the master to be responsive.
-        createWaitForServersTasks(
-                new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.MASTER)
+        createWaitForServersTasks(nodeCollection, ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Add stopped master to the quorum.
         createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
-
-        masterAdded = true;
       }
+      if (startTserver) {
+        // Start the tserver process
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Start the tserver process
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Mark the node process flags as true.
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true /* isAdd */)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Mark the node process flags as true.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true /* isAdd */)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Wait for the tablet server to be responsive.
-      createWaitForServersTasks(
-              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for the tablet server to be responsive.
+        createWaitForServersTasks(nodeCollection, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       // Start yb-controller process
       if (universe.isYbcEnabled()) {
-        createStartYbcTasks(Arrays.asList(currentNode))
+        createStartYbcTasks(nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for yb-controller to be responsive on each node.
-        createWaitForYbcServerTask(new HashSet<>(Arrays.asList(currentNode)))
+        createWaitForYbcServerTask(nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      if (masterAdded) {
+      if (startMaster) {
         // Update all server conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
 

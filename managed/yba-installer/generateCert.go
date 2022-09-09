@@ -17,7 +17,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"flag"
-	"log"
+	"fmt"
 	"math/big"
 	"net"
 	"os"
@@ -26,19 +26,19 @@ import (
 )
 
 var (
-    host       = flag.String("host", "", "Comma-separated hostnames and IPs " +
-    "to generate a certificate for")
-    validFrom  = flag.String("start-date", "", "Creation date formatted as " +
-    "Jan 1 15:04:05 2011")
-    validFor   = flag.Duration("duration", 365*24*time.Hour, "Duration that " +
-    "certificate is valid for")
-    isCA       = flag.Bool("ca", false, "whether this cert should be its " +
-    "own Certificate Authority")
-    rsaBits    = flag.Int("rsa-bits", 2048, "Size of RSA key to generate. " +
-    "Ignored if --ecdsa-curve is set")
-    ecdsaCurve = flag.String("ecdsa-curve", "", "ECDSA curve to use to generate a key. " +
-    "Valid values are P224, P256 (recommended), P384, P521")
-    ed25519Key = flag.Bool("ed25519", false, "Generate an Ed25519 key")
+	host = flag.String("host", "", "Comma-separated hostnames and IPs "+
+		"to generate a certificate for")
+	validFrom = flag.String("start-date", "", "Creation date formatted as "+
+		"Jan 1 15:04:05 2011")
+	validFor = flag.Duration("duration", 365*24*time.Hour, "Duration that "+
+		"certificate is valid for")
+	isCA = flag.Bool("ca", false, "whether this cert should be its "+
+		"own Certificate Authority")
+	rsaBits = flag.Int("rsa-bits", 2048, "Size of RSA key to generate. "+
+		"Ignored if --ecdsa-curve is set")
+	ecdsaCurve = flag.String("ecdsa-curve", "", "ECDSA curve to use to generate a key. "+
+		"Valid values are P224, P256 (recommended), P384, P521")
+	ed25519Key = flag.Bool("ed25519", false, "Generate an Ed25519 key")
 )
 
 func publicKey(priv any) any {
@@ -60,9 +60,13 @@ func generateCertGolang() {
 	// Set a default host name as "server" unless specified. Leaving the
 	// flags available so that they can can be configured in the future if
 	// desired.
-    if len(*host) == 0 {
-	  	*host = "server"
-    }
+	if len(*host) == 0 {
+		*host = "server"
+	}
+
+	// Default option for the ECDSA curve used to generate a key. Using
+	// the recommended option, but still configurable through flags.
+	*ecdsaCurve = "P256"
 
 	var priv any
 	var err error
@@ -82,10 +86,10 @@ func generateCertGolang() {
 	case "P521":
 		priv, err = ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	default:
-		log.Fatalf("Unrecognized elliptic curve: %q", *ecdsaCurve)
+		LogError(fmt.Sprintf("Unrecognized elliptic curve: %q.", *ecdsaCurve))
 	}
 	if err != nil {
-		log.Fatalf("Failed to generate private key: %v", err)
+		LogError(fmt.Sprintf("Failed to generate private key: %v.", err))
 	}
 
 	// ECDSA, ED25519 and RSA subject keys should have the DigitalSignature
@@ -104,7 +108,7 @@ func generateCertGolang() {
 	} else {
 		notBefore, err = time.Parse("Jan 2 15:04:05 2006", *validFrom)
 		if err != nil {
-			log.Fatalf("Failed to parse creation date: %v", err)
+			LogError(fmt.Sprintf("Failed to parse creation date: %v.", err))
 		}
 	}
 
@@ -113,7 +117,7 @@ func generateCertGolang() {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		log.Fatalf("Failed to generate serial number: %v", err)
+		LogError(fmt.Sprintf("Failed to generate serial number: %v.", err))
 	}
 
 	template := x509.Certificate{
@@ -145,35 +149,35 @@ func generateCertGolang() {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, publicKey(priv), priv)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %v", err)
+		LogError(fmt.Sprintf("Failed to create certificate: %v.", err))
 	}
 
 	certOut, err := os.Create("cert.pem")
 	if err != nil {
-		log.Fatalf("Failed to open cert.pem for writing: %v", err)
+		LogError(fmt.Sprintf("Failed to open cert.pem for writing: %v.", err))
 	}
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		log.Fatalf("Failed to write data to cert.pem: %v", err)
+		LogError(fmt.Sprintf("Failed to write data to cert.pem: %v.", err))
 	}
 	if err := certOut.Close(); err != nil {
-		log.Fatalf("Error closing cert.pem: %v", err)
+		LogError(fmt.Sprintf("Error closing cert.pem: %v.", err))
 	}
-	log.Print("wrote cert.pem\n")
+	LogDebug("Wrote cert.pem.\n")
 
 	keyOut, err := os.OpenFile("key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Fatalf("Failed to open key.pem for writing: %v", err)
-		return
+		LogError(fmt.Sprintf("Failed to open key.pem for writing: %v.", err))
 	}
-	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
+	privBytes, err := x509.MarshalECPrivateKey(priv.(*ecdsa.PrivateKey))
 	if err != nil {
-		log.Fatalf("Unable to marshal private key: %v", err)
+		LogError(fmt.Sprintf("Unable to marshal private key: %v.", err))
 	}
-	if err := pem.Encode(keyOut, &pem.Block{Type: "PRIVATE KEY", Bytes: privBytes}); err != nil {
-		log.Fatalf("Failed to write data to key.pem: %v", err)
+	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes}); err != nil {
+		LogError(fmt.Sprintf("Failed to write data to key.pem: %v.", err))
 	}
 	if err := keyOut.Close(); err != nil {
-		log.Fatalf("Error closing key.pem: %v", err)
+		LogError(fmt.Sprintf("Error closing key.pem: %v.", err))
 	}
-	log.Print("wrote key.pem\n")
+	LogDebug("Wrote key.pem.\n")
+
 }

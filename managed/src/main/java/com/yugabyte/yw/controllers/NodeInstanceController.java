@@ -218,7 +218,7 @@ public class NodeInstanceController extends AuthenticatedController {
             Audit.ActionType.Create,
             Json.toJson(nodeActionFormData),
             taskUUID);
-    return Results.status(OK);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
@@ -285,7 +285,8 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
-        || nodeAction == NodeActionType.START_MASTER) {
+        || nodeAction == NodeActionType.START_MASTER
+        || nodeAction == NodeActionType.STOP) {
       taskParams.clusters = universe.getUniverseDetails().clusters;
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
