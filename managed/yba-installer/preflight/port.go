@@ -29,7 +29,7 @@
 	for _, port := range ports {
         _, err := net.Listen("tcp", ":" + port)
         if err != nil {
-            LogError(fmt.Sprintf("Connecting error:", err))
+            LogError(fmt.Sprintf("Connecting error: ", err))
         } else {
             LogInfo("Connection to port: " + port + " successful.")
         }
