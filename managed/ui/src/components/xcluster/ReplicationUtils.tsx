@@ -37,11 +37,11 @@ export const getReplicationStatus = (replication: Replication) => {
           Enabled
         </span>
       );
-    case ReplicationStatus.INIT:
+    case ReplicationStatus.Initialized:
       return (
         <span className="replication-status-text success">
           <i className="fa fa-info" />
-          Init
+          Initialized
         </span>
       );
     case ReplicationStatus.FAILED:
@@ -51,7 +51,7 @@ export const getReplicationStatus = (replication: Replication) => {
           Failed
         </span>
       );
-    case ReplicationStatus.DELETED:
+    case ReplicationStatus.DELETION_FAILED:
       return (
         <span className="replication-status-text failed">
           <i className="fa fa-close" />
@@ -273,9 +273,9 @@ export const isChangeDisabled = function (status: ReplicationStatus | undefined)
     return true;
   }
   return (
-    status === ReplicationStatus.INIT ||
+    status === ReplicationStatus.Initialized ||
     status === ReplicationStatus.UPDATING ||
-    status === ReplicationStatus.DELETED ||
+    status === ReplicationStatus.DELETION_FAILED ||
     status === ReplicationStatus.DELETED_UNIVERSE
   );
 };

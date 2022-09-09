@@ -41,7 +41,7 @@ public class CheckBootstrapRequired extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    checkBootstrapRequired(taskParams().tableIds);
+    checkBootstrapRequiredForReplicationSetup(taskParams().tableIds);
 
     log.info("Completed {}", getName());
   }

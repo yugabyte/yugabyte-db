@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -54,84 +55,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // Lock the target universe.
         lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
 
-        if (xClusterConfig.status != XClusterConfigStatusType.Init) {
-          throw new RuntimeException(
-              String.format(
-                  "XClusterConfig(%s) must be in `Init` state to create replication for",
-                  xClusterConfig.uuid));
-        }
-        if (xClusterConfig.getTables().size() < 1) {
-          throw new RuntimeException(
-              "At least one table must be selected to set up replication for");
-        }
-
-        createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-
-        // Ensure the user table selection respects our constraints.
         Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
             requestedNamespaceTablesInfoMap = checkTables();
-        // At least one entry exists in requestedNamespaceTablesInfoMap and each list in any entry
-        // has at least one TableInfo object.
-        CommonTypes.TableType tableType =
-            requestedNamespaceTablesInfoMap
-                .entrySet()
-                .stream()
-                .findAny()
-                .get()
-                .getValue()
-                .get(0)
-                .getTableType();
 
-        // Support mismatched TLS root certificates.
-        Optional<File> sourceCertificate =
-            getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-        sourceCertificate.ifPresent(
-            cert ->
-                createTransferXClusterCertsCopyTasks(
-                    targetUniverse.getNodes(),
-                    xClusterConfig.getReplicationGroupName(),
-                    cert,
-                    targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
-
-        checkBootstrapRequired(getTableIdsNeedBootstrap());
-
-        requestedNamespaceTablesInfoMap.forEach(
-            (namespaceId, tablesInfoList) -> {
-              Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
-              // If at least one YSQL table needs bootstrap, it must be done for all tables in that
-              // keyspace.
-              if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
-                  && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
-                xClusterConfig.setNeedBootstrapForTables(
-                    tableIdsInNamespace, true /* needBootstrap */);
-              }
-            });
-
-        // Replication for tables that do NOT need bootstrapping.
-        Set<String> tableIdsNotNeedBootstrap = getTableIdsNotNeedBootstrap();
-        if (!tableIdsNotNeedBootstrap.isEmpty()) {
-          // Set up the replication config.
-          createXClusterConfigSetupTask(tableIdsNotNeedBootstrap)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-        }
-
-        // Add the subtasks to set up replication for tables that need bootstrapping.
-        addSubtasksForTablesNeedBootstrap(targetUniverse, requestedNamespaceTablesInfoMap);
-
-        createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-
-        createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-
-        createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        addSubtasksToCreateXClusterConfig(
+            sourceUniverse, targetUniverse, requestedNamespaceTablesInfoMap);
 
         getRunnableTask().runSubTasks();
-      } catch (Exception e) {
-        log.error("{} hit error : {}", getName(), e.getMessage());
-        throw new RuntimeException(e);
       } finally {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.universeUUID);
@@ -148,11 +78,78 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  private void addSubtasksForTablesNeedBootstrap(
+  protected void addSubtasksToCreateXClusterConfig(
+      Universe sourceUniverse,
       Universe targetUniverse,
       Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
           requestedNamespaceTablesInfoMap) {
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+
+    createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
+
+    // Support mismatched TLS root certificates.
+    Optional<File> sourceCertificate =
+        getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
+    sourceCertificate.ifPresent(
+        cert ->
+            createTransferXClusterCertsCopyTasks(
+                targetUniverse.getNodes(),
+                xClusterConfig.getReplicationGroupName(),
+                cert,
+                targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+
+    // At least one entry exists in requestedNamespaceTablesInfoMap and each list in any entry
+    // has at least one TableInfo object.
+    // noinspection OptionalGetWithoutIsPresent
+    CommonTypes.TableType tableType =
+        requestedNamespaceTablesInfoMap
+            .entrySet()
+            .stream()
+            .findAny()
+            .get()
+            .getValue()
+            .get(0)
+            .getTableType();
+
+    checkBootstrapRequiredForReplicationSetup(getTableIdsNeedBootstrap());
+
+    requestedNamespaceTablesInfoMap.forEach(
+        (namespaceId, tablesInfoList) -> {
+          Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
+          // If at least one YSQL table needs bootstrap, it must be done for all tables in that
+          // keyspace.
+          if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
+              && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
+            xClusterConfig.setNeedBootstrapForTables(tableIdsInNamespace, true /* needBootstrap */);
+          }
+        });
+
+    // Replication for tables that do NOT need bootstrapping.
+    Set<String> tableIdsNotNeedBootstrap = getTableIdsNotNeedBootstrap();
+    if (!tableIdsNotNeedBootstrap.isEmpty()) {
+      // Set up the replication config.
+      createXClusterConfigSetupTask(tableIdsNotNeedBootstrap)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Add the subtasks to set up replication for tables that need bootstrapping.
+    addSubtasksForTablesNeedBootstrap(targetUniverse, requestedNamespaceTablesInfoMap);
+
+    createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+  }
+
+  protected void addSubtasksForTablesNeedBootstrap(
+      Universe targetUniverse,
+      Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+          requestedNamespaceTablesInfoMap) {
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     boolean isReplicationConfigCreated = !getTablesNotNeedBootstrap().isEmpty();
     for (String namespaceId : requestedNamespaceTablesInfoMap.keySet()) {
@@ -173,10 +170,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
         // Backup from the source universe.
         BackupRequestParams backupRequestParams =
-            getBackupRequestParams(tableIdsNeedBootstrap, tablesInfoList);
+            getBackupRequestParams(
+                xClusterConfig,
+                taskParams().createFormData.bootstrapParams,
+                tableIdsNeedBootstrap,
+                tablesInfoList);
         Backup backup =
             createAllBackupSubtasks(
                 backupRequestParams, UserTaskDetails.SubTaskGroupType.CreatingBackup);
+
         // Assign the created backup UUID for the tables in the DB.
         xClusterConfig.setBackupForTables(tableIdsNeedBootstrap, backup);
 
@@ -207,7 +209,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
         // Restore to the target universe.
         RestoreBackupParams restoreBackupParams =
-            getRestoreBackupParams(backupRequestParams, backup);
+            getRestoreBackupParams(xClusterConfig, backupRequestParams, backup);
         createAllRestoreSubtasks(
             restoreBackupParams,
             UserTaskDetails.SubTaskGroupType.RestoringBackup,
@@ -241,8 +243,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
    *     containing table info of the tables in that namespace requested to be in the xCluster
    *     config
    */
-  private Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> checkTables() {
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+  protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> checkTables() {
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
     Set<String> tableIds = xClusterConfig.getTables();
     // Ensure at least one table exists to check.
@@ -352,7 +354,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     return requestedNamespaceTablesInfoMap;
   }
 
-  private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
+  protected final List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
       Universe universe) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
     String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
@@ -366,21 +368,19 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     return tableInfoList;
   }
 
-  private BackupRequestParams getBackupRequestParams(
+  static BackupRequestParams getBackupRequestParams(
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       Set<String> tableIdsNeedBootstrap,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
     BackupRequestParams backupRequestParams;
-    if (taskParams().createFormData.bootstrapParams.backupRequestParams != null) {
-      backupRequestParams =
-          new BackupRequestParams(taskParams().createFormData.bootstrapParams.backupRequestParams);
+    if (bootstrapParams.backupRequestParams != null) {
+      backupRequestParams = new BackupRequestParams(bootstrapParams.backupRequestParams);
     } else {
       // In case the user does not pass the backup parameters, use the default values.
       backupRequestParams = new BackupRequestParams();
       backupRequestParams.customerUUID =
-          Customer.get(
-                  Universe.getOrBadRequest(getXClusterConfigFromTaskParams().sourceUniverseUUID)
-                      .customerId)
-              .uuid;
+          Customer.get(Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID).customerId).uuid;
       // Use the last storage config used for a successful backup as the default one.
       Optional<Backup> latestCompletedBackupOptional =
           Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
@@ -395,7 +395,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           backupRequestParams.storageConfigUUID);
     }
     // These parameters are pre-set. Others either come from the user, or the defaults are good.
-    backupRequestParams.universeUUID = taskParams().xClusterConfig.sourceUniverseUUID;
+    backupRequestParams.universeUUID = xClusterConfig.sourceUniverseUUID;
     backupRequestParams.backupType = tablesInfoList.get(0).getTableType();
     backupRequestParams.timeBeforeDelete = TIME_BEFORE_DELETE_BACKUP_MS;
     backupRequestParams.expiryTimeUnit = com.yugabyte.yw.models.helpers.TimeUnit.MILLISECONDS;
@@ -431,8 +431,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     return backupRequestParams;
   }
 
-  private RestoreBackupParams getRestoreBackupParams(
-      BackupRequestParams backupRequestParams, Backup backup) {
+  static RestoreBackupParams getRestoreBackupParams(
+      XClusterConfig xClusterConfig, BackupRequestParams backupRequestParams, Backup backup) {
     RestoreBackupParams restoreTaskParams = new RestoreBackupParams();
     // For the following parameters the default values will be used:
     //    restoreTaskParams.alterLoadBalancer = true
@@ -441,7 +441,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     //    public String newOwner = null
     // The following parameters are set. For others, the defaults are good.
     restoreTaskParams.customerUUID = backupRequestParams.customerUUID;
-    restoreTaskParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
+    restoreTaskParams.universeUUID = xClusterConfig.targetUniverseUUID;
     restoreTaskParams.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
     if (restoreTaskParams.kmsConfigUUID != null) {
       restoreTaskParams.actionType = RestoreBackupParams.ActionType.RESTORE;
