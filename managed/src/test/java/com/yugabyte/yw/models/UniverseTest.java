@@ -876,6 +876,6 @@ public class UniverseTest extends FakeDBApplication {
     Set<NodeActionType> actions = new AllowedActionsHelper(u, tserverNode).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.START_MASTER));
     actions = new AllowedActionsHelper(u, masterNode).listAllowedActions();
-    assertTrue(actions.contains(NodeActionType.START_MASTER));
+    assertFalse(actions.contains(NodeActionType.START_MASTER));
   }
 }
