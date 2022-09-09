@@ -18,5 +18,13 @@ bin/install_python_requirements.sh --create_package --use_dynamic_paths
 bin/install_python_requirements.sh --use_dynamic_paths
 activate_virtualenv
 bin/install_ansible_requirements.sh --force
+
+cd "$yb_devops_home"
+PWD="`pwd`"
+docker build -t $DOCKER_IMAGE_NAME .
+# Execute the build_pex.sh script inside the built docker image
+# to generate the repaired PEX.
+docker run -v "${PWD}:/code" $DOCKER_IMAGE_NAME
+
 "$yb_devops_home"/yb_release.py "$@"
 rm -rf "$YB_PYTHON_MODULES_PACKAGE"

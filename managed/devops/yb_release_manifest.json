@@ -17,7 +17,9 @@
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
     "reinstall-package.yml",
-    "configure_ssh2.yml"
+    "configure_ssh2.yml",
+    "Dockerfile",
+    "Makefile"
   ],
   "bin": [
     "bin/common.sh",
@@ -37,6 +39,9 @@
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
     "bin/node_utils.sh"
+  ],
+  "pex": [
+    "pex/*"
   ],
   "filter_plugins": [
     "filter_plugins/*"
