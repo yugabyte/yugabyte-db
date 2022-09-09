@@ -154,7 +154,7 @@ platform:
    ybOidcScope: ""
    ybOidcEmailAttr: ""
    externalPort: 5432
-   containerExposedPort: 9000
+   containerExposedPort: 9443
    keyStorePassword: ""
    environmentVariables:
       platformAppSecret: "PLATFORM_APP_SECRET"
