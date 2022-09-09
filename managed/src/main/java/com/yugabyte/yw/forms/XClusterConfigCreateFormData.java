@@ -35,7 +35,7 @@ public class XClusterConfigCreateFormData {
   @Required
   @ApiModelProperty(
       value = "Source Universe table IDs",
-      example = "[000033df000030008000000000004006, 000033df00003000800000000000400b]",
+      example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]",
       required = true)
   public Set<String> tables;
 
@@ -51,7 +51,7 @@ public class XClusterConfigCreateFormData {
         value =
             "Source Universe table IDs that need bootstrapping; must be a subset of tables "
                 + "in the main body",
-        example = "[000033df000030008000000000004006]",
+        example = "[\"000033df000030008000000000004006\"]",
         required = true)
     public Set<String> tables;
 

@@ -138,6 +138,8 @@ public enum TaskType {
 
   EditXClusterConfig("EditXClusterConfig"),
 
+  RestartXClusterConfig("RestartXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
   SyncXClusterConfig("SyncXClusterConfig"),
@@ -257,6 +259,8 @@ public enum TaskType {
   DeleteReplication("subtasks.xcluster.DeleteReplication"),
 
   DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
+
+  ResetXClusterConfigEntry("subtasks.xcluster.ResetXClusterConfigEntry"),
 
   SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 

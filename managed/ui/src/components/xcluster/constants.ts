@@ -1,12 +1,12 @@
 import { TableReplicationMetric } from './XClusterReplicationTypes';
 
 export enum ReplicationStatus {
-  INIT = 'Init',
+  Initialized = 'Initialized',
   RUNNING = 'Running',
   UPDATING = 'Updating',
   PAUSED = 'Paused',
   DELETED_UNIVERSE = 'DeletedUniverse',
-  DELETED = 'Deleted',
+  DELETION_FAILED = 'DeletionFailed',
   FAILED = 'Failed'
 }
 
@@ -73,5 +73,5 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: TableReplicationMetric = {
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
-export const TRANSITORY_STATES = [ReplicationStatus.INIT, ReplicationStatus.UPDATING] as const;
+export const TRANSITORY_STATES = [ReplicationStatus.Initialized, ReplicationStatus.UPDATING] as const;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 10_000;

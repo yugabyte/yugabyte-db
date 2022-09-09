@@ -68,11 +68,11 @@ public class XClusterConfig extends Model {
   public XClusterConfigStatusType status;
 
   public enum XClusterConfigStatusType {
-    Init("Init"),
+    Initialized("Initialized"),
     Running("Running"),
     Updating("Updating"),
     DeletedUniverse("DeletedUniverse"),
-    Deleted("Deleted"),
+    DeletionFailed("DeletionFailed"),
     Failed("Failed");
 
     private final String status;
@@ -388,6 +388,13 @@ public class XClusterConfig extends Model {
     }
   }
 
+  public void reset() {
+    this.status = XClusterConfigStatusType.Initialized;
+    this.paused = false;
+    this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
+    this.update();
+  }
+
   @Transactional
   public static XClusterConfig create(
       String name,
@@ -411,7 +418,8 @@ public class XClusterConfig extends Model {
   @Transactional
   public static XClusterConfig create(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    return create(name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Init);
+    return create(
+        name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Initialized);
   }
 
   @Transactional
