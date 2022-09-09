@@ -117,6 +117,21 @@ export default class AddCertificateForm extends Component {
           console.warn(`File Upload gone wrong. ${err}`);
           setSubmitting(false);
         });
+    } else if (this.state.tab === 'k8s') {
+      const formValues = {
+        label: vals.certName,
+        certType: 'K8SCertManager'
+      };
+
+      this.readUploadedFileAsText(certificateFile, false)
+        .then((content) => {
+          formValues.certContent = content;
+          self.props.addCertificate(formValues, setSubmitting);
+        })
+        .catch((err) => {
+          console.warn(`File Upload gone wrong. ${err}`);
+          setSubmitting(false);
+        });
     } else if (this.state.tab === 'hashicorp') {
       const formValues = {
         label: vals.certName,
@@ -155,7 +170,7 @@ export default class AddCertificateForm extends Component {
       errors.certName = 'Certificate name is required';
     }
 
-    if (this.state.tab !== 'hashicorp') {
+    if (!['hashicorp', 'k8s'].includes(this.state.tab)) {
       if (!values.certExpiry) {
         if (this.state.tab !== 'caSigned') {
           errors.certExpiry = 'Expiration date is required';
@@ -166,10 +181,10 @@ export default class AddCertificateForm extends Component {
           errors.certExpiry = 'Set a valid expiration date';
         }
       }
+    }
 
-      if (!values.certContent) {
-        errors.certContent = 'Certificate file is required';
-      }
+    if (this.state.tab !== 'hashicorp' && !values.certContent) {
+      errors.certContent = 'Certificate file is required';
     }
 
     if (this.state.tab === 'selfSigned') {
@@ -595,6 +610,35 @@ export default class AddCertificateForm extends Component {
                 {isHCVaultEnabled && (
                   <Tab eventKey="hashicorp" title="Hashicorp">
                     {this.getHCVaultForm()}
+                  </Tab>
+                )}
+
+                {!isEditMode && (
+                  <Tab eventKey="k8s" title="K8S cert-manager">
+                    <Field
+                      name="certName"
+                      component={YBFormInput}
+                      type="text"
+                      label="Certificate Name"
+                      required
+                    />
+
+                    <Field
+                      name="certContent"
+                      component={YBFormDropZone}
+                      className="upload-file-button"
+                      title="Upload Root Certificate"
+                      required
+                    />
+
+                    {getPromiseState(addCertificate).isError() &&
+                      isNonEmptyObject(addCertificate.error) && (
+                        <Alert bsStyle="danger" variant="danger">
+                          Certificate adding has been failed:
+                          <br />
+                          {JSON.stringify(addCertificate.error)}
+                        </Alert>
+                      )}
                   </Tab>
                 )}
               </Tabs>
