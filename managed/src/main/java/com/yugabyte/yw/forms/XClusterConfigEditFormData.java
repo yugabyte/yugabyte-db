@@ -11,6 +11,11 @@ public class XClusterConfigEditFormData {
 
   @MaxLength(256)
   @ApiModelProperty(value = "Name", example = "Repl-config1")
+  @Pattern(
+      value = "^([^\\s_*<>?|\"\\x00]+)$",
+      message =
+          "The name of the replication config cannot contain "
+              + "[SPACE '_' '*' '<' '>' '?' '|' '\"' NULL] characters")
   public String name;
 
   @Pattern("^(Running|Paused)$")

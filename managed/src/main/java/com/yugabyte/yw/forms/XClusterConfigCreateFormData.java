@@ -7,6 +7,7 @@ import java.util.UUID;
 import javax.validation.Valid;
 import lombok.ToString;
 import play.data.validation.Constraints.MaxLength;
+import play.data.validation.Constraints.Pattern;
 import play.data.validation.Constraints.Required;
 
 @ApiModel(description = "xcluster create form")
@@ -16,6 +17,11 @@ public class XClusterConfigCreateFormData {
   @Required
   @MaxLength(256)
   @ApiModelProperty(value = "Name", example = "Repl-config1", required = true)
+  @Pattern(
+      value = "^([^\\s_*<>?|\"\\x00]+)$",
+      message =
+          "The name of the replication config cannot contain "
+              + "[SPACE '_' '*' '<' '>' '?' '|' '\"' NULL] characters")
   public String name;
 
   @Required
