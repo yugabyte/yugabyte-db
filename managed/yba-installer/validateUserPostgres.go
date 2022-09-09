@@ -5,7 +5,6 @@
 package main
 
 import (
-    "log"
 )
 
 // Reads info from input config file and sets all template parameters
@@ -18,7 +17,7 @@ func ValidateUserPostgres(filename string) (bool) {
 
     // Logging parsed user provided port, username, and password for
     // debugging purposes.
-    log.Println("User provided Postgres port: " + port)
+    LogDebug("User provided Postgres port: " + port)
 
     checkPostgresCommand := "PGPASSWORD= " + password +
     " psql -p " + port + " -U " + username + " -d yugaware -c '\\d'"
@@ -30,7 +29,7 @@ func ValidateUserPostgres(filename string) (bool) {
 
     if err != nil {
 
-        log.Println("User provided Postgres not initialized properly! See the" +
+        LogInfo("User provided Postgres not initialized properly! See the" +
         " above error message for more details.")
         return false
 

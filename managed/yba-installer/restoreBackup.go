@@ -5,7 +5,6 @@
  package main
 
  import (
-    "fmt"
     "os"
  )
 
@@ -18,12 +17,12 @@
  func RestoreBackupScript(input_path string, destination string, skip_restart bool,
   verbose bool) {
 
-    fileName := "/opt/yugabyte/packages/backup.sh"
+    fileName := INSTALL_VERSION_DIR+"/packages/backup.sh"
     err := os.Chmod(fileName, 0777)
     if err != nil {
-        fmt.Println(err)
+        LogError(err.Error())
     } else {
-        fmt.Println("Restore Backup Script has now been given executable permissions!")
+        LogDebug("Restore Backup Script has now been given executable permissions.")
     }
 
     command1 := "/bin/sh"
@@ -34,5 +33,6 @@
     if verbose {
         arg1 = append(arg1, "--verbose")
     }
+    LogInfo("Restoring a backup of your Yugabyte Anywhere Installation.")
     ExecuteBashCommand(command1, arg1)
  }
