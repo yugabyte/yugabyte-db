@@ -162,7 +162,7 @@ Employees Information:
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Node.JS app that uses the YugabyteDB node.js driver to connect to your cluster, set up tables, run queries, and print out results.
+After completing these steps, you should have a working Node.js app that uses the YugabyteDB node.js driver to connect to your cluster, set up tables, run queries, and print out results.
 
 ## Next steps
 
