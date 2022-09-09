@@ -321,6 +321,9 @@ public class TableManagerYb extends DevopsBase {
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
     }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+      commandArgs.add("--disable_xxhash_checksum");
+    }
   }
 
   private void addAdditionalCommands(
