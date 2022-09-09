@@ -8,9 +8,6 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 #
-# This script generates the Ybanystaller go linux binary (ybanystaller) in the required destination.
-# Might be modified in the future to also generate relevant bundled dependencies such as
-# Postgres and Nginx.
 
 set -euo pipefail
 
@@ -96,8 +93,6 @@ cp -R $BINARY_NAME $CONFIG_FILE_FOLDER $CRONTAB_SCRIPT_FOLDER \
 $CONFIG_INPUT_FILE_NAME  $VERSION_METADATA_JSON $VERSION_TXT $FOLDER_PATH
 
 tar -czvf $PACKAGE_NAME $FOLDER_NAME
-
-exit
 
 command="--package $PACKAGE_NAME --destination $destination"
 activate_virtualenv
