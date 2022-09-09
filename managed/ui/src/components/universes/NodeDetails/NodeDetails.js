@@ -180,6 +180,7 @@ export default class NodeDetails extends Component {
         isMasterAlive: masterAlive,
         isTserverAlive: tserverAlive,
         placementUUID: nodeDetail.placementUuid,
+        dedicatedTo: nodeDetail.dedicatedTo,
         ...metricsData
       };
     });
