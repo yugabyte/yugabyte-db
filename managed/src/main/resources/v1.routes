@@ -360,6 +360,7 @@ GET    /customers/:cUUID/tasks/:tUUID/failed                                   c
 
 # Node Management API
 GET    /customers/:cUUID/nodes/:nodeUUID/list                                  com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:universeUUID/nodes/:nodeName/details       com.yugabyte.yw.controllers.NodeInstanceController.getNodeDetails(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String)
 GET    /customers/:cUUID/zones/:azUUID/nodes/list                              com.yugabyte.yw.controllers.NodeInstanceController.listByZone(cUUID: java.util.UUID, azUUID: java.util.UUID)
 GET    /customers/:cUUID/providers/:pUUID/nodes/list                           com.yugabyte.yw.controllers.NodeInstanceController.listByProvider(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST   /customers/:cUUID/zones/:azUUID/nodes                                   com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
