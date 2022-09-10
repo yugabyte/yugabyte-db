@@ -40,7 +40,7 @@ namespace pggate {
 using namespace std::literals;  // NOLINT
 
 // TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
+static MonoDelta kDdlTimeout = 1s * static_cast<int>(60*kTimeMultiplierWithFraction);
 
 namespace {
 
