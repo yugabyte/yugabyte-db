@@ -9,7 +9,8 @@ import {
   getUniversePerNodeMetricsResponse,
   getMasterLeader,
   getMasterLeaderResponse,
-  resetMasterLeader
+  resetMasterLeader,
+  resetNodeDetails
 } from '../../../actions/universe';
 import {
   getNodeInstancesForProvider,
@@ -59,6 +60,10 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
+    },
+
+    resetNodeDetails: () => {
+      dispatch(resetNodeDetails());
     },
 
     fetchNodeListByReplicaProvider: (pUUID) => {
