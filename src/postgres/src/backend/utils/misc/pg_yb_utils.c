@@ -264,13 +264,6 @@ bool IsYBSystemColumn(int attrNum)
 			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
 }
 
-bool
-YBNeedRetryAfterCacheRefresh(ErrorData *edata)
-{
-	// TODO Inspect error code to distinguish retryable errors.
-	return true;
-}
-
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
 	return IsYBRelation(relation)
