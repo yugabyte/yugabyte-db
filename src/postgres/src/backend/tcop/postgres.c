@@ -3818,7 +3818,10 @@ static bool YBTableSchemaVersionMismatchError(ErrorData *edata, char **table_id)
 	return false;
 }
 
-static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry, bool *need_retry)
+static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
+										  bool consider_retry,
+										  bool is_dml,
+										  bool *need_retry)
 {
 	*need_retry = false;
 
@@ -3828,6 +3831,23 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	if (!IsYugaByteEnabled())
 		return;
 
+	/*
+	 * A non-DDL statement that failed due to transaction conflict does not
+	 * require cache refresh.
+	*/
+	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
+	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
+
+	/*
+	 * Note that 'is_dml' could be set for a Select operation on a pg_catalog
+	 * table. Even if it fails due to conflict, a retry is expected to succeed
+	 * without refreshing the cache (as the schema of a PG catalog table cannot
+	 * change).
+	 */
+	if (is_dml && (is_read_restart_error || is_conflict_error))
+	{
+		return;
+	}
 	char *table_to_refresh = NULL;
 	const bool need_table_cache_refresh =
 	    YBTableSchemaVersionMismatchError(edata, &table_to_refresh);
@@ -3836,19 +3856,27 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 * Get the latest syscatalog version from the master to check if we need
 	 * to refresh the cache.
 	 */
-	YBCPgResetCatalogReadTime();
-	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
 	bool need_global_cache_refresh = false;
-	if (YbGetCatalogCacheVersion() != catalog_master_version) {
-		need_global_cache_refresh = true;
-		YbUpdateLastKnownCatalogCacheVersion(catalog_master_version);
-	}
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+	/*
+	 * If an operation on the PG catalog has failed at this point, the
+	 * below YbGetMasterCatalogVersion() is not expected to succeed either as it
+	 * would be using the same transaction as the failed operation.
+	*/
+	if (!yb_non_ddl_txn_for_sys_tables_allowed)
 	{
-		int elevel = need_global_cache_refresh ? LOG : DEBUG1;
-		ereport(elevel,
-				(errmsg("%s: got master catalog version: %" PRIu64,
-						__func__, catalog_master_version)));
+		YBCPgResetCatalogReadTime();
+		const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
+		if (YbGetCatalogCacheVersion() != catalog_master_version) {
+			need_global_cache_refresh = true;
+			YbUpdateLastKnownCatalogCacheVersion(catalog_master_version);
+		}
+		if (*YBCGetGFlags()->log_ysql_catalog_versions)
+		{
+			int elevel = need_global_cache_refresh ? LOG : DEBUG1;
+			ereport(elevel,
+					(errmsg("%s: got master catalog version: %" PRIu64,
+							__func__, catalog_master_version)));
+		}
 	}
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;
@@ -3868,121 +3896,110 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	}
 
 	/*
-	 * Prepare to retry the query if possible.
+	 * For single-query transactions we abort the current
+	 * transaction to undo any already-applied operations
+	 * and retry the query.
+	 *
+	 * For transaction blocks we would have to re-apply
+	 * all previous queries and also continue the
+	 * transaction for future queries (before commit).
+	 * So we just re-throw the error in that case.
+	 *
 	 */
-	if (YBNeedRetryAfterCacheRefresh(edata))
-	{
-		/*
-		 * For single-query transactions we abort the current
-		 * transaction to undo any already-applied operations
-		 * and retry the query.
-		 *
-		 * For transaction blocks we would have to re-apply
-		 * all previous queries and also continue the
-		 * transaction for future queries (before commit).
-		 * So we just re-throw the error in that case.
-		 *
-		 */
-		if (consider_retry &&
-				!IsTransactionBlock() &&
-				!YBCGetDisableTransparentCacheRefreshRetry())
-		{
-			/* Clear error state */
-			FlushErrorState();
-
-			/*
-			 * Make sure debug_query_string gets reset before we possibly clobber
-			 * the storage it points at.
-			 */
-			debug_query_string = NULL;
-
-			/* Abort the transaction and clean up. */
-			AbortCurrentTransaction();
-			if (am_walsender)
-				WalSndErrorCleanup();
-
-			if (MyReplicationSlot != NULL)
-				ReplicationSlotRelease();
-
-			ReplicationSlotCleanup();
-
-			if (doing_extended_query_message)
-				ignore_till_sync = true;
-
-			xact_started = false;
-
-			/* Refresh cache now so that the retry uses latest version. */
-			if (need_global_cache_refresh)
-				YBRefreshCache();
-
-			*need_retry = true;
-		}
-		else
-		{
-			if (need_global_cache_refresh)
-			{
-				int error_code = edata->sqlerrcode;
-
-				/*
-				 * TODO: This error occurs in tablet service when snapshot is outdated.
-				 * We should eventually translate this type of error as a retryable error
-				 * in the upper layer such as in YBCStatusPgsqlError().
-				 */
-				bool isInvalidCatalogSnapshotError = strstr(edata->message,
-						"catalog snapshot used for this transaction has been invalidated") != NULL;
-
-				/*
-				 * If we got a schema-version-mismatch error while a DDL happened,
-				 * this is likely caused by a conflict between the current
-				 * transaction and the DDL transaction.
-				 * So we map it to the retryable serialization failure error code.
-				 * TODO: consider if we should
-				 * 1. map this case to a different (retryable) error code
-				 * 2. always map schema-version-mismatch to a retryable error.
-				 */
-				if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
-				{
-					error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
-				}
-
-				/*
-				 * Report the original error, but add a context mentioning that a
-				 * possibly-conflicting, concurrent DDL transaction happened.
-				 */
-				if (edata->detail == NULL && edata->hint == NULL)
-				{
-					ereport(edata->elevel,
-							(yb_txn_errcode(edata->yb_txn_errcode),
-							 errcode(error_code),
-							 errmsg("%s", edata->message),
-							 errcontext("Catalog Version Mismatch: A DDL occurred "
-										"while processing this query. Try again.")));
-				}
-				else
-				{
-					ereport(edata->elevel,
-							(yb_txn_errcode(edata->yb_txn_errcode),
-							 errcode(error_code),
-							 errmsg("%s", edata->message),
-							 errdetail("%s", edata->detail),
-							 errhint("%s", edata->hint),
-							 errcontext("Catalog Version Mismatch: A DDL occurred "
-										"while processing this query. Try again.")));
-				}
-			}
-			else
-			{
-				Assert(need_table_cache_refresh);
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("%s", edata->message)));
-			}
-		}
-	}
-	else
+	if (consider_retry &&
+			!IsTransactionBlock() &&
+			!YBCGetDisableTransparentCacheRefreshRetry())
 	{
 		/* Clear error state */
 		FlushErrorState();
+
+		/*
+		 * Make sure debug_query_string gets reset before we possibly clobber
+		 * the storage it points at.
+		 */
+		debug_query_string = NULL;
+
+		/* Abort the transaction and clean up. */
+		AbortCurrentTransaction();
+		if (am_walsender)
+			WalSndErrorCleanup();
+
+		if (MyReplicationSlot != NULL)
+			ReplicationSlotRelease();
+
+		ReplicationSlotCleanup();
+
+		if (doing_extended_query_message)
+			ignore_till_sync = true;
+
+		xact_started = false;
+
+		/* Refresh cache now so that the retry uses latest version. */
+		if (need_global_cache_refresh)
+			YBRefreshCache();
+
+		*need_retry = true;
+	}
+	else
+	{
+		if (need_global_cache_refresh)
+		{
+			int error_code = edata->sqlerrcode;
+
+			/*
+			 * TODO: This error occurs in tablet service when snapshot is outdated.
+			 * We should eventually translate this type of error as a retryable error
+			 * in the upper layer such as in YBCStatusPgsqlError().
+			 */
+			bool isInvalidCatalogSnapshotError = strstr(edata->message,
+					"catalog snapshot used for this transaction has been invalidated") != NULL;
+
+			/*
+			 * If we got a schema-version-mismatch error while a DDL happened,
+			 * this is likely caused by a conflict between the current
+			 * transaction and the DDL transaction.
+			 * So we map it to the retryable serialization failure error code.
+			 * TODO: consider if we should
+			 * 1. map this case to a different (retryable) error code
+			 * 2. always map schema-version-mismatch to a retryable error.
+			 */
+			if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
+			{
+				error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
+			}
+
+			/*
+			 * Report the original error, but add a context mentioning that a
+			 * possibly-conflicting, concurrent DDL transaction happened.
+			 */
+			if (edata->detail == NULL && edata->hint == NULL)
+			{
+				ereport(edata->elevel,
+						(yb_txn_errcode(edata->yb_txn_errcode),
+						 errcode(error_code),
+						 errmsg("%s", edata->message),
+						 errcontext("Catalog Version Mismatch: A DDL occurred "
+									"while processing this query. Try again.")));
+			}
+			else
+			{
+				ereport(edata->elevel,
+						(yb_txn_errcode(edata->yb_txn_errcode),
+						 errcode(error_code),
+						 errmsg("%s", edata->message),
+						 errdetail("%s", edata->detail),
+						 errhint("%s", edata->hint),
+						 errcontext("Catalog Version Mismatch: A DDL occurred "
+									"while processing this query. Try again.")));
+			}
+		}
+		else
+		{
+			Assert(need_table_cache_refresh);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("%s", edata->message)));
+		}
 	}
 }
 
@@ -4037,11 +4054,22 @@ static bool yb_is_begin_transaction(const char *command_tag)
 }
 
 /*
- * Only retry SELECT, INSERT, UPDATE and DELETE commands.
- * Do the minimum parsing to find out what the command is
+ * Find whether the statement is a SELECT/UPDATE/INSERT/DELETE
+ * with minimum parsing.
+ * Note: This function will always return false if
+ * yb_non_ddl_txn_for_sys_tables_allowed is set to true.
  */
-static bool yb_check_retry_allowed(const char *query_string)
+static bool yb_is_dml_command(const char *query_string)
 {
+	if (yb_non_ddl_txn_for_sys_tables_allowed)
+	{
+		/*
+		 * This guc variable is typically used to update the system catalog
+		 * directly. Therefore we can assume that the user is running a non-
+		 * DML statement.
+		*/
+		return false;
+	}
 	if (!query_string)
 		return false;
 
@@ -4053,6 +4081,14 @@ static bool yb_check_retry_allowed(const char *query_string)
 	        strncmp(command_tag, "INSERT", 6) == 0 ||
 	        strncmp(command_tag, "SELECT", 6) == 0 ||
 	        strncmp(command_tag, "UPDATE", 6) == 0);
+}
+
+/*
+ * Only retry supported commands.
+ */
+static bool yb_check_retry_allowed(const char *query_string)
+{
+	return yb_is_dml_command(query_string);
 }
 
 static void YBCheckSharedCatalogCacheVersion() {
@@ -5321,9 +5357,11 @@ PostgresMain(int argc, char *argv[],
 					edata = CopyErrorData();
 
 					bool need_retry = false;
-					YBPrepareCacheRefreshIfNeeded(edata,
-                                                  yb_check_retry_allowed(query_string),
-                                                  &need_retry);
+					YBPrepareCacheRefreshIfNeeded(
+							edata,
+							yb_check_retry_allowed(query_string),
+							yb_is_dml_command(query_string),
+							&need_retry);
 
 					if (need_retry)
 					{
@@ -5400,9 +5438,11 @@ PostgresMain(int argc, char *argv[],
 						 * aborting the followup bind/execute.
 						 */
 						bool need_retry = false;
-						YBPrepareCacheRefreshIfNeeded(edata,
-						                              false /* consider_retry */,
-						                              &need_retry);
+						YBPrepareCacheRefreshIfNeeded(
+								edata,
+								false /* consider_retry */,
+								yb_is_dml_command(query_string),
+								&need_retry);
 						MemoryContextSwitchTo(errorcontext);
 						PG_RE_THROW();
 
@@ -5508,7 +5548,11 @@ PostgresMain(int argc, char *argv[],
 						 * Execute may have been partially applied so need to
 						 * cleanup (and restart) the transaction.
 						 */
-						YBPrepareCacheRefreshIfNeeded(edata, can_retry, &need_retry);
+						YBPrepareCacheRefreshIfNeeded(
+								edata,
+								can_retry,
+								yb_is_dml_command(query_string),
+								&need_retry);
 
 						if (need_retry && can_retry)
 						{

@@ -176,8 +176,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
  */
 extern bool IsYBSystemColumn(int attrNum);
 
-extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
-
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
