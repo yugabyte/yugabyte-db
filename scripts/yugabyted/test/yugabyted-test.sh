@@ -683,7 +683,7 @@ verify_ycqlsh() {
     ycqlsh_cmd=( "${EXTRACTED_YB_TAR}"/bin/ycqlsh "$ycql_ip" "$ycql_port" )
   fi
 
-  if "$use_cassandra_authentication"; then
+  if [[ ${use_cassandra_authentication} == "true" ]]; then
     ycqlsh_cmd+=( -u "${ycql_user}" -p "${ycql_password}" )
   fi
 

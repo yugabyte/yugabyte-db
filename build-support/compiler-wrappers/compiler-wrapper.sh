@@ -680,7 +680,7 @@ else
     if [[ -n ${YB_NO_CCACHE:-} ]]; then
       log "YB_NO_CCACHE is set"
     fi
-    if "$compiling_pch"; then
+    if [[ ${compiling_pch} == "true" ]]; then
       log "Not using ccache for precompiled headers."
     fi
   fi
@@ -789,7 +789,7 @@ if [[ "${yb_pch}" == "true" ]]; then
     pch_file="${output_file%.cc.o}.h.pch"
     # Replace original args with args required for compilation.
     for arg in "${compiler_args[@]}"; do
-      if "$skip_next"; then
+      if [[ ${skip_next} == "true" ]]; then
         skip_next=false
         continue
       fi
@@ -821,7 +821,7 @@ if [[ "${yb_pch}" == "true" ]]; then
 
     codegen_cmd=( "$compiler_executable" )
     for arg in "${compiler_args[@]}"; do
-      if "$skip_next"; then
+      if [[ ${skip_next} == "true" ]]; then
         skip_next=false
         continue
       fi
@@ -843,7 +843,7 @@ if [[ "${yb_pch}" == "true" ]]; then
     new_cmd=( "$compiler_executable" )
     skip_next=false
     for arg in "${compiler_args[@]}"; do
-      if "$skip_next"; then
+      if [[ ${skip_next} == "true" ]]; then
         skip_next=false
         continue
       fi
@@ -866,7 +866,7 @@ else
     new_cmd=( "$compiler_executable" )
     skip_next=false
     for arg in "${compiler_args[@]}"; do
-      if "$skip_next"; then
+      if [[ ${skip_next} == "true" ]]; then
         if [[ "$arg" == "-Xclang" ]]; then
           continue
         fi
