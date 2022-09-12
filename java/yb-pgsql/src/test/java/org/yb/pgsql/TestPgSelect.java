@@ -1167,20 +1167,13 @@ public class TestPgSelect extends BasePgSQLTest {
         // When the same qualifying conditions that fits within 4 byte integers are passed as int
         // and bigint, both ends up being pushed in to docDB since they are both lesser than 4 byte
         // integer values.
-        query = "SELECT * FROM sample WHERE key < ";
+        query = "SELECT * FROM sample WHERE key ";
 
-        String[] docdbRequests = getDocdbRequests(statement, query + "65534");
         // Num requests are 1 as it just searches tablet 1.
-        assertEquals(docdbRequests.length, 1);
-        // If the inequality is pushed down to docDB, then the docDB request protobuf string will
-        // contain the inequality as a part of the condition_expr. Specifically, in this case,
-        // it will contain the lesser than operator QL_OP_LESS_THAN
-        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+        assertTrue(getNumDocdbRequests(statement, query + "< 65534") == 1);
 
         // Test 2
-        docdbRequests = getDocdbRequests(statement, query + "65534::bigint");
-        assertEquals(docdbRequests.length, 1);
-        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+        assertTrue(getNumDocdbRequests(statement, query + "< 65534::bigint") == 1);
 
         // Test 3
         // 2147483648 is an actual bigint value. Hence, we end up perfroming a scan on all the
@@ -1188,16 +1181,55 @@ public class TestPgSelect extends BasePgSQLTest {
         // of rows returned are equal when the qualifying condition is 2147483648 as compared to
         // 20999999999, the former condition ends up scanning all the 4 tablets while the later
         // condition scans just 3 tablets.
-        docdbRequests = getDocdbRequests(statement, query + "2147483648");
-        assertEquals(docdbRequests.length, 4);
-        // 2147483648 is a big int value. Hence it will not be pushed down, and hence wont show up
-        // in the docDB request protobuf string.
-        assertFalse(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+        assertTrue(getNumDocdbRequests(statement, query + "< 2147483648") == 4);
 
         // Test 4
-        docdbRequests = getDocdbRequests(statement, query + "2099999999");
-        assertEquals(docdbRequests.length, 3);
-        assertTrue(String.join(",", docdbRequests).contains("QL_OP_LESS_THAN"));
+        assertTrue(getNumDocdbRequests(statement, query + "< 2099999999") == 3);
+    }
+  }
+
+  @Test
+  public void testINQueriesRangePartitioned() throws Exception {
+
+      // Creating a table with the same schema that is created for the previous test
+      // testInequalitiesRangePartitioned.
+      String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
+                     "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";
+      try (Statement statement = connection.createStatement()) {
+        statement.execute(query);
+
+        statement.execute("INSERT INTO sample VALUES(1,1)");
+        statement.execute("INSERT INTO sample VALUES(60000,60000)");
+        statement.execute("INSERT INTO sample VALUES(120000,120000)");
+        statement.execute("INSERT INTO sample VALUES(150000,150000)");
+        statement.execute("INSERT INTO sample VALUES(2000000001,2000000001)");
+        statement.execute("INSERT INTO sample VALUES(2000000005,2000000005)");
+
+        query = "SELECT * FROM sample WHERE key ";
+
+        // Test 5
+        // Remove IN queries that contain values that are out of bounds.
+        // All the elements present in the IN list are out of the 32 bit integer range. Hence, they
+        // should not be pushed down as a part of search array. Subsequently the number of RPCs
+        // should be 0.
+        assertTrue(
+          getNumDocdbRequests(statement, query + "IN (3000000005, 3000000006, 3000000007)") == 0);
+
+        // Test 6
+        // Fails with the following error in prior to this diff
+        // expected:<[Row[java.lang.Integer::1,java.lang.Integer::1]]> but was:<[]>
+        //
+        // This happens because the docDB RPC that is sent for the following request tries to push
+        // 3000000005 down. However, 3000000005 does not fit into a 4-byte integer and hence it is
+        // overflown to -1294967291.
+        // DocDB batches IN queries on range keys. It also expects that the list of search keys as a
+        // part of the search array in the IN queries are sorted and hence chooses the first element
+        // as the lower bound and the last element as the upper bound. In this scenario, -1294967291
+        // is the upper bound and 1 is the lower bound. There are no elements between these values
+        // and hence docDB returns 0 rows.
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1, 1));
+        assertRowSet(statement, query + "IN (1, 3000000005)", expectedRows);
     }
   }
 
