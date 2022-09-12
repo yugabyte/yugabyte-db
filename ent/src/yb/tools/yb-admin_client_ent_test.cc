@@ -39,7 +39,7 @@ class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
   }
 };
 
-TEST_F(ClusterAdminClientTest, ListSnapshotsWithDetails) {
+TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithDetails)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE test_table (k INT PRIMARY KEY, v TEXT)"));
   const TypedNamespaceName database {
     .db_type = YQL_DATABASE_PGSQL,
@@ -81,7 +81,7 @@ TEST_F(ClusterAdminClientTest, ListSnapshotsWithDetails) {
   EXPECT_THAT(missing_types, testing::IsEmpty());
 }
 
-TEST_F(ClusterAdminClientTest, ListSnapshotsWithoutDetails) {
+TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithoutDetails)) {
   CreateTable("CREATE TABLE test_table (k INT PRIMARY KEY, v TEXT)");
   const TypedNamespaceName database {
     .db_type = YQL_DATABASE_PGSQL,
