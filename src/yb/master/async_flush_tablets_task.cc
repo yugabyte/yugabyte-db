@@ -36,7 +36,8 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      const vector<TabletId>& tablet_ids,
                                      const FlushRequestId& flush_id,
                                      bool is_compaction)
-    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table),
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table,
+                             /* async_task_throttler */ nullptr),
       tablet_ids_(tablet_ids),
       flush_id_(flush_id),
       is_compaction_(is_compaction) {
