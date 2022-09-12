@@ -35,10 +35,12 @@ Status PrometheusWriter::FlushAggregatedValues(
   uint32_t counter = 0;
   std::regex p_regex(priority_regex);
   for (const auto& [metric, map] : aggregated_values_) {
+    LOG(INFO) << "Sumukh : Inside FlushAggregatedValues outer loop "<<metric;
     if (!priority_regex.empty() && !std::regex_match(metric, p_regex)) {
       continue;
     }
     for (const auto& [id, value] : map) {
+      LOG(INFO) << "Sumukh: Inside FlushAggregatedValues key:"<< id<<" value "<< value;
       RETURN_NOT_OK(FlushSingleEntry(aggregated_attributes_[id], metric, value));
     }
     if (++counter >= max_tables_metrics_breakdowns) {
@@ -98,12 +100,14 @@ void PrometheusWriter::AddAggregatedEntry(
       InvalidAggregationFunction(aggregation_function);
       break;
   }
+  LOG(INFO) << "Sumukh: Inside AddAggregatedEntry, stream_id"<< entity_id <<" "<< metric_name << " " << value <<"aggregated value"<< stored_value << std::endl;
 }
 
 Status PrometheusWriter::WriteSingleEntry(
     const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
     AggregationFunction aggregation_function) {
   auto it = attr.find("table_id");
+
   if (it == attr.end()) {
     return FlushSingleEntry(attr, name, value);
   }
@@ -117,12 +121,19 @@ Status PrometheusWriter::WriteSingleEntry(
     AddAggregatedEntry("", new_attr, name, value, aggregation_function);
     break;
   }
+  case AggregationMetricLevel::kStream:{
+    AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value, aggregation_function);
+    LOG(INFO) << "sumukh: Inside WriteSingleEntry " << name << " " << value << std::endl;
+    break;
+  }
   case AggregationMetricLevel::kTable:
     AddAggregatedEntry(it->second, attr, name, value, aggregation_function);
     break;
   }
   return Status::OK();
 }
+
+std::stringstream* PrometheusWriter::GetOutputString() { return output_; }
 
 NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
     : PrometheusWriter(nullptr), table_metrics_(*table_metrics),
@@ -143,4 +154,4 @@ Status NMSWriter::FlushSingleEntry(
   return Status::OK();
 }
 
-} // namespace yb
+}  // namespace yb

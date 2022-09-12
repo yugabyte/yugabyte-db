@@ -228,7 +228,8 @@ void PrepareTransactionWriteBatch(
 struct IntentKeyValueForCDC {
   Slice key;
   Slice value;
-  std::string key_buf, value_buf;
+  Slice ht;
+  std::string key_buf, value_buf, ht_buf;
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
 
