@@ -43,11 +43,9 @@ type: docs
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Google Cloud KMS. 
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of [Google Cloud KMS](https://cloud.google.com/security-key-management). 
 
 Conceptually, Google Cloud KMS consists of a key ring containing one or more cryptographic keys, with each key capable of having multiple versions.
-
-Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key ring through [Google Cloud KMS](https://cloud.google.com/security-key-management).
 
 The Google Cloud user associated with a KMS configuration requires a custom role assigned to the service account with the following KMS-related permissions:
 
@@ -78,7 +76,7 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **GCP KMS**.
-    - **Service Account Credentials** — Download the JSON file containing your Google Cloud credentials.
+    - **Service Account Credentials** — Upload the JSON file containing your Google Cloud credentials.
     - **Location** — Select the region where your crypto key is located.
     - **Key Ring Name** — Enter the name of the key ring. If a key ring with the same name already exists, the existing key ring is used; otherwise, a new key ring is created automatically.
     - **Crypto Key Name** — Enter the name of the crypto key. If a crypto key with the same name already exists in the key ring, the settings are validated and the existing crypto key is used; otherwise, a new crypto key is created automatically.
