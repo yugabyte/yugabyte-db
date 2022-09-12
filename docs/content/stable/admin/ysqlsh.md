@@ -40,6 +40,12 @@ If you prefer, you can install a standalone version using any of the following m
 - Using a shell script:
 
     ```sh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    ```
+
+    If you have `wget`, you can use the following:
+
+    ```sh
     wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
     yugabyte*/bin/ysqlsh
     ```

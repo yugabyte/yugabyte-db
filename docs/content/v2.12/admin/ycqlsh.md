@@ -21,9 +21,32 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 {{< /note >}}
 
-### Installation
-
 `ycqlsh` is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
+
+If you prefer, you can install a standalone version using a shell script:
+
+```sh
+$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+```
+
+If you have `wget`, you can use the following:
+
+```sh
+wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
+```
+
+### Starting ycqlsh
+
+```sh
+$ ./bin/ycqlsh
+```
+
+```output
+Connected to local cluster at 127.0.0.1:9042.
+[ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
+Use HELP for help.
+ycqlsh>
+```
 
 ### Online help
 
