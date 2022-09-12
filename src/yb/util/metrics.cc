@@ -220,11 +220,28 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, entity_options, opts),
-                Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
-  }
-  RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
-                entity_options.priority_regex));
+    if (strcmp(e.second->prototype().name(), "cdc") == 0) {
+      PrometheusWriter cdc_writer =
+           PrometheusWriter(writer->GetOutputString(), AggregationMetricLevel::kStream);
+      WARN_NOT_OK(
+          e.second->WriteForPrometheus(&cdc_writer, entity_options, opts),
+          Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+      LOG(INFO) << "SUMUKH: Inside WriteForPrometheus: "
+                << e.second->prototype().name()
+                << std::endl;
+      RETURN_NOT_OK(cdc_writer.FlushAggregatedValues(
+          opts.max_tables_metrics_breakdowns, entity_options.priority_regex));
+    } else {
+      WARN_NOT_OK(
+          e.second->WriteForPrometheus(writer, entity_options, opts),
+          Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+      RETURN_NOT_OK(writer->FlushAggregatedValues(
+          opts.max_tables_metrics_breakdowns, entity_options.priority_regex));
+      }
+
+    }
+
+
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling
