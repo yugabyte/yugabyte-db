@@ -163,8 +163,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Bring up any masters, as needed.
-      boolean masterAdded = false;
-      if (areMastersUnderReplicated(currentNode, universe)) {
+      boolean addMaster =
+          areMastersUnderReplicated(currentNode, universe)
+              && (currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.MASTER);
+
+      boolean addTServer =
+          currentNode.dedicatedTo == null || currentNode.dedicatedTo == ServerType.TSERVER;
+
+      if (addMaster) {
         log.info(
             "Bringing up master for under replicated universe {} ({})",
             universe.universeUUID,
@@ -192,27 +198,27 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // Add it into the master quorum.
         createChangeConfigTask(currentNode, true, SubTaskGroupType.WaitForDataMigration);
+      }
+      if (addTServer) {
+        // Set gflags for the tserver.
+        createGFlagsOverrideTasks(nodeSet, ServerType.TSERVER);
 
-        masterAdded = true;
+        // Add the tserver process start task.
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Mark the node as tserver in the YW DB.
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for new tablet servers to be responsive.
+        createWaitForServersTasks(nodeSet, ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      // Set gflags for the tserver.
-      createGFlagsOverrideTasks(nodeSet, ServerType.TSERVER);
-
-      // Add the tserver process start task.
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Mark the node as tserver in the YW DB.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Wait for new tablet servers to be responsive.
-      createWaitForServersTasks(nodeSet, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(nodeSet);
+        createStartYbcProcessTasks(
+            nodeSet, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
 
       // Update the swamper target file.
@@ -230,7 +236,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for load to balance.
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      if (masterAdded) {
+      if (addMaster) {
         // Update all tserver conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
 

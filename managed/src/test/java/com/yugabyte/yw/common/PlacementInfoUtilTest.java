@@ -1870,7 +1870,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     SelectMastersResult selection =
         PlacementInfoUtil.selectMasters(
-            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code, true);
+            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code, true, false);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     List<NodeDetails> masters =
@@ -1964,7 +1964,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode, true);
+                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode, true, false);
                 })
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];

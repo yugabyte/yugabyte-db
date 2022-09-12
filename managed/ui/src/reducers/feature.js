@@ -20,7 +20,8 @@ const initialStateFeatureInTest = {
   enableYbc: false,
   enableMultiRegionConfig: false,
   enableGcpKMS: false,
-  enableAzuKMS: false
+  enableAzuKMS: false,
+  allowOptionalAuth: false
 };
 
 const initialStateFeatureReleased = {
@@ -43,7 +44,8 @@ const initialStateFeatureReleased = {
   enableYbc: false,
   enableMultiRegionConfig: false,
   enableGcpKMS: false,
-  enableAzuKMS: false
+  enableAzuKMS: false,
+  allowOptionalAuth: false
 };
 
 export const FeatureFlag = (

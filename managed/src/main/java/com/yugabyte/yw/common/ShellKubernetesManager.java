@@ -224,6 +224,13 @@ public class ShellKubernetesManager extends KubernetesManager {
     // multiple invocations concurrently.
   }
 
+  @Override
+  public void deletePod(Map<String, String> config, String namespace, String podName) {
+    List<String> masterCommandList =
+        ImmutableList.of("kubectl", "--namespace", namespace, "delete", "pod", podName);
+    execCommand(config, masterCommandList);
+  }
+
   // generateNamespaceYaml creates a namespace YAML file for given
   // name. This can be later extended to add other metadata like
   // labels, annotations etc.

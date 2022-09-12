@@ -126,6 +126,7 @@ enum RaftGroupStatePB;
 namespace master {
 
 struct DeferredAssignmentActions;
+class XClusterSafeTimeService;
 
 using PlacementId = std::string;
 
@@ -141,6 +142,11 @@ typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTables
 YB_STRONGLY_TYPED_BOOL(HideOnly);
 
 typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+
+// Map[NamespaceId]:xClusterSafeTime
+typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
+
+constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -337,6 +343,8 @@ class CatalogManager :
   // Get the information about an in-progress alter operation.
   Status IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
                                   IsAlterTableDoneResponsePB* resp);
+
+  Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -715,6 +723,7 @@ class CatalogManager :
   // must havGetTableInfoe updated the config in the meantime.
   Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) override;
   Status GetClusterConfig(SysClusterConfigEntryPB* config) override;
+  Result<int32_t> GetClusterConfigVersion();
 
   Status SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req,
@@ -945,6 +954,11 @@ class CatalogManager :
   Status CheckIfPitrActive(
     const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
 
+  Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
+  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
+  Status SetXClusterNamespaceToSafeTimeMap(
+      const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -955,6 +969,7 @@ class CatalogManager :
   friend class RoleLoader;
   friend class RedisConfigLoader;
   friend class SysConfigLoader;
+  friend class XClusterSafeTimeLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
   friend class MultiStageAlterTable;
@@ -1425,7 +1440,7 @@ class CatalogManager :
 
   virtual void Started() {}
 
-  virtual void SysCatalogLoaded(int64_t term) {}
+  virtual void SysCatalogLoaded(int64_t term) { StartXClusterSafeTimeServiceIfStopped(); }
 
   // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
   // Chooses an unblacklisted master in the highest priority affinity location to step down to. If
@@ -1558,8 +1573,18 @@ class CatalogManager :
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
-  mutable rw_spinlock config_mutex_;
-  std::shared_ptr<ClusterConfigInfo> cluster_config_ GUARDED_BY(config_mutex_) = nullptr;
+  // IMPORTANT: The shared pointer that points to the cluster config
+  // is only written to with a new object during a catalog load.
+  // At all other times, the address pointed to remains the same
+  // (thus the value of this shared ptr remains the same), only
+  // the underlying object is read or modified via cow read/write lock mechanism.
+  // We don't need a lock guard for changing this pointer value since
+  // we already acquire the leader write lock during catalog loading,
+  // so all concurrent accesses of this shared ptr -- either external via RPCs or
+  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
+  // are locked out since they grab the scoped leader shared lock that
+  // depends on this leader lock.
+  std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
@@ -1710,8 +1735,17 @@ class CatalogManager :
   mutable MutexType backfill_mutex_;
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
+  // XCluster Safe Time information.
+  XClusterSafeTimeInfo xcluster_safe_time_info_;
+
+  std::unique_ptr<XClusterSafeTimeService> xcluster_safe_time_service_;
+
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);
+
+  void StartXClusterSafeTimeServiceIfStopped();
+
+  void CreateXClusterSafeTimeTableAndStartService();
 
  private:
   // Performs the provided action with the sys catalog shared tablet instance, or sets up an error

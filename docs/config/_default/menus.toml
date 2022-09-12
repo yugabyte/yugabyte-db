@@ -92,14 +92,6 @@
   parent = "documentation"
 
 [[main]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/apache-kafka/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
-
-[[main]]
   name = "Reference"
   weight = 12
   url = "/architecture/"
@@ -143,11 +135,19 @@
     excludeVersion = true
 
 [[main]]
-  name = "Release Notes"
+  name = "Integrations"
   weight = 4
+  url = "/preview/integrations/apache-kafka/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Release Notes"
+  weight = 5
   url = "/preview/releases/"
   [main.params]
     excludeVersion = true
+
 
 ########## Bottom menu for left navigation
 

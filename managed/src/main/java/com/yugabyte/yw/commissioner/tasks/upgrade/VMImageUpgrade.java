@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public class VMImageUpgrade extends UpgradeTaskBase {
@@ -60,10 +58,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          Set<NodeDetails> nodeSet = new LinkedHashSet<>();
-          nodeSet.addAll(nodes.getLeft());
-          nodeSet.addAll(nodes.getRight());
+          Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Create task sequence for VM Image upgrade

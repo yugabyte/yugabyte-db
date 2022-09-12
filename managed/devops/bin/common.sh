@@ -311,7 +311,7 @@ activate_virtualenv() {
         $PYTHON_EXECUTABLE -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
       fi
     )
-  elif "$is_linux"; then
+  elif [[ ${is_linux} == "true" ]]; then
     deactivate_virtualenv
   fi
 
@@ -478,17 +478,17 @@ install_pip() {
   deactivate_virtualenv
   if ! which pip >/dev/null; then
     log "Installing python-pip (will need sudo privileges for that)..."
-    if "$is_debian"; then
+    if [[ ${is_debian} == "true" ]]; then
       # Need pip to install Python dependencies.
       # http://docs.ansible.com/ansible/guide_gce.html
       sudo apt-get install python-pip
-    elif "$is_centos"; then
+    elif [[ ${is_centos} == "true" ]]; then
       # TODO: can the two commands below be done as one command? Or does the
       # second one need to run separately because it needs to refresh the
       # package index?
       sudo yum install -y epel-release
       sudo yum install -y python-pip
-    elif "$is_mac"; then
+    elif [[ ${is_mac} == "true" ]]; then
       sudo easy_install pip
     else
       fatal "Don't know how to install pip on this OS. OSTYPE=$OSTYPE"
@@ -563,7 +563,7 @@ detect_os() {
       fatal "Unknown operating system: $(uname)"
   esac
 
-  if "$is_linux"; then
+  if [[ ${is_linux} == "true" ]]; then
     # Detect Linux flavor
     if [[ -f /etc/issue ]] && grep Ubuntu /etc/issue >/dev/null; then
       is_debian=true

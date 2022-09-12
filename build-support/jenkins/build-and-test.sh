@@ -267,7 +267,7 @@ if ! "$build_root_deleted"; then
 fi
 
 if is_jenkins; then
-  if "$build_root_deleted"; then
+  if [[ ${build_root_deleted} == "true" ]]; then
     log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
         "does not get confused with old JUnit-style XML files."
     ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
@@ -610,7 +610,7 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
     popd
   done
 
-  if "$java_build_failed"; then
+  if [[ ${java_build_failed} == "true" ]]; then
     fatal "Java build failed, stopping here."
   fi
 

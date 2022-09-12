@@ -43,8 +43,11 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
+import org.yb.cdc.CdcConsumer;
 import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
@@ -60,12 +63,15 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   private Universe targetUniverse;
   private String exampleTableID1;
   private String exampleTableID2;
+  private String exampleStreamID1;
+  private String exampleStreamID2;
   private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
   private YBClient mockClient;
 
   List<TaskType> DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.XClusterConfigSetStatus,
           TaskType.DeleteReplication,
           TaskType.DeleteBootstrapIds,
           TaskType.DeleteXClusterConfigEntry,
@@ -91,6 +97,9 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
 
     exampleTableID1 = "000030af000030008000000000004000";
     exampleTableID2 = "000030af000030008000000000004001";
+
+    exampleStreamID1 = "ec10532900ef42a29a6899c82dd7404f";
+    exampleStreamID2 = "ec10532900ef42a29a6899c82dd7404d";
 
     exampleTables = new HashSet<>();
     exampleTables.add(exampleTableID1);
@@ -127,10 +136,39 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     return null;
   }
 
+  public void initTargetUniverseClusterConfig(String replicationGroupName) {
+    CdcConsumer.ProducerEntryPB.Builder fakeProducerEntry =
+        CdcConsumer.ProducerEntryPB.newBuilder();
+    CdcConsumer.StreamEntryPB.Builder fakeStreamEntry2 =
+        CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID2);
+    fakeProducerEntry.putStreamMap(exampleStreamID2, fakeStreamEntry2.build());
+    CdcConsumer.StreamEntryPB.Builder fakeStreamEntry1 =
+        CdcConsumer.StreamEntryPB.newBuilder().setProducerTableId(exampleTableID1);
+    fakeProducerEntry.putStreamMap(exampleStreamID1, fakeStreamEntry1.build());
+
+    CdcConsumer.ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
+        CdcConsumer.ConsumerRegistryPB.newBuilder()
+            .putProducerMap(replicationGroupName, fakeProducerEntry.build());
+
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
+            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
+
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
+
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception e) {
+    }
+  }
+
   @Test
   public void testDelete() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
 
     try {
       DeleteUniverseReplicationResponse mockDeleteResponse =
@@ -165,6 +203,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
     HighAvailabilityConfig.create("test-cluster-key");
 
     try {
@@ -200,8 +239,8 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName());
     String deleteErrMsg = "failed to run delete rpc";
-
     try {
       AppStatusPB.Builder appStatusBuilder =
           AppStatusPB.newBuilder().setMessage(deleteErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
@@ -226,8 +265,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
       assertNotNull(subtaskGroup);
       assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
-
-    String taskErrMsg = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to delete replication for XClusterConfig(%s): %s",
@@ -235,7 +273,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     assertThat(taskErrMsg, containsString(expectedErrMsg));
 
     xClusterConfig.refresh();
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.DeletionFailed, xClusterConfig.status);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());

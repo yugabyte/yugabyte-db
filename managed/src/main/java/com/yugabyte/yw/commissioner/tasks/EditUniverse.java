@@ -352,7 +352,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createStartTserverProcessTasks(newTservers);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(newTservers);
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
     }
     if (!nodesToProvision.isEmpty()) {

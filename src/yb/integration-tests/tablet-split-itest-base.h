@@ -17,12 +17,14 @@
 #include <chrono>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/ql-dml-test-base.h"
 #include "yb/client/txn-test-base.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
+#include "yb/integration-tests/create-table-itest-base.h"
 #include "yb/master/catalog_manager_if.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -95,12 +97,22 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
     return WriteRows(&this->table_, num_rows, start_key);
   }
 
+  // Waits for intents of table to be applied.
+  virtual Status WaitForTableIntentsApplied(const TableId& table_id) = 0;
+  Status WaitForTestTableIntentsApplied();
+
+  Status FlushTable(const TableId& table_id);
   Status FlushTestTable();
 
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRowsAndFlush(
-      uint32_t num_rows = kDefaultNumRows, int32_t start_key = 1);
+      client::TableHandle* table, uint32_t num_rows = kDefaultNumRows, int32_t start_key = 1,
+      bool wait_for_intents = true);
 
-  Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(uint32_t num_rows);
+  Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRowsAndFlush(
+      uint32_t num_rows = kDefaultNumRows, int32_t start_key = 1, bool wait_for_intents = true);
+
+  Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(
+      uint32_t num_rows, bool wait_for_intents = true);
 
   Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_manager);
@@ -144,7 +156,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   void SetUp() override;
 
-  Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows);
+  Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
   Result<master::SplitTabletResponsePB> SendMasterSplitTabletRpcSync(const std::string& tablet_id);
@@ -204,6 +216,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   Status CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
 
+  Status WaitForTableIntentsApplied(const TableId& table_id) override;
+
  protected:
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
@@ -233,14 +247,19 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Status WaitForTablets(size_t num_tablets);
 
+  Status WaitForAnySstFiles(const TabletId& tablet_id);
+  Status WaitForAnySstFiles(size_t tserver_idx, const TabletId& tablet_id);
+
   Status WaitTServerToBeQuietOnTablet(
-      itest::TServerDetails* const ts_desc, const TabletId& tablet_id);
+      itest::TServerDetails* ts_desc, const TabletId& tablet_id);
 
   Status SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
 
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 
   Result<TabletId> GetOnlyTestTabletId();
+
+  Status WaitForTableIntentsApplied(const TableId& table_id) override;
 };
 
 }  // namespace yb

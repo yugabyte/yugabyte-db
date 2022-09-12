@@ -63,6 +63,8 @@ public enum TaskType {
 
   RestartUniverse("upgrade.RestartUniverse"),
 
+  RestartUniverseKubernetesUpgrade("upgrade.RestartUniverseKubernetesUpgrade"),
+
   SoftwareUpgrade("upgrade.SoftwareUpgrade"),
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
@@ -135,6 +137,8 @@ public enum TaskType {
   CreateXClusterConfig("CreateXClusterConfig"),
 
   EditXClusterConfig("EditXClusterConfig"),
+
+  RestartXClusterConfig("RestartXClusterConfig"),
 
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
@@ -255,6 +259,8 @@ public enum TaskType {
   DeleteReplication("subtasks.xcluster.DeleteReplication"),
 
   DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
+
+  ResetXClusterConfigEntry("subtasks.xcluster.ResetXClusterConfigEntry"),
 
   SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 

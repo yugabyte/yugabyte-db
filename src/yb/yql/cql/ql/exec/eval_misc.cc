@@ -50,7 +50,7 @@ Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
         << "Integer constant expected for USING TIMESTAMP clause";
 
     UserTimeMicros user_timestamp = timestamp_pb.value().int64_value();
-    if (user_timestamp == common::kInvalidUserTimestamp) {
+    if (user_timestamp == common::kInvalidTimestamp) {
       return exec_context_->Error(tnode->user_timestamp_usec(), "Invalid timestamp",
                                   ErrorCode::INVALID_ARGUMENTS);
     }

@@ -22,7 +22,7 @@ public class NFSUtil implements StorageUtil {
   // backupLocation parameter is unused here.
   public CloudStoreSpec createCloudStoreSpec(
       String backupLocation, String commonDir, CustomerConfigData configData) {
-    String cloudDir = commonDir + "/";
+    String cloudDir = commonDir.endsWith("/") ? commonDir : commonDir + "/";
     String bucket = DEFAULT_YUGABYTE_NFS_BUCKET;
     Map<String, String> credsMap = createCredsMapYbc(configData);
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, credsMap, Util.NFS);

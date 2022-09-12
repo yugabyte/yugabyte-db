@@ -476,7 +476,7 @@ prepare_for_running_cxx_test() {
   mkdir_safe "$test_dir"
 
   rel_test_log_path_prefix="$test_binary_sanitized"
-  if "$run_at_once"; then
+  if [[ ${run_at_once} == "true" ]]; then
     # Make this similar to the case when we run tests separately. Pretend that the test binary name
     # is the test name.
     rel_test_log_path_prefix+="/${rel_test_binary##*/}"
@@ -802,7 +802,7 @@ handle_cxx_test_xml_output() {
     log "Process tree supervisor reported that the test failed"
     test_failed=true
   fi
-  if "$test_failed"; then
+  if [[ ${test_failed} == "true" ]]; then
     log "Test failed, updating $xml_output_file"
   else
     log "Test succeeded, updating $xml_output_file"
@@ -962,7 +962,7 @@ handle_cxx_test_failure() {
     test_failed=true
   fi
 
-  if "$test_failed"; then
+  if [[ ${test_failed} == "true" ]]; then
     (
       rewrite_test_log "${test_log_path}"
       echo
@@ -2083,7 +2083,7 @@ run_cmake_unit_tests() {
       fi
     done
   done
-  if "$error"; then
+  if [[ ${error} == "true" ]]; then
     fatal "Found some disallowed patterns in CMake files"
   else
     log "Validated ${#cmake_files[@]} CMake files using light-weight grep checks"

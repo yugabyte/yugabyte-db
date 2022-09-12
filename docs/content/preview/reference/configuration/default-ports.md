@@ -19,9 +19,9 @@ Application clients connect to the following addresses:
 
 | API     | Port  | Server | Flag (default)           |
 | ------- | ----- | ------- |------------------------------------------|
-| ysql    | 5433  | yb-tserver | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) |
-| ycql    | 9042  | yb-tserver | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
-| yedis   | 6379  | yb-tserver | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
+| YSQL | 5433  | YB-TServer | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) |
+| YCQL | 9042  | YB-TServer | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
+| YEDIS | 6379  | YB-TServer | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Internode RPC communication
 
@@ -29,8 +29,8 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 
 | Server    | Port | Flag (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
-| yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
-| yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
+| YB-Master | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
+| YB-TServer | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
@@ -40,8 +40,8 @@ Admin web server UI can be viewed at the following addresses:
 
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
-| yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
+| YB-Master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
+| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
 ## Firewall Rules
 
@@ -60,31 +60,35 @@ The following common ports are required for firewall rules:
 
 ## Prometheus monitoring
 
-YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints. These endpoints have the following structure.
+YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
 
 ```
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
+You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node-level metrics:
+
+| Service      | Port |
+| ------------ | ---- |
+| Node metrics | 9300 |
 
 ### Servers
 
-Use the following targets to monitor `yb-tserver` and `yb-master` server metrics.
+Use the following targets to monitor `yb-tserver` and `yb-master` server metrics:
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
-| yb-master  | `<yb-master-address>:7000`  |
-| yb-tserver | `<yb-tserver-address>:9000` |
+| YB-Master  | `<yb-master-address>:7000`  |
+| YB-TServer | `<yb-tserver-address>:9000` |
 
 ### APIs
 
-Use the following `yb-tserver` targets for the various API metrics.
+Use the following `yb-tserver` targets for the various API metrics:
 
 | API     | Target
 | ------- | ------------------------- |
-| ysql    | `<yb-tserver-address>:13000` |
-| ycql    | `<yb-tserver-address>:12000` |
-| yedis   | `<yb-tserver-address>:11000` |
+| YSQL    | `<yb-tserver-address>:13000` |
+| YCQL    | `<yb-tserver-address>:12000` |
+| YEDIS   | `<yb-tserver-address>:11000` |
 
-For a quick tutorial on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
+For information on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).

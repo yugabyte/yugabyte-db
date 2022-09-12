@@ -470,6 +470,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Instance tags (used for AWS only).
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
+    // True if user wants to have dedicated nodes for master and tserver processes.
+    @ApiModelProperty public boolean dedicatedNodes = false;
+
     @Override
     public String toString() {
       return "UserIntent "

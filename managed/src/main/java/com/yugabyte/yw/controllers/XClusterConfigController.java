@@ -26,6 +26,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
@@ -41,7 +42,6 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.File;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -49,7 +49,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -105,7 +104,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterConfigCreateFormData createFormData = parseCreateFormData();
+    XClusterConfigCreateFormData createFormData = parseCreateFormData(customerUUID);
     Universe sourceUniverse =
         Universe.getValidUniverseOrBadRequest(createFormData.sourceUniverseUUID, customer);
     Universe targetUniverse =
@@ -130,7 +129,6 @@ public class XClusterConfigController extends AuthenticatedController {
                     tablesInReplication));
           }
         });
-    validateBootstrapParams(createFormData, customerUUID);
 
     // If the certs_for_cdc_dir gflag is not set, and it is required, tell the user to set it
     // before running this task.
@@ -321,6 +319,70 @@ public class XClusterConfigController extends AuthenticatedController {
             xclusterConfigUUID.toString(),
             Audit.ActionType.Edit,
             Json.toJson(editFormData),
+            taskUUID);
+    return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
+  }
+
+  /**
+   * API that restarts an xCluster replication configuration.
+   *
+   * @return Result
+   */
+  @ApiOperation(
+      nickname = "restartXClusterConfig",
+      value = "Restart xcluster config",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "xcluster_replication_restart_form_data",
+          value = "XCluster Replication Restart Form Data",
+          dataType = "com.yugabyte.yw.forms.XClusterConfigRestartFormData",
+          paramType = "body",
+          required = true))
+  public Result restart(UUID customerUUID, UUID xclusterConfigUUID) {
+    log.info("Received restart XClusterConfig({}) request", xclusterConfigUUID);
+
+    // Parse and validate request
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    XClusterConfigRestartFormData restartFormData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigRestartFormData.class);
+
+    // Currently, only the whole xCluster config can restart.
+    if (!restartFormData.tables.isEmpty()) {
+      throw new PlatformServiceException(
+          NOT_IMPLEMENTED,
+          "Per DB/table xCluster config restart is not yet implemented; please "
+              + "do not specify the `tables` field so the whole xCluster config restarts");
+    }
+
+    validateBackupRequestParamsForBootstrapping(
+        restartFormData.bootstrapParams.backupRequestParams, customerUUID);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+    verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
+
+    Universe targetUniverse =
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+    // Submit task to edit xCluster config
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, restartFormData);
+    UUID taskUUID = commissioner.submit(TaskType.RestartXClusterConfig, params);
+    CustomerTask.create(
+        customer,
+        targetUniverse.universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.XClusterConfig,
+        CustomerTask.TaskType.Restart,
+        xClusterConfig.name);
+
+    log.info("Submitted restart XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.XClusterConfig,
+            xclusterConfigUUID.toString(),
+            Audit.ActionType.Restart,
             taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
   }
@@ -523,7 +585,7 @@ public class XClusterConfigController extends AuthenticatedController {
     }
   }
 
-  private XClusterConfigCreateFormData parseCreateFormData() {
+  private XClusterConfigCreateFormData parseCreateFormData(UUID customerUUID) {
     log.debug("Request body to create an xCluster config is {}", request().body().asJson());
     XClusterConfigCreateFormData formData =
         formFactory.getFormDataOrBadRequest(
@@ -535,6 +597,26 @@ public class XClusterConfigController extends AuthenticatedController {
               "Source and target universe cannot be the same: both are %s",
               formData.sourceUniverseUUID));
     }
+
+    // Validate bootstrap parameters if there is any.
+    if (formData.bootstrapParams != null) {
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
+      // Ensure tables in BootstrapParams is a subset of tables in the main body.
+      if (!formData.tables.containsAll(bootstrapParams.tables)) {
+        throw new IllegalArgumentException(
+            String.format(
+                "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
+                    + "main body (%s)",
+                bootstrapParams.tables, formData.tables));
+      }
+
+      // Fail early if parameters are invalid for bootstrapping.
+      if (bootstrapParams.tables.size() > 0) {
+        validateBackupRequestParamsForBootstrapping(
+            bootstrapParams.backupRequestParams, customerUUID);
+      }
+    }
+
     return formData;
   }
 
@@ -590,79 +672,60 @@ public class XClusterConfigController extends AuthenticatedController {
     }
   }
 
-  private void validateBootstrapParams(
-      XClusterConfigCreateFormData createFormData, UUID customerUUID) {
-    // Validate bootstrap parameters if there is any.
-    if (createFormData.bootstrapParams != null) {
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams = createFormData.bootstrapParams;
-      BackupRequestParams backupRequestParams = bootstrapParams.backupRequestParams;
-      // Ensure tables in BootstrapParams is a subset of tables in the main body.
-      if (!createFormData.tables.containsAll(bootstrapParams.tables)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
-                    + "main body (%s)",
-                bootstrapParams.tables, createFormData.tables));
-      }
-
-      // Fail early if parameters are invalid for bootstrapping. Support only keyspace.
-      if (bootstrapParams.tables.size() > 0) {
-        CustomerConfig customerConfig =
-            customerConfigService.getOrBadRequest(
-                customerUUID, backupRequestParams.storageConfigUUID);
-        if (!customerConfig.getState().equals(CustomerConfig.ConfigState.Active)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
-        }
-        backupUtil.validateStorageConfig(customerConfig);
-        // Ensure the following parameters are not set by the user because they will be set by the
-        // task based on other parameters automatically.
-        if (backupRequestParams.keyspaceTableList != null) {
-          throw new IllegalArgumentException(
-              "backupRequestParams.keyspaceTableList must be null, table selection happens "
-                  + "automatically");
-        }
-        if (backupRequestParams.backupType != null) {
-          throw new IllegalArgumentException(
-              "backupRequestParams.backupType must be null, backup type will be selected "
-                  + "automatically based on tables");
-        }
-        if (backupRequestParams.customerUUID != null
-            && !backupRequestParams.customerUUID.equals(customerUUID)) {
-          throw new PlatformServiceException(
-              Http.Status.BAD_REQUEST,
-              String.format(
-                  "backupRequestParams.customerUUID is set to a wrong customer UUID (%s). "
-                      + "Please either set it to null, or use the right customer uuid (%s)",
-                  backupRequestParams.customerUUID, customerUUID));
-        }
-        if (backupRequestParams.customerUUID == null) {
-          backupRequestParams.customerUUID = customerUUID;
-        }
-        if (backupRequestParams.universeUUID != null) {
-          throw new PlatformServiceException(
-              Http.Status.BAD_REQUEST, "backupRequestParams.universeUUID must be null");
-        }
-        if (backupRequestParams.timeBeforeDelete != 0L
-            || backupRequestParams.expiryTimeUnit != null) {
-          throw new PlatformServiceException(
-              Http.Status.BAD_REQUEST,
-              "backupRequestParams.timeBeforeDelete and backupRequestParams.expiryTimeUnit must"
-                  + " be null");
-        }
-        // The following parameters are used for scheduled backups and should not be set for this
-        // task.
-        if (backupRequestParams.frequencyTimeUnit != null
-            || backupRequestParams.schedulingFrequency != 0L
-            || backupRequestParams.cronExpression != null
-            || backupRequestParams.scheduleUUID != null
-            || backupRequestParams.scheduleName != null
-            || backupRequestParams.minNumBackupsToRetain != Util.MIN_NUM_BACKUPS_TO_RETAIN) {
-          throw new PlatformServiceException(
-              Http.Status.BAD_REQUEST,
-              "Schedule backup related parameters cannot be set for this task");
-        }
-      }
+  private void validateBackupRequestParamsForBootstrapping(
+      BackupRequestParams backupRequestParams, UUID customerUUID) {
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(customerUUID, backupRequestParams.storageConfigUUID);
+    if (!customerConfig.getState().equals(CustomerConfig.ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
+    }
+    backupUtil.validateStorageConfig(customerConfig);
+    // Ensure the following parameters are not set by the user because they will be set by the
+    // task based on other parameters automatically.
+    if (backupRequestParams.keyspaceTableList != null) {
+      throw new IllegalArgumentException(
+          "backupRequestParams.keyspaceTableList must be null, table selection happens "
+              + "automatically");
+    }
+    if (backupRequestParams.backupType != null) {
+      throw new IllegalArgumentException(
+          "backupRequestParams.backupType must be null, backup type will be selected "
+              + "automatically based on tables");
+    }
+    if (backupRequestParams.customerUUID != null
+        && !backupRequestParams.customerUUID.equals(customerUUID)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          String.format(
+              "backupRequestParams.customerUUID is set to a wrong customer UUID (%s). "
+                  + "Please either set it to null, or use the right customer uuid (%s)",
+              backupRequestParams.customerUUID, customerUUID));
+    }
+    if (backupRequestParams.customerUUID == null) {
+      backupRequestParams.customerUUID = customerUUID;
+    }
+    if (backupRequestParams.universeUUID != null) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "backupRequestParams.universeUUID must be null");
+    }
+    if (backupRequestParams.timeBeforeDelete != 0L || backupRequestParams.expiryTimeUnit != null) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "backupRequestParams.timeBeforeDelete and backupRequestParams.expiryTimeUnit must"
+              + " be null");
+    }
+    // The following parameters are used for scheduled backups and should not be set for this
+    // task.
+    if (backupRequestParams.frequencyTimeUnit != null
+        || backupRequestParams.schedulingFrequency != 0L
+        || backupRequestParams.cronExpression != null
+        || backupRequestParams.scheduleUUID != null
+        || backupRequestParams.scheduleName != null
+        || backupRequestParams.minNumBackupsToRetain != Util.MIN_NUM_BACKUPS_TO_RETAIN) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Schedule backup related parameters cannot be set for this task");
     }
   }
 }
