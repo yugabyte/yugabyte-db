@@ -51,6 +51,8 @@ class PrometheusWriter {
   Status FlushAggregatedValues(
       uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
 
+  std::stringstream* GetOutputString();
+
  private:
   friend class MetricsTest;
   // FlushSingleEntry() was a function template with type of "value" as template

@@ -165,10 +165,16 @@ void MakeNewProtoRecord(
     SetCDCSDKOpId(
         op_id.term, op_id.index, intent.write_id, intent.reverse_index_key, cdc_sdk_op_id_pb);
 
+
+    Slice doc_ht(intent.ht_buf);
+
     CDCSDKProtoRecordPB* record_to_be_added = resp->add_cdc_sdk_proto_records();
     record_to_be_added->CopyFrom(*proto_record);
     record_to_be_added->mutable_row_message()->CopyFrom(row_message);
-
+    auto result = DocHybridTime::DecodeFromEnd(&doc_ht);
+    if (result.ok()) {
+      record_to_be_added->mutable_row_message()->set_commit_time((*result).hybrid_time().value());
+    }
     *write_id = intent.write_id;
     *reverse_index_key = intent.reverse_index_key;
   }
@@ -471,6 +477,7 @@ Status PopulateCDCSDKDDLRecord(
   row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_DDL);
   row_message->set_table(table_name);
+  row_message->set_commit_time(msg->hybrid_time());
 
   CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
   SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
@@ -742,6 +749,7 @@ Status GetChangesForCDCSDK(
 
       proto_record = resp->add_cdc_sdk_proto_records();
       row_message = proto_record->mutable_row_message();
+      row_message->set_commit_time(time.read.ToUint64());
       row_message->set_op(RowMessage_Op_DDL);
       row_message->set_table(tablet_peer->tablet()->metadata()->table_name());
 
@@ -836,6 +844,7 @@ Status GetChangesForCDCSDK(
 
           proto_record = resp->add_cdc_sdk_proto_records();
           row_message = proto_record->mutable_row_message();
+          row_message->set_commit_time(msg->hybrid_time());
           row_message->set_op(RowMessage_Op_DDL);
           row_message->set_table(table_name);
 

@@ -99,8 +99,8 @@ Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
     auto decoded_logical = VERIFY_RESULT(checked_narrow_cast<LogicalTimeComponent>(
         VERIFY_RESULT(FastDecodeDescendingSignedVarIntUnsafe(slice))));
 
-    result.hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(
-        decoded_micros, decoded_logical);
+    result.hybrid_time_ =
+        HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
   }
 
   const auto ptr_before_decoding_write_id = slice->data();
