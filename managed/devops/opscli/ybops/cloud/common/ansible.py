@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import subprocess
-from sys import platform
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
@@ -28,7 +27,6 @@ class AnsibleProcess(object):
     DEFAULT_SSH_USER = "centos"
     DEFAULT_SSH_CONNECTION_TYPE = "ssh"
     REDACT_STRING = "REDACTED"
-    PYTHON3_EXECUTABLES = ["python3", "python3.6", "python3.7", "python3.8", "python3.9"]
 
     def __init__(self):
         self.yb_user_name = "yugabyte"
@@ -62,43 +60,7 @@ class AnsibleProcess(object):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
 
-    def get_python_executable(self):
-
-        for py_executable in self.PYTHON3_EXECUTABLES:
-            bashCommand = "which \"" + py_executable + "\" > /dev/null 2>&1"
-            process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-            output, error = process.communicate()
-            if not output:
-                PYTHON_EXECUTABLE = py_executable
-                os.environ["PYTHON_EXECUTABLE"] = PYTHON_EXECUTABLE
-                return PYTHON_EXECUTABLE
-
-        bashCommand = "which python > /dev/null 2>&1"
-        process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-        output, error = process.communicate()
-        if not output:
-            bashCommand = "python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'"
-            process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
-            output, error = process.communicate()
-            if not output:
-                if os.environ.get("YB_MANAGED_DEVOPS_USE_PYTHON3") == "0":
-                    PYTHON_EXECUTABLE = "python"
-                    os.environ["PYTHON_EXECUTABLE"] = PYTHON_EXECUTABLE
-                    return PYTHON_EXECUTABLE
-                elif os.environ.get("YB_MANAGED_DEVOPS_USE_PYTHON3") == "1":
-                    PYTHON_EXECUTABLE = "python"
-                    os.environ["PYTHON_EXECUTABLE"] = PYTHON_EXECUTABLE
-                    return PYTHON_EXECUTABLE
-
-        logging.info("Failed to find Python executable.")
-        return None
-
-    def get_pex_path(self):
-        PEX_PATH = os.path.join(ybutils.YB_DEVOPS_HOME, "pex", "pexEnv")
-        os.environ["PEX_PATH"] = PEX_PATH
-        return PEX_PATH
-
-    def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
+    def run(self, filename, extra_vars=None, host_info=None, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
@@ -140,27 +102,9 @@ class AnsibleProcess(object):
 
         if ssh2_enabled:
             # Will be moved as part of task of license upload api.
-            configure_ssh2_args = []
-
-            # The virtual environment is used if the operating system is macOS, or if the
-            # environment variable YB_USE_VIRTUAL_ENV is set (default unset).
-            if platform == "darwin" or "YB_USE_VIRTUAL_ENV" in os.environ:
-                configure_ssh2_args = [
-                    "ansible-playbook",
-                    os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
-                ]
-            # The PEX environment is used in all other cases, with defaults specified.
-            else:
-                PYTHON_EXECUTABLE = self.get_python_executable()
-                if PYTHON_EXECUTABLE is None:
-                    PYTHON_EXECUTABLE = "python3"
-                PEX_PATH = self.get_pex_path()
-                if PEX_PATH is None:
-                    PEX_PATH = os.path.join(ybutils.YB_DEVOPS_HOME, "pex", "pexEnv")
-                configure_ssh2_args = [
-                    PYTHON_EXECUTABLE, PEX_PATH,
-                    "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
-                ]
+            configure_ssh2_args = [
+                "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
+            ]
             p = subprocess.Popen(configure_ssh2_args,
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE,
@@ -171,26 +115,10 @@ class AnsibleProcess(object):
 
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
 
-        process_args = []
+        process_args = [
+            "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, filename)
+        ]
 
-        # The virtual environment is used if the operating system is macOS, or if the
-        # environment variable YB_USE_VIRTUAL_ENV is set (default unset).
-        if platform == "darwin" or "YB_USE_VIRTUAL_ENV" in os.environ:
-            process_args = [
-                "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, filename)
-            ]
-        # The PEX environment is used in all other cases for YBA.
-        else:
-            PYTHON_EXECUTABLE = self.get_python_executable()
-            if PYTHON_EXECUTABLE is None:
-                PYTHON_EXECUTABLE = "python3"
-            PEX_PATH = self.get_pex_path()
-            if PEX_PATH is None:
-                PEX_PATH = os.path.join(ybutils.YB_DEVOPS_HOME, "pex", "pexEnv")
-            process_args = [
-                PYTHON_EXECUTABLE, PEX_PATH,
-                "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, filename)
-            ]
         if vault_password_file is not None:
             process_args.extend(["--vault-password-file", vault_password_file])
         if ask_sudo_pass is not None:
