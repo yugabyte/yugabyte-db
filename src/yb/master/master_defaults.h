@@ -65,6 +65,15 @@ constexpr size_t kCdcDbStreamIdIdx = 0;
 static const char* const kCdcTableId = "table_id";
 constexpr size_t kCdcTableIdIdx = 3;
 
+
+static const char* const kXClusterSafeTimeTableName = "xcluster_safe_time";
+static const char* const kXCUniverseId = "universe_id";
+constexpr size_t kXCUniverseIdIdx = 0;
+static const char* const kXCProducerTabletId = "tablet_id";
+constexpr size_t kXCProducerTabletIdIdx = 1;
+static const char* const kXCSafeTime  = "safe_time";
+constexpr size_t kXCSafeTimeIdx = 2;
+
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =

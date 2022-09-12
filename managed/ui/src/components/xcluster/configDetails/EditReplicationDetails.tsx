@@ -43,7 +43,10 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
         onHide();
       },
       onError: (err: any) => {
-        toast.error(err.response.data.error);
+        toast.error(
+          err.response.data.error instanceof String
+              ? err.response.data.error
+              : JSON.stringify(err.response.data.error));
       }
     }
   );

@@ -50,6 +50,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
 
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 

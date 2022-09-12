@@ -44,4 +44,4 @@ urllib3==1.26.7
 wrapt==1.12.1
 yugabyte-pycommon==1.9.15
 zipp==3.6.0
-llvm_installer==1.1.5
+llvm_installer==1.1.6

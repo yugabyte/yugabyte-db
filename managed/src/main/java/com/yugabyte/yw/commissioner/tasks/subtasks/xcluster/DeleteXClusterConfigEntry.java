@@ -16,23 +16,9 @@ public class DeleteXClusterConfigEntry extends XClusterConfigTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends XClusterConfigTaskParams {
-    // The target universe UUID must be stored in universeUUID field.
-    // The parent xCluster config must be stored in xClusterConfig field.
-    // Whether the xCluster config must be deleted even if it is not in Deleted state.
-    public boolean forceDelete;
-  }
-
   @Override
   public String getName() {
-    return String.format(
-        "%s(xClusterConfig=%s,forceDelete=%s)",
-        super.getName(), taskParams().xClusterConfig, taskParams().forceDelete);
-  }
-
-  @Override
-  protected Params taskParams() {
-    return (Params) taskParams;
+    return String.format("%s(xClusterConfig=%s)", super.getName(), taskParams().xClusterConfig);
   }
 
   @Override
@@ -40,15 +26,6 @@ public class DeleteXClusterConfigEntry extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-
-    if (!isInMustDeleteStatus(xClusterConfig) && !taskParams().forceDelete) {
-      String errMsg =
-          String.format(
-              "xCluster config (%s) is in %s state, not in a MustDelete "
-                  + "state; To delete it, you must use forceDelete",
-              xClusterConfig.uuid, xClusterConfig.status);
-      throw new RuntimeException(errMsg);
-    }
 
     // Delete the config.
     xClusterConfig.delete();

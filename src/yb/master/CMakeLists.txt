@@ -113,9 +113,10 @@ set(MASTER_SRCS
   tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
+  util/yql_vtable_helpers.cc
+  xcluster/xcluster_safe_time_service.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
-  util/yql_vtable_helpers.cc
   yql_auth_roles_vtable.cc
   yql_auth_role_permissions_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -207,6 +208,7 @@ ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
+ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 
 foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})

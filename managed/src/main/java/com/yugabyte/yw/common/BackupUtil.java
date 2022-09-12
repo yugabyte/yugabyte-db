@@ -83,7 +83,7 @@ public class BackupUtil {
   public static final String REGION_NAME = "REGION";
   public static final String SNAPSHOT_URL_FIELD = "snapshot_url";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
-      "^univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+      "^(/?)univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
           + "[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
           + "/"
           + YBC_BACKUP_IDENTIFIER;
@@ -289,15 +289,17 @@ public class BackupUtil {
             (CustomerConfigStorageNFSData) customerConfig.getDataObject();
         backupLocation = configData.backupLocation;
         if (category.equals(BackupCategory.YB_CONTROLLER))
+          // We allow / as nfs location, so add the check here.
           backupLocation =
-              String.format("%s/%s", backupLocation, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET);
+              getCloudpathWithConfigSuffix(backupLocation, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET);
       } else {
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
         backupLocation = configData.backupLocation;
       }
       if (StringUtils.isNotBlank(backupLocation)) {
-        params.storageLocation = String.format("%s/%s", backupLocation, params.storageLocation);
+        params.storageLocation =
+            getCloudpathWithConfigSuffix(backupLocation, params.storageLocation);
       }
     }
   }
@@ -356,7 +358,7 @@ public class BackupUtil {
   public static String getExactRegionLocation(
       String backupLocation, String configDefaultLocation, String configRegionLocation) {
     String backupIdentifier = getBackupIdentifier(configDefaultLocation, backupLocation, false);
-    String location = String.format("%s/%s", configRegionLocation, backupIdentifier);
+    String location = getCloudpathWithConfigSuffix(configRegionLocation, backupIdentifier);
     return location;
   }
 
@@ -385,7 +387,9 @@ public class BackupUtil {
   public static String getBackupIdentifier(
       String configDefaultLocation, String defaultBackupLocation, boolean checkYbcNfs) {
     String backupIdentifier =
-        StringUtils.removeStart(defaultBackupLocation, configDefaultLocation + "/");
+        StringUtils.removeStart(
+            defaultBackupLocation,
+            configDefaultLocation + (configDefaultLocation.endsWith("/") ? "" : "/"));
     if (checkYbcNfs) {
       backupIdentifier =
           StringUtils.removeStart(backupIdentifier, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET + "/");
@@ -528,5 +532,16 @@ public class BackupUtil {
       }
     }
     return backupLocations;
+  }
+
+  /**
+   * Get exact cloud path after merging storage config suffix and backup identifier.
+   *
+   * @param storageConfigSuffix Storage config suffix to merge with common cloud directory
+   * @param commonDir Backup identifier
+   */
+  public static String getCloudpathWithConfigSuffix(String storageConfigSuffix, String commonDir) {
+    return String.format(
+        (storageConfigSuffix.endsWith("/") ? "%s%s" : "%s/%s"), storageConfigSuffix, commonDir);
   }
 }

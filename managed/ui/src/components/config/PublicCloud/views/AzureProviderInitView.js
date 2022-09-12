@@ -7,6 +7,7 @@ import { YBButton, YBControlledNumericInput, YBFormInput, YBToggle } from '../..
 import { AzureRegions } from './AzureRegions';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { FIELD_TYPE, NTPConfig, NTP_TYPES } from './NTPConfig';
+import { specialChars } from '../../constants';
 
 const initialValues = {
   providerName: '', // not a part of config payload
@@ -23,7 +24,9 @@ const initialValues = {
 };
 
 const validationSchema = Yup.object().shape({
-  providerName: Yup.string().required('Provider Name is a required field'),
+  providerName: Yup.string().required('Provider Name is a required field').matches( 
+    specialChars, 'Provider Name cannot contain special characters except - and _'
+  ),
   AZURE_CLIENT_ID: Yup.string().required('Azure Client ID is a required field'),
   AZURE_CLIENT_SECRET: Yup.string().required('Azure Client Secret is a required field'),
   AZURE_TENANT_ID: Yup.string().required('Azure Tenant ID is a required field'),

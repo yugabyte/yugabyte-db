@@ -20,6 +20,12 @@ Before you can connect using a shell or other client, you need to add your compu
 
 {{< /warning >}}
 
+{{< note title="Multi-region clusters" >}}
+
+Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you cannot connect to multi-region clusters from a desktop shell. Use the [Cloud shell](../connect-cloud-shell/) instead.
+
+{{< /note >}}
+
 {{< note title="Note" >}}
 
 When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.

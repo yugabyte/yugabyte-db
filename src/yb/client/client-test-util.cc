@@ -59,6 +59,7 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace client {
@@ -104,6 +105,14 @@ void ScanTableToStrings(const TableHandle& table, std::vector<std::string>* row_
 std::vector<std::string> ScanTableToStrings(const TableHandle& table) {
   std::vector<std::string> result;
   ScanTableToStrings(table, &result);
+  return result;
+}
+
+std::vector<string> ScanTableToStrings(const YBTableName& table_name, YBClient* client) {
+  client::TableHandle table;
+  EXPECT_OK(table.Open(table_name, client));
+  auto result = ScanTableToStrings(table);
+  std::sort(result.begin(), result.end());
   return result;
 }
 

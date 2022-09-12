@@ -183,9 +183,9 @@ class DocWriteBatch {
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp) {
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp) {
     return SetPrimitive(
-        doc_path, ValueControlFields { .user_timestamp = user_timestamp }, value, read_ht,
+        doc_path, ValueControlFields { .timestamp = user_timestamp }, value, read_ht,
         deadline, query_id);
   }
 
@@ -200,7 +200,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   Status InsertSubDocument(
       const DocPath& doc_path,
@@ -209,7 +209,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp,
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp,
       bool init_marker_ttl = true);
 
   Status ExtendList(
@@ -219,7 +219,7 @@ class DocWriteBatch {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   Status ReplaceRedisInList(
@@ -250,7 +250,7 @@ class DocWriteBatch {
       const ReadHybridTime& read_ht = ReadHybridTime::Max(),
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidUserTimestamp);
+      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }

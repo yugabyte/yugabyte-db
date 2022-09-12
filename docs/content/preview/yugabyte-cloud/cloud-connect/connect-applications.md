@@ -22,7 +22,9 @@ For examples of applications that connect to YugabyteDB Managed using common dri
 
 Before you can connect, your application has to be able to reach your YugabyteDB Managed cluster. To enable inbound network access from your application environment to a cluster, you need to add the public IP addresses to the cluster [IP allow list](../../cloud-secure-clusters/add-connections).
 
-If you are using [VPC peering](../../cloud-basics/cloud-vpcs/), you need to add the public IP addresses of the peered application VPC to the cluster IP allow list.
+Multi-region clusters, which must be deployed in a [VPC](../../cloud-basics/cloud-vpcs/), do not expose any publicly-accessible IP addresses. As a result, you can only connect to multi-region clusters from applications that reside on a peered network, and the [peering connection](../../cloud-basics/cloud-vpcs/cloud-add-peering/) must be Active.
+
+In addition, if your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
 {{< /warning >}}
 
