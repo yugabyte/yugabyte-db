@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { YBModal } from '../../common/forms/fields';
 
-import { ReplicationTable } from '../XClusterReplicationTypes';
+import { ReplicationTable } from '../XClusterTypes';
 import { TableLagGraph } from './TableLagGraph';
 
 import styles from './ReplicationLagGraphModal.module.scss';
