@@ -14,15 +14,14 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.yb.CommonTypes.PeerRole;
+import io.netty.buffer.ByteBuf;
 import org.yb.CommonNet.HostPortPB;
-import org.yb.consensus.Metadata;
+import org.yb.CommonTypes.PeerRole;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 import org.yb.util.ServerInfo;
-import org.jboss.netty.buffer.ChannelBuffer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +33,7 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterClusterOuterClass.ListMastersRequestPB.Builder builder =
       MasterClusterOuterClass.ListMastersRequestPB.newBuilder();

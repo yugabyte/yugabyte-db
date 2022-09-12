@@ -5,7 +5,7 @@ import com.google.protobuf.Message;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
@@ -32,7 +32,7 @@ public class DeleteCDCStreamRequest extends YRpc<DeleteCDCStreamResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.DeleteCDCStreamRequestPB.Builder builder =
