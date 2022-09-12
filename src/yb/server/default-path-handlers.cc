@@ -513,12 +513,14 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus outside loop "<<std::endl;
+  // LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus outside loop "<<std::endl;
   MetricPrometheusOptions opts;
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
-  std::stringstream *output = &resp->output;
+  std::stringstream* output = &resp->output;
+  // LOG(INFO) <<"Sumukh : Inside WriteMetricsForPrometheus entity_opts.size() "
+  // << entities_opts.size()<<std::endl;
   if (entities_opts.empty()) {
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
   }
@@ -527,7 +529,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
     WARN_NOT_OK(
         metrics->WriteForPrometheus(&writer, entity_options.second, opts),
         "Couldn't write text metrics for Prometheus");
-    LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus"<<std::endl;
+    // LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus"<<std::endl;
   }
 }
 

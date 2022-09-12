@@ -35,12 +35,12 @@ Status PrometheusWriter::FlushAggregatedValues(
   uint32_t counter = 0;
   std::regex p_regex(priority_regex);
   for (const auto& [metric, map] : aggregated_values_) {
-    LOG(INFO) << "Sumukh : Inside FlushAggregatedValues outer loop "<<metric;
+    // LOG(INFO) << "Sumukh : Inside FlushAggregatedValues outer loop "<<metric;
     if (!priority_regex.empty() && !std::regex_match(metric, p_regex)) {
       continue;
     }
     for (const auto& [id, value] : map) {
-      LOG(INFO) << "Sumukh: Inside FlushAggregatedValues key:"<< id<<" value "<< value;
+      // LOG(INFO) << "Sumukh: Inside FlushAggregatedValues key:"<< id<<" value "<< value;
       RETURN_NOT_OK(FlushSingleEntry(aggregated_attributes_[id], metric, value));
     }
     if (++counter >= max_tables_metrics_breakdowns) {
@@ -100,7 +100,8 @@ void PrometheusWriter::AddAggregatedEntry(
       InvalidAggregationFunction(aggregation_function);
       break;
   }
-  LOG(INFO) << "Sumukh: Inside AddAggregatedEntry, stream_id"<< entity_id <<" "<< metric_name << " " << value <<"aggregated value"<< stored_value << std::endl;
+  // LOG(INFO) << "Sumukh: Inside AddAggregatedEntry, stream_id"<< entity_id <<" "<<
+  //  metric_name << " " << value <<"aggregated value"<< stored_value << std::endl;
 }
 
 Status PrometheusWriter::WriteSingleEntry(
@@ -121,9 +122,9 @@ Status PrometheusWriter::WriteSingleEntry(
     AddAggregatedEntry("", new_attr, name, value, aggregation_function);
     break;
   }
-  case AggregationMetricLevel::kStream:{
+  case AggregationMetricLevel::kStream: {
     AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value, aggregation_function);
-    LOG(INFO) << "sumukh: Inside WriteSingleEntry " << name << " " << value << std::endl;
+    // LOG(INFO) << "sumukh: Inside WriteSingleEntry " << name << " " << value << std::endl;
     break;
   }
   case AggregationMetricLevel::kTable:
