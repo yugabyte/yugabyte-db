@@ -348,7 +348,7 @@ For information on YB-Master load balancing, see [Data placement and load balanc
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
-For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
+For information on internal load balancing to power geo-distributed applications, see [YugabyteDB JDBC Driver](../../../reference/drivers/java/yugabyte-jdbc-reference/).
 
 ##### --enable_load_balancing
 

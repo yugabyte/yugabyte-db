@@ -147,7 +147,7 @@ Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
   {{% tab header="Java" lang="java" %}}
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [YugabyteDB JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
 This tutorial requires the following:
 
