@@ -50,7 +50,7 @@ If you prefer, you can install a standalone version using any of the following m
     yugabyte*/bin/ysqlsh
     ```
 
-### Example
+### Starting ysqlsh
 
 ```sh
 $ ./bin/ysqlsh
@@ -63,7 +63,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-## Online help
+### Online help
 
 Run `ysqlsh --help` to display the online help.
 
