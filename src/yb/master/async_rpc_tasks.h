@@ -39,6 +39,7 @@
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_task_util.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/memory.h"
@@ -120,7 +121,8 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   RetryingTSRpcTask(Master *master,
                     ThreadPool* callback_pool,
                     std::unique_ptr<TSPicker> replica_picker,
-                    const scoped_refptr<TableInfo>& table);
+                    const scoped_refptr<TableInfo>& table,
+                    AsyncTaskThrottlerBase* async_task_throttler);
 
   ~RetryingTSRpcTask();
 
@@ -203,6 +205,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   ThreadPool* const callback_pool_;
   const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
+  AsyncTaskThrottlerBase* async_task_throttler_;
 
   void UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
                      const string& metric_name,
@@ -271,11 +274,13 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
   RetrySpecificTSRpcTask(Master* master,
                          ThreadPool* callback_pool,
                          const std::string& permanent_uuid,
-                         const scoped_refptr<TableInfo>& table)
+                         const scoped_refptr<TableInfo>& table,
+                         AsyncTaskThrottlerBase* async_task_throttler)
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
-                        table),
+                        table,
+                        async_task_throttler),
       permanent_uuid_(permanent_uuid) {
   }
 
@@ -368,8 +373,9 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
       const scoped_refptr<TableInfo>& table, TabletId tablet_id,
       tablet::TabletDataState delete_type,
       boost::optional<int64_t> cas_config_opid_index_less_or_equal,
+      AsyncTaskThrottlerBase* async_task_throttler,
       std::string reason)
-      : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, table),
+      : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, table, async_task_throttler),
         tablet_id_(std::move(tablet_id)),
         delete_type_(delete_type),
         cas_config_opid_index_less_or_equal_(
