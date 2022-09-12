@@ -15,7 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.cdc.CdcService;
 import org.yb.util.Pair;
 
@@ -30,7 +30,7 @@ public class GetCheckpointRequest extends YRpc<GetCheckpointResponse>{
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final CdcService.GetCheckpointRequestPB.Builder builder = CdcService
     .GetCheckpointRequestPB.newBuilder();

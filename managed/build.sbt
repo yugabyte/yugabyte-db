@@ -375,18 +375,14 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.15-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.15.1-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
   //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
-  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
-  "io.netty" % "netty-handler" % "4.1.71.Final",
-  "io.netty" % "netty-codec-http" % "4.1.71.Final",
-  "io.netty" % "netty" % "3.10.6.Final",
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8"
@@ -403,11 +399,6 @@ dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr3
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
-
-javaOptions in Universal ++= Seq(
-  "-Djdk.tls.client.protocols=TLSv1.2",
-  "-Dhttps.protocols=TLSv1.2"
-)
 
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
