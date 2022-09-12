@@ -3530,7 +3530,11 @@ create_indexscan_plan(PlannerInfo *root,
 		 * index is primary.
 		 */
 		bool need_idx_remote = !indexonly;
-		if (need_idx_remote)
+		/*
+		 * For hypothetical index where primary index isn't involved, there is
+		 * no Relation. Hence don't make change to need_idx_remote.
+		 */
+		if (need_idx_remote && !best_path->indexinfo->hypothetical)
 		{
 			Relation index;
 			index = RelationIdGetRelation(best_path->indexinfo->indexoid);
