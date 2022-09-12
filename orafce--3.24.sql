@@ -205,7 +205,7 @@ LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.tanh(float8)
 RETURNS float8 AS
-$$ SELECT sinh($1) / cosh($1); $$
+$$ SELECT oracle.sinh($1) / oracle.cosh($1); $$
 LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.nanvl(float4, float4)
