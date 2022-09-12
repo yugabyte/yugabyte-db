@@ -240,4 +240,3 @@ CREATE INDEX idx2 ON public.table2 USING lsm (name HASH);
 --
 -- YSQL database cluster dump complete
 --
-
