@@ -1730,6 +1730,15 @@ YbGetTableProperties(Relation rel)
 }
 
 YbTableProperties
+YbGetTablePropertiesById(Oid relid)
+{
+	Relation relation     = RelationIdGetRelation(relid);
+	HandleYBStatus(YbGetTablePropertiesCommon(relation));
+	RelationClose(relation);
+	return relation->yb_table_properties;
+}
+
+YbTableProperties
 YbTryGetTableProperties(Relation rel)
 {
 	bool not_found = false;
