@@ -306,7 +306,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     return Status::OK();
   }
   AttributeMap prometheus_attr;
-  PrometheusWriter* cdc_writer;
+  // PrometheusWriter* cdc_writer;
 
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
@@ -324,19 +324,18 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
-    cdc_writer = new PrometheusWriter(writer->GetOutputString(), AggregationMetricLevel::kStream);
-  }
-  else if (strcmp(prototype_->name(), "drive") == 0) {
+    // cdc_writer = new PrometheusWriter(writer->GetOutputString(),
+    // AggregationMetricLevel::kStream);
+  } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
-  }
-  else {
+  } else {
     return Status::OK();
   }
   // This is currently tablet / server / cluster / cdc.
   prometheus_attr["metric_type"] = prototype_->name();
   prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
 
-  if (strcmp(prototype_->name(), "cdc") == 0) {
+  /*if (strcmp(prototype_->name(), "cdc") == 0) {
     for (OrderedMetricMap::value_type& val : metrics) {
       WARN_NOT_OK(
           val.second->WriteForPrometheus(cdc_writer, prometheus_attr, opts),
@@ -346,7 +345,8 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
       cb(cdc_writer, opts);
     }
-  } else {
+  } else */
+  {
     for (OrderedMetricMap::value_type& val : metrics) {
       WARN_NOT_OK(
           val.second->WriteForPrometheus(writer, prometheus_attr, opts),
