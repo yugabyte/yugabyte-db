@@ -40,10 +40,8 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
-import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.*;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBBackupUtil;
 import org.yb.util.YBBackupException;
 import org.yb.master.MasterDdlOuterClass;
 
@@ -171,7 +169,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                          int macRuntime) {
     if (TestUtils.isReleaseBuild()) {
       return releaseRuntime;
-    } else if (TestUtils.IS_LINUX) {
+    } else if (SystemUtil.IS_LINUX) {
       if (BuildTypeUtil.isASAN()) {
         return asanRuntime;
       } else if (BuildTypeUtil.isTSAN()) {

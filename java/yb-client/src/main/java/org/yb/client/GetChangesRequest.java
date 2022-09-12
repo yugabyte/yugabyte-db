@@ -15,12 +15,11 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.Opid;
+import io.netty.buffer.ByteBuf;
 import org.yb.cdc.CdcService;
-import org.yb.util.Pair;
 import org.yb.cdc.CdcService.GetChangesRequestPB;
 import org.yb.cdc.CdcService.GetChangesResponsePB;
+import org.yb.util.Pair;
 
 public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final String streamId;
@@ -51,7 +50,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final GetChangesRequestPB.Builder builder = GetChangesRequestPB.newBuilder();
     builder.setDbStreamId(ByteString.copyFromUtf8(this.streamId));
