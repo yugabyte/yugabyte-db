@@ -220,7 +220,6 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
-
     WARN_NOT_OK(e.second->WriteForPrometheus(writer, entity_options, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
