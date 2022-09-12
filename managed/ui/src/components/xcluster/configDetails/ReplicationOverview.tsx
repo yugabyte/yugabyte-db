@@ -2,7 +2,7 @@ import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
-import { Replication } from '../XClusterReplicationTypes';
+import { Replication } from '../XClusterTypes';
 import { convertToLocalTime, getMasterNodeAddress } from '../ReplicationUtils';
 
 export function ReplicationOverview({
