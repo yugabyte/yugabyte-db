@@ -73,11 +73,8 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.*;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.YBBackupException;
-import org.yb.util.YBBackupUtil;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -202,7 +199,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                          int macRuntime) {
     if (TestUtils.isReleaseBuild()) {
       return releaseRuntime;
-    } else if (TestUtils.IS_LINUX) {
+    } else if (SystemUtil.IS_LINUX) {
       if (BuildTypeUtil.isASAN()) {
         return asanRuntime;
       } else if (BuildTypeUtil.isTSAN()) {

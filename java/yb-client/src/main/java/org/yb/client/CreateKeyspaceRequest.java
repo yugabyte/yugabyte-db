@@ -14,7 +14,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.MasterDdlOuterClass;
@@ -37,7 +37,7 @@ class CreateKeyspaceRequest extends YRpc<CreateKeyspaceResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterDdlOuterClass.CreateNamespaceRequestPB.Builder builder =
       MasterDdlOuterClass.CreateNamespaceRequestPB.newBuilder();

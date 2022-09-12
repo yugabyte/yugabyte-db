@@ -34,33 +34,25 @@ package org.yb.client;
 import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.ColumnSchema;
-import org.yb.CommonNet;
-import org.yb.CommonTypes;
+import org.yb.*;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.Schema;
-import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -1791,26 +1783,34 @@ public class YBClient implements AutoCloseable {
     }
 
     /**
-     * Set the executors which will be used for the embedded Netty boss and workers.
+     * Single thread pool is used in netty4 to handle client IO
+     */
+    @Deprecated
+    @SuppressWarnings("unused")
+    public YBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
+      return executor(workerExecutor);
+    }
+
+    /**
+     * Set the executors which will be used for the embedded Netty workers.
      * Optional.
      * If not provided, uses a simple cached threadpool. If either argument is null,
      * then such a thread pool will be used in place of that argument.
      * Note: executor's max thread number must be greater or equal to corresponding
-     * worker count, or netty cannot start enough threads, and client will get stuck.
+     * thread count, or netty cannot start enough threads, and client will get stuck.
      * If not sure, please just use CachedThreadPool.
      */
-    public YBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
-      clientBuilder.nioExecutors(bossExecutor, workerExecutor);
+    public YBClientBuilder executor(Executor executor) {
+      clientBuilder.executor(executor);
       return this;
     }
 
     /**
-     * Set the maximum number of boss threads.
-     * Optional.
-     * If not provided, 1 is used.
+     * Single thread pool is used in netty4 to handle client IO
      */
-    public YBClientBuilder bossCount(int bossCount) {
-      clientBuilder.bossCount(bossCount);
+    @Deprecated
+    @SuppressWarnings("unused")
+    public YBClientBuilder bossCount(int workerCount) {
       return this;
     }
 

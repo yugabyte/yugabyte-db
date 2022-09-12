@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.21-SNAPSHOT</version>
+  <version>0.8.22-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>YugaByte</name>
@@ -105,8 +105,7 @@
     <log4j.version>1.2.17</log4j.version>
     <mockito-all.version>1.9.0</mockito-all.version>
     <murmur.version>1.0.0</murmur.version>
-    <netty.version>3.10.6.Final</netty.version>
-    <netty-all.version>4.1.68.Final</netty-all.version>
+    <netty-all.version>4.1.80.Final</netty-all.version>
     <protobuf.version>3.18.0</protobuf.version>
     <slf4j.version>1.7.32</slf4j.version>
     <spark.version>2.4.8</spark.version>
@@ -355,7 +354,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.21-SNAPSHOT</version>
+        <version>0.8.22-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -419,12 +418,12 @@
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty</artifactId>
-        <version>${netty.version}</version>
+        <artifactId>netty-all</artifactId>
+        <version>${netty-all.version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-all</artifactId>
+        <artifactId>netty-handler</artifactId>
         <version>${netty-all.version}</version>
       </dependency>
       <dependency>
@@ -527,7 +526,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.21-SNAPSHOT</version>
+        <version>0.8.22-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>
