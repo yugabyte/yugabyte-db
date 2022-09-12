@@ -330,10 +330,10 @@ $$ LANGUAGE sql IMMUTABLE;
 DO $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 90600) THEN
-    ALTER FUNCTION oracle.mod(SMALLINT, SMALLINT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(INT, INT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(BIGINT, BIGINT) PARALLEL SAFE;
-    ALTER FUNCTION oracle.mod(NUMERIC, NUMERIC) PARALLEL SAFE;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(SMALLINT, SMALLINT) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(INT, INT) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(BIGINT, BIGINT) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(NUMERIC, NUMERIC) PARALLEL SAFE$_$;
   END IF;
 END;
 $$;
@@ -2326,7 +2326,7 @@ AS IMPLICIT;
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    ALTER FUNCTION oracle.varchar2(oracle.varchar2, integer, boolean) SUPPORT oracle.varchar2_transform;
+    EXECUTE $_$ALTER FUNCTION oracle.varchar2(oracle.varchar2, integer, boolean) SUPPORT oracle.varchar2_transform$_$;
   ELSE
     UPDATE pg_proc SET protransform= 'oracle.varchar2_transform'::regproc::oid WHERE proname='varchar2';
 
@@ -2546,7 +2546,7 @@ AS IMPLICIT;
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    ALTER FUNCTION oracle.nvarchar2(oracle.nvarchar2, integer, boolean) SUPPORT oracle.nvarchar2_transform;
+    EXECUTE $_$ALTER FUNCTION oracle.nvarchar2(oracle.nvarchar2, integer, boolean) SUPPORT oracle.nvarchar2_transform$_$;
   ELSE
     UPDATE pg_proc SET protransform= 'oracle.nvarchar2_transform'::regproc::oid WHERE proname='nvarchar2';
 
