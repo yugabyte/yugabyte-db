@@ -200,7 +200,7 @@ public class TaskInfo extends Model {
     return taskState;
   }
 
-  boolean hasCompleted() {
+  public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
   }
 
