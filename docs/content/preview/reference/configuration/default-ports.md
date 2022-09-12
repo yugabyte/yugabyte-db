@@ -68,9 +68,9 @@ YugabyteDB servers expose time-series performance metrics in the [Prometheus exp
 
 You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node-level metrics:
 
-| Service            | Port |
-| ------------------ | ---- |
-| Prometheus metrics | 9300 |
+| Service      | Port |
+| ------------ | ---- |
+| Node metrics | 9300 |
 
 ### Servers
 
