@@ -1,15 +1,16 @@
 package org.yb.pgsql;
 
-import java.sql.Statement;
-import java.util.Collections;
-import java.util.Map;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.YBTestRunnerNonSanitizersOrAArch64;
+import org.yb.util.SystemUtil;
+
+import java.sql.Statement;
+import java.util.Collections;
+import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -73,7 +74,7 @@ public class TestPgMemoryGC extends BasePgSQLTest {
   @Test
   public void testPgMemoryGcThresholdOverride() throws Exception {
     // Skip verifying for override threshold for non Linux distribution as Mac doesn't use TCmalloc
-    if (!TestUtils.IS_LINUX) {
+    if (!SystemUtil.IS_LINUX) {
       return;
     }
 

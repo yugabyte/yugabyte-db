@@ -13,16 +13,11 @@
 
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
-
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @InterfaceAudience.Public
 class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
@@ -35,7 +30,7 @@ class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterClusterOuterClass.IsLoadBalancedRequestPB.Builder builder =
       MasterClusterOuterClass.IsLoadBalancedRequestPB.newBuilder();

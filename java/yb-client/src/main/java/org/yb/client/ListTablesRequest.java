@@ -37,7 +37,7 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,7 +58,7 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterDdlOuterClass.ListTablesRequestPB.Builder builder =
         MasterDdlOuterClass.ListTablesRequestPB.newBuilder();

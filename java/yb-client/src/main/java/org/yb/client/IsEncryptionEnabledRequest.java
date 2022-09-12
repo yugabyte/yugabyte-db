@@ -14,7 +14,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.util.Pair;
 
 import org.yb.master.MasterEncryptionOuterClass;
@@ -27,7 +27,7 @@ public class IsEncryptionEnabledRequest extends YRpc<IsEncryptionEnabledResponse
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterEncryptionOuterClass.IsEncryptionEnabledRequestPB.Builder builder =
             MasterEncryptionOuterClass.IsEncryptionEnabledRequestPB.newBuilder();

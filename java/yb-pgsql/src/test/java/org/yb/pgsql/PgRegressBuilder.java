@@ -16,6 +16,7 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
+import org.yb.util.SystemUtil;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -135,7 +136,7 @@ public class PgRegressBuilder {
         String line;
         while ((line = scheduleReader.readLine()) != null) {
           line = line.trim();
-          if (line.equals("test: yb_pg_inet") && !TestUtils.IS_LINUX) {
+          if (line.equals("test: yb_pg_inet") && !SystemUtil.IS_LINUX) {
             // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
             line = "test: yb_pg_inet_ipv4only";
           }

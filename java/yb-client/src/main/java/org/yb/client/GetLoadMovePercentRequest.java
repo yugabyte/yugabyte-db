@@ -13,20 +13,11 @@
 
 package org.yb.client;
 
-import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
-
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.CommonNet.HostPortPB;
-import org.yb.consensus.Consensus;
-import org.yb.consensus.Metadata;
-import org.yb.consensus.Metadata.RaftPeerPB;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @InterfaceAudience.Public
 class GetLoadMovePercentRequest extends YRpc<GetLoadMovePercentResponse> {
@@ -35,7 +26,7 @@ class GetLoadMovePercentRequest extends YRpc<GetLoadMovePercentResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterClusterOuterClass.GetLoadMovePercentRequestPB.Builder builder =
       MasterClusterOuterClass.GetLoadMovePercentRequestPB.newBuilder();
