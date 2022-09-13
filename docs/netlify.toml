@@ -393,6 +393,13 @@
   to = "/preview/quick-start/#create-a-local-cluster"
   force = true
 
+# Redirect Read committed isolation level to preview
+
+[[redirects]]
+  from = "/v2.12/architecture/transactions/read-committed/"
+  to = "/preview/architecture/transactions/read-committed/"
+  force = true
+
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 
