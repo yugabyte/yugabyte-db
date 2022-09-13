@@ -750,6 +750,26 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   ASSERT_LE(total_not_found, 200);
 }
 
+class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Use small clock skew, to decrease number of read restarts.
+    options->extra_master_flags.push_back("--TEST_fail_initdb_after_snapshot_restore=true");
+  }
+
+  int GetNumMasters() const override {
+    return 3;
+  }
+};
+
+TEST_F(PgLibPqFailoverDuringInitDb, YB_DISABLE_TEST_IN_TSAN(CreateTable)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+}
+
 class PgLibPqSmallClockSkewTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
