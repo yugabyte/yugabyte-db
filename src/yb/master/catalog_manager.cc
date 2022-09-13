@@ -1122,10 +1122,13 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   if ((FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql) &&
       !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot) {
-    if (!namespace_ids_map_.empty() || !system_tablets_.empty()) {
+    if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
+      // Since this field is not set, this means that is an existing cluster created without D19510.
+      // So skip restoring sys catalog.
       LOG_WITH_PREFIX(INFO)
           << "This is an existing cluster, not initializing from a sys catalog snapshot.";
     } else {
+      // This is a cluster created with D19510, so check the value of initdb_done.
       Result<bool> dir_exists =
           Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
       if (dir_exists.ok() && *dir_exists) {

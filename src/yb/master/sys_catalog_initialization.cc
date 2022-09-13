@@ -52,6 +52,9 @@ DEFINE_bool(create_initial_sys_catalog_snapshot, false,
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 
+DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
+                 "Kill the master process after successfully restoring the sys catalog snapshot.");
+
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
@@ -136,6 +139,12 @@ Status RestoreInitialSysCatalogSnapshot(
 
   sys_catalog_tablet_peer->Submit(std::move(operation), term);
 
+  if (FLAGS_TEST_fail_initdb_after_snapshot_restore && term == 1) {
+    // Only on term 1 (the first master leader), wait until the snapshot operation is complete
+    // before killing the process.
+    latch.Wait();
+    LOG(FATAL) << "Simulate failover during initdb";
+  }
   // Now restore tablet metadata.
   tserver::ExportedTabletMetadataChanges tablet_metadata_changes;
   RETURN_NOT_OK(ReadPBContainerFromPath(
