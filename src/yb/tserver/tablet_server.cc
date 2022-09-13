@@ -78,6 +78,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -370,15 +371,17 @@ void TabletServer::AutoInitServiceFlags() {
   if (FLAGS_tablet_server_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    const int32 num_threads = std::min(512, num_cores * 32);
-    FLAGS_tablet_server_svc_num_threads = std::max(64, num_threads);
+    const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("tablet_server_svc_num_threads", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
   }
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
-    const int32 num_threads = std::min(8, num_cores / 2);
-    FLAGS_num_concurrent_backfills_allowed = std::max(1, num_threads);
+    const int32 num_threads = std::max(1, std::min(8, num_cores / 2));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("num_concurrent_backfills_allowed", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
               << FLAGS_num_concurrent_backfills_allowed;
   }
@@ -386,8 +389,9 @@ void TabletServer::AutoInitServiceFlags() {
   if (FLAGS_ts_consensus_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    const int32 num_threads = std::min(512, num_cores * 32);
-    FLAGS_ts_consensus_svc_num_threads = std::max(64, num_threads);
+    const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("ts_consensus_svc_num_threads", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
               << FLAGS_ts_consensus_svc_num_threads;
   }

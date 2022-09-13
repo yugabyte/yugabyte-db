@@ -395,8 +395,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    FLAGS_heap_profile_path = strings::Substitute(
-        "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path =
+        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    CHECK_OK(SetFlagDefaultAndCurrent("heap_profile_path", path));
   }
 
 #ifdef TCMALLOC_ENABLED
@@ -422,6 +423,22 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   return true;
+}
+
+Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value) {
+  // SetCommandLineOptionWithMode returns non-empty string on success
+  if (!gflags::SetCommandLineOptionWithMode(
+           flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+           .empty()) {
+    // This is not expected to fail
+    CHECK(!gflags::SetCommandLineOptionWithMode(
+               flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_VALUE)
+               .empty());
+
+    return Status::OK();
+  }
+
+  return STATUS_FORMAT(InvalidArgument, "Failed to set flag $0 to value $1", flag_name, value);
 }
 
 } // namespace yb

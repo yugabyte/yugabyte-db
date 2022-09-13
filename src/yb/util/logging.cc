@@ -59,6 +59,7 @@
 #include "yb/gutil/spinlock.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 
@@ -214,7 +215,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   google::InstallFailureSignalHandler();
 
   // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.
-  FLAGS_logbuflevel = -1;
+  CHECK_OK(SetFlagDefaultAndCurrent("logbuflevel", std::to_string(-1)));
 
   if (!FLAGS_log_filename.empty()) {
     for (int severity = google::INFO; severity <= google::FATAL; ++severity) {
@@ -227,7 +228,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   // can reliably construct the log file name without duplicating the
   // complex logic that glog uses to guess at a temporary dir.
   if (FLAGS_log_dir.empty()) {
-    FLAGS_log_dir = "/tmp";
+    CHECK_OK(SetFlagDefaultAndCurrent("log_dir", "/tmp"));
   }
 
   if (!FLAGS_logtostderr) {
