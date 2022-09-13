@@ -39,7 +39,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_int32(replication_factor);
 
 namespace yb {
@@ -52,6 +52,8 @@ namespace enterprise {
 
 Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
+  // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
+  FLAGS_enable_tablet_split_of_xcluster_replicated_tables = false;
   auto producer_opts = opts;
   producer_opts.cluster_id = "producer";
 
