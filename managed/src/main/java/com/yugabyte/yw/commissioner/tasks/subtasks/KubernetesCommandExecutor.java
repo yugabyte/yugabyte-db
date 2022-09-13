@@ -805,6 +805,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!primaryClusterIntent.enableYCQL) {
       tserverOverrides.put("start_cql_proxy", "false");
     }
+    tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
       tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
