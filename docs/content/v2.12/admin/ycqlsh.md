@@ -26,7 +26,7 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 If you prefer, you can install a standalone version using a shell script:
 
 ```sh
-$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
 ```
 
 If you have `wget`, you can use the following:
@@ -38,7 +38,7 @@ wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
 ### Starting ycqlsh
 
 ```sh
-$ ./bin/ycqlsh
+./bin/ycqlsh
 ```
 
 ```output
@@ -66,7 +66,7 @@ Where
 ### Example
 
 ```sh
-$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
+./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 ```
 
 ```output
@@ -81,7 +81,7 @@ $ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.loc
 | ------------------- | ---------- | ------- | ------------------------------------------------------------ |
 | `--color`           | `-C`       |         | Force color output.                                          |
 | `--no-color`        |            |         | Disable color output.                                        |
-| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
+| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, Firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
 | `--ssl`             |            |         | Use SSL when connecting to YugabyteDB.                      |
 | `--user`            | `-u`       |         | Username to authenticate against YugabyteDB with.           |
 | `--password`        | `-p`       |         | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user`. |
@@ -102,7 +102,7 @@ To save output from a YCQL statement to a file, run the statement using the --ex
 For example, to save the output of a `SELECT` statement:
 
 ```sh
-$ ./bin/ycqlsh -e "SELECT * FROM mytable" > output.txt
+./bin/ycqlsh -e "SELECT * FROM mytable" > output.txt
 ```
 
 ## Special commands

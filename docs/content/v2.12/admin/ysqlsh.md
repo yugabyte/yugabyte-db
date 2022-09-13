@@ -47,7 +47,6 @@ If you prefer, you can install a standalone version using any of the following m
 
     ```sh
     wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-    yugabyte*/bin/ysqlsh
     ```
 
 ### Starting ysqlsh

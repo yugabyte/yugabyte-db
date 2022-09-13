@@ -28,7 +28,7 @@ The YCQL shell (`ycqlsh`) is installed as part of YugabyteDB and is located in t
 ## Example
 
 ```sh
-$ ./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
+./bin/ycqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
 
  cluster_name  | data_center | rack
 ---------------+-------------+-------
@@ -54,7 +54,7 @@ Where
 | ------------------- | ---------- | ------- | ------------------------------------------------------------ |
 | `--color`           | `-C`       |         | Force color output                                           |
 | `--no-color`        |            |         | Disable color output                                         |
-| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (e.g. firefox) or a browser path followed by `%s` (e.g. `/usr/bin/google-chrome-stable %s`). |
+| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, Firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
 | `--ssl`             |            |         | Use SSL when connecting to YugabyteDB                       |
 | `--user`            | `-u`       |         | Username to authenticate against YugabyteDB with            |
 | `--password`        | `-p`       |         | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user` |
@@ -95,7 +95,7 @@ Prints the `ycqlsh`, Cassandra, CQL, and native protocol versions in use. Exampl
 ycqlsh> SHOW VERSION
 ```
 
-```
+```output
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 ```
 
@@ -107,7 +107,7 @@ Prints the IP address and port of the YB-TServer server that `ycqlsh` is connect
 ycqlsh> SHOW HOST
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 ```
 
@@ -115,7 +115,7 @@ Connected to local cluster at 127.0.0.1:9042.
 
 Reads the contents of a file and executes each line as a YCQL statement or special `ycqlsh` command.
 
-```
+```output
 SOURCE '<file>'
 ```
 
@@ -130,7 +130,7 @@ ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 
 Begins capturing command output and appending it to a specified file. Output will not be shown at the console while it is captured.
 
-```
+```output
 CAPTURE '<file>'
 CAPTURE OFF
 CAPTURE
@@ -153,7 +153,7 @@ HELP <topic>
 
 ### PAGING
 
-Enables paging, disables paging, or sets the page size for read queries. When paging is enabled, only one page of data will be fetched at a time and a prompt will appear to fetch the next page. Generally, it’s a good idea to leave paging enabled in an interactive session to avoid fetching and printing large amounts of data at once.
+Enables paging, disables paging, or sets the page size for read queries. When paging is enabled, only one page of data will be fetched at a time and a prompt will appear to fetch the next page. Generally, it's a good idea to leave paging enabled in an interactive session to avoid fetching and printing large amounts of data at once.
 
 ```sql
 PAGING ON
@@ -231,7 +231,7 @@ ycqlsh> DESCRIBE CLUSTER
 
 ```
 
-```
+```output
 Cluster: local cluster
 
 ```
