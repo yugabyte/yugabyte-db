@@ -18,7 +18,7 @@ namespace yb {
 
 class TraceClusterTest : public ExternalMiniClusterITestBase {
  public:
-  void SetTracingFlag(bool enabled, int sampling_freq, int print_freq) {
+  void SetTracingFlag(bool enabled, int sampling_freq, int print_freq, bool dump_all_traces) {
     for (int i = 0; i < 3; ++i) {
       ASSERT_OK(cluster_->SetFlag(
           cluster_->tablet_server(i), "enable_tracing", enabled ? "1" : "0"));
@@ -28,6 +28,8 @@ class TraceClusterTest : public ExternalMiniClusterITestBase {
           cluster_->tablet_server(i), "sampled_trace_1_in_n", yb::ToString(sampling_freq)));
       ASSERT_OK(cluster_->SetFlag(
           cluster_->tablet_server(i), "print_trace_every", yb::ToString(print_freq)));
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "rpc_dump_all_traces", (dump_all_traces ? "true" : "false")));
     }
     WaitForInserts(workload_->rows_inserted() + 1000);
   }
@@ -57,7 +59,11 @@ TEST_F(TraceClusterTest, TestTracingUnderLoad) {
   // Cycle through enable/disable a bunch of times.
   for (int i = 0; i < 10; ++i) {
     auto rows_inserted = workload_->rows_inserted();
-    SetTracingFlag(static_cast<bool>(i % 2), (i % 5), 1);
+    const bool enable_tracing = static_cast<bool>(i % 2);
+    const int sampling_freq = (i % 5);
+    const int print_freq = 1;
+    const bool dump_all_traces = static_cast<bool>(i % 3);
+    SetTracingFlag(enable_tracing, sampling_freq, print_freq, dump_all_traces);
     WaitForInserts(rows_inserted + 100);
   }
 
