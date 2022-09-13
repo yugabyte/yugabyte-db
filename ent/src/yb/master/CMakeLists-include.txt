@@ -17,32 +17,6 @@ set(YB_BINARY_DIR         ${CMAKE_BINARY_DIR}/src)
 string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
     YB_ENT_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-#########################################
-# master_backup_proto
-#########################################
-YRPC_GENERATE(
-  # Result list of generated sources/headers/binaries
-  MASTER_BACKUP_YRPC_SRCS MASTER_BACKUP_YRPC_HDRS MASTER_BACKUP_YRPC_TGTS
-  # Proto files source dir
-  SOURCE_ROOT ${YB_ENT_SOURCE_DIR}
-  # Generated files dir
-  BINARY_ROOT ${YB_BINARY_DIR}
-  # List of proto files
-  PROTO_FILES ${YB_ENT_CURRENT_SOURCE_DIR}/master_backup.proto
-  # List of folders to find included proto files
-  EXTRA_PROTO_PATHS ${YB_SOURCE_DIR})
-set(MASTER_BACKUP_YRPC_LIBS
-  master_proto)
-ADD_YB_LIBRARY(master_backup_proto
-  SRCS ${MASTER_BACKUP_YRPC_SRCS}
-  DEPS ${MASTER_BACKUP_YRPC_LIBS}
-  NONLINK_DEPS ${MASTER_BACKUP_YRPC_TGTS})
-#########################################
-
-set(MASTER_PROTO_LIBS_EXTENSIONS
-  master_backup_proto
-  PARENT_SCOPE)
-
 set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_snapshot_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/catalog_manager_ent.cc
