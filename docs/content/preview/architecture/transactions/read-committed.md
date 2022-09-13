@@ -35,7 +35,7 @@ In addition to the two key requirements, there is an extra YSQL specific require
 
   * it should still return the data if the client issued the read after the data was committed, because it could be the same client connecting to YSQL from a different node and the following guarantee needs to be maintained; the database always returns data that was committed in the past.
 
-  * it should not return the data if the write was actually performed in the future i.e., after the read point (aka snapshot) was chosen.
+  * it should not return the data if the write was actually performed in the future, that is, after the read point (aka snapshot) was chosen.
 
 * In such a situation, where node N2 finds writes in the range `(T1, T1+max_clock_skew]`, to avoid breaking the strong guarantee of _a reader should always be able to read what was committed earlier_, node N2 avoids giving incorrect results and raises a `Read restart` error.
 
