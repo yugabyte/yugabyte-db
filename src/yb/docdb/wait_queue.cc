@@ -20,7 +20,10 @@
 
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
+
 #include "yb/gutil/stl_util.h"
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
@@ -57,6 +60,38 @@ CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
 YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted));
 
 class BlockerData;
+using BlockerDataAndSubtxnInfo = std::pair<std::shared_ptr<BlockerData>,
+                                           std::shared_ptr<SubtxnHasNonLockConflict>>;
+
+Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res) {
+  if (!res.ok()) {
+    if (res.status().IsNotFound()) {
+      // If txn was not found at local txn participant, then it must have been aborted or committed,
+      // but we can treat it as aborted so that we re-trigger conflict resolution.
+      return ResolutionStatus::kAborted;
+    } else if (res.status().IsTryAgain()) {
+      // If we get TryAgain status, then we can assume that the local txn participant is tracking
+      // this txn but does not know the status of the txn as of the request time, meaning it must
+      // not be aborted or committed. We can treat this as pending.
+      return ResolutionStatus::kPending;
+    } else {
+      // Any other error should be treated as a genuine error.
+      return res.status();
+    }
+  }
+  switch (res->status) {
+    case COMMITTED:
+      return ResolutionStatus::kCommitted;
+    case ABORTED:
+      return ResolutionStatus::kAborted;
+    case PENDING:
+      return ResolutionStatus::kPending;
+    default:
+      return STATUS_FORMAT(
+        IllegalState,
+        "Unexpected transaction status result in wait queue: $0", res->ToString());
+  }
+}
 
 // Data for an active transaction which is waiting on some number of other transactions with which
 // it has detected conflicts. The blockers field owns shared_ptr references to BlockerData of
@@ -66,7 +101,7 @@ class BlockerData;
 // and are discarded.
 struct WaiterData {
   WaiterData(const TransactionId id_, LockBatch* const locks_,
-             const std::vector<std::shared_ptr<BlockerData>> blockers_,
+             const std::vector<BlockerDataAndSubtxnInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_)
       : id(id_),
@@ -78,7 +113,8 @@ struct WaiterData {
 
   const TransactionId id;
   LockBatch* const locks;
-  const std::vector<std::shared_ptr<BlockerData>> blockers;
+  const TabletId status_tablet;
+  const std::vector<BlockerDataAndSubtxnInfo> blockers;
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
   const CoarseTimePoint created_at = CoarseMonoClock::Now();
@@ -108,19 +144,35 @@ using WaiterDataPtr = std::shared_ptr<WaiterData>;
 // active and has exited the wait queue.
 class BlockerData {
  public:
-  std::vector<WaiterDataPtr> Signal(const Result<ResolutionStatus>& result) {
+  std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+    auto txn_status = UnwrapResult(txn_status_response);
+    bool is_txn_pending = txn_status.ok() && *txn_status == ResolutionStatus::kPending;
+    bool should_signal = !is_txn_pending;
+
     UniqueLock<decltype(mutex_)> l(mutex_);
     std::vector<WaiterDataPtr> waiters_to_signal;
-    result_ = result;
 
-    waiters_to_signal.reserve(waiters_.size());
-    EraseIf([&waiters_to_signal](const auto& weak_waiter) {
-      if (auto waiter = weak_waiter.lock()) {
-        waiters_to_signal.push_back(waiter);
-        return false;
+    txn_status_ = txn_status;
+    if (txn_status_response.ok()) {
+      if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
+        // TODO(pessimistic): Avoid copying the subtransaction set. See:
+        // https://github.com/yugabyte/yugabyte-db/issues/13823
+        aborted_subtransactions_ = std::move(txn_status_response->aborted_subtxn_set);
+        should_signal = true;
       }
-      return true;
-    }, &waiters_);
+    }
+
+    if (should_signal) {
+      waiters_to_signal.reserve(waiters_.size());
+      EraseIf([&waiters_to_signal](const auto& weak_waiter) {
+        if (auto waiter = weak_waiter.lock()) {
+          waiters_to_signal.push_back(waiter);
+          return false;
+        }
+        return true;
+      }, &waiters_);
+    }
+
     return waiters_to_signal;
   }
 
@@ -131,7 +183,7 @@ class BlockerData {
 
   Result<bool> IsResolved() {
     SharedLock<decltype(mutex_)> blocker_lock(mutex_);
-    return VERIFY_RESULT(Copy(result_)) != ResolutionStatus::kPending;
+    return VERIFY_RESULT(Copy(txn_status_)) != ResolutionStatus::kPending;
   }
 
   auto CleanAndGetSize() {
@@ -153,36 +205,22 @@ class BlockerData {
     return boost::algorithm::join(waiters, ",");
   }
 
+  bool HasLiveSubtransaction(const SubtxnHasNonLockConflict& subtransaction_info) {
+    SharedLock<decltype(mutex_)> blocker_lock(mutex_);
+    for (const auto& [id, _] : subtransaction_info) {
+      if (!aborted_subtransactions_.Test(id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   mutable rw_spinlock mutex_;
-  Result<ResolutionStatus> result_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
+  Result<ResolutionStatus> txn_status_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
+  AbortedSubTransactionSet aborted_subtransactions_ GUARDED_BY(mutex_);
   std::vector<std::weak_ptr<WaiterData>> waiters_ GUARDED_BY(mutex_);
 };
-
-Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res) {
-  if (!res.ok()) {
-    if (res.status().IsNotFound()) {
-      return ResolutionStatus::kAborted;
-    } else if (res.status().IsTryAgain()) {
-      return ResolutionStatus::kPending;
-    } else {
-      return res.status();
-    }
-  }
-  switch (res->status) {
-    case COMMITTED:
-      return ResolutionStatus::kCommitted;
-    case ABORTED:
-      return ResolutionStatus::kAborted;
-    default:
-      if (res->status != PENDING) {
-        return STATUS_FORMAT(
-          IllegalState,
-          "Unexpected transaction status result in wait queue: $0", res->ToString());
-      }
-      return ResolutionStatus::kPending;
-  }
-}
 
 const Status kShuttingDownError = STATUS(
     IllegalState, "Tablet shutdown in progress - there may be a new leader.");
@@ -206,7 +244,7 @@ class WaitQueue::Impl {
 
     // TODO(pessimistic): We can detect tablet-local deadlocks here.
     // See https://github.com/yugabyte/yugabyte-db/issues/13586
-    std::vector<std::shared_ptr<BlockerData>> blocker_datas;
+    std::vector<BlockerDataAndSubtxnInfo> blocker_datas;
     WaiterDataPtr waiter_data = nullptr;
     {
       UniqueLock<decltype(mutex_)> wq_lock(mutex_);
@@ -242,7 +280,7 @@ class WaitQueue::Impl {
         } else {
           VLOG_WITH_PREFIX_AND_FUNC(4) << "Created blocker " << blocker.id;
         }
-        blocker_datas.push_back(blocker_data);
+        blocker_datas.emplace_back(blocker_data, blocker.subtransactions);
       }
 
       // TODO(pessimistic): similar to pg, we can wait 1s or so before beginning deadlock detection.
@@ -259,7 +297,7 @@ class WaitQueue::Impl {
     }
 
     DCHECK(waiter_data);
-    for (auto blocker : waiter_data->blockers) {
+    for (auto [blocker, _] : waiter_data->blockers) {
       blocker->AddWaiter(waiter_data);
     }
 
@@ -329,7 +367,7 @@ class WaitQueue::Impl {
         .reason = &kReason,
         .flags = TransactionLoadFlags {},
         .callback = [transaction_id, this](Result<TransactionStatusResult> res) {
-          HandleBlockerStatusResponse(transaction_id, res);
+          MaybeSignalWaitingTransactions(transaction_id, res);
         }
       };
       txn_status_manager_->RequestStatusAt(request);
@@ -361,9 +399,11 @@ class WaitQueue::Impl {
   }
 
  private:
-  void MarkBlockingTransactionComplete(
-      const TransactionId& transaction, Result<ResolutionStatus> status) EXCLUDES(mutex_) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction: " << transaction << " - res: " << status;
+  void MaybeSignalWaitingTransactions(
+      const TransactionId& transaction, Result<TransactionStatusResult> res) EXCLUDES(mutex_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction: " << transaction
+                                 << " - res: " << res << " - aborted "
+                                 << (res.ok() ? res->aborted_subtxn_set.ToString() : "error");
 
     std::shared_ptr<BlockerData> resolved_blocker = nullptr;
     {
@@ -387,13 +427,14 @@ class WaitQueue::Impl {
       // it's invalid while holding a unique lock on mutex_.
     }
 
-    if (resolved_blocker) {
-      VLOG_WITH_PREFIX(4) << "Signaling waiters for - " << transaction
-                          << " - " << " is_committed: " << status;
-      for (const auto& waiter : resolved_blocker->Signal(status)) {
-        // TODO(pessimistic): Resolve these waiters in parallel.
-        SignalWaiter(waiter);
-      }
+    if (!resolved_blocker) {
+      VLOG_WITH_PREFIX(4) << "Could not resolve blocker " << transaction << " for result " << res;
+      return;
+    }
+
+    for (const auto& waiter : resolved_blocker->Signal(std::move(res))) {
+      // TODO(pessimistic): Resolve these waiters in parallel.
+      SignalWaiter(waiter);
     }
   }
 
@@ -422,13 +463,14 @@ class WaitQueue::Impl {
     Status status = Status::OK();
     size_t num_resolved_blockers = 0;
 
-    for (const auto& blocker_data : waiter_data->blockers) {
+    for (const auto& [blocker_data, subtransaction_info] : waiter_data->blockers) {
       auto is_resolved = blocker_data->IsResolved();
       if (!is_resolved.ok()) {
         status = is_resolved.status();
         break;
       }
-      if (*is_resolved) {
+      if (*is_resolved ||
+          !blocker_data->HasLiveSubtransaction(*DCHECK_NOTNULL(subtransaction_info))) {
         num_resolved_blockers++;
       }
     }
@@ -438,15 +480,6 @@ class WaitQueue::Impl {
       // possible, e.g. if the blocking transaction was not a lock-only conflict and was commited.
       // See https://github.com/yugabyte/yugabyte-db/issues/13577
       InvokeWaiterCallback(status, waiter_data);
-    }
-  }
-
-  void HandleBlockerStatusResponse(
-      const TransactionId& txn_id, Result<TransactionStatusResult> res) {
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id: " << txn_id << " - res " << res.ToString();
-    auto status = UnwrapResult(res);
-    if (!status.ok() || *status != ResolutionStatus::kPending) {
-      MarkBlockingTransactionComplete(txn_id, status);
     }
   }
 
