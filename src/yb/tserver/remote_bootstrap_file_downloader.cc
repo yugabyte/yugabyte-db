@@ -124,10 +124,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     LOG(INFO) << file_path << " already exists and will be replaced";
     RETURN_NOT_OK(env().DeleteFile(file_path));
   }
-  WritableFileOptions opts;
-  opts.sync_on_close = true;
   std::unique_ptr<WritableFile> file;
-  RETURN_NOT_OK(env().NewWritableFile(opts, file_path, &file));
+  RETURN_NOT_OK(env().NewWritableFile(file_path, &file));
 
   data_id->set_file_name(file_pb.name());
   RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get()),
