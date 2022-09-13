@@ -94,7 +94,7 @@ TEST_F(PgPessimisticLockingTest, TestDeadlock) {
       first_select.CountDown();
       LOG(INFO) << "Finished first select " << i;
 
-      ASSERT_TRUE(first_select.WaitFor(5s));
+      ASSERT_TRUE(first_select.WaitFor(5s * kTimeMultiplier));
 
       if (conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", (i + 1) % 3).ok()) {
         succeeded_second_select++;
@@ -112,11 +112,11 @@ TEST_F(PgPessimisticLockingTest, TestDeadlock) {
 
       done.CountDown();
       LOG(INFO) << "Thread done " << i;
-      ASSERT_TRUE(done.WaitFor(5s));
+      ASSERT_TRUE(done.WaitFor(5s * kTimeMultiplier));
     });
   }
 
-  thread_holder.WaitAndStop(10s);
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
   ASSERT_LE(CoarseMonoClock::Now(), deadline);
 
   // TODO(pessimistic): It's still possible that all of the second SELECT statements succeed, since
@@ -156,7 +156,7 @@ TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
       first_update.CountDown();
       LOG(INFO) << "Finished first update " << i;
 
-      ASSERT_TRUE(first_update.WaitFor(5s));
+      ASSERT_TRUE(first_update.WaitFor(5s * kTimeMultiplier));
 
       if (conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$1", i, (i + 1) % 3).ok()) {
         succeeded_second_update++;
@@ -174,11 +174,11 @@ TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
 
       done.CountDown();
       LOG(INFO) << "Thread done " << i;
-      ASSERT_TRUE(done.WaitFor(5s));
+      ASSERT_TRUE(done.WaitFor(5s * kTimeMultiplier));
     });
   }
 
-  thread_holder.WaitAndStop(10s);
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
   ASSERT_LE(CoarseMonoClock::Now(), deadline);
 
   // TODO(pessimistic): It's still possible that all of the second UPDATE statements succeed, since
@@ -440,6 +440,48 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(LongWaitBeforeDeadlock)
   ASSERT_TRUE(commited.WaitFor(60s * kTimeMultiplier));
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
   EXPECT_LT(succeeded_commit, kClients);
+}
+
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnblock)) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "insert into foo select generate_series(0, $0), 0", 10));
+  TestThreadHolder thread_holder;
+
+  CountDownLatch did_share_lock(1);
+  CountDownLatch will_try_exclusive_lock(1);
+  CountDownLatch did_complete_exclusive_lock(1);
+
+  thread_holder.AddThreadFunctor(
+      [this, &did_share_lock, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (12, 1)"));
+    ASSERT_OK(conn.Execute("SAVEPOINT a"));
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR KEY SHARE", 9));
+    did_share_lock.CountDown();
+    ASSERT_TRUE(will_try_exclusive_lock.WaitFor(5s * kTimeMultiplier));
+    std::this_thread::sleep_for(10s * kTimeMultiplier);
+    ASSERT_OK(conn.Execute("ROLLBACK TO a"));
+    ASSERT_TRUE(did_complete_exclusive_lock.WaitFor(10s * kTimeMultiplier));
+    ASSERT_OK(conn.CommitTransaction());
+  });
+
+  thread_holder.AddThreadFunctor(
+      [this, &did_share_lock, &did_complete_exclusive_lock, &will_try_exclusive_lock] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_TRUE(did_share_lock.WaitFor(5s * kTimeMultiplier));
+    will_try_exclusive_lock.CountDown();
+
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", 9));
+    did_complete_exclusive_lock.CountDown();
+    std::this_thread::sleep_for(1s * kTimeMultiplier);
+    ASSERT_OK(conn.CommitTransaction());
+  });
+
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
 // TODO(pessimistic): Add a stress test with many concurrent accesses to the same key to test not
