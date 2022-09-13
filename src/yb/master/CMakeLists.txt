@@ -40,6 +40,7 @@ YRPC_GENERATE(
   PROTO_FILES
       master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
+      master_backup.proto
   MESSAGES_PROTO_FILES
       master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
