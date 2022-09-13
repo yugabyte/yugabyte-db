@@ -66,7 +66,7 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgPessimisticLockingTest, TestDeadlock) {
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -128,7 +128,7 @@ TEST_F(PgPessimisticLockingTest, TestDeadlock) {
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -194,68 +194,68 @@ TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
 // Note: the following test fails due to a delay in the time it takes for an aborted transaction to
 // signal to the client. This requires more investigation into how pg_client handles heartbeat
 // failure while waiting on an RPC sent to the tserver.
-// TEST_F(PgPessimisticLockingTest, TestDeadlockTwoTransactions) {
-//   constexpr int kNumIndicesBase = 100;
-//   constexpr int kNumTrials = 10;
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
+  constexpr int kNumIndicesBase = 100;
+  constexpr int kNumTrials = 10;
 
-//   auto setup_conn = ASSERT_RESULT(Connect());
-//   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
-//   ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 1000), 0"));
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 1000), 0"));
 
-//   std::mutex mutex;
-//   Random r(2912039);
+  std::mutex mutex;
+  Random r(2912039);
 
-//   auto get_sleep_time_us = [&mutex, &r]() {
-//     std::lock_guard<decltype(mutex)> l(mutex);
-//     return r.Next32() % 5000;
-//   };
+  auto get_sleep_time_us = [&mutex, &r]() {
+    std::lock_guard<decltype(mutex)> l(mutex);
+    return r.Next32() % 5000;
+  };
 
-//   for (int trial_idx = 0; trial_idx < kNumTrials; ++trial_idx) {
-//     TestThreadHolder thread_holder;
-//     CountDownLatch did_first_select(2);
-//     CountDownLatch done(2);
-//     CountDownLatch failed(1);
-//     for (int i = 0; i != 2; ++i) {
-//       thread_holder.AddThreadFunctor(
-//           [this, i, &get_sleep_time_us, &did_first_select, &done, trial_idx, &failed] {
-//         auto failed_index = -1;
-//         auto conn = ASSERT_RESULT(Connect());
-//         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-//         auto num_indices = kNumIndicesBase + i;
-//         for (int j = 0; j < num_indices; ++j) {
-//           auto update_index = i == 0 ? j : num_indices - j - 1;
-//           auto s = conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", update_index);
-          // LOG(INFO) << (i == 0 ? "First" : "Second") << " thread executed index: "
-          //           << update_index;
-//           if (j == 0) {
-//             ASSERT_OK(s);
-//             did_first_select.CountDown();
-//           } else {
-//             if (j == num_indices - 1) {
-//               ASSERT_TRUE(did_first_select.WaitFor(10s));
-//             }
+  for (int trial_idx = 0; trial_idx < kNumTrials; ++trial_idx) {
+    TestThreadHolder thread_holder;
+    CountDownLatch did_first_select(2);
+    CountDownLatch done(2);
+    CountDownLatch failed(1);
+    for (int i = 0; i != 2; ++i) {
+      thread_holder.AddThreadFunctor(
+          [this, i, &get_sleep_time_us, &did_first_select, &done, trial_idx, &failed] {
+        auto failed_index = -1;
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        auto num_indices = kNumIndicesBase + i;
+        for (int j = 0; j < num_indices; ++j) {
+          auto update_index = i == 0 ? j : num_indices - j - 1;
+          auto s = conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", update_index);
+          LOG(INFO) << (i == 0 ? "First" : "Second") << " thread executed index: "
+                    << update_index;
+          if (j == 0) {
+            ASSERT_OK(s);
+            did_first_select.CountDown();
+          } else {
+            if (j == num_indices - 1) {
+              ASSERT_TRUE(did_first_select.WaitFor(10s));
+            }
 
-//             if (!s.ok()) {
-//               failed_index = update_index;
-//               break;
-//             }
-//           }
-//           std::this_thread::sleep_for(get_sleep_time_us() * 1us);
-//         }
+            if (!s.ok()) {
+              failed_index = update_index;
+              break;
+            }
+          }
+          std::this_thread::sleep_for(get_sleep_time_us() * 1us);
+        }
 
-//         LOG(INFO) << (i == 0 ? "First" : "Second") << " thread failed at index: " << failed_index
-//                   << " for iter " << trial_idx;
-//         if (failed_index > 0) {
-//           failed.CountDown();
-//         }
-//         EXPECT_TRUE(failed.WaitFor(10s));
-//         done.CountDown();
-//         ASSERT_TRUE(done.WaitFor(10s));
-//       });
-//     }
-//     thread_holder.WaitAndStop(10s);
-//   }
-// }
+        LOG(INFO) << (i == 0 ? "First" : "Second") << " thread failed at index: " << failed_index
+                  << " for iter " << trial_idx;
+        if (failed_index > 0) {
+          failed.CountDown();
+        }
+        EXPECT_TRUE(failed.WaitFor(10s));
+        done.CountDown();
+        ASSERT_TRUE(done.WaitFor(10s));
+      });
+    }
+    thread_holder.WaitAndStop(10s);
+  }
+}
 
 TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockExplicitLocks)) {
   auto setup_conn = ASSERT_RESULT(Connect());

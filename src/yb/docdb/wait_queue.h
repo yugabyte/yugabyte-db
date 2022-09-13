@@ -14,10 +14,16 @@
 #ifndef YB_DOCDB_WAIT_QUEUE_H
 #define YB_DOCDB_WAIT_QUEUE_H
 
+#include <future>
+
+#include "yb/client/client.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/util/threadpool.h"
 
@@ -52,7 +58,9 @@ class WaitQueue {
   WaitQueue(
       TransactionStatusManager* txn_status_manager,
       const std::string& permanent_uuid,
-      WaitingTxnRegistry* waiting_txn_registry);
+      WaitingTxnRegistry* waiting_txn_registry,
+      const std::shared_future<client::YBClient*>& client_future,
+      const server::ClockPtr& clock);
 
   ~WaitQueue();
 
