@@ -79,6 +79,37 @@ public class SchedulerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteExpiredChildIncrementalBackup() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup backup =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+
+    Backup backup2 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    backup2.transitionState(Backup.BackupState.Completed);
+    backup2.baseBackupUUID = UUID.randomUUID();
+    backup2.save();
+
+    scheduler.scheduleRunner();
+    CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(CustomerTask.TaskType.Delete, task.getType());
+    verify(mockCommissioner, times(1)).submit(any(), any());
+
+    backup2.baseBackupUUID = backup2.backupUUID;
+    backup2.save();
+    assertEquals(2, Backup.getExpiredBackups().get(defaultCustomer).size());
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(3)).submit(any(), any());
+  }
+
+  @Test
   public void schedulerDeletesExpiredBackups_universeDeleted() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
