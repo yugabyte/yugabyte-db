@@ -69,6 +69,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
@@ -253,8 +254,8 @@ const NodeInstancePB& RpcServerBase::instance_pb() const {
 Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
-    FLAGS_num_reactor_threads =
-        std::min(16, static_cast<int>(base::NumCPUs()));
+    auto count = std::min(16, static_cast<int>(base::NumCPUs()));
+    RETURN_NOT_OK(SetFlagDefaultAndCurrent("num_reactor_threads", std::to_string(count)));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 

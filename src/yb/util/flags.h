@@ -54,5 +54,7 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 // Reads the given file and updates the value of all flags specified in the file. Returns true on
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);
+
+Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value);
 } // namespace yb
 #endif /* YB_UTIL_FLAGS_H */

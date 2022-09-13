@@ -54,6 +54,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
@@ -136,7 +137,7 @@ FsManagerOpts::FsManagerOpts()
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
-    FLAGS_fs_wal_dirs = FLAGS_fs_data_dirs;
+    CHECK_OK(SetFlagDefaultAndCurrent("fs_wal_dirs", FLAGS_fs_data_dirs));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());

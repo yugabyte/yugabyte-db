@@ -27,6 +27,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
@@ -188,7 +189,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
       VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
-      FLAGS_initial_sys_catalog_snapshot_path = candidate_dir;
+      CHECK_OK(SetFlagDefaultAndCurrent("initial_sys_catalog_snapshot_path", candidate_dir));
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";
