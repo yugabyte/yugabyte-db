@@ -64,7 +64,7 @@ This tutorial assumes that:
 
 After the server is started, you'll be able to see a few tables getting created in the database. To verify, do the following:
 
-1. Login to the database using `./bin/ysqsh`.
+1. Log in to the database using `./bin/ysqsh`.
 1. Use `\d` to see the list of tables.
 1. Verify that a list of tables with the prefix `ACT_` are created.
 
