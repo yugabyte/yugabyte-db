@@ -9,18 +9,9 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 set -e
-
 . "${BASH_SOURCE%/*}"/common.sh
 
-detect_os
+activate_virtualenv
+cd "$yb_devops_home"
 
-# The virtual environment is used if the operating system is macOS, or if the
-# environment variable YB_USE_VIRTUAL_ENV is set (default unset).
-if [ "$is_mac" == true ] || [[ -n ${YB_USE_VIRTUAL_ENV:-} ]]; then
-    activate_virtualenv
-    cd "$yb_devops_home"
-    "$PYTHON_EXECUTABLE" "$(which ybcloud.py)" "$@"
-# The PEX environment is used in all other cases.
-else
-    $PYTHON_EXECUTABLE $PEX_PATH $SCRIPT_PATH "$@"
-fi
+"$PYTHON_EXECUTABLE" "$(which ybcloud.py)" "$@"

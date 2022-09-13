@@ -126,7 +126,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
-  "org.postgresql" % "postgresql" % "42.2.25",
+  "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -406,7 +406,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b2"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b3"
 
 libraryDependencies ++= Seq(
   // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
@@ -420,6 +420,7 @@ libraryDependencies ++= Seq(
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
   "com.typesafe.akka" %% "akka-actor" % "2.5.16",
+  "com.nimbusds" % "nimbus-jose-jwt" % "9.23"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"

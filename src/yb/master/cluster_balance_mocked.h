@@ -48,22 +48,18 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const ReplicationInfoPB& GetClusterReplicationInfo() const override {
-    return replication_info_;
-  }
-
   Result<ReplicationInfoPB> GetTableReplicationInfo(
       const scoped_refptr<const TableInfo>& table) const override {
     return replication_info_;
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const override {
-    return state_->options_->type == LIVE ?
-        replication_info_.live_replicas() : replication_info_.read_replicas(0);
-  }
+  void SetBlacklist() const override {
+    // Set the blacklist so we can also mark the tablet servers as we add them up.
+    global_state_->SetBlacklist(blacklist_);
 
-  const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
-  const BlacklistPB& GetLeaderBlacklist() const override { return leader_blacklist_; }
+    // Set the leader blacklist so we can also mark the tablet servers as we add them up.
+    global_state_->SetLeaderBlacklist(leader_blacklist_);
+  }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,

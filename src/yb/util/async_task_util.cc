@@ -16,59 +16,84 @@
 #include <glog/logging.h>
 
 namespace yb {
-  // AsyncTaskTracker methods.
-  Status AsyncTaskTracker::Start() {
-    if (started_) {
-      return STATUS(IllegalState, "Task has already started");
-    }
-    started_ = true;
-    return Status::OK();
-  }
 
-  bool AsyncTaskTracker::Started() const {
-    return started_;
-  }
+// AsyncTaskTracker methods.
 
-  void AsyncTaskTracker::Abort() {
-    started_ = false;
+Status AsyncTaskTracker::Start() {
+  if (started_) {
+    return STATUS(IllegalState, "Task has already started");
   }
+  started_ = true;
+  return Status::OK();
+}
 
-  // AsyncTaskThrottler methods.
-  AsyncTaskThrottler::AsyncTaskThrottler()
-      : outstanding_task_count_limit_(std::numeric_limits<int>::max()) {
-  }
+bool AsyncTaskTracker::Started() const {
+  return started_;
+}
 
-  AsyncTaskThrottler::AsyncTaskThrottler(uint64_t limit)
-      : outstanding_task_count_limit_(limit) {
-  }
+void AsyncTaskTracker::Abort() {
+  started_ = false;
+}
 
-  void AsyncTaskThrottler::RefreshLimit(uint64_t limit) {
-    std::lock_guard<std::mutex> l(mutex_);
-    outstanding_task_count_limit_ = limit;
-  }
+// AsyncTaskThrottlerBase methods.
 
-  bool AsyncTaskThrottler::Throttle() {
-    std::lock_guard<std::mutex> l(mutex_);
-    if (ShouldThrottle()) {
-      return true;
-    }
-    AddOutstandingTask();
-    return false;
+bool AsyncTaskThrottlerBase::Throttle() {
+  std::lock_guard<std::mutex> l(mutex_);
+  if (ShouldThrottle()) {
+    return true;
   }
+  AddOutstandingTask();
+  return false;
+}
 
-  bool AsyncTaskThrottler::RemoveOutstandingTask() {
-    std::lock_guard<std::mutex> l(mutex_);
-    DCHECK_GT(current_outstanding_task_count_, 0);
-    current_outstanding_task_count_--;
-    return current_outstanding_task_count_ == 0;
-  }
+bool AsyncTaskThrottlerBase::RemoveOutstandingTask() {
+  std::lock_guard<std::mutex> l(mutex_);
+  DCHECK_GT(current_outstanding_task_count_, 0);
+  current_outstanding_task_count_--;
+  return current_outstanding_task_count_ == 0;
+}
 
-  bool AsyncTaskThrottler::ShouldThrottle() {
-    return current_outstanding_task_count_ >= outstanding_task_count_limit_;
-  }
+uint64_t AsyncTaskThrottlerBase::CurrentOutstandingTaskCount() const {
+  return current_outstanding_task_count_;
+}
 
-  void AsyncTaskThrottler::AddOutstandingTask() {
-    DCHECK_LT(current_outstanding_task_count_, outstanding_task_count_limit_);
-    current_outstanding_task_count_++;
-  }
+void AsyncTaskThrottlerBase::AddOutstandingTask() {
+  current_outstanding_task_count_++;
+}
+
+// AsyncTaskThrottler methods.
+
+AsyncTaskThrottler::AsyncTaskThrottler()
+    : outstanding_task_count_limit_(std::numeric_limits<int>::max()) {
+}
+
+AsyncTaskThrottler::AsyncTaskThrottler(uint64_t limit)
+    : outstanding_task_count_limit_(limit) {
+}
+
+void AsyncTaskThrottler::RefreshLimit(const uint64_t limit) {
+  std::lock_guard<std::mutex> l(mutex_);
+  outstanding_task_count_limit_ = limit;
+}
+
+bool AsyncTaskThrottler::ShouldThrottle() {
+  return CurrentOutstandingTaskCount() >= outstanding_task_count_limit_;
+}
+
+// DynamicAsyncTaskThrottler methods.
+
+DynamicAsyncTaskThrottler::DynamicAsyncTaskThrottler()
+    : get_limit_fn_([]() {
+        return std::numeric_limits<int>::max();
+      }) {
+}
+
+DynamicAsyncTaskThrottler::DynamicAsyncTaskThrottler(std::function<uint64_t()>&& get_limit_fn)
+    : get_limit_fn_(std::move(get_limit_fn)) {
+}
+
+bool DynamicAsyncTaskThrottler::ShouldThrottle() {
+  return CurrentOutstandingTaskCount() >= get_limit_fn_();
+}
+
 } // namespace yb

@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { editXclusterName, fetchUniversesList } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { TargetUniverseForm } from '../ConfigureReplicationModal';
-import { Replication } from '../XClusterReplicationTypes';
+import { Replication } from '../XClusterTypes';
 import * as Yup from 'yup';
 
 interface Props {

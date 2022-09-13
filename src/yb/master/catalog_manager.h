@@ -79,6 +79,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 
+#include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -1573,8 +1574,18 @@ class CatalogManager :
   RedisConfigInfoMap redis_config_map_ GUARDED_BY(mutex_);
 
   // Config information.
-  mutable rw_spinlock config_mutex_;
-  std::shared_ptr<ClusterConfigInfo> cluster_config_ GUARDED_BY(config_mutex_) = nullptr;
+  // IMPORTANT: The shared pointer that points to the cluster config
+  // is only written to with a new object during a catalog load.
+  // At all other times, the address pointed to remains the same
+  // (thus the value of this shared ptr remains the same), only
+  // the underlying object is read or modified via cow read/write lock mechanism.
+  // We don't need a lock guard for changing this pointer value since
+  // we already acquire the leader write lock during catalog loading,
+  // so all concurrent accesses of this shared ptr -- either external via RPCs or
+  // internal by the bg threads (bg_tasks and master_snapshot_coordinator threads)
+  // are locked out since they grab the scoped leader shared lock that
+  // depends on this leader lock.
+  std::shared_ptr<ClusterConfigInfo> cluster_config_ = nullptr; // No GUARD, only write on load.
 
   // YSQL Catalog information.
   scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr; // No GUARD, only write on Load.
@@ -1867,6 +1878,10 @@ class CatalogManager :
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
+  // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
+  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
+    const std::string& ts_uuid) EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1891,6 +1906,13 @@ class CatalogManager :
   ServerRegistrationPB server_registration_;
 
   TabletSplitManager tablet_split_manager_;
+
+  mutable MutexType delete_replica_task_throttler_per_ts_mutex_;
+
+  // Maps a tserver uuid to the AsyncTaskThrottler instance responsible for throttling outstanding
+  // AsyncDeletaReplica tasks per destination.
+  std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
+    delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -522,6 +522,10 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
                  "tables only being dropped in the postgres layer.");
 
+DEFINE_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
+             "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
+TAG_FLAG(max_concurrent_delete_replica_rpcs_per_ts, runtime);
+
 namespace yb {
 namespace master {
 
@@ -1149,10 +1153,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           }
 
           LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          {
-            std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-            cluster_config_.reset();
-          }
+          cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
@@ -1257,10 +1258,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  {
-    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-    cluster_config_.reset();
-  }
+  cluster_config_.reset();
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1347,7 +1345,6 @@ Status CatalogManager::CheckResource(
 }
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
-  std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
   if (cluster_config_) {
     LOG_WITH_PREFIX(INFO)
         << "Cluster configuration has already been set up, skipping re-initialization.";
@@ -6951,6 +6948,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
           rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
               master_, AsyncTaskPool(), peer_uuid, tablet->table(), tablet->tablet_id(),
               TABLET_DATA_TOMBSTONED, prev_cstate.config().opid_index(),
+              GetDeleteReplicaTaskThrottler(peer_uuid),
               Substitute("TS $0 not found in new config with opid_index $1",
                   peer_uuid, cstate.config().opid_index())));
         }
@@ -7155,7 +7153,8 @@ Status CatalogManager::ProcessTabletReportBatch(
       // where that might be possible (tablet creation timeout & replacement).
       rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
-          TABLET_DATA_DELETED, boost::none, msg));
+          TABLET_DATA_DELETED, boost::none,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg));
       ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
@@ -7189,6 +7188,7 @@ Status CatalogManager::ProcessTabletReportBatch(
       rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_TOMBSTONED, prev_opid_index,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()),
           Substitute("$0 (current committed config index is $1)",
               delete_msg, prev_opid_index)));
       ts_desc->AddPendingTabletDelete(tablet_id);
@@ -7215,7 +7215,8 @@ Status CatalogManager::ProcessTabletReportBatch(
                 << " (" << msg << "): Sending hide request for this tablet";
       auto task = std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
-          TABLET_DATA_DELETED, boost::none, msg);
+          TABLET_DATA_DELETED, boost::none,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg);
       task->set_hide_only(true);
       ts_desc->AddPendingTabletDelete(tablet_id);
       rpcs->push_back(task);
@@ -9691,7 +9692,8 @@ void CatalogManager::SendDeleteTabletRequest(
       << TabletDataState_Name(delete_type) << " (" << reason << ")";
   auto call = std::make_shared<AsyncDeleteReplica>(master_, AsyncTaskPool(),
       ts_desc->permanent_uuid(), table, tablet_id, delete_type,
-      cas_config_opid_index_less_or_equal, reason);
+      cas_config_opid_index_less_or_equal,
+      GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), reason);
   if (hide_only) {
     call->set_hide_only(hide_only);
   }
@@ -11645,7 +11647,6 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
-  yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
   return cluster_config_;
 }
 
@@ -11723,6 +11724,32 @@ void CatalogManager::CreateXClusterSafeTimeTableAndStartService() {
 
 void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
+}
+
+AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
+    const string& ts_uuid) {
+
+  // The task throttlers are owned by the CatalogManager. First, check if it exists while holding a
+  // read lock.
+  {
+    SharedLock l(delete_replica_task_throttler_per_ts_mutex_);
+    if (delete_replica_task_throttler_per_ts_.count(ts_uuid) == 1) {
+      return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
+    }
+  }
+
+  // A task throttler does not exist for the given tserver uuid. Create one while holding a write
+  // lock.
+  LockGuard lock(delete_replica_task_throttler_per_ts_mutex_);
+  if (delete_replica_task_throttler_per_ts_.count(ts_uuid) == 0) {
+    delete_replica_task_throttler_per_ts_.emplace(
+      ts_uuid,
+      std::make_unique<DynamicAsyncTaskThrottler>([]() {
+        return GetAtomicFlag(&FLAGS_max_concurrent_delete_replica_rpcs_per_ts);
+      }));
+  }
+
+  return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
 }
 
 }  // namespace master
