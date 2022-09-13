@@ -91,13 +91,17 @@ struct TransactionStatusResult {
   }
 };
 
-// Stores a transaction id and the TabletId of the status tablet which manages this transaction.
+using SubtxnHasNonLockConflict = std::unordered_map<SubTransactionId, bool>;
+
 struct BlockingTransactionData {
   TransactionId id;
   TabletId status_tablet;
+  std::shared_ptr<SubtxnHasNonLockConflict> subtransactions = nullptr;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(id, status_tablet);
+    return Format("{id: $0, status_tablet: $1, subtransactions_size: $2}",
+                  id, status_tablet,
+                  subtransactions ? Format("$0", subtransactions->size()) : "null");
   }
 };
 
