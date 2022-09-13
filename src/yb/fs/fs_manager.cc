@@ -579,6 +579,7 @@ void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
     hostname = "<unknown host>";
   }
   metadata->set_format_stamp(Substitute("Formatted at $0 on $1", time_str, hostname));
+  metadata->set_initdb_done_set_after_sys_catalog_restore(true);
 }
 
 Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
@@ -660,6 +661,10 @@ Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* creat
 
 const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
+}
+
+bool FsManager::initdb_done_set_after_sys_catalog_restore() const {
+  return CHECK_NOTNULL(metadata_.get())->initdb_done_set_after_sys_catalog_restore();
 }
 
 set<string> FsManager::GetFsRootDirs() const {
