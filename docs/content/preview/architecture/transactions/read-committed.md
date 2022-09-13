@@ -23,7 +23,7 @@ YSQL supports the Read Committed isolation level, and its behavior is the same a
 The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL:
 
 1. Each statement should be able to read everything that was committed before the statement was issued. In other words, each statement runs on the latest snapshot of the database as of when the statement was issued.
-2. Clients never face serialization errors (40001) in read committed isolation level. To achieve this, PostgreSQL re-evaluates statements for conflicting rows based on some rules as described in the next section.
+1. Clients never face serialization errors (40001) in read committed isolation level. To achieve this, PostgreSQL re-evaluates statements for conflicting rows based on some rules as described in the next section.
 
 In addition to the two key requirements, there is an extra YSQL specific requirement for its read committed isolation level: ensure that external clients don't face `kReadRestart` errors. `Read restart` errors stem from clock skew which is inherent in distributed databases due to the distribution of data across more than one physical node. PostgreSQL doesn't require defining semantics around read restart errors because it is a single node database without clock skew. When there is clock skew, the following situation can arise in a distributed database like YugabyteDB:
 
