@@ -28,7 +28,7 @@
 
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "1.1.0-dev"
+#define BUILD_VERSION                   "1.1.0"
 #define PG_STAT_STATEMENTS_COLS         53	/* maximum of above */
 #define PGSM_TEXT_FILE PGSTAT_STAT_PERMANENT_DIRECTORY "pg_stat_monitor_query"
 
@@ -2146,15 +2146,13 @@ static uint64
 get_next_wbucket(pgssSharedState *pgss)
 {
 	struct timeval tv;
-	uint64		current_sec;
 	uint64		current_bucket_sec;
 	uint64		new_bucket_id;
 	uint64		prev_bucket_id;
 	struct tm  *lt;
-	char		file_name[1024];
+	bool		update_bucket = false;
 
 	gettimeofday(&tv, NULL);
-	current_sec = (TimestampTz) tv.tv_sec - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
 	current_bucket_sec = pg_atomic_read_u64(&pgss->prev_bucket_sec);
 
 	/*
@@ -2172,53 +2170,61 @@ get_next_wbucket(pgssSharedState *pgss)
 	 * definitely make the while condition to fail, we can stop the loop as
 	 * another thread has already updated prev_bucket_sec.
 	 */
-	if ((current_sec - current_bucket_sec) < (uint64)PGSM_BUCKET_TIME)
+	while ((tv.tv_sec - (uint)current_bucket_sec) >= ((uint)PGSM_BUCKET_TIME))
 	{
-		return pg_atomic_read_u64(&pgss->current_wbucket);
+		if (pg_atomic_compare_exchange_u64(&pgss->prev_bucket_sec, &current_bucket_sec, (uint64)tv.tv_sec))
+		{
+			update_bucket = true;
+			break;
+		}
+
+		current_bucket_sec = pg_atomic_read_u64(&pgss->prev_bucket_sec);
 	}
 
-	new_bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
-
-	/* Update bucket id and retrieve the previous one. */
-	prev_bucket_id = pg_atomic_exchange_u64(&pgss->current_wbucket, new_bucket_id);
-
-	tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
-	lt = localtime(&tv.tv_sec);
-
-	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-
-	/* Reconfirm that no other backend has created the bucket while we waited */
-	if (new_bucket_id == prev_bucket_id)
+	if (update_bucket)
 	{
+		char          file_name[1024];
+
+		new_bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
+
+		/* Update bucket id and retrieve the previous one. */
+		prev_bucket_id = pg_atomic_exchange_u64(&pgss->current_wbucket, new_bucket_id);
+
+		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
+		hash_entry_dealloc(new_bucket_id, prev_bucket_id, pgss_qbuf);
+
+		if (pgss->overflow)
+		{
+			pgss->n_bucket_cycles += 1;
+			if (pgss->n_bucket_cycles >= PGSM_MAX_BUCKETS)
+			{
+				/*
+				* A full rotation of PGSM_MAX_BUCKETS buckets happened since
+				* we detected a query buffer overflow.
+				* Reset overflow state and remove the dump file.
+				*/
+				pgss->overflow = false;
+				pgss->n_bucket_cycles = 0;
+				snprintf(file_name, 1024, "%s", PGSM_TEXT_FILE);
+				unlink(file_name);
+			}
+		}
+
 		LWLockRelease(pgss->lock);
+
+		tv.tv_sec = (tv.tv_sec) - (tv.tv_sec % PGSM_BUCKET_TIME);
+		lt = localtime(&tv.tv_sec);
+
+		/* Allign the value in prev_bucket_sec to the bucket start time */
+		pg_atomic_exchange_u64(&pgss->prev_bucket_sec, (uint64)tv.tv_sec);
+
+		snprintf(pgss->bucket_start_time[new_bucket_id], sizeof(pgss->bucket_start_time[new_bucket_id]),
+			"%04d-%02d-%02d %02d:%02d:%02d", lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
+
 		return new_bucket_id;
 	}
 
-	hash_entry_dealloc(new_bucket_id, prev_bucket_id, pgss_qbuf);
-
-	if (pgss->overflow)
-	{
-		pgss->n_bucket_cycles += 1;
-		if (pgss->n_bucket_cycles >= PGSM_MAX_BUCKETS)
-		{
-			/*
-			 * A full rotation of PGSM_MAX_BUCKETS buckets happened since we
-			 * detected a query buffer overflow. Reset overflow state and
-			 * remove the dump file.
-			 */
-			pgss->overflow = false;
-			pgss->n_bucket_cycles = 0;
-			snprintf(file_name, 1024, "%s", PGSM_TEXT_FILE);
-			unlink(file_name);
-		}
-	}
-
-	snprintf(pgss->bucket_start_time[new_bucket_id], sizeof(pgss->bucket_start_time[new_bucket_id]),
-			 "%04d-%02d-%02d %02d:%02d:%02d", lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
-
-	LWLockRelease(pgss->lock);
-
-	return new_bucket_id;
+	return pg_atomic_read_u64(&pgss->current_wbucket);
 }
 
 #if PG_VERSION_NUM < 140000

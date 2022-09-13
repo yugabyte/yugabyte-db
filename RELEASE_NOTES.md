@@ -2,6 +2,26 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 1.1.0
+
+### Improvements
+
+[PG-474](https://jira.percona.com/browse/PG-474): Make pg_stat_monitor compiled with CLANG
+[PG-159](https://jira.percona.com/browse/PG-159): Change the bucket start time scheme to align with the bucket time size
+[PG-293](https://jira.percona.com/browse/PG-293): Add the ability to control features added on top of `pg_stat_monitor` using GUC (Grand Unified Configuration) parameters
+[PG-300](https://jira.percona.com/browse/PG-300): Improve compatibility with PMM by making QueryIDs persistent for the same queries across different buckets and regardless of the node / client a query is executed on.
+[PG-362](https://jira.percona.com/browse/PG-362): Fix the `pgsm_normalized_query` default value to provide query examples in the `pg_stat_monitor` view by default.
+[PG-439](https://jira.percona.com/browse/PG-439): Remove warning of comparison of unsigned enum expression
+
+### Bugs Fixed
+
+[PG-221](https://jira.percona.com/browse/PG-221): Fixed the issue with pg_stat_monitor crashing when querying JSON with parallel workers enabled
+[PG-289](https://jira.percona.com/browse/PG-289): Fixed the issue with pg_stat_monitor failing to build on C11 compilers by removing 'for' loop initial declarations
+[PG-449](https://jira.percona.com/browse/PG-449): Fix comments visibility by correcting the behavior of the `pgsm_extract_comments` parameter
+[PG-453](https://jira.percona.com/browse/PG-453): Fixed query normalization for INSERT statements in PostgreSQL 13 and earlier versions
+[PG-455](https://jira.percona.com/browse/PG-455): Fixed the issue with data collection for any value specified for `pgsm_bucket_time` parameter within the min / max range
+
+
 ## 1.0.1
 
 ### Bugs Fixed
