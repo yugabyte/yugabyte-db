@@ -53,7 +53,16 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
           dispatch(bootstrapProvider(providerUUID, regionFormVals)).then((boostrapResponse) => {
-            toast.success('Successfully created AWS Provider!');
+
+            if (boostrapResponse.payload.status === 200) {
+              toast.success('AWS Provider creation is in progress!');
+            }
+            else {
+              const errorMessage =
+                response?.payload?.response?.data?.error || response?.payload?.message;
+              toast.error(errorMessage);
+            }
+            
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
         } else {

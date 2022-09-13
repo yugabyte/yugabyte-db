@@ -79,6 +79,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 
+#include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -1877,6 +1878,10 @@ class CatalogManager :
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
+  // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
+  AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
+    const std::string& ts_uuid) EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -1901,6 +1906,13 @@ class CatalogManager :
   ServerRegistrationPB server_registration_;
 
   TabletSplitManager tablet_split_manager_;
+
+  mutable MutexType delete_replica_task_throttler_per_ts_mutex_;
+
+  // Maps a tserver uuid to the AsyncTaskThrottler instance responsible for throttling outstanding
+  // AsyncDeletaReplica tasks per destination.
+  std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
+    delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

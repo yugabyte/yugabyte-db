@@ -2068,24 +2068,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected String [] getDocdbRequests(Statement stmt, String query) throws Exception {
+  protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
-
-    final ByteArrayOutputStream docDbReq = new ByteArrayOutputStream();
-    final PrintStream origOut = System.out; // saving original print console to restore it
-    origOut.flush();
-    System.setOut(new PrintStream(docDbReq, true/*autoFlush*/));
-    stmt.execute("SET yb_debug_log_docdb_requests = true");
+    Long rpc_count_before =
+      getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
     stmt.execute(query);
-    stmt.execute("SET yb_debug_log_docdb_requests = false");
-    System.setOut(origOut);
-    String[] docDbReqStrArray = docDbReq.toString().split(System.getProperty("line.separator"));
-    return docDbReqStrArray;
-  }
-
-  protected int getNumDocdbRequests(Statement stmt, String query) throws Exception{
-    return getDocdbRequests(stmt, query).length;
+    Long rpc_count_after =
+      getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
+    return rpc_count_after - rpc_count_before;
   }
 
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
