@@ -33,7 +33,7 @@ In addition to the two key requirements, there is an extra YSQL specific require
 * Note that the clock skew between all nodes in the cluster is always in a [`max_clock_skew`](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
 * For writes at some time higher than T1 + `max_clock_skew`, the database can be sure that they were done after the read timestamp was chosen on any node. But for writes at a time between T1 and T1 + `max_clock_skew`, node N2 can find itself in an ambiguous situation such as the following:
 
-  * it should still return the data if the client issued the read after the data was committed, because it could be the same client connecting to YSQL from a different node and the following guarantee needs to be maintained: the database always returns data that was committed in the past.
+  * it should still return the data if the client issued the read after the data was committed, because it could be the same client connecting to YSQL from a different node and the following guarantee needs to be maintained; the database always returns data that was committed in the past.
 
   * it should not return the data if the write was actually performed in the future i.e., after the read point (aka snapshot) was chosen.
 
