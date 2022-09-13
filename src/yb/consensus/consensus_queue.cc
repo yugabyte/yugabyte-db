@@ -396,7 +396,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
 
     last_id = OpId::FromPB(msgs.back()->id());
 
@@ -404,7 +404,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
       queue_state_.current_term = last_id.term;
     }
   } else {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     last_id = queue_state_.last_appended;
   }
 
@@ -419,7 +419,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
       Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id)));
 
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     queue_state_.last_appended = last_id;
     UpdateMetrics();
   }
@@ -453,6 +453,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     propagated_safe_time = VERIFY_RESULT(context_->PreparePeerRequest());
   }
 
+  int64 current_term;
+  RaftConfigPB active_config;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -551,10 +553,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (peer->member_type == PeerMemberType::VOTER) {
       is_voter = true;
     }
+    current_term = queue_state_.current_term;
+    active_config = *queue_state_.active_config;
   }
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
-    if (!is_voter || CountVoters(*queue_state_.active_config) > 2) {
+    if (!is_voter || CountVoters(active_config) > 2) {
       // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
       // want to revisit this later, we're just being cautious with this.
       // We remove unconditionally any failed non-voter replica (PRE_VOTER, PRE_OBSERVER, OBSERVER).
@@ -563,12 +567,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                               uuid,
                               FLAGS_follower_unavailable_considered_failed_sec,
                               unreachable_time.ToString());
-      NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
+      NotifyObserversOfFailedFollower(uuid, current_term, msg);
     }
   }
 
   if (PREDICT_FALSE(*needs_remote_bootstrap)) {
-      YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30)
           << "Peer needs remote bootstrap: " << uuid;
     return Status::OK();
   }
@@ -592,7 +596,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
                                  "garbage collected. The follower will never be able "
                                  "to catch up ($1)", uuid, result.status());
-        NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
+        NotifyObserversOfFailedFollower(uuid, current_term, msg);
       }
       return result.status();
     }
@@ -652,13 +656,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     if (request->ops_size() > 0) {
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Sending request with operations to Peer: " << uuid
+      VLOG_WITH_PREFIX(2) << "Sending request with operations to Peer: " << uuid
           << ". Size: " << request->ops_size()
           << ". From: " << request->ops(0).id().ShortDebugString() << ". To: "
           << request->ops(request->ops_size() - 1).id().ShortDebugString();
-      VLOG_WITH_PREFIX_UNLOCKED(3) << "Operations: " << yb::ToString(request->ops());
+      VLOG_WITH_PREFIX(3) << "Operations: " << yb::ToString(request->ops());
     } else {
-      VLOG_WITH_PREFIX_UNLOCKED(2)
+      VLOG_WITH_PREFIX(2)
           << "Sending " << (is_new ? "new " : "") << "status only request to Peer: " << uuid
           << ": " << request->ShortDebugString();
     }
@@ -685,13 +689,13 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
       // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
       // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
       // happen under normal circumstances.
-      LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
+      LOG_WITH_PREFIX(ERROR) << "Error trying to read ahead of the log "
                                       << "while preparing peer request: "
                                       << s.ToString() << ". Destination peer: "
                                       << peer_uuid;
       return s;
     } else {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
+      LOG_WITH_PREFIX(FATAL) << "Error reading the log while preparing peer request: "
                                       << s.ToString() << ". Destination peer: "
                                       << peer_uuid;
       return s;
@@ -734,7 +738,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
+    LOG_WITH_PREFIX(INFO) << Format(
         "The logs from index $0 have been garbage collected and cannot be read ($1)",
         after_op_index, result.status());
   }
@@ -748,6 +752,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
   TrackedPeer* peer = nullptr;
+  int64_t current_term;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -756,6 +761,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
+    current_term = queue_state_.current_term;
   }
 
   if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
@@ -774,7 +780,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   *req->mutable_source_private_addr() = local_peer_pb_.last_known_private_addr();
   *req->mutable_source_broadcast_addr() = local_peer_pb_.last_known_broadcast_addr();
   *req->mutable_source_cloud_info() = local_peer_pb_.cloud_info();
-  req->set_caller_term(queue_state_.current_term);
+  req->set_caller_term(current_term);
   peer->needs_remote_bootstrap = false; // Now reset the flag.
   return Status::OK();
 }
@@ -1419,7 +1425,7 @@ bool PeerMessageQueue::IsOpInLog(const yb::OpId& desired_op) const {
   if (PREDICT_TRUE(result.status().IsNotFound() || result.status().IsIncomplete())) {
     return false;
   }
-  LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error while reading the log: " << result.status();
+  LOG_WITH_PREFIX(FATAL) << "Error while reading the log: " << result.status();
   return false; // Unreachable; here to squelch GCC warning.
 }
 
@@ -1429,7 +1435,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
            Unretained(this),
            majority_replicated_data)),
-      LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
+      LogPrefix() + "Unable to notify RaftConsensus of "
                            "majority replicated op change.");
 }
 
@@ -1449,7 +1455,7 @@ void PeerMessageQueue::NotifyObservers(const char* title, Func&& func) {
           func(observer);
         }
       }),
-      Format("$0Unable to notify observers for $1.", LogPrefixUnlocked(), title));
+      Format("$0Unable to notify observers for $1.", LogPrefix(), title));
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
@@ -1575,6 +1581,11 @@ string PeerMessageQueue::GetUpToDatePeer() const {
 
 PeerMessageQueue::~PeerMessageQueue() {
   Close();
+}
+
+string PeerMessageQueue::LogPrefix() const {
+  LockGuard lock(queue_lock_);
+  return LogPrefixUnlocked();
 }
 
 string PeerMessageQueue::LogPrefixUnlocked() const {
