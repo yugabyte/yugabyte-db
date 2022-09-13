@@ -1,19 +1,19 @@
 ---
 title: Documentation
 headerTitle: Documentation
-description: Whether you are evaluating a database for your application, building a scalable application or simply want to learn about distributed SQLand YugabyteDB, our documentation has the tools to support you.
+description: Find the guides, examples, and reference material you need to evaluate YugabyteDB, build scalable applications, and learn distributed SQL.
 type: homepage
 body_class: yb-page-style
 weight: 1
 resources:
   - title: Multi-region deployments
     url: /preview/explore/multi-region-deployments/
-  - title: Highly relational apps
-    url: #
-  - title: Event data and time-series
-    url: #
-  - title: Migration from other RDBMS
-    url: #
+  - title: Fully managed
+    url: /preview/yugabyte-cloud/
+  - title: Enterprise DBaaS
+    url: /preview/yugabyte-platform/
+  - title: Migrate from other RDBMS
+    url: /preview/migrate/
 ---
 
 <div class="row cloud-laptop">
@@ -21,10 +21,10 @@ resources:
 		<div class="border two-side">
 			<div class="body">
 				<div class="box-top">
-					<a class="nav-link button-style purple" role="button"><span>Get Started</span></a>
+					<a href="/preview/quick-start-yugabytedb-managed/" class="nav-link button-style purple" role="button"><span>Get Started</span></a>
 					<span>In the <strong>Cloud</strong></span>
 				</div>
-				<div class="body-content">The easiest way to get started with YugabyteDB. Leverage the power of PostgreSQL, while ensuring your applications are always available and can scale to any extent.</div>
+				<div class="body-content">Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required.</div>
 				<a class="text-link" href="/preview/quick-start-yugabytedb-managed/" title="Get started">Get started</a>
 			</div>
 			<div class="image">
@@ -37,10 +37,10 @@ resources:
 		<div class="border two-side">
 			<div class="body">
 				<div class="box-top">
-					<a class="nav-link button-style orange" role="button"><span>Get Started</span></a>
+					<a href="/preview/quick-start/" class="nav-link button-style orange" role="button"><span>Get Started</span></a>
 					<span>Locally on your <strong>Laptop</strong></span>
 				</div>
-				<div class="body-content">Try out YugabyteDB locally on your laptop. Understand how horizontal scalability and resilience work without sacrificing the relational database capabilities.</div>
+				<div class="body-content">Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL.</div>
 				<a class="text-link" href="/preview/quick-start/" title="Get started">Get started</a>
 			</div>
 			<div class="image">
@@ -63,8 +63,8 @@ resources:
 				<div class="other-content">
 					<div class="heading">Build a Hello world application</div>
 					<div class="tag-line">IN THIS EXAMPLE:</div>
-					<div class="detail-copy">We will do this and then learn that and then run this and then test that</div>
-					<a class="text-link" href="/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/" title="Get started">Get started</a>
+					<div class="detail-copy">Use your favorite programming language to build an application that connects to a YugabyteDB cluster and performs basic SQL operations.</div>
+					<a class="text-link" href="preview/develop/build-apps/" title="Get started">Get started</a>
 				</div>
 			</div>
 		</div>
@@ -77,8 +77,8 @@ resources:
 				<div class="other-content">
 					<div class="heading">Run a real world demo app</div>
 					<div class="tag-line">IN THIS EXAMPLE:</div>
-					<div class="detail-copy">We will do this and then learn that and then run this and then test that</div>
-					<a class="text-link" href="/preview/yugabyte-cloud/cloud-examples/" title="Get started">Get started</a>
+					<div class="detail-copy">Run a distributed full-stack e-commerce application built on YugabyteDB, Node.js Express, and React.</div>
+					<a class="text-link" href="preview/develop/realworld-apps/ecommerce-app/" title="Get started">Get started</a>
 				</div>
 			</div>
 		</div>
@@ -92,8 +92,8 @@ resources:
 				<div class="other-content">
 					<div class="heading">Explore Distributed SQL capabilities</div>
 					<div class="tag-line">IN THIS EXAMPLE:</div>
-					<div class="detail-copy">Through this example explore how super compatible we are with postgress</div>
-					<a class="text-link" href="/preview/explore/ysql-language-features/" title="Get started">Get started</a>
+					<div class="detail-copy">Learn about YugabyteDB's PostgreSQL compatibility.</div>
+					<a class="text-link" href="/preview/explore/" title="Get started">Get started</a>
 				</div>
 			</div>
 		</div>
@@ -103,7 +103,52 @@ resources:
 
 <div class="three-box-row">
 	<div class="row">
-		<h2 class="col-12">More resources</h2>
+		<h2 class="col-12">Products</h2>
+		<div class="col-12 col-md-6 col-lg-4">
+			<div class="box border">
+				<div class="other-content">
+					<div class="icon">
+						<img src="/images/homepage/database.png" height=48 width=48 alt="YugabyteDB" title="YugabyteDB" aria-hidden="true">
+					</div>
+					<div class="heading">YugabyteDB</div>
+					<div class="detail-copy">Open source cloud-native distributed SQL database for mission-critical applications.</div>
+					<a class="text-link" href="preview/explore/" title="Explore YugabyteDB">Explore YugabyteDB</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-12 col-md-6 col-lg-4">
+			<div class="box border">
+				<div class="other-content">
+					<div class="icon">
+						<img src="/images/homepage/server.png" height=48 width=48 alt="YugabyteDB Anywhere" title="YugabyteDB Anywhere" aria-hidden="true">
+					</div>
+					<div class="heading">YugabyteDB Anywhere</div>
+					<div class="detail-copy">YugabyteDB delivered as a private database-as-a-service for enterprises.</div>
+					<a class="text-link" href="preview/yugabyte-platform/" title="Documentation">Documentation</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="col-12 col-md-6 col-lg-4">
+			<div class="box border">
+				<div class="other-content">
+					<div class="icon">
+						<img src="/images/homepage/cloud.png" height=48 width=48 alt="YugabyteDB Managed" title="YugabyteDB Managed" aria-hidden="true">
+					</div>
+					<div class="heading">YugabyteDB Managed</div>
+					<div class="detail-copy">Fully managed YugabyteDB-as-a-Service without the operational overhead of managing a database.</div>
+					<a class="text-link" href="/preview/yugabyte-cloud/" title="Documentation">Documentation</a>
+				</div>
+			</div>
+		</div>
+
+	</div>
+</div>
+
+<div class="three-box-row">
+	<div class="row">
+		<h2 class="col-12">Key concepts</h2>
 		<div class="col-12 col-md-6 col-lg-4">
 			<div class="box border">
 				<div class="other-content">
@@ -111,7 +156,8 @@ resources:
 						<img src="/images/homepage/availability.svg" alt="Understand availability" title="Understand availability" aria-hidden="true">
 					</div>
 					<div class="heading">Understand availability</div>
-					<a class="text-link" href="/preview/develop/realworld-apps/ecommerce-app/" title="Read real world availability usecases">Read real world availability usecases</a>
+					<div class="detail-copy">YugabyteDB clusters can continue to do reads and writes even in case of node failures.</div>
+					<a class="text-link" href="preview/explore/fault-tolerance/macos/" title="Read real world availability usecases">Read more</a>
 				</div>
 			</div>
 		</div>
@@ -123,7 +169,8 @@ resources:
 						<img src="/images/homepage/scalability.svg" alt="Understand scalability" title="Understand scalability" aria-hidden="true">
 					</div>
 					<div class="heading">Understand scalability</div>
-					<a class="text-link" href="/preview/develop/realworld-apps/iot-spark-kafka-ksql/" title="Read real world scalability usecases">Read real world scalability usecases</a>
+					<div class="detail-copy">Scale YugabyteDB clusters to handle more transactions per second, more concurrent client connections, and larger datasets.</div>
+					<a class="text-link" href="preview/explore/linear-scalability/" title="Read real world scalability usecases">Read more</a>
 				</div>
 			</div>
 		</div>
@@ -134,8 +181,9 @@ resources:
 					<div class="icon">
 						<img src="/images/homepage/geo.svg" alt="Understand Geo" title="Understand Geo" aria-hidden="true">
 					</div>
-					<div class="heading">Understand Geo</div>
-					<a class="text-link" href="/preview/explore/multi-region-deployments/row-level-geo-partitioning" title="Read real world Geo usecases">Read real world Geo usecases</a>
+					<div class="heading">Understand geo-partitioning</div>
+					<div class="detail-copy">Use geo-partitioning to meet data residency requirements and achieve lower latency and higher performance.</div>
+					<a class="text-link" href="/preview/explore/multi-region-deployments/row-level-geo-partitioning" title="Read real world Geo usecases">Read more</a>
 				</div>
 			</div>
 		</div>
@@ -146,16 +194,16 @@ resources:
 <div class="three-box-row">
 	<div class="row">
 
-		<h2 class="col-12">Even more resources</h2>
+		<h2 class="col-12">More resources</h2>
 
 		<div class="col-12 col-md-6 col-lg-4">
 			<div class="box border">
 				<div class="other-content">
 					<div class="heading">Explore Yugabyte University</div>
 					<ul>
-						<li><a class="text-link" href="https://university.yugabyte.com/courses/introduction-to-distributed-sql" title="Course 1" target="_blank" rel="noopener">Course 1</a></li>
-						<li><a class="text-link" href="https://university.yugabyte.com/courses/introduction-to-yugabytedb" title="Course 2" target="_blank" rel="noopener">Course 2</a></li>
-						<li><a class="text-link" href="https://university.yugabyte.com/courses/2022-mar-16-yugabytedb-ysql-development-intermediate-virtual" title="Course 3" target="_blank" rel="noopener">Course 3</a></li>
+						<li><a class="text-link" href="https://university.yugabyte.com/courses/introduction-to-distributed-sql" title="Course 1" target="_blank" rel="noopener">Introduction to Distributed SQL</a></li>
+						<li><a class="text-link" href="https://university.yugabyte.com/courses/introduction-to-yugabytedb" title="Course 2" target="_blank" rel="noopener">Introduction to YugabyteDB</a></li>
+						<li><a class="text-link" href="https://university.yugabyte.com/courses/yugabytedb-managed-basics" title="Course 3" target="_blank" rel="noopener">YugabyteDB Managed Basics</a></li>
 					</ul>
 				</div>
 			</div>
@@ -166,8 +214,9 @@ resources:
 				<div class="other-content">
 					<div class="heading">Get under the hood</div>
 					<ul>
-						<li><a class="text-link" href="/preview/architecture/" title="Yugabyte architecture">Yugabyte architecture</a></li>
-						<li><a class="text-link" href="/preview/reference/drivers/ysql-client-drivers/" title="Another link here">Another link here</a></li>
+						<li><a class="text-link" href="/preview/architecture/" title="Yugabyte architecture">YugabyteDB architecture</a></li>
+						<li><a class="text-link" href="/preview/benchmark/" title="Benchmark">Benchmark YugabyteDB</a></li>
+						<li><a class="text-link" href="/preview/drivers-orms/" title="Drivers and ORMs">Drivers and ORMs</a></li>
 					</ul>
 				</div>
 			</div>
@@ -176,10 +225,10 @@ resources:
 		<div class="col-12 col-md-6 col-lg-4">
 			<div class="box border">
 				<div class="other-content">
-					<div class="heading">Quick links</div>
+					<div class="heading">Distributed SQL APIs</div>
 					<ul>
-						<li><a class="text-link" href="#" title="Link1">Link1</a></li>
-						<li><a class="text-link" href="#" title="Link2">Link2</a></li>
+						<li><a class="text-link" href="preview/api/ysql/" title="YSQL">YSQL</a></li>
+						<li><a class="text-link" href="preview/api/ycql/" title="YCQL">YCQL</a></li>
 					</ul>
 				</div>
 			</div>

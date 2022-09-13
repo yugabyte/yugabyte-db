@@ -25,9 +25,9 @@
 #     newTab = true
 
 [[top_nav]]
-  name = "Get Started"
+  name = "Start Now"
   weight = 3
-  url = "https://download.yugabyte.com"
+  url = "https://cloud.yugabyte.com/signup"
   [top_nav.params]
     newTab = true
 
