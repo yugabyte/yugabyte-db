@@ -74,6 +74,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
+DECLARE_bool(enable_load_balancing);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -933,6 +934,9 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 }
 
 TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
+  // Disable load balancing to avoid leader change after getting the leader peer.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   SetIgnoreApplyingProbability(0.5);
 
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
