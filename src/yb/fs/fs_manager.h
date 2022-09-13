@@ -153,6 +153,8 @@ class FsManager {
   // has not been called, this will crash.
   const std::string& uuid() const;
 
+  bool initdb_done_set_after_sys_catalog_restore() const;
+
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
