@@ -61,6 +61,10 @@
     top: 20px;
     right: 20px;
   }
+
+  &.point-in-time-recovery {
+    gap: 24px;
+  }
 }
 
 #popover-backup-disabled {

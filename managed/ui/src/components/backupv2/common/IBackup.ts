@@ -8,6 +8,7 @@
  */
 
 import { TableType } from '../../../redesign/helpers/dtos';
+import { OptionTypeBase } from 'react-select';
 
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
@@ -119,3 +120,9 @@ export interface ThrottleParameters {
   max_concurrent_downloads: number;
   per_download_num_objects: number;
 }
+
+interface IOptionType extends OptionTypeBase {
+  value: string;
+  label: string;
+}
+export type SELECT_VALUE_TYPE = IOptionType;
