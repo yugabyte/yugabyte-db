@@ -81,7 +81,7 @@ class LockBatch {
   // Unlock the keys of this LockBatch and move all associated data into the returned Unlocked
   // instance. The returned instance can be used to construct another LockBatch, which in turn will
   // re-lock the keys.
-  UnlockedBatch Unlock();
+  std::optional<UnlockedBatch> Unlock();
 
  private:
   void MoveFrom(LockBatch* other);
@@ -118,13 +118,18 @@ class UnlockedBatch {
  public:
   UnlockedBatch(LockBatchEntries&& key_to_type_, SharedLockManager* shared_lock_manager_);
 
+  UnlockedBatch(UnlockedBatch&& other) { MoveFrom(&other); }
+
   // Invalidates the provided UnlockedBatch instance and returns a new LockBatch which locks the
   // keys specified in "unlocked". An rvalue is required for the UnlockedBatch argument to ensure
   // that the caller does not expect the fields of "unlocked" to be in a valid state -- they will
   // be moved into the returned LockBatch instance.
   LockBatch Lock(CoarseTimePoint deadline) &&;
 
+  UnlockedBatch& operator=(UnlockedBatch&& other) { MoveFrom(&other); return *this; }
  private:
+  void MoveFrom(UnlockedBatch* other);
+
   LockBatchEntries key_to_type_;
 
   SharedLockManager* shared_lock_manager_ = nullptr;

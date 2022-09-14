@@ -88,6 +88,8 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                PartialRangeKeyIntents partial_range_key_intents,
                                TransactionStatusManager* status_manager,
                                Counter* conflicts_metric,
+                               LockBatch* lock_batch,
+                               WaitQueue* wait_queue,
                                ResolutionCallback callback);
 
 struct ParsedIntent {
