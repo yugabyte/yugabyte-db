@@ -31,6 +31,7 @@
 //
 package org.yb.client;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.yb.CommonTypes.TableType;
 import org.yb.IndexInfo;
 import org.yb.Schema;
@@ -55,16 +56,18 @@ public class GetTableSchemaResponse extends YRpcResponse {
    * @param schema the table's schema
    * @param partitionSchema the table's partition schema
    */
-  GetTableSchemaResponse(long ellapsedMillis,
-                         String tsUUID,
-                         Schema schema,
-                         String namespace,
-                         String tableName,
-                         String tableId,
-                         PartitionSchema partitionSchema,
-                         boolean createTableDone,
-                         TableType tableType,
-                         List<IndexInfo> indexes) {
+  @VisibleForTesting
+  public GetTableSchemaResponse(
+      long ellapsedMillis,
+      String tsUUID,
+      Schema schema,
+      String namespace,
+      String tableName,
+      String tableId,
+      PartitionSchema partitionSchema,
+      boolean createTableDone,
+      TableType tableType,
+      List<IndexInfo> indexes) {
     super(ellapsedMillis, tsUUID);
     this.schema = schema;
     this.partitionSchema = partitionSchema;
