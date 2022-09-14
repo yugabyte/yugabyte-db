@@ -9,89 +9,86 @@
 region_cidr_format: "{}.0.0/16"
 zone_cidr_format: "{}.{}.0/20"
 
-# For list of AMIs: https://wiki.centos.org/Cloud/AWS
-# AMIs have release tag = 7.9.2009 and x86_64 architecture.
-# Only exception is ap-northeast-3 since there is no currently supported official
-# CentOS 7 image for this region. We use a legacy image with description
-# "CentOS Linux 7 x86_64 HVM EBS 1708_11.01" instead.
+# For list of AMIs: https://wiki.almalinux.org/cloud/AWS.html#community-amis
+# AMIs have release tag = 8.6.20220715 and x86_64 architecture.
 
-# Last Updated: 2022-May-11
+# Last Updated: 2022-July-21
 
 regions:
   us-west-1:
     cidr_prefix: "172.150"
-    image: ami-08d2d8b00f270d03b
+    image: ami-0e046a5d1172cba32
   us-west-2:
     cidr_prefix: "172.151"
-    image: ami-0686851c4e7b1a8e1
+    image: ami-01ad1e3d2d7278f10
   us-east-1:
     cidr_prefix: "172.152"
-    image: ami-00e87074e52e6c9f9
+    image: ami-013e93e9fbc908d88
 #  us-south-1:
 #    cidr_prefix: "172.153"
 #    image: N/A
   ap-northeast-1:
     cidr_prefix: "172.154"
-    image: ami-0ddea5e0f69c193a4
+    image: ami-0113c5fc6ac5e0043
 # TODO: not currently supported in x-region VPC.
 # TODO: seems like at least we have an AMI...
   ap-northeast-2:
     cidr_prefix: "172.155"
-    image: ami-0e4214f08b51e23cc
+    image: ami-0b808e3ad34cb9737
   ap-southeast-1:
     cidr_prefix: "172.156"
-    image: ami-0adfdaea54d40922b
+    image: ami-0226c7236bc5c777b
   ap-southeast-2:
     cidr_prefix: "172.157"
-    image: ami-03d56f451ca110e99
+    image: ami-0beacb82191c7b2d9
   eu-central-1:
     cidr_prefix: "172.158"
-    image: ami-08b6d44b4f6f7b279
+    image: ami-049e79e8a8e13327c
   eu-west-1:
     cidr_prefix: "172.159"
-    image: ami-04f5641b0d178a27a
+    image: ami-07715cd6db772c7e3
   # CIDR prefixes cannot be 172.16x because this is reserved address space.
   # See https://en.wikipedia.org/wiki/Private_network#Private_use_of_other_reserved_addresses
   sa-east-1:
     cidr_prefix: "10.100"
-    image: ami-02334c45dd95ca1fc
+    image: ami-0bf9c7cf3f259cdbc
   us-east-2:
     cidr_prefix: "10.101"
-    image: ami-00f8e2c955f7ffa9b
+    image: ami-0c520b629d071105a
   eu-west-2:
     cidr_prefix: "10.102"
-    image: ami-0b22fcaf3564fb0c9
+    image: ami-0625af50d3384aff2
   eu-west-3:
     cidr_prefix: "10.103"
-    image: ami-072ec828dae86abe5
+    image: ami-05772b392a34b94b8
   ca-central-1:
     cidr_prefix: "10.104"
-    image: ami-0a7c5b189b6460115
+    image: ami-02babadf9c5e63d47
   ap-south-1:
     cidr_prefix: "10.105"
-    image: ami-0ffc7af9c06de0077
+    image: ami-0d0a3f206d0bd1efc
 # TODO: not currently supported in x-region VPC.
 # cn-north-1:
 #    cidr_prefix: "10.106"
 #    image: N/A
   ap-northeast-3:
     cidr_prefix: "10.107"
-    image: ami-03dc46610d8b18793
+    image: ami-0848a81cb13386a65
   af-south-1:
     cidr_prefix: "10.108"
-    image: ami-0b761332115c38669
+    image: ami-008b171ea1311121b
   me-south-1:
     cidr_prefix: "10.109"
-    image: ami-0ac17dcdd6f6f4eb6
+    image: ami-064676c608620af91
   ap-east-1:
     cidr_prefix: "10.110"
-    image: ami-09611bd6fa5dd0e3d
+    image: ami-0238d5a61a557b69f
   eu-south-1:
     cidr_prefix: "10.111"
-    image: ami-0fe3899b62205176a
+    image: ami-04185cafa08264e2c
   eu-north-1:
     cidr_prefix: "10.112"
-    image: ami-0358414bac2039369
+    image: ami-05d343ed0beb6c1eb
 sg_rules:
   - ip_protocol: tcp
     from_port: 22

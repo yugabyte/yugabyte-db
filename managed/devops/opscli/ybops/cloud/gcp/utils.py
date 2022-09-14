@@ -42,6 +42,7 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 STARTUP_SCRIPT_META_KEY = "startup-script"
 SERVER_TYPE_META_KEY = "server_type"
 SSH_KEYS_META_KEY = "ssh-keys"
+BLOCK_PROJECT_SSH_KEY = "block-project-ssh-keys"
 
 META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
@@ -872,6 +873,10 @@ class GoogleCloudAdmin():
                     {
                         "key": SSH_KEYS_META_KEY,
                         "value": ssh_keys
+                    },
+                    {
+                        "key": BLOCK_PROJECT_SSH_KEY,
+                        "value": True
                     }
                 ]
             },
