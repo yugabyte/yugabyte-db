@@ -1472,6 +1472,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsCdcSdkEnabled(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override {
     // Default value.
     return false;

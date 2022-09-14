@@ -252,6 +252,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
+  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
+
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
 
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
