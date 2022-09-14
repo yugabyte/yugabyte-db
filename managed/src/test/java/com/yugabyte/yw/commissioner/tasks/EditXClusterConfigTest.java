@@ -13,6 +13,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +30,6 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -40,11 +40,14 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.CommonTypes;
+import org.yb.Schema;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.SetUniverseReplicationEnabledResponse;
 import org.yb.client.YBClient;
@@ -62,6 +65,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
+  private String namespace1Name;
+  private String namespace1Id;
   private String exampleTableID1;
   private String exampleTableID2;
   private String exampleTableID3;
@@ -105,6 +110,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     targetUniverseUUID = UUID.randomUUID();
     targetUniverse = createUniverse(targetUniverseName, targetUniverseUUID);
 
+    namespace1Name = "ycql-namespace1";
+    namespace1Id = UUID.randomUUID().toString();
     exampleTableID1 = "000030af000030008000000000004000";
     exampleTableID2 = "000030af000030008000000000004001";
     exampleTableID3 = "000030af000030008000000000004002";
@@ -128,6 +135,55 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
         .thenReturn(mockClient);
+
+    GetTableSchemaResponse mockTableSchemaResponseTable1 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID1",
+            exampleTableID1,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    GetTableSchemaResponse mockTableSchemaResponseTable2 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID2",
+            exampleTableID2,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    GetTableSchemaResponse mockTableSchemaResponseTable3 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID3",
+            exampleTableID3,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    try {
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+          .thenReturn(mockTableSchemaResponseTable1);
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+          .thenReturn(mockTableSchemaResponseTable2);
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID3))
+          .thenReturn(mockTableSchemaResponseTable3);
+    } catch (Exception ignored) {
+    }
   }
 
   private TaskInfo submitTask(

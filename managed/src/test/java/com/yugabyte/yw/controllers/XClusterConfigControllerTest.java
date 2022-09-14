@@ -262,7 +262,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
@@ -578,7 +578,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -615,7 +615,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -649,7 +649,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -875,7 +875,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Delete)));
