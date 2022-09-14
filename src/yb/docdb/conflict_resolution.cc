@@ -623,8 +623,7 @@ class PessimisticLockingConflictResolver : public ConflictResolver {
       LockBatch* lock_batch)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
-      wait_queue_(wait_queue), lock_batch_(lock_batch)
-    {}
+        wait_queue_(wait_queue), lock_batch_(lock_batch) {}
 
   Status OnConflictingTransactionsFound() override {
     DCHECK_GT(remaining_transactions_, 0);
@@ -653,7 +652,7 @@ class PessimisticLockingConflictResolver : public ConflictResolver {
 
     return wait_queue_->WaitOn(
         context_->transaction_id(), lock_batch_, std::move(blockers),
-        VERIFY_RESULT(context_->GetStatusTablet(this)),
+        context_->transaction_id().IsNil() ? "" : VERIFY_RESULT(context_->GetStatusTablet(this)),
         std::bind(&PessimisticLockingConflictResolver::WaitingDone, shared_from(this), _1));
   }
 
@@ -677,8 +676,8 @@ class PessimisticLockingConflictResolver : public ConflictResolver {
   }
 
  private:
-  WaitQueue* wait_queue_;
-  LockBatch* lock_batch_;
+  WaitQueue* const wait_queue_;
+  LockBatch* const lock_batch_;
   uint32_t wait_for_iters_ = 0;
 };
 
@@ -1254,15 +1253,22 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                PartialRangeKeyIntents partial_range_key_intents,
                                TransactionStatusManager* status_manager,
                                Counter* conflicts_metric,
+                               LockBatch* lock_batch,
+                               WaitQueue* wait_queue,
                                ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
   auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
                                                                     conflicts_metric);
-  // TODO(pessimistic): Integrate pessimistic locking with single-shard transactions.
-  auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
-      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
-  // Resolve takes a self reference to extend lifetime.
-  resolver->Resolve();
+  if (wait_queue) {
+    auto resolver = std::make_shared<PessimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context),
+        std::move(callback), wait_queue, lock_batch);
+    resolver->Resolve();
+  } else {
+    auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+    resolver->Resolve();
+  }
   TRACE("resolver->Resolve done");
 }
 
