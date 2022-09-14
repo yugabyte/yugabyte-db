@@ -8,6 +8,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import java.io.File;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -71,13 +73,31 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
                   .stream()
                   .filter(tableId -> !currentTableIds.contains(tableId))
                   .collect(Collectors.toSet());
+          // Add index tables.
+          tableIdsToAdd.addAll(
+              getMainTableIndexTablesMap(sourceUniverse, tableIdsToAdd)
+                  .values()
+                  .stream()
+                  .flatMap(List::stream)
+                  .filter(tableId -> !currentTableIds.contains(tableId))
+                  .collect(Collectors.toSet()));
           // Save the to-be-added tables in the DB.
-          xClusterConfig.addTables(tableIdsToAdd);
+          xClusterConfig.addTablesIfNotExist(tableIdsToAdd);
+
           Set<String> tableIdsToRemove =
               currentTableIds
                   .stream()
                   .filter(tableId -> !taskParams().editFormData.tables.contains(tableId))
                   .collect(Collectors.toSet());
+          // Remove index tables.
+          tableIdsToRemove.addAll(
+              getMainTableIndexTablesMap(sourceUniverse, tableIdsToRemove)
+                  .values()
+                  .stream()
+                  .flatMap(List::stream)
+                  .filter(currentTableIds::contains)
+                  .collect(Collectors.toSet()));
+
           createXClusterConfigModifyTablesTask(tableIdsToAdd, tableIdsToRemove)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else {

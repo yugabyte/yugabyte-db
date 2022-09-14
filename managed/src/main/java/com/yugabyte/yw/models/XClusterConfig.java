@@ -219,6 +219,32 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
+    Set<String> nonExistingTableIds =
+        tableIds
+            .stream()
+            .filter(tableId -> !this.getTables().contains(tableId))
+            .collect(Collectors.toSet());
+    Set<String> nonExistingTableIdsNeedBootstrap = null;
+    if (tableIdsNeedBootstrap != null) {
+      nonExistingTableIdsNeedBootstrap =
+          tableIdsNeedBootstrap
+              .stream()
+              .filter(nonExistingTableIds::contains)
+              .collect(Collectors.toSet());
+    }
+    addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+  }
+
+  @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds, null /* tableIdsNeedBootstrap */);
+  }
+
+  @Transactional
   public void addTables(Set<String> tableIds) {
     addTables(tableIds, null /* tableIdsNeedBootstrap */);
   }
@@ -549,6 +575,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Set<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdsInXClusterConfig = getTables();
     tableIds.forEach(
         tableId -> {
@@ -562,6 +591,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Collection<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdSet = new HashSet<>(tableIds);
     // Ensure there is no duplicate in the tableIds collection.
     if (tableIds.size() != tableIdSet.size()) {
