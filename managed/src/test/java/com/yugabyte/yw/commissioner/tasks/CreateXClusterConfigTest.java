@@ -228,7 +228,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreate() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -261,7 +261,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreateHAEnabled() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -293,34 +293,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCreateXClusterStateNotInit() {
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Updating);
-
-    TaskInfo taskInfo = submitTask(xClusterConfig);
-    assertNotNull(taskInfo);
-    assertEquals(Failure, taskInfo.getTaskState());
-
-    String taskErrMsg = taskInfo.getTaskDetails().get("errorString").asText();
-    String expectedErrMsg =
-        String.format(
-            "XClusterConfig(%s) must be in `Init` state to create replication for",
-            xClusterConfig.uuid);
-    assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
-
-    targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertFalse("universe unlocked", targetUniverse.universeIsLocked());
-    assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
-    assertFalse("update failed", targetUniverse.getUniverseDetails().updateSucceeded);
-
-    xClusterConfig.delete();
-  }
-
-  @Test
   public void testCreateXClusterSetupFailure() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -360,7 +335,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreateXClusterIsSetupDoneFailure() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();

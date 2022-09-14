@@ -45,7 +45,7 @@ The following tables describe metrics available via the YugabyteDB Anywhere UI.
 | :--------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / Sec   | The count of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. <br>This does not include index writes. | An alert should be issued if count drops significantly lower than your average count, as this might indicate an application connection failure. In addition, an alert should be issued if the count is much higher than your average count, as this could indicate a DDoS, security incident, and so on.<br>It is recommended to coordinate this with the application team because there could be legitimate reasons for dips and spikes. | ![img](/images/yp/metrics1.png)   |
 | YSQL Op Latency (Avg)  | Average time of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | An alert should be issued when the overall latency is close to or higher than your application SLA.<br>Note that the overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency.<br>Also note that there could be reasons your traffic experiences spikes in latency. For example, ad-hoc queries such as count(*) are executed. | ![img](/images/yp/metrics2.png)   |
-| Total YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various  background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, each TServer node allows up to 300 connections. You should consider issuing an alert when the total connection count is close to 300*(number of TServers). | ![img](/images/yp/metrics100.png) |
+| Total YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various  background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, each YB-TServer node allows up to 300 connections. You should consider issuing an alert when the total connection count is close to 300*(number of YB-TServers). | ![img](/images/yp/metrics100.png) |
 
 ### YCQL ops and latency
 
@@ -103,7 +103,7 @@ Node metrics should be considered on a per-node basis.
 | Consensus Ops / Sec                  | Yugabyte implements the RAFT consensus protocol, with minor modifications.<br><br><br>Update: replicas implement an RPC method called UpdateConsensus which allows a leader to replicate a batch of log entries to the follower. Only a leader may call this RPC method, and a follower can only accept an UpdateConsensus call with a term equal to or higher than its currentTerm.<br>Request: replicas also implement an RPC method called RequestConsensusVote, which is invoked by candidates to gather votes.<br>MultiRaftUpdates: information pending. | A high number for the Request Consensus indicates that a lot of replicas are looking for a new election because they have not received a heartbeat from the leader.<br>A high CPU or a network partition can cause this condition, and therefore it should result in issuing an alert. | ![img](/images/yp/metrics27.png) |
 | Total Consensus Change Config        | This metric is related to the RAFT Consensus Process.<br><br>ChangeConfig: the number of times a peer was added or removed from the consensus group.<br>LeaderStepDown: the number of leader changes.<br>LeaderElectionLost:<br/>the number of times a leader election has failed.<br>RunLeaderElection: the count of leader elections due to a node failure or network partition. | You should issue an alert on LeaderElectionLost.<br>An increase in ChangeConfig typically happens when YugabyteDB Anywhere needs to move data around. This may happen as a result of a planned server addition or decommission, or a server crash looping.<br>A LeaderStepDown can indicate a normal change in leader, or it could be an indicator of a high CPU, blocked RPC queues, server retstarts, and so on. You should issue an alert on LeaderStepDown as a proxy for other system issues. | ![img](/images/yp/metrics28.png) |
 | Remote Bootstraps                    | The total count of remote bootstraps.                        | When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.<br>Bootstrapping can also be a result of planned user activity when adding or decommissioning nodes.<br>It is recommended to issue an alert on a change in this count outside of planned activity. | ![img](/images/yp/metrics29.png) |
-| Consensus RPC Latencies              | RequestConsensus: latency of consensus request operations.<br>UpdateConsensus: latency of consensus update operations.<br>MultiRaftUpdates: information pending. | If the value is high, it is likely that the overall latency is high.<br>This metric should be treated as a starting point in debugging the Master and T-server processes. | ![img](/images/yp/metrics30.png) |
+| Consensus RPC Latencies              | RequestConsensus: latency of consensus request operations.<br>UpdateConsensus: latency of consensus update operations.<br>MultiRaftUpdates: information pending. | If the value is high, it is likely that the overall latency is high.<br>This metric should be treated as a starting point in debugging the YB-Master and YB-TServer processes. | ![img](/images/yp/metrics30.png) |
 | Change Config Latency                | Latency of consensus change configuration processes. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics31.png) |
 | Context Switches                     | Voluntary context switches are writer processes that take a lock.<br>Involuntary context switches happen when a writer process has waited longer than a set threshold, which results in other waiting processes taking over. | A large number of involuntary context switches indicates a CPU-bound workload. | ![img](/images/yp/metrics32.png) |
 | Spinlock Time / Server             | Spinlock is a measurement of processes waiting for a server resource and using a CPU to check and wait repeatedly until the resource is available. | This value can become very high on large computers with many cores.<br>The GFlag `tserver_tcmalloc_max_total_thread_cache_bytes` is by default 256 MB, and this is typically sufficient for 16-core computers with less than 32 GB of memory. For larger computers, it is recommended to increase this to 1 GB or 2 GB.<br>You should monitor memory usage, as this requires more memory. | ![img](/images/yp/metrics34.png) |
@@ -117,7 +117,7 @@ Node metrics should be considered on a per-node basis.
 | Glog messages                       | The following log levels are available:<br><br>Info: the number of INFO-level log messages emitted by the application.<br>Warning: the number of WARNING-level log messages emitted by the application.<br>Error: the number of ERROR-level log messages emitted by the application. | It is recommended to use a log aggregation tool for log analysis. You should review the ERROR-level log entries on a regular basis. | ![img](/images/yp/metrics43.png) |
 | RPC Queue Size                       | The number of RPCs in service queues for tablet servers:<br><br>CDC service<br>Remote Bootstrap service<br>Consensus service<br>Admin service<br>Generic service<br>Backup service | The queue size is an indicator of the incoming traffic.<br>If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors.<br><br>Also consider the following Prometheus metrics:<br>`rpcs_timed_out_in_queue` - the number of RPCs whose timeout elapsed while waiting in the service queue, which resulted in these RPCs not having been processed. This number does not include calls that were expired before an attempt to execute them has been made.<br>`rpcs_timed_out_early_in_queue` - the number of RPCs whose timeout elapsed while waiting in the service queue, which resulted in these RPCs not having been processed. The timeouts for these calls were detected before the calls attempted to execute.<br>`rpcs_queue_overflow` - the number of RPCs dropped because the service queue was full. | ![img](/images/yp/metrics44.png) |
 | CPU Util Secs / Sec  | The tablet server CPU utilization.                           | The tablet server should not use the full allocation of CPUs. For example, on a 4-core computer, three cores are used by the tablet server, but if the usage is usually close to three, you should increase the number of available CPUs. | ![img](/images/yp/metrics45.png) |
-| Inbound RPC Connections Alive        | The count of active connections to T-Servers.                | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics46.png) |
+| Inbound RPC Connections Alive        | The count of active connections to YB-TServers.      | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics46.png) |
 
 ### Master server
 
@@ -201,9 +201,9 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI). These metrics include those not available from the **Dashboard**.
 
-You can view T-Server and master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
+You can view YB-TServer and YB-Master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
 
-The following is the Prometheus command for the T-Server:
+The following is the Prometheus command for the YB-TServer:
 
 ```output
 curl <node_IP>:9000/prometheus-metrics
@@ -213,13 +213,13 @@ Expect an output similar to the following:
 
 ![Prometheus](/images/yp/metrics-prometheus.png)
 
-The following is the Prometheus command for the master server:
+The following is the Prometheus command for the YB-Master:
 
 ```output
 curl <node_IP>:7000/prometheus-metrics
 ```
 
-The following is the JSON command for the T-Server:
+The following is the JSON command for the YB-TServer:
 
 ```output
 curl <node_IP>:9000/metrics
@@ -229,7 +229,7 @@ Expect an output similar to the following:
 
 ![JSON](/images/yp/metrics-json.png)
 
-The following is the JSON command for the master server:
+The following is the JSON command for the YB-Master:
 
 ```output
 curl <node_IP>:7000/metrics
@@ -287,11 +287,11 @@ You can also federate metrics from YugabyteDB Anywhere and configure alerting ru
 
 ## Use nodes status
 
-You can check the status of the master and T-Server on each YugabyteDB node by navigating to **Universes > Universe-Name > Nodes**, as per the following illustration:
+You can check the status of the YB-Master and YB-TServer on each YugabyteDB node by navigating to **Universes > Universe-Name > Nodes**, as per the following illustration:
 
 ![Node Status](/images/yp/troubleshoot-node-status.png)
 
-If issues arise, additional information about each master and TServer is available on their respective **Details** pages, or by accessing `<node_IP>:7000` for master servers and `<node_IP>:9000` for T-Servers (unless the configuration of your on-premises data center or cloud-provider account prevents the access, in which case you may consult [Checking YugabyteDB Servers](../../../troubleshoot/nodes/check-processes/).
+If issues arise, additional information about each master and YB-TServer is available on their respective **Details** pages, or by accessing `<node_IP>:7000` for YB-Master servers and `<node_IP>:9000` for YB-TServers (unless the configuration of your on-premises data center or cloud-provider account prevents the access, in which case you may consult [Check YugabyteDB servers](../../../troubleshoot/nodes/check-processes/)).
 
 ## Check host resources on the nodes
 
@@ -349,13 +349,13 @@ If you are using YugabyteDB Anywhere version 2.12.*n*.*n* and disable **Use Time
 A support bundle is an archive generated at a universe level. It contains all the files required for diagnosing and troubleshooting a problem. The diagnostic information is provided by the following types of files:
 
 - Application logs from YugabyteDB Anywhere.
-- Universe logs, which are the Master and T-Server log files from each node in the universe, as well as Postgres logs  available under the T-Server logs directory.
-- Output files ( `.out` ) files generated by the Master and T-Server.
-- Error files ( `.err` ) generated by the Master and T-Server.
-- G-flag configuration files containing the g-flags set on the universe.
-- Instance files that contain the metadata information from the Master and T-Server.
-- Consensus meta files containing consensus metadata information from the Master and T-Server.
-- Tablet meta files containing the tablet metadata from the Master and T-Server.
+- Universe logs, which are the YB-Master and YB-TServer log files from each node in the universe, as well as PostgreSQL logs available under the YB-TServer logs directory.
+- Output files ( `.out` ) files generated by the YB-Master and YB-TServer.
+- Error files ( `.err` ) generated by the YB-Master and YB-TServer.
+- Gflag configuration files containing the gflags set on the universe.
+- Instance files that contain the metadata information from the YB-Master and YB-TServer.
+- Consensus meta files containing consensus metadata information from the YB-Master and YB-TServer.
+- Tablet meta files containing the tablet metadata from the YB-Master and YB-TServer.
 
 The diagnostic information can be analyzed locally or the bundle can be forwarded to the Yugabyte Support team.
 

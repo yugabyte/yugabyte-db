@@ -27,6 +27,10 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
 #include "yb/util/metrics.h"
@@ -34,6 +38,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -2513,11 +2518,12 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
       return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
     }
   };
-  typedef std::unordered_map<uint32, YsqlCatalogVersion> CatalogVersionMap;
+  typedef std::unordered_map<uint32, YsqlCatalogVersion> MasterCatalogVersionMap;
+  typedef std::unordered_map<uint32, uint64> ShmCatalogVersionMap;
 
-  // Return a CatalogVersionMap by making a query of the pg_yb_catalog_version table.
-  CatalogVersionMap GetCatalogVersionMap(PGConn* conn) {
-    CatalogVersionMap catalog_version_map;
+  // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
+  MasterCatalogVersionMap GetMasterCatalogVersionMap(PGConn* conn) {
+    MasterCatalogVersionMap catalog_version_map;
     auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
     auto lines = PQntuples(res.get());
     CHECK_GT(lines, 0);
@@ -2568,6 +2574,87 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
     std::this_thread::sleep_for(kSleepSeconds * 1s);
   }
+
+  // Verify that all the tservers have identical shared memory db catalog version array by
+  // making RPCs to the tservers. Unallocated array slots should have value 0. Return a
+  // ShmCatalogVersionMap which represents the contents of allocated slots in the shared
+  // memory db catalog version array.
+  ShmCatalogVersionMap VerifyAndGetShmCatalogVersionMap() {
+    ShmCatalogVersionMap shm_catalog_version_map0;
+    for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
+      // Get the shared memory object from tserver at 'tablet_index'.
+      tserver::TServerSharedObject tserver_shared_object(
+          CHECK_RESULT(tserver::TServerSharedObject::Create()));
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+          cluster_->tablet_server(tablet_index));
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      tserver::GetSharedDataRequestPB req;
+      tserver::GetSharedDataResponsePB resp;
+      CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
+      CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object));
+      memcpy(pointer_cast<char*>(&*tserver_shared_object),
+             resp.data().c_str(),
+             resp.data().size());
+
+      // Get the tserver catalog version info from tserver at 'tablet_index'.
+      tserver::GetTserverCatalogVersionInfoRequestPB req2;
+      tserver::GetTserverCatalogVersionInfoResponsePB resp2;
+      controller.Reset();
+      controller.set_timeout(30s);
+      CHECK_OK(proxy.GetTserverCatalogVersionInfo(req2, &resp2, &controller));
+      CHECK(!resp2.has_error()) << "Response had an error: " << resp2.error().ShortDebugString();
+      ShmCatalogVersionMap shm_catalog_version_map;
+      std::unordered_set<int> allocated_slots;
+      for (int i = 0; i < resp2.entries_size(); i++) {
+        const auto& entry = resp2.entries(i);
+        CHECK(entry.has_db_oid());
+        CHECK(entry.has_shm_index());
+        auto db_oid = entry.db_oid();
+        auto shm_index = entry.shm_index();
+        allocated_slots.insert(shm_index);
+        uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(shm_index);
+        shm_catalog_version_map.insert(make_pair(db_oid, current_version));
+      }
+      // Log the shared memory catalog version map we just composed.
+      std::string output;
+      for (const auto& it : shm_catalog_version_map) {
+        if (!output.empty()) {
+          output += ", ";
+        }
+        output += Format("($0, $1)", it.first, it.second);
+      }
+      LOG(INFO) << "Shm catalog version map at tserver " << tablet_index << ": " << output;
+      if (tablet_index == 0) {
+        shm_catalog_version_map0.swap(shm_catalog_version_map);
+      } else {
+        // In stable state, all tservers should have the same catalog version map.
+        CHECK(shm_catalog_version_map0 == shm_catalog_version_map);
+      }
+      // Verify that all free slots have version 0.
+      for (int i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
+        if (!allocated_slots.count(i)) {
+          uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(i);
+          CHECK_EQ(current_version, 0);
+        }
+      }
+    }
+    return shm_catalog_version_map0;
+  }
+
+  // In stable state, catalog version map read from the master should be in sync
+  // with the catalog version map read from the tserver shared memory.
+  void AssertCatalogVersionMapsInSync(
+    const MasterCatalogVersionMap& map1, const ShmCatalogVersionMap& map2) {
+    ASSERT_EQ(map1.size(), map2.size());
+    for (const auto& it1 : map1) {
+      auto db_oid = it1.first;
+      auto current_version = it1.second.current_version;
+      auto it2 = map2.find(db_oid);
+      ASSERT_NE(it2, map2.end());
+      ASSERT_EQ(it2->second, current_version);
+    }
+  }
 };
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
@@ -2604,7 +2691,12 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
 
   // Get the initial catalog version map.
-  auto map = GetCatalogVersionMap(&conn_yugabyte);
+  auto map = GetMasterCatalogVersionMap(&conn_yugabyte);
+
+  // Get the initial shared memory and catalog version info from tserver.
+  auto shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
+
   int initial_row_count = static_cast<int>(map.size());
   ASSERT_GT(initial_row_count, 0);
 
@@ -2625,8 +2717,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // propagation from the test logs. Same is true for all the following calls to do this wait.
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // There should be a new row in pg_yb_catalog_version for the newly created database.
   const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
@@ -2649,8 +2743,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // Should still have the same number of rows in pg_yb_catalog_version.
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // The above create table statement does not cause catalog version to change.
   for (const auto& it : map) {
@@ -2666,8 +2762,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   for (const auto& it : map) {
@@ -2685,8 +2783,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   for (const auto& it : map) {
@@ -2709,8 +2809,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // The row for 'new_db_oid' should be deleted.
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
   // was performed from 'conn_yugabyte'.
@@ -2728,7 +2830,48 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
-  ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
+  auto result = conn_test.Fetch("SELECT * FROM t");
+  auto status = ResultToStatus(result);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_STR_CONTAINS(status.ToString(), "Could not reconnect to database");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+
+  // Recreate the same database and table.
+  LOG(INFO) << "Re-create the same database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Use a new connection to re-create the table.
+  auto new_conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  LOG(INFO) << "Re-create the table";
+  ASSERT_OK(new_conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
+
+  // Although we recreate the database using the same name, a new db OID is allocated.
+  const uint32 recreated_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
+  it = map.find(recreated_db_oid);
+  ASSERT_NE(it, map.end());
+  CHECK_GT(recreated_db_oid, new_db_oid);
+
+  // The old connection will not become valid simply because we have recreated the
+  // same database and table.
+  LOG(INFO) << "Read the table from 'conn_test'";
+  result = conn_test.Fetch("SELECT * FROM t");
+  status = ResultToStatus(result);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_STR_CONTAINS(status.ToString(), "pgsql error XX000");
+
+  // We need to make a new connection to the recreated database in order to have a
+  // successful query of the re-created table.
+  conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
@@ -2746,10 +2889,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   std::this_thread::sleep_for(2s);
   // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
   auto result = conn1.Fetch("SELECT * FROM t1");
-  ASSERT_NOK(result);
   auto status = ResultToStatus(result);
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "catalog snapshot used for this transaction has been invalidated";
-  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
 
   // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
@@ -2774,9 +2917,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   result = conn1.Fetch("SELECT * FROM t1");
-  ASSERT_NOK(result);
   status = ResultToStatus(result);
-  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 

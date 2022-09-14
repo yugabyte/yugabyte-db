@@ -129,14 +129,19 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 //  Class RetryingTSRpcTask.
 // ============================================================================
 
-RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
-                                     ThreadPool* callback_pool,
-                                     std::unique_ptr<TSPicker> replica_picker,
-                                     const scoped_refptr<TableInfo>& table)
+// Constructor. The 'async_task_throttler' parameter is optional and may be null if the task does
+// not throttle.
+RetryingTSRpcTask::RetryingTSRpcTask(
+    Master *master,
+    ThreadPool* callback_pool,
+    std::unique_ptr<TSPicker> replica_picker,
+    const scoped_refptr<TableInfo>& table,
+    AsyncTaskThrottlerBase* async_task_throttler)
   : master_(master),
     callback_pool_(callback_pool),
     replica_picker_(std::move(replica_picker)),
     table_(table),
+    async_task_throttler_(async_task_throttler),
     start_ts_(MonoTime::Now()),
     deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
 }
@@ -230,7 +235,21 @@ Status RetryingTSRpcTask::Run() {
     ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
     VLOG_WITH_PREFIX(2) << "Slowing down done. Resuming.";
   }
-  if (!SendRequest(attempt_) && !RescheduleWithBackoffDelay()) {
+
+  bool sent_request = false;
+  if (async_task_throttler_ == nullptr || !async_task_throttler_->Throttle()) {
+    sent_request = SendRequest(attempt_);
+
+    // If the request failed to send, remove the task that was added in
+    // async_task_throttler_->Throttle().
+    if (async_task_throttler_ != nullptr && !sent_request) {
+      async_task_throttler_->RemoveOutstandingTask();
+    }
+  } else {
+    VLOG_WITH_PREFIX(2) << "Throttled request";
+  }
+
+  if (!sent_request && !RescheduleWithBackoffDelay()) {
     UnregisterAsyncTask();  // May call 'delete this'.
   }
   return Status::OK();
@@ -269,6 +288,10 @@ void RetryingTSRpcTask::AbortTask(const Status& status) {
 }
 
 void RetryingTSRpcTask::RpcCallback() {
+  if (async_task_throttler_ != nullptr) {
+    async_task_throttler_->RemoveOutstandingTask();
+  }
+
   // Defer the actual work of the callback off of the reactor thread.
   // This is necessary because our callbacks often do synchronous writes to
   // the catalog table, and we can't do synchronous IO on the reactor.
@@ -358,6 +381,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   } else {
     base_delay_ms = max_delay_ms();
   }
+
   // Normal rand is seeded by default with 1. Using the same for rand_r seed.
   unsigned int seed = 1;
   int64_t jitter_ms = rand_r(&seed) % 50;  // Add up to 50ms of additional random delay.
@@ -524,7 +548,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
     : RetryingTSRpcTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-          tablet->table().get()),
+          tablet->table().get(), /* async_task_throttler */ nullptr),
       tablet_(tablet) {
 }
 
@@ -532,7 +556,8 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
+          /* async_task_throttler */ nullptr),
       tablet_(tablet) {
 }
 
@@ -558,7 +583,8 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        const string& permanent_uuid,
                                        const scoped_refptr<TabletInfo>& tablet,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules)
-  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
+                           /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
@@ -628,7 +654,8 @@ AsyncStartElection::AsyncStartElection(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
                                        const scoped_refptr<TabletInfo>& tablet)
-  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
+                           /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
@@ -883,7 +910,8 @@ AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                        table.get()),
+                        table.get(),
+                        /* async_task_throttler */ nullptr),
       tablet_(tablet), table_(table) {
 }
 
@@ -957,7 +985,7 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
     const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid)
     : RetryingTSRpcTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-          tablet->table()),
+          tablet->table(), /* async_task_throttler */ nullptr),
       tablet_(tablet),
       cstate_(cstate),
       change_config_ts_uuid_(change_config_ts_uuid) {
@@ -1221,7 +1249,8 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
+          /* async_task_throttler */ nullptr),
       tablet_(tablet),
       table_(table),
       tablet_id_(tablet->tablet_id()) {
@@ -1283,7 +1312,8 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
+          /* async_task_throttler */ nullptr),
       table_(table),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()) {
@@ -1452,7 +1482,8 @@ AsyncTestRetry::AsyncTestRetry(
     const TabletServerId& ts_uuid,
     const int32_t num_retries,
     StdStatusCallback callback)
-    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr),
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr,
+                             /* async_task_throttler */ nullptr),
       num_retries_(num_retries),
       callback_(std::move(callback)) {}
 

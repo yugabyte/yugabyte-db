@@ -10,12 +10,12 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
+import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -198,6 +198,13 @@ public class NativeKubernetesManager extends KubernetesManager {
   public void deletePod(Map<String, String> config, String namespace, String podName) {
     try (KubernetesClient client = getClient(config)) {
       client.pods().inNamespace(namespace).withName(podName).delete();
+    }
+  }
+
+  @Override
+  public List<Event> getEvents(Map<String, String> config, String namespace) {
+    try (KubernetesClient client = getClient(config)) {
+      return client.events().v1().events().inNamespace(namespace).list().getItems();
     }
   }
 }

@@ -223,12 +223,25 @@ class GlobalLoadState {
   // Get global leader load for a certain TS.
   int GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const;
 
+  void SetBlacklist(const BlacklistPB& blacklist) {
+    blacklist_.CopyFrom(blacklist);
+  }
+
+  void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
+    leader_blacklist_.CopyFrom(leader_blacklist);
+  }
+
   // Used to determine how many tablets are being remote bootstrapped across the cluster.
   int total_starting_tablets_ = 0;
 
   TSDescriptorVector ts_descs_;
 
   bool drive_aware_ = true;
+
+  // The cached blacklist setting of the cluster. We store this upfront, as we add to the list of
+  // tablet servers one by one, so we compare against it once per tablet server.
+  BlacklistPB blacklist_;
+  BlacklistPB leader_blacklist_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
@@ -277,11 +290,6 @@ class PerTableLoadState {
 
   // Get the load for a certain TS.
   size_t GetLeaderLoad(const TabletServerId& ts_uuid) const;
-
-  void SetBlacklist(const BlacklistPB& blacklist) { blacklist_ = blacklist; }
-  void SetLeaderBlacklist(const BlacklistPB& leader_blacklist) {
-    leader_blacklist_ = leader_blacklist;
-  }
 
   bool IsTsInLivePlacement(TSDescriptor* ts_desc) {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
@@ -383,11 +391,6 @@ class PerTableLoadState {
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
   std::set<TabletId> tablets_wrong_placement_;
-
-  // The cached blacklist setting of the cluster. We store this upfront, as we add to the list of
-  // tablet servers one by one, so we compare against it once per tablet server.
-  BlacklistPB blacklist_;
-  BlacklistPB leader_blacklist_;
 
   // The list of tablet server ids that match the cached blacklist.
   std::set<TabletServerId> blacklisted_servers_;

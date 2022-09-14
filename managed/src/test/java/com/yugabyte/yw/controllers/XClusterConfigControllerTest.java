@@ -249,7 +249,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
     assertEquals(xClusterConfig.name, configName);
-    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Init);
+    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Initialized);
     assertEquals(xClusterConfig.getTables(), exampleTables);
 
     JsonNode resultJson = Json.parse(contentAsString(result));

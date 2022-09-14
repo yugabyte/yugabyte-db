@@ -189,6 +189,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result r = createBackupYb(bodyJson, null);
     JsonNode resultJson = Json.parse(contentAsString(r));
@@ -205,6 +206,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
     bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
   }
@@ -218,6 +220,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("schedulingFrequency", 10000000L);
     bodyJson.put("scheduleName", "schedule-1");
     bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
   }
@@ -229,6 +232,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(result, "Provide a name for the schedule");
   }
@@ -240,6 +244,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("scheduleName", "schedule-1");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(r, "Please provide time unit for scheduler frequency");
@@ -252,6 +257,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("scheduleName", "schedule-1");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
@@ -268,6 +274,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
@@ -286,6 +293,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "error");
@@ -302,6 +310,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("timeBeforeDelete", 100000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
     assertBadRequest(r, "Please provide time unit for backup expiry");
     verify(mockCommissioner, times(0)).submit(any(), any());

@@ -15,8 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
-
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.consensus.Consensus;
 import org.yb.util.Pair;
@@ -33,7 +32,7 @@ class LeaderStepDownRequest extends YRpc<LeaderStepDownResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final Consensus.LeaderStepDownRequestPB.Builder builder =
       Consensus.LeaderStepDownRequestPB.newBuilder();

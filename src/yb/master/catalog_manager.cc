@@ -133,6 +133,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
@@ -473,7 +474,11 @@ DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
 DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
-                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert");
+                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert.");
+
+DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
+                 "Return an error inside CatalogManager::RegisterNewTabletForSplit "
+                 "after calling Upsert.");
 
 DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
@@ -516,6 +521,10 @@ TAG_FLAG(TEST_pause_split_child_registration, runtime);
 DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
                  "tables only being dropped in the postgres layer.");
+
+DEFINE_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
+             "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
+TAG_FLAG(max_concurrent_delete_replica_rpcs_per_ts, runtime);
 
 namespace yb {
 namespace master {
@@ -728,7 +737,8 @@ void InitMasterFlags() {
       kAutoDetectNumShardsPerTServer) {
     const auto value = GetTransactionTableNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_transaction_table_num_tablets_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent(
+        "transaction_table_num_tablets_per_tserver", std::to_string(value)));
   }
 }
 
@@ -829,6 +839,7 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
+      xcluster_safe_time_service_(std::make_unique<XClusterSafeTimeService>(master, this)),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this, this) {
@@ -1143,10 +1154,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
           }
 
           LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-          {
-            std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-            cluster_config_.reset();
-          }
+          cluster_config_.reset();
           RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
@@ -1251,10 +1259,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   udtype_names_map_.clear();
 
   // Clear the current cluster config.
-  {
-    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
-    cluster_config_.reset();
-  }
+  cluster_config_.reset();
 
   // Clear redis config mapping.
   redis_config_map_.clear();
@@ -1267,6 +1272,8 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
   // Clear recent jobs/tasks.
   ResetTasksTrackers();
+
+  xcluster_safe_time_info_.Clear();
 
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
@@ -1291,6 +1298,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", term));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
+  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", term));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
@@ -1338,7 +1346,6 @@ Status CatalogManager::CheckResource(
 }
 
 Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
-  std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
   if (cluster_config_) {
     LOG_WITH_PREFIX(INFO)
         << "Cluster configuration has already been set up, skipping re-initialization.";
@@ -1917,6 +1924,7 @@ void CatalogManager::CompleteShutdown() {
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   xcluster_parent_tablet_deletion_task_.CompleteShutdown();
+  xcluster_safe_time_service_->Shutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -2832,8 +2840,8 @@ Status CatalogManager::DoSplitTablet(
 
     // Re-compute the encoded key
     // to ensure we use the same partition boundary for both child tablets
-    split_encoded_key = PartitionSchema::GetEncodedKeyPrefix(
-      split_partition_key, source_table_lock->pb.partition_schema());
+    split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
+        split_partition_key, source_table_lock->pb.partition_schema()));
   }
 
   LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
@@ -4737,6 +4745,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -6244,8 +6253,11 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
 
-    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
     TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
+    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
+    if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+      return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
+    }
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
@@ -6265,6 +6277,15 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
             << ", new partition_list_version: " << new_partition_list_version;
 
   return new_tablet;
+}
+
+Result<NamespaceId> CatalogManager::GetTableNamespaceId(TableId table_id) {
+  SharedLock lock(mutex_);
+  auto table = FindPtrOrNull(*table_ids_map_, table_id);
+  if (!table || table->is_deleted()) {
+    return STATUS(NotFound, Format("Table $0 is not found", table_id));
+  }
+  return table->namespace_id();
 }
 
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
@@ -6928,6 +6949,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
           rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
               master_, AsyncTaskPool(), peer_uuid, tablet->table(), tablet->tablet_id(),
               TABLET_DATA_TOMBSTONED, prev_cstate.config().opid_index(),
+              GetDeleteReplicaTaskThrottler(peer_uuid),
               Substitute("TS $0 not found in new config with opid_index $1",
                   peer_uuid, cstate.config().opid_index())));
         }
@@ -7132,7 +7154,8 @@ Status CatalogManager::ProcessTabletReportBatch(
       // where that might be possible (tablet creation timeout & replacement).
       rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
-          TABLET_DATA_DELETED, boost::none, msg));
+          TABLET_DATA_DELETED, boost::none,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg));
       ts_desc->AddPendingTabletDelete(tablet_id);
       continue;
     }
@@ -7166,6 +7189,7 @@ Status CatalogManager::ProcessTabletReportBatch(
       rpcs->push_back(std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
           TABLET_DATA_TOMBSTONED, prev_opid_index,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()),
           Substitute("$0 (current committed config index is $1)",
               delete_msg, prev_opid_index)));
       ts_desc->AddPendingTabletDelete(tablet_id);
@@ -7192,7 +7216,8 @@ Status CatalogManager::ProcessTabletReportBatch(
                 << " (" << msg << "): Sending hide request for this tablet";
       auto task = std::make_shared<AsyncDeleteReplica>(
           master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
-          TABLET_DATA_DELETED, boost::none, msg);
+          TABLET_DATA_DELETED, boost::none,
+          GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), msg);
       task->set_hide_only(true);
       ts_desc->AddPendingTabletDelete(tablet_id);
       rpcs->push_back(task);
@@ -9271,6 +9296,8 @@ Status CatalogManager::EnableBgTasks() {
 
   xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
+  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+
   return Status::OK();
 }
 
@@ -9666,7 +9693,8 @@ void CatalogManager::SendDeleteTabletRequest(
       << TabletDataState_Name(delete_type) << " (" << reason << ")";
   auto call = std::make_shared<AsyncDeleteReplica>(master_, AsyncTaskPool(),
       ts_desc->permanent_uuid(), table, tablet_id, delete_type,
-      cas_config_opid_index_less_or_equal, reason);
+      cas_config_opid_index_less_or_equal,
+      GetDeleteReplicaTaskThrottler(ts_desc->permanent_uuid()), reason);
   if (hide_only) {
     call->set_hide_only(hide_only);
   }
@@ -10728,6 +10756,19 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
     // TODO: proper error handling below.
     CHECK_OK(GetCurrentConfig(&cur_consensus_state));
     *out << "Current raft config: " << cur_consensus_state.ShortDebugString() << "\n";
+
+    auto cluster_config = ClusterConfig();
+    if (cluster_config) {
+      auto l = cluster_config->LockForRead();
+      *out << "Cluster config: " << l->pb.ShortDebugString() << "\n";
+    }
+
+    {
+      auto l = xcluster_safe_time_info_.LockForRead();
+      if (!l->pb.safe_time_map().empty()) {
+        *out << "XCluster Safe Time: " << l->pb.ShortDebugString() << "\n";
+      }
+    }
   }
 }
 
@@ -10847,6 +10888,15 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
   auto l = cluster_config->LockForRead();
   *config = l->pb;
   return Status::OK();
+}
+
+Result<int32_t> CatalogManager::GetClusterConfigVersion() {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Cluster config is not initialized");
+  }
+  auto l = cluster_config->LockForRead();
+  return l->pb.version();
 }
 
 Status CatalogManager::SetClusterConfig(
@@ -11598,7 +11648,6 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
 }
 
 std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
-  yb::SharedLock<decltype(config_mutex_)> lock(config_mutex_);
   return cluster_config_;
 }
 
@@ -11616,6 +11665,92 @@ Status CatalogManager::CheckIfPitrActive(
   LOG(INFO) << "Servicing CheckIfPitrActive request";
   resp->set_is_pitr_active(IsPitrActive());
   return Status::OK();
+}
+
+Result<std::optional<cdc::ConsumerRegistryPB>> CatalogManager::GetConsumerRegistry() {
+  auto cluster_config = ClusterConfig();
+  if (!cluster_config) {
+    return STATUS(IllegalState, "Cluster config is not initialized");
+  }
+  auto l = cluster_config->LockForRead();
+  if (l->pb.has_consumer_registry()) {
+    return l->pb.consumer_registry();
+  }
+
+  return std::nullopt;
+}
+
+Result<XClusterNamespaceToSafeTimeMap> CatalogManager::GetXClusterNamespaceToSafeTimeMap() {
+  google::protobuf::Map<std::string, google::protobuf::uint64> map_pb;
+
+  {
+    auto l = xcluster_safe_time_info_.LockForRead();
+    map_pb = l->pb.safe_time_map();
+  }
+
+  XClusterNamespaceToSafeTimeMap result;
+  for (auto& entry : map_pb) {
+    result[entry.first] = HybridTime(entry.second);
+  }
+  return result;
+}
+
+Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(
+    const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map) {
+  google::protobuf::Map<std::string, google::protobuf::uint64> map_pb;
+  for (auto& entry : safe_time_map) {
+    map_pb[entry.first] = entry.second.ToUint64();
+  }
+
+  auto l = xcluster_safe_time_info_.LockForWrite();
+  *l.mutable_data()->pb.mutable_safe_time_map() = std::move(map_pb);
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(leader_term, &xcluster_safe_time_info_),
+      "Updating XCluster safe time in sys-catalog");
+
+  l.Commit();
+
+  return Status::OK();
+}
+
+void CatalogManager::CreateXClusterSafeTimeTableAndStartService() {
+  auto status = xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound();
+  if (!status.ok()) {
+    LOG(WARNING) << "Creation of XClusterSafeTime table failed :" << status;
+  }
+
+  StartXClusterSafeTimeServiceIfStopped();
+}
+
+void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
+  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
+}
+
+AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
+    const string& ts_uuid) {
+
+  // The task throttlers are owned by the CatalogManager. First, check if it exists while holding a
+  // read lock.
+  {
+    SharedLock l(delete_replica_task_throttler_per_ts_mutex_);
+    if (delete_replica_task_throttler_per_ts_.count(ts_uuid) == 1) {
+      return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
+    }
+  }
+
+  // A task throttler does not exist for the given tserver uuid. Create one while holding a write
+  // lock.
+  LockGuard lock(delete_replica_task_throttler_per_ts_mutex_);
+  if (delete_replica_task_throttler_per_ts_.count(ts_uuid) == 0) {
+    delete_replica_task_throttler_per_ts_.emplace(
+      ts_uuid,
+      std::make_unique<DynamicAsyncTaskThrottler>([]() {
+        return GetAtomicFlag(&FLAGS_max_concurrent_delete_replica_rpcs_per_ts);
+      }));
+  }
+
+  return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
 }
 
 }  // namespace master

@@ -20,6 +20,8 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 
+#include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -37,12 +39,40 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+DECLARE_bool(enable_load_balancing);
+DECLARE_int32(replication_factor);
+
 namespace yb {
 
 using client::YBClient;
+using client::YBTableName;
 using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
+
+Status TwoDCTestBase::InitClusters(const MiniClusterOptions& opts) {
+  FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
+  auto producer_opts = opts;
+  producer_opts.cluster_id = "producer";
+
+  producer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(producer_opts);
+
+  auto consumer_opts = opts;
+  consumer_opts.cluster_id = "consumer";
+  consumer_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(consumer_opts);
+
+  RETURN_NOT_OK(producer_cluster()->StartSync());
+  RETURN_NOT_OK(consumer_cluster()->StartSync());
+
+  RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
+    return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
+  }));
+
+  producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
+  consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
+
+  return Status::OK();
+}
 
 void TwoDCTestBase::TearDown() {
   LOG(INFO) << "Destroying CDC Clusters";
@@ -66,6 +96,66 @@ void TwoDCTestBase::TearDown() {
   consumer_cluster_.client_.reset();
 
   YBTest::TearDown();
+}
+
+Status TwoDCTestBase::RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster) {
+  auto producer_future =
+      std::async(std::launch::async, [&] { return run_on_cluster(producer_cluster()); });
+  auto consumer_future =
+      std::async(std::launch::async, [&] { return run_on_cluster(consumer_cluster()); });
+
+  auto producer_status = producer_future.get();
+  auto consumer_status = consumer_future.get();
+
+  RETURN_NOT_OK(producer_status);
+  return consumer_status;
+}
+
+Status TwoDCTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster) {
+  auto producer_future =
+      std::async(std::launch::async, [&] { return run_on_cluster(&producer_cluster_); });
+  auto consumer_future =
+      std::async(std::launch::async, [&] { return run_on_cluster(&consumer_cluster_); });
+
+  auto producer_status = producer_future.get();
+  auto consumer_status = consumer_future.get();
+
+  RETURN_NOT_OK(producer_status);
+  return consumer_status;
+}
+
+Result<YBTableName> TwoDCTestBase::CreateTable(
+    YBClient* client, const std::string& namespace_name, const std::string& table_name,
+    uint32_t num_tablets, const client::YBSchema* schema) {
+  YBTableName table(YQL_DATABASE_CQL, namespace_name, table_name);
+  RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table.namespace_name(), table.namespace_type()));
+
+  // Add a table, make sure it reports itself.
+  std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
+  RETURN_NOT_OK(table_creator->table_name(table)
+                    .schema(schema)
+                    .table_type(client::YBTableType::YQL_TABLE_TYPE)
+                    .num_tablets(num_tablets)
+                    .Create());
+  return table;
+}
+
+Status TwoDCTestBase::SetupUniverseReplication(
+    const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only) {
+  return SetupUniverseReplication(kUniverseId, tables, leader_only);
+}
+
+Status TwoDCTestBase::SetupUniverseReplication(
+    const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
+    bool leader_only) {
+  return SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), universe_id, tables, leader_only);
+}
+
+Status TwoDCTestBase::SetupReverseUniverseReplication(
+    const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+  return SetupUniverseReplication(
+      consumer_cluster(), producer_cluster(), producer_client(), kUniverseId, tables);
 }
 
 Status TwoDCTestBase::SetupUniverseReplication(
@@ -137,6 +227,15 @@ Status TwoDCTestBase::SetupNSUniverseReplication(
     }
     return true;
   }, MonoDelta::FromSeconds(30), "Setup namespace-level universe replication");
+}
+
+Status TwoDCTestBase::VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp) {
+  return VerifyUniverseReplication(kUniverseId, resp);
+}
+
+Status TwoDCTestBase::VerifyUniverseReplication(
+    const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp) {
+  return VerifyUniverseReplication(consumer_cluster(), consumer_client(), universe_id, resp);
 }
 
 Status TwoDCTestBase::VerifyUniverseReplication(

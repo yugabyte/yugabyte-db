@@ -381,6 +381,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson2.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson2.put("cronExpression", "0 */2 * * *");
     bodyJson2.put("scheduleName", "schedule-1");
+    bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson2, null);
     assertOk(r);
     ObjectNode bodyJson3 = Json.newObject();
@@ -402,6 +403,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
     bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertOk(r);
     Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getCustomerId());

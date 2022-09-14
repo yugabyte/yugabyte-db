@@ -1682,6 +1682,7 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
+    const isAuthEnforced = !(featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth);
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -2006,7 +2007,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
-      enableYSQLAuth = (
+      enableYSQLAuth = (!isAuthEnforced &&
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2065,7 +2066,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YCQL API endpoint to run cassandra compatible workloads."
         />
       );
-      enableYCQLAuth = (
+      enableYCQLAuth = (!isAuthEnforced &&
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">

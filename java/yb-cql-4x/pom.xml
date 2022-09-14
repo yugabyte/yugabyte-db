@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.21-SNAPSHOT</version>
+    <version>0.8.22-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cql-4x</artifactId>
   <name>YB CQL Support for 4.x Driver</name>
@@ -92,7 +92,6 @@
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-handler</artifactId>
-        <version>4.1.68.Final</version>
       </dependency>
     <dependency>
       <groupId>commons-io</groupId>

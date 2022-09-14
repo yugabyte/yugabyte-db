@@ -291,7 +291,6 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Transfer_XCluster_Certs
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
             || type == NodeCommandType.Wait_For_SSH)

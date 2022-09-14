@@ -1,0 +1,30 @@
+@import '../../_style/colors.scss';
+
+.label {
+  border-radius: 6px;
+
+  i {
+    margin-right: 5px;
+  }
+
+  &.ready {
+    background-color: #CDEFE0;
+    color: #097245;
+  }
+
+  &.warning {
+    background-color: #9D6C00;
+    color: #FFEEC8;
+  }
+
+  &.inProgress {
+    background-color: #cbdaff;
+    color: #1a44a5;
+  }
+
+  &.error,
+  &.failed {
+    background-color: #FDE2E2;
+    color: #8F0000;
+  }
+}

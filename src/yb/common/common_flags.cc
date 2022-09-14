@@ -16,6 +16,7 @@
 #include <thread>
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
@@ -98,12 +99,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_yb_num_shards_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_ysql_num_shards_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
   }
 }
 

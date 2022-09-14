@@ -94,16 +94,13 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
-      } catch (Exception e) {
-        log.error("{} hit error : {}", getName(), e.getMessage());
-        setXClusterConfigStatus(XClusterConfigStatusType.Failed);
-        throw new RuntimeException(e);
       } finally {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.universeUUID);
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
+      setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.

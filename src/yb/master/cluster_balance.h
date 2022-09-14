@@ -137,20 +137,6 @@ class ClusterLoadBalancer {
   virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const
     REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Get the replication info from the cluster configuration.
-  virtual const ReplicationInfoPB& GetClusterReplicationInfo() const;
-
-  // Get the placement information from the cluster configuration.
-  // Gets appropriate live or read only cluster placement,
-  // depending on placement_uuid_.
-  virtual const PlacementInfoPB& GetClusterPlacementInfo() const;
-
-  // Get the blacklist information.
-  virtual const BlacklistPB& GetServerBlacklist() const;
-
-  // Get the leader blacklist information.
-  virtual const BlacklistPB& GetLeaderBlacklist() const;
-
   // Should skip load-balancing of this table?
   virtual bool SkipLoadBalancing(const TableInfo& table) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
@@ -392,6 +378,8 @@ class ClusterLoadBalancer {
       TabletServerId* from_ts,
       TabletServerId* to_ts,
       std::string* to_ts_path);
+
+  virtual void SetBlacklist() const;
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;

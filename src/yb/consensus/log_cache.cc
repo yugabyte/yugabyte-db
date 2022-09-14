@@ -154,7 +154,10 @@ MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker)
 
 LogCache::~LogCache() {
   tracker_->Release(tracker_->consumption());
-  cache_.clear();
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    cache_.clear();
+  }
 
   tracker_->UnregisterFromParent();
 }
@@ -183,7 +186,7 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   // Capture the evicted messages and release the memory outside of lock.
   ReplicateMsgVector evicted_messages;
 
-  std::unique_lock<simple_spinlock> lock(lock_);
+  std::lock_guard<simple_spinlock> lock(lock_);
   // If we're not appending a consecutive op we're likely overwriting and need to replace operations
   // in the cache.
   if (first_idx_in_batch != next_sequential_op_index_) {
@@ -243,7 +246,7 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
          callback));
 
   if (!log_status.ok()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status;
+    LOG_WITH_PREFIX(WARNING) << "Couldn't append to log: " << log_status;
     return log_status;
   }
 
@@ -346,13 +349,18 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_
   return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
 }
 
+// Disabled thread safety analysis because the locking seems to be inconsistent, we capture
+// the cache iterator under lock, then unlock it to call some underlying functions, and then
+// reacquire lock and continue using the previous iterator. This is error prone, since before
+// reacquiring the lock, its possible that cache_ has been updated which invalidate the iterator.
+// Created GH-13934 (https://github.com/yugabyte/yugabyte-db/issues/13934) to track this.
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
                                         size_t max_size_bytes,
-                                        CoarseTimePoint deadline) {
+                                        CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
   DCHECK_GE(after_op_index, 0);
 
-  VLOG_WITH_PREFIX_UNLOCKED(4) << "ReadOps, after_op_index: " << after_op_index
+  VLOG_WITH_PREFIX(4) << "ReadOps, after_op_index: " << after_op_index
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
@@ -405,7 +413,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       }
 
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
-      LOG_WITH_PREFIX_UNLOCKED(INFO)
+      LOG_WITH_PREFIX(INFO)
           << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
       l.lock();
 
@@ -479,7 +487,7 @@ size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
 }
 
 size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict,
-    ReplicateMsgVector* evicted_messages) {
+    ReplicateMsgVector* evicted_messages) REQUIRES(lock_) {
   DCHECK(lock_.is_locked());
   VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting log cache index <= "
                       << stop_after_index
@@ -522,7 +530,7 @@ size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_ev
   return bytes_evicted;
 }
 
-void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {
+void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) REQUIRES(lock_) {
   if (entry.tracked) {
     tracker_->Release(entry.mem_usage);
   }
@@ -555,7 +563,7 @@ string LogCache::StatsString() const {
   return StatsStringUnlocked();
 }
 
-string LogCache::StatsStringUnlocked() const {
+string LogCache::StatsStringUnlocked() const REQUIRES(lock_) {
   return Substitute("LogCacheStats(num_ops=$0, bytes=$1, disk_reads=$2)",
                     metrics_.num_ops->value(),
                     metrics_.size->value(),
@@ -567,13 +575,17 @@ std::string LogCache::ToString() const {
   return ToStringUnlocked();
 }
 
-std::string LogCache::ToStringUnlocked() const {
+std::string LogCache::ToStringUnlocked() const REQUIRES(lock_) {
   return Substitute("Pinned index: $0, $1",
                     min_pinned_op_index_,
                     StatsStringUnlocked());
 }
 
-std::string LogCache::LogPrefixUnlocked() const {
+std::string LogCache::LogPrefix() const {
+  return log_prefix_;
+}
+
+std::string LogCache::LogPrefixUnlocked() const REQUIRES(lock_) {
   return log_prefix_;
 }
 
@@ -581,7 +593,7 @@ void LogCache::DumpToLog() const {
   vector<string> strings;
   DumpToStrings(&strings);
   for (const string& s : strings) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << s;
+    LOG_WITH_PREFIX(INFO) << s;
   }
 }
 

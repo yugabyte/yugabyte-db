@@ -482,11 +482,6 @@ class PeerMessageQueue {
     std::string ToString() const;
   };
 
-  struct PeerMessageQueueMetrics {
-    int64_t num_majority_done_ops;
-    int64_t num_in_progress_ops;
-  };
-
   // Returns true iff given 'desired_op' is found in the local WAL.
   // If the op is not found, returns false.
   // If the log cache returns some error other than NotFound, crashes with a fatal error.
@@ -511,11 +506,8 @@ class PeerMessageQueue {
 
   std::string LogPrefixUnlocked() const;
 
-  // compute metrics under lock
-  PeerMessageQueueMetrics ComputeMetricsUnderLock() const;
-
   // Updates the metrics based on index math.
-  void UpdateMetrics(const PeerMessageQueueMetrics& metrics_value);
+  void UpdateMetrics();
 
   void ClearUnlocked();
 

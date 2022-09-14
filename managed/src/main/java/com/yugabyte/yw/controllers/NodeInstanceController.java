@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
+import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
 import com.yugabyte.yw.models.helpers.NodeConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -77,6 +79,26 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
     return PlatformResults.withData(node);
+  }
+
+  /**
+   * GET endpoint for Node data
+   *
+   * @param customerUUID the customer UUID
+   * @param universeUUID the universe UUID
+   * @param nodeName the node name
+   * @return JSON response with Node data
+   */
+  @ApiOperation(
+      value = "Get node details",
+      response = NodeDetailsResp.class,
+      nickname = "getNodeDetails")
+  public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    NodeDetails detail = universe.getNode(nodeName);
+    NodeDetailsResp resp = new NodeDetailsResp(detail, universe);
+    return PlatformResults.withData(resp);
   }
 
   /**

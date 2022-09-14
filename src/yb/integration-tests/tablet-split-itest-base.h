@@ -247,8 +247,11 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Status WaitForTablets(size_t num_tablets);
 
+  Status WaitForAnySstFiles(const TabletId& tablet_id);
+  Status WaitForAnySstFiles(size_t tserver_idx, const TabletId& tablet_id);
+
   Status WaitTServerToBeQuietOnTablet(
-      itest::TServerDetails* const ts_desc, const TabletId& tablet_id);
+      itest::TServerDetails* ts_desc, const TabletId& tablet_id);
 
   Status SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
 

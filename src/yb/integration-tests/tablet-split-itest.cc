@@ -146,6 +146,7 @@ DECLARE_uint64(prevent_split_for_ttl_tables_for_seconds);
 DECLARE_bool(sort_automatic_tablet_splitting_candidates);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(index_block_restart_interval);
+DECLARE_bool(TEST_error_after_creating_single_split_tablet);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -645,7 +646,7 @@ void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
     }
 
     ASSERT_OK(WaitForTabletSplitCompletion(
-        /* expected_non_split_tablets =*/ 1 << (i + 1)));
+        /* expected_non_split_tablets = */ 1 << (i + 1)));
   }
 
   Status s;
@@ -2307,7 +2308,7 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
     snapshot_util->SetCluster(cluster_.get());
     VERIFY_RESULT(
       snapshot_util->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
-  }
+}
 
   const auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
   const TabletId parent_id = VERIFY_RESULT(SplitTabletAndValidate(split_hash_code, kNumRows));
@@ -2325,9 +2326,9 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
     if (!parent.ok()) {
       if (parent.status().IsNotFound()) {
         return true;
-      }
-      return parent.status();
     }
+      return parent.status();
+  }
     auto parent_lock = parent.get()->LockForRead();
     return hide_only ? parent_lock->is_hidden() : parent_lock->is_deleted();
   }, 10s * kTimeMultiplier, "Wait for parent to be hidden / deleted."));
@@ -2335,7 +2336,7 @@ Status TabletSplitSingleServerITest::TestSplitBeforeParentDeletion(bool hide_onl
   SCHECK(!resp.has_error(), RuntimeError,
          "Splitting should succeed once parent tablet is hidden / deleted.");
   return Status::OK();
-}
+  }
 
 TEST_F(TabletSplitSingleServerITest, SplitBeforeParentDeleted) {
   ASSERT_OK(TestSplitBeforeParentDeletion(false /* hide_only */));
@@ -2945,6 +2946,80 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
   ASSERT_OK(CheckRowsCount(kNumRows * 3));
 }
 
+class TabletSplitSingleServerITestWithPartition :
+    public TabletSplitSingleServerITest,
+    public testing::WithParamInterface<Partitioning> {
+};
+
+TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakInTheMiddleOfSplit) {
+  // Make catalog manager to do only Upsert in order to emulate master error/crash behaviour in the
+  // middle of split. Restart is required to be sure the flags change is seen at the master's side.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = true;
+  ASSERT_OK(cluster_->RestartSync());
+  SetNumTablets(1);
+
+  Schema schema;
+  BuildSchema(GetParam(), &schema);
+  ASSERT_OK(CreateTable(schema));
+
+  ASSERT_RESULT(WriteRowsAndFlush(2000));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(WaitForAnySstFiles(peers.front()));
+
+  // Keep keys to compare later, and split
+  const auto source_tablet_id =
+      ASSERT_RESULT(GetSingleTestTabletInfo(ASSERT_RESULT(catalog_manager())))->id();
+  const auto key_response = ASSERT_RESULT(GetSplitKey(source_tablet_id));
+  ASSERT_FALSE(ASSERT_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id)).has_error());
+
+  // Split should return an OK status, so, let's try to wait for child tablets. The wait must fail
+  // as master error has been simulated in the middle.
+  const auto status = WaitForTabletSplitCompletion(
+      /* expected_non_split_tablets = */2,
+      /* expected_split_tablets = */ 0,
+      /* num_replicas_online = */ 0,
+      client::kTableName,
+      /* core_dump_on_failure = */ false);
+  ASSERT_NOK(status) << "Corresponding split is expected to fail!";
+
+  // Reset flag to emulate partitions re-calculation.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = false;
+  ASSERT_OK(cluster_->RestartSync());
+
+  // Split should pass without any error.
+  const auto response = ASSERT_RESULT(SendMasterSplitTabletRpcSync(source_tablet_id));
+  ASSERT_FALSE(response.has_error()) << response.error().ShortDebugString();
+  ASSERT_OK(WaitForTabletSplitCompletion(2 /* expected_non_split_tablets */));
+
+  // Investigate child tablets to make sure keys are expected.
+  peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(peers.size(), 2);
+  for (const auto& peer : peers) {
+    const auto key_bounds = peer->tablet()->doc_db().key_bounds;
+    ASSERT_NOTNULL(key_bounds);
+    ASSERT_TRUE(key_bounds->IsInitialized());
+
+    const auto partition_end = peer->tablet_metadata()->partition()->partition_key_end();
+    const auto partition = peer->tablet_metadata()->partition()->partition_key_start();
+    if (partition.empty()) {
+      // First child
+      ASSERT_EQ(partition_end, key_response.split_partition_key());
+      ASSERT_TRUE(key_bounds->lower.empty())
+          << "peer lower bound = " << FormatSliceAsStr(key_bounds->lower.AsSlice());
+      ASSERT_EQ(key_bounds->upper.ToStringBuffer(), key_response.split_encoded_key());
+    } else {
+      // Second child
+      ASSERT_EQ(partition, key_response.split_partition_key());
+      ASSERT_TRUE(partition_end.empty())
+          << "peer partition end = " << FormatBytesAsStr(partition_end);
+      ASSERT_EQ(key_bounds->lower.ToStringBuffer(), key_response.split_encoded_key());
+      ASSERT_TRUE(key_bounds->upper.empty())
+          << "peer upper bound = " << FormatSliceAsStr(key_bounds->upper.AsSlice());
+    }
+  }
+}
+
 class TabletSplitSystemRecordsITest :
     public TabletSplitSingleServerITest,
     public testing::WithParamInterface<Partitioning> {
@@ -3322,6 +3397,12 @@ INSTANTIATE_TEST_CASE_P(
 
 INSTANTIATE_TEST_CASE_P(
     TabletSplitSingleServerITest,
+    TabletSplitSingleServerITestWithPartition,
+    ::testing::ValuesIn(kPartitioningArray),
+    TestParamToString<Partitioning>);
+
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitSingleServerITest,
     TabletSplitSystemRecordsITest,
     ::testing::ValuesIn(kPartitioningArray),
     TestParamToString<Partitioning>);
@@ -3339,4 +3420,5 @@ INSTANTIATE_TEST_CASE_P(
         "TEST_crash_before_apply_tablet_split_op",
         "TEST_crash_before_source_tablet_mark_split_done",
         "TEST_crash_after_tablet_split_completed"));
+
 }  // namespace yb

@@ -170,7 +170,8 @@ class PackedRowData {
 
   // Returns true if column was processed. Otherwise caller should handle this column.
   Result<bool> ProcessColumn(
-      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
+      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht,
+      const ValueControlFields& control_fields, size_t encoded_control_fields_size) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -206,9 +207,17 @@ class PackedRowData {
       // Do not forget that we see only most recent entry to specified key.
       return true;
     }
-    // TODO(packed_row) update control fields
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
+    if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
+      auto control_fields_copy = control_fields;
+      control_fields_copy.timestamp = column_doc_ht.hybrid_time().GetPhysicalValueMicros();
+      control_fields_buffer_.clear();
+      control_fields_copy.AppendEncoded(&control_fields_buffer_);
+      return packer_->AddValue(
+          column_id, control_fields_buffer_.AsSlice(),
+          value.WithoutPrefix(encoded_control_fields_size), tail_size);
+    }
     return packer_->AddValue(column_id, value, tail_size);
   }
 
@@ -355,6 +364,7 @@ class PackedRowData {
   // All old_ fields are releated to original row packing.
   // I.e. row state that had place before the compaction.
   ValueBuffer old_value_;
+  ValueBuffer control_fields_buffer_;
   Slice old_value_slice_;
   SchemaVersion old_schema_version_;
   CompactionSchemaInfo old_packing_;
@@ -776,7 +786,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           return Status::OK();
         }
         // Return if column was processed by packed row.
-        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value, ht))) {
+        auto encoded_control_fields_size = value_slice.data() - value.data();
+        if (VERIFY_RESULT(packed_row_.ProcessColumn(
+                column_id, value, ht, control_fields, encoded_control_fields_size))) {
           return Status::OK();
         }
       }
@@ -1021,6 +1033,20 @@ size_t CompactionSchemaInfo::pack_limit() const {
       return FLAGS_ycql_packed_row_size_limit;
     case TableType::PGSQL_TABLE_TYPE:
       return FLAGS_ysql_packed_row_size_limit;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+bool CompactionSchemaInfo::keep_write_time() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return true;
+    case TableType::PGSQL_TABLE_TYPE:
+      return false;
+    // Packed rows are not supported for table types below.
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
       return false;

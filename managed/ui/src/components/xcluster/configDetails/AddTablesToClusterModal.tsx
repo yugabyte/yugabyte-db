@@ -14,7 +14,7 @@ import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { Replication, ReplicationTable } from '../XClusterReplicationTypes';
+import { Replication, ReplicationTable } from '../XClusterTypes';
 
 import './AddTableToClusterModal.scss';
 

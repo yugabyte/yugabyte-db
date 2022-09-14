@@ -13,17 +13,14 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.CommonNet;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
+
+import java.util.*;
 
 public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
 
@@ -49,7 +46,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     // Add table IDs and bootstrap IDs.

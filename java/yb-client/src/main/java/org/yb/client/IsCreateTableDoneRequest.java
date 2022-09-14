@@ -37,7 +37,7 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 /**
  * Package-private RPC that can only go to a master.
@@ -72,7 +72,7 @@ class IsCreateTableDoneRequest extends YRpc<MasterDdlOuterClass.IsCreateTableDon
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     final MasterDdlOuterClass.IsCreateTableDoneRequestPB.Builder builder = MasterDdlOuterClass
         .IsCreateTableDoneRequestPB.newBuilder();
     builder.setTable(MasterTypes.TableIdentifierPB.newBuilder().setTableId(

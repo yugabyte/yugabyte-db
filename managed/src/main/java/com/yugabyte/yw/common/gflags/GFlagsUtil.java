@@ -252,8 +252,10 @@ public class GFlagsUtil {
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     if (node.isMaster) {
       ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+      ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
     }
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);

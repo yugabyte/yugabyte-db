@@ -80,6 +80,11 @@ export const GET_UNIVERSE_PER_NODE_STATUS_RESPONSE = 'GET_UNIVERSE_PER_NODE_STAT
 export const GET_UNIVERSE_PER_NODE_METRICS = 'GET_UNIVERSE_PER_NODE_METRICS';
 export const GET_UNIVERSE_PER_NODE_METRICS_RESPONSE = 'GET_UNIVERSE_PER_NODE_METRICS_RESPONSE';
 
+// Node Actions
+export const GET_NODE_DETAILS = 'GET_NODE_DETAILS';
+export const GET_NODE_DETAILS_RESPONSE = 'GET_NODE_DETAILS_RESPONSE';
+export const RESET_NODE_DETAILS = 'RESET_NODE_DETAILS';
+
 //Validation Tasks
 export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
 
@@ -490,6 +495,29 @@ export function getUniversePerNodeStatusResponse(response) {
   return {
     type: GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
     payload: response
+  };
+}
+
+export function getNodeDetails(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/nodes/${nodeName}/details`;
+  const request = axios.get(requestUrl);
+  return {
+    type: GET_NODE_DETAILS,
+    payload: request
+  };
+}
+
+export function getNodeDetailsResponse(response) {
+  return {
+    type: GET_NODE_DETAILS_RESPONSE,
+    payload: response
+  };
+}
+
+export function resetNodeDetails() {
+  return {
+    type: RESET_NODE_DETAILS
   };
 }
 

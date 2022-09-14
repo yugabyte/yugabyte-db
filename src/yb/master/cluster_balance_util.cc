@@ -301,7 +301,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 
   // Mark as blacklisted if it matches.
   bool is_blacklisted = false;
-  for (const auto& hp : blacklist_.hosts()) {
+  for (const auto& hp : global_state_->blacklist_.hosts()) {
     if (ts_meta.descriptor->IsRunningOn(hp)) {
       blacklisted_servers_.insert(ts_uuid);
       is_blacklisted = true;
@@ -317,7 +317,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 
   // Mark as blacklisted leader if it matches.
   bool is_leader_blacklisted = false;
-  for (const auto& hp : leader_blacklist_.hosts()) {
+  for (const auto& hp : global_state_->leader_blacklist_.hosts()) {
     if (ts_meta.descriptor->IsRunningOn(hp)) {
       leader_blacklisted_servers_.insert(ts_uuid);
       is_leader_blacklisted = true;

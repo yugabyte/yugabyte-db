@@ -24,6 +24,10 @@ class LoginForm extends Component {
     clearCredentials();
   }
 
+  componentDidMount = () => {
+    this.props.getYugaWareVersion();
+  }
+
   submitLogin = (formValues) => {
     const { loginCustomer } = this.props;
     formValues.email = trimString(formValues.email);
@@ -57,8 +61,10 @@ class LoginForm extends Component {
 
   render() {
     const {
-      customer: { authToken }
+      customer: { authToken, yugawareVersion }
     } = this.props;
+    const version = getPromiseState(yugawareVersion).isSuccess()
+      ? yugawareVersion.data?.version : null;
 
     const validationSchema = Yup.object().shape({
       email: Yup.string().required('Enter Email or Username'),
@@ -125,9 +131,8 @@ class LoginForm extends Component {
                     </div>
                   )}
                   <div
-                    className={`alert alert-danger form-error-alert ${
-                      authToken.error ? '' : 'hide'
-                    }`}
+                    className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'
+                      }`}
                   >
                     {<strong>{JSON.stringify(authToken.error)}</strong>}
                   </div>
@@ -173,6 +178,7 @@ class LoginForm extends Component {
               )}
             </Formik>
           )}
+          {version && <span className="align-center yba-version"> Platform Version: {version}</span>}
         </div>
       </div>
     );

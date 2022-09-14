@@ -14,7 +14,7 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.CreateCDCStreamRequestPB;
@@ -52,7 +52,7 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final CreateCDCStreamRequestPB.Builder builder = CreateCDCStreamRequestPB.newBuilder();
     if (namespaceName == null)

@@ -1223,7 +1223,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 					int			num_elems;
 					Datum	   *elem_values;
 					bool	   *elem_nulls;
-					int			num_nonnulls;
+					int			num_valid;
 					int			j;
 
 					/*
@@ -1243,13 +1243,26 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 					/*
 					 * Compress out any null elements.  We can ignore them since we assume
-					 * all btree operators are strict.
+					 * all btree operators are strict. Also remove elements that are too large or
+					 * too small. eg. WHERE element = INT_MAX + k, where k is positive and element
+					 * is of integer type.
 					 */
-					num_nonnulls = 0;
+					Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+
+					num_valid = 0;
 					for (j = 0; j < num_elems; j++)
 					{
-						if (!elem_nulls[j])
-							elem_values[num_nonnulls++] = elem_values[j];
+						if (elem_nulls[j])
+							continue;
+
+						/* Skip integer element where the value overflows the column type */
+						if ((atttype == INT2OID || atttype == INT4OID) &&
+							!YbIsIntegerInRange(elem_values[j], ybScan->keys[i]->sk_subtype,
+                                  			   atttype == INT2OID ? SHRT_MIN : INT_MIN,
+								               atttype == INT2OID ? SHRT_MAX : INT_MAX))
+							continue;
+
+						elem_values[num_valid++] = elem_values[j];
 					}
 
 					/* We could pfree(elem_nulls) now, but not worth the cycles */
@@ -1258,7 +1271,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 						* If there's no non-nulls, the scan qual is unsatisfiable
 						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
 						*/
-					if (num_nonnulls == 0)
+					if (num_valid == 0)
 						return false;
 
 					/* Build temporary vars */
@@ -1273,7 +1286,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 						*/
 					num_elems = _bt_sort_array_elements(&tmp_scan_desc, key,
 														false /* reverse */,
-														elem_values, num_nonnulls);
+														elem_values, num_valid);
 
 					/*
 						* And set up the BTArrayKeyInfo data.

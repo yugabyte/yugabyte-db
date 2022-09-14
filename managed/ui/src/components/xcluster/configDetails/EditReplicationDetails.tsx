@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { editXclusterName, fetchUniversesList } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { TargetUniverseForm } from '../ConfigureReplicationModal';
-import { Replication } from '../XClusterReplicationTypes';
+import { Replication } from '../XClusterTypes';
 import * as Yup from 'yup';
 
 interface Props {
@@ -43,7 +43,10 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
         onHide();
       },
       onError: (err: any) => {
-        toast.error(err.response.data.error);
+        toast.error(
+          err.response.data.error instanceof String
+              ? err.response.data.error
+              : JSON.stringify(err.response.data.error));
       }
     }
   );

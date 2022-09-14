@@ -2425,6 +2425,18 @@ void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetTserverCatalogVersionInfo(
+    const GetTserverCatalogVersionInfoRequestPB* req,
+    GetTserverCatalogVersionInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {

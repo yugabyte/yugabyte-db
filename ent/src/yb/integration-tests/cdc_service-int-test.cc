@@ -436,12 +436,7 @@ Status CDCServiceTest::GetChangesInitialSchema(GetChangesRequestPB const& req_in
 }
 
 tserver::MiniTabletServer* CDCServiceTest::GetLeaderForTablet(const std::string& tablet_id) {
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-    if (cluster_->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
-      return cluster_->mini_tablet_server(i);
-    }
-  }
-  return nullptr;
+  return ::yb::GetLeaderForTablet(cluster_.get(), tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestCompoundKey) {
@@ -619,7 +614,7 @@ TEST_P(CDCServiceTest, TestSafeTime) {
     ASSERT_FALSE(change_resp.has_error());
     ASSERT_TRUE(change_resp.has_safe_hybrid_time());
     uint64_t safe_hybrid_time = change_resp.safe_hybrid_time();
-    ASSERT_TRUE(ht_0 <= safe_hybrid_time && safe_hybrid_time <= ht_1);
+    ASSERT_TRUE(ht_0 < safe_hybrid_time && safe_hybrid_time < ht_1);
   }
 
   FLAGS_TEST_xcluster_simulate_have_more_records = false;

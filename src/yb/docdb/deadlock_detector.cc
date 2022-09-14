@@ -438,7 +438,11 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
             continue;
           }
           auto blocker_txn_id = VERIFY_RESULT(FullyDecodeTransactionId(blocker.transaction_id()));
-          blockers.push_back(BlockingTransactionData {blocker_txn_id, blocker.status_tablet_id()});
+          blockers.push_back(BlockingTransactionData {
+            .id = blocker_txn_id,
+            .status_tablet = blocker.status_tablet_id(),
+            .subtransactions = nullptr,
+          });
           VLOG_WITH_PREFIX(4)
               << "Adding new wait-for relationship --"
               << "blocker txn id: " << blocker_txn_id << " "

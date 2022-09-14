@@ -55,6 +55,7 @@ constexpr bool IsSanitizer() {
 }
 
 const int kTimeMultiplier = RegularBuildVsSanitizers(1, 3);
+const float kTimeMultiplierWithFraction = RegularBuildVsSanitizers(1.0f, 3.0f);
 
 }  // namespace yb
 

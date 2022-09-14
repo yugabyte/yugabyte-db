@@ -42,6 +42,7 @@ enum SysRowEntryType {
   SNAPSHOT_SCHEDULE = 12;
   DDL_LOG_ENTRY = 13;
   SNAPSHOT_RESTORATION = 14;
+  XCLUSTER_SAFE_TIME = 15;
 }
 
 // Master specific errors use this protobuf.
