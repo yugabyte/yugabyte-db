@@ -827,6 +827,8 @@ class GoogleCloudAdmin():
         if boot_disk_size_gb is not None:
             # Default: 10GB
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+        # Create boot disk backed by a zonal persistent SSD
+        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}
