@@ -1392,6 +1392,9 @@ class YBBackup:
             XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
             SHA_TOOL_PATH = '/usr/bin/shasum'
 
+        if self.args.disable_checksums:
+            self.use_xxhash_checksum = False
+
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
 
