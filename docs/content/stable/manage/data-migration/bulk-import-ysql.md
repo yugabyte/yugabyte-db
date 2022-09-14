@@ -181,14 +181,18 @@ After the data import step, remember to recreate any constraints and triggers th
 
 Following are some steps that can be verified to ensure that the migration was successful.
 
-### Verify database objects
+<!-- ### Verify database objects
 
 - Verify that all the tables and indexes have been created in YugabyteDB.
-- Ensure that triggers and constraints are migrated and are working as expected.
+- Ensure that triggers and constraints are migrated and are working as expected. -->
 
 ### Verify row counts for tables
 
-Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB. This can be done as shown below using a PLPGSQL function.
+Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB.
+
+#### Run count query in YSQL
+
+This can be done as shown below using a PLPGSQL function:
 
 **Step 1.** Create the following function to print the number of rows in a single table.
 
@@ -250,3 +254,139 @@ example=# SELECT cnt_rows(table_schema, table_name)
  public       | customer_demographics  |        0
 (14 rows)
 ```
+
+The COUNT(*) query may time out in case of large tables. The following two options are recommended for such use cases.
+
+**Option 1.** : Create a function and execute the query using the function which uses an implicit cursor.
+
+```sql
+CREATE OR REPLACE FUNCTION row_count(tbl regclass)
+    RETURNS setof int AS
+$func$
+DECLARE
+    _id int;
+BEGIN
+    FOR _id IN
+        EXECUTE 'SELECT 1 FROM ' || tbl
+    LOOP
+        RETURN NEXT _id;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+```
+
+In this case, the query would be:
+
+```sql
+select count(*) from row_count('tablename');
+```
+
+Note that this query may take sometime to complete. You can also increase the client side timeout to something higher, maybe 10 minutes using the YB-TServer gflag: `--client_read_write_timeout_ms=600000`.
+
+The following example is another workaround for running COUNT(*) in ysqlsh:
+
+```sql
+create table test (id int primary key, fname text);
+insert into test select i, 'jon' || i from generate_series(1, 1000000) as i;
+create table dual (test int);
+insert into dual values (1);
+explain select count(*) from test cross join dual;
+```
+
+```output
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Aggregate  (cost=15202.50..15202.51 rows=1 width=8)
+   ->  Nested Loop  (cost=0.00..12702.50 rows=1000000 width=0)
+         ->  Seq Scan on test  (cost=0.00..100.00 rows=1000 width=0)
+         ->  Materialize  (cost=0.00..105.00 rows=1000 width=0)
+               ->  Seq Scan on dual  (cost=0.00..100.00 rows=1000 width=0)
+```
+
+**Option 2.** : Use [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table, and control the parallelism at the application level.
+
+Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running COUNT(*) on tables using yb_hash_code().
+
+#### Run count query in YCQL
+
+In YCQL, the count() query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
+
+The tool uses the exposed hash_partition function in order to execute smaller, more manageable queries which have are individually less resource intensive, and so they don't time out.
+
+Following are the steps to set up and run the ycrc tool:
+
+1. Download the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool by compiling the source from the GitHub repository.
+
+1. Run `./ycrc --help` to confirm if the ycrc tool is working.
+
+    ```sh
+    ./ycrc --help
+    ```
+
+    ```output
+    YCQL Row Count (ycrc) parallelizes counting the number of rows in a table for YugabyteDB CQL, allowing count(*) on tables that otherwise would fail with query timeouts
+
+    Usage:
+
+     ycrc <keyspace> [flags]
+
+    Flags:
+
+     -d, --debug  Verbose logging
+     -h, --help  help for ycrc
+     -c, --hosts strings  Cluster to connect to (default [127.0.0.1])
+     -p, --parallel int  Number of concurrent tasks (default 16)
+     --password string  user password
+     -s, --scale int  Scaling factor of tasks per table, an int between 1 and 10 (default 6)
+     --sslca string  SSL root ca path
+     --sslcert string  SSL cert path
+     --sslkey string  SSL key path
+     --tables strings  List of tables inside of the keyspace - default to all
+     -t, --timeout int  Timeout of a single query, in ms (default 1500)
+     -u, --user string  database user (default "cassandra")
+     --verify  Strictly verify SSL host (off by default)
+     -v, --version  version for ycrc
+
+    ```
+
+1. Run the ycrc tool to count the rows in a given keyspace. The following example shows ycrc command to count rows in all tables in example keyspace:
+
+    ```cql
+    ./ycrc -c 1127.0.0.1 example
+    ```
+
+    ```output
+    Checking table row counts for keyspace: example
+    Checking row counts for: example.sensordata
+    Partitioning columns for example.sensordata:(customer_name,device_id)
+
+    Performing 4096 checks for example.sensordata with 16 parallel tasks
+
+    Total time: 261 ms
+
+    ==========
+    Total Row Count example.sensordata = 60
+    Checking row counts for: example.emp
+    Partitioning columns for example.emp:(emp_id)
+
+    Performing 4096 checks for example.emp with 16 parallel tasks
+
+    Total time: 250 ms
+
+    ==========
+    Total Row Count example.emp = 3
+    ```
+
+    The following is an example with additional flags on the keyspace `example`:
+
+    ```sh
+    ./ycrc example \
+          -c 127.0.0.1 \                         # Cluster to connect to (default [127.0.0.1])
+          -u test \                              # database user (default "cassandra")
+          --verify --password xxx \              # user password
+          --tables sensordata \                  # List of tables inside of the keyspace - default to all
+          -s 7 \                                 # Scaling factor of tasks per table, an int between 1 and 10 (default 6)
+          -p 32 \                                # Number of concurrent tasks (default 16)
+          -t 3000 \                              # Timeout of a single query, in ms (default 1500)
+          --sslca /opt/yugabyte/certs/tests.crt  # This flag needs to specified if client to node authentication is enabled.
+    ```
