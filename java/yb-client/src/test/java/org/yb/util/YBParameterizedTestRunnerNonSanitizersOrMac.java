@@ -25,7 +25,7 @@ public class YBParameterizedTestRunnerNonSanitizersOrMac
 
   @Override
   public boolean shouldRunTests() {
-    return super.shouldRunTests() && TestUtils.IS_LINUX;
+    return super.shouldRunTests() && SystemUtil.IS_LINUX;
   }
 
 }

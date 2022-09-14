@@ -383,6 +383,16 @@ public class AccessManager extends DevopsBase {
       keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
       if (sshUser != null) {
         keyInfo.sshUser = sshUser;
+      } else {
+        switch (Common.CloudType.valueOf(region.provider.code)) {
+          case aws:
+          case azu:
+          case gcp:
+            String defaultSshUser = Common.CloudType.valueOf(region.provider.code).getSshUser();
+            if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
+              keyInfo.sshUser = defaultSshUser;
+            }
+        }
       }
       keyInfo.sshPort = sshPort;
       keyInfo.airGapInstall = airGapInstall;

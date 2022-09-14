@@ -33,4 +33,12 @@ TEST_F(FlagsTest, TestRefreshFlagsFile) {
   ASSERT_EQ(100, FLAGS_flagstest_testflag);
 }
 
+TEST_F(FlagsTest, TestSetFlagDefault) {
+  ASSERT_EQ(0, FLAGS_flagstest_testflag);
+  FLAGS_flagstest_testflag = 2;
+  ASSERT_OK(SetFlagDefaultAndCurrent("flagstest_testflag", "1"));
+  ASSERT_EQ(1, FLAGS_flagstest_testflag);
+
+  ASSERT_NOK(SetFlagDefaultAndCurrent("flagstest_testflag", "NA"));
+}
 } // namespace yb

@@ -75,11 +75,13 @@ MAX_TRIES = 2
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
-    "ssl2": "SSLv23",
-    "ssl3": "SSLv23",
+    "ssl2": "SSLv2",
+    "ssl3": "SSLv3",
     "tls10": "TLSv1",
     "tls11": "TLSv1_1",
-    "tls12": "TLSv1_2"
+    "tls12": "TLSv1_2",
+    # No constant for TLSv1.3 only: https://docs.python.org/3/library/ssl.html#ssl.SSLContext
+    "tls13": "TLS"
 }
 
 

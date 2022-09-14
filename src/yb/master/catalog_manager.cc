@@ -737,7 +737,8 @@ void InitMasterFlags() {
       kAutoDetectNumShardsPerTServer) {
     const auto value = GetTransactionTableNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_transaction_table_num_tablets_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent(
+        "transaction_table_num_tablets_per_tserver", std::to_string(value)));
   }
 }
 

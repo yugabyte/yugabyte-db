@@ -39,6 +39,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -111,7 +112,7 @@ Status SetupLogDir(const std::string& server_type) {
     RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(Env::Default(), out_dir, &created),
                           "Unable to create FSManager path component " + out_dir);
     // Set the log dir.
-    FLAGS_log_dir = out_dir;
+    RETURN_NOT_OK(SetFlagDefaultAndCurrent("log_dir", out_dir));
   }
   // If we have a custom specified log_dir, use that.
   return Status::OK();

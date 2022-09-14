@@ -58,9 +58,6 @@ public class TestUtils {
 
   private static String ybRootDir = null;
 
-  public static final boolean IS_LINUX =
-      System.getProperty("os.name").toLowerCase().equals("linux");
-
   public static final boolean IS_AARCH64 =
       System.getProperty("os.arch").toLowerCase().equals("aarch64");
 

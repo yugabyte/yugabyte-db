@@ -510,7 +510,7 @@ public class GcpEARServiceUtil {
     CryptoKeyVersionTemplate.Builder cryptoKeyVersionTemplateBuilder =
         CryptoKeyVersionTemplate.newBuilder();
     if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)
-        && authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText() == "HSM") {
+        && authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText().equals("HSM")) {
       cryptoKeyVersionTemplateBuilder.setProtectionLevel(ProtectionLevel.HSM);
     }
     // Use default google symmetric encryption algorithm

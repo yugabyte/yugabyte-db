@@ -181,8 +181,11 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us. Trace:";
-    trace_->Dump(&LOG(INFO), true);
+              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
+              << (trace_ ? " Trace:" : "");
+    if (trace_) {
+      trace_->Dump(&LOG(INFO), true);
+    }
   }
 
   DecrementGauge(rpc_metrics_->outbound_calls_alive);

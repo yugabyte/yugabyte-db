@@ -542,6 +542,7 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
  *    However, TableDesc cache makes this low-priority.
  */
 YbTableProperties YbGetTableProperties(Relation rel);
+YbTableProperties YbGetTablePropertiesById(Oid relid);
 YbTableProperties YbTryGetTableProperties(Relation rel);
 
 /*

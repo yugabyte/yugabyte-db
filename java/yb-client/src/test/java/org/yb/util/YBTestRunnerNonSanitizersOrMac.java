@@ -15,8 +15,6 @@
 package org.yb.util;
 
 import org.junit.runners.model.InitializationError;
-import org.yb.client.TestUtils;
-import org.yb.YBTestRunner;
 
 public class YBTestRunnerNonSanitizersOrMac extends YBTestRunnerNonTsanAsan {
 
@@ -26,7 +24,7 @@ public class YBTestRunnerNonSanitizersOrMac extends YBTestRunnerNonTsanAsan {
 
   @Override
   public boolean shouldRunTests() {
-    return super.shouldRunTests() && TestUtils.IS_LINUX;
+    return super.shouldRunTests() && SystemUtil.IS_LINUX;
   }
 
 }
