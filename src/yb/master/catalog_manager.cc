@@ -526,6 +526,11 @@ DEFINE_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
              "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 TAG_FLAG(max_concurrent_delete_replica_rpcs_per_ts, runtime);
 
+DEFINE_bool(
+    enable_delete_truncate_cdcsdk_table, false,
+    "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
+TAG_FLAG(enable_delete_truncate_cdcsdk_table, runtime);
+
 namespace yb {
 namespace master {
 
@@ -5185,6 +5190,14 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
                   "Cannot truncate a table in replication.",
                   table_id,
                   MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsCdcSdkEnabled(*table)) {
+    return STATUS(
+        NotSupported,
+        "Cannot truncate a table in a CDCSDK Stream.",
+        table_id,
+        MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   // Send a Truncate() request to each tablet in the table.
