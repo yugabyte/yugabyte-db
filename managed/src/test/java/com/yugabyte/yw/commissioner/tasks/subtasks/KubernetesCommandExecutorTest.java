@@ -321,6 +321,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // tserverOverrides.put("placement_uuid",
     // defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
+    tserverOverrides.put("start_redis_proxy", "true");
 
     gflagOverrides.put("tserver", tserverOverrides);
     // Put all the flags together.
