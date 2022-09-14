@@ -102,12 +102,48 @@ cmds:
     cmd: publicip
 
 components:
+  - name: pg_upgrade
+    containers:
+    - source: public
+      image_name: tianon/postgres-upgrade
+      name: postgres_upgrade
+      version: 9.6-to-14
+      volumes:
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/yugaware'
+          container_path: /var/lib/postgresql/9.6/data
+          owner: "999"
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14/yugaware'
+          container_path: /var/lib/postgresql/14/data
+          owner: "999"
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
+          container_path: /var/lib/postgresql/status
+          owner: "999"
+      publish_events:
+        - name: Postgres_Upgrade started
+          trigger: container-stop
+          subscriptions:
+            - component: db
+              container: postgres
+              action: start
+      config_files:
+        - filename: /home/entrypoint.sh
+          contents: |
+              #!/bin/bash
+
+              if [ ! "$(ls -A /var/lib/postgresql/14/data)" ] && [ "$(ls -A /var/lib/postgresql/9.6/data)" ];
+              then
+                docker-upgrade pg_upgrade;
+                echo "host all all all scram-sha-256" >> /var/lib/postgresql/14/data/pg_hba.conf;
+              fi
+      ephemeral: true
+      entrypoint: ["sh", "/home/entrypoint.sh"]
+
   - name: db
     containers:
       - source: public
         image_name: postgres
         name: postgres
-        version: 9.6
+        version: 14.4
         env_vars:
           - name: POSTGRES_DB
             static_val: 'yugaware'
@@ -126,13 +162,13 @@ components:
             public_port: '{{repl ConfigOption "db_external_port"}}'
             when: '{{repl ConfigOptionEquals "expose_db_port" "1"}}'
         volumes:
-          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
+          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14'
             container_path: /var/lib/postgresql/data
             owner: "999"
         publish_events:
-          - name: Postgres started
+          - name: Postgres_14 started
             trigger: exec
-            args: ["psql", "-U", "postgres", "-f", "/home/update_password.sql"]
+            args: ["sh", "/home/startup.sh"]
             subscriptions:
               - component: app
                 container: yugabyte/yugaware
@@ -141,6 +177,9 @@ components:
           - filename: /home/update_password.sql
             contents: |
               ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+          - filename: /home/startup.sh
+            contents: |
+              psql -U postgres -f /home/update_password.sql;
 
   - name: prometheus
     containers:
@@ -177,8 +216,8 @@ components:
           - name: Prometheus started
             trigger: container-start
             subscriptions:
-              - component: db
-                container: postgres
+              - component: pg_upgrade
+                container: tianon/postgres-upgrade
                 action: start
         config_files:
           - filename: /prometheus_configs/default_prometheus.yml
@@ -514,6 +553,7 @@ components:
             public_port: '{{repl ConfigOption "nginx_external_port" }}'
             port_type: tcp
             when: '{{repl and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}'
+
 config:
   - name: database
     title: Database config
