@@ -110,6 +110,7 @@ class Selectivity {
     for (size_t i = 0; i < schema.num_key_columns(); i++) {
       id_to_idx.emplace(schema.ColumnId(i), i);
     }
+    VLOG(4) << "index_id_:" << index_id_ << ", id_to_idx=" << yb::ToString(id_to_idx);
     Analyze(memctx, stmt, id_to_idx, schema.num_key_columns(), schema.num_hash_key_columns());
   }
 
@@ -137,6 +138,7 @@ class Selectivity {
         id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
       }
     }
+    VLOG(4) << "index_id_:" << index_id_ << ", id_to_idx=" << yb::ToString(id_to_idx);
     Analyze(memctx, stmt, id_to_idx, index_info.key_column_count(), index_info.hash_column_count());
   }
 
@@ -285,7 +287,7 @@ class Selectivity {
     // "id_to_idx" mapping is more efficient, so don't remove this map.
 
     // The operator on each column, in the order of the columns in the table or index we analyze.
-    MCVector<OpSelectivity> ops(id_to_idx.size(), OpSelectivity::kNone, memctx);
+    MCVector<OpSelectivity> ops(num_key_columns, OpSelectivity::kNone, memctx);
     for (const ColumnOp& col_op : scan_info->col_ops()) {
       if (!FLAGS_ycql_allow_in_op_with_order_by &&
           is_primary_index() &&
