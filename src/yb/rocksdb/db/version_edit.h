@@ -119,8 +119,13 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
-  bool delete_after_compaction = false;  // True if file has been marked for
-                                         // direct deletion.
+  bool delete_after_compaction() const {
+    return base::subtle::NoBarrier_Load(&delete_after_compaction_) != 0;
+  }
+
+  void set_delete_after_compaction(bool value) {
+    base::subtle::Release_Store(&delete_after_compaction_, value ? 1 : 0);
+  }
 
   FileMetaData();
 
@@ -139,6 +144,11 @@ struct FileMetaData {
   std::string FrontiersToString() const;
 
   std::string ToString() const;
+
+ private:
+  // True if file has been marked for direct deletion.
+  // We cannot use std::atomic<bool> here, because this class is stored in std::vector.
+  AtomicWord delete_after_compaction_ = 0;
 };
 
 class VersionEdit {
