@@ -1,14 +1,46 @@
-import { TableReplicationMetric } from './XClusterReplicationTypes';
+import { TableReplicationMetric } from './XClusterTypes';
 
 export enum ReplicationStatus {
-  Initialized = 'Initialized',
+  INITIALIZED = 'Initialized',
   RUNNING = 'Running',
   UPDATING = 'Updating',
-  PAUSED = 'Paused',
   DELETED_UNIVERSE = 'DeletedUniverse',
   DELETION_FAILED = 'DeletionFailed',
   FAILED = 'Failed'
 }
+
+export const XClusterConfigState = {
+  RUNNING: ReplicationStatus.RUNNING,
+  PAUSED: 'Paused'
+} as const;
+
+export type XClusterConfigState = typeof XClusterConfigState[keyof typeof XClusterConfigState];
+
+export const XClusterTableStatus = {
+  OPERATIONAL: 'operational',
+  FAILED: 'failed',
+  WARNING: 'warning',
+  ERROR: 'error',
+  IN_PROGRESS: 'inProgress',
+  VALIDATING: 'validating',
+  BOOTSTRAPPING: 'bootstrapping'
+} as const;
+
+export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
+
+/**
+ * Actions on an xCluster replication config.
+ */
+export const ReplicationAction = {
+  RESUME: 'resume',
+  PAUSE: 'pause',
+  RESTART: 'restart',
+  DELETE: 'delete',
+  ADD_TABLE: 'addTable',
+  EDIT: 'edit'
+} as const;
+
+export type ReplicationAction = typeof ReplicationAction[keyof typeof ReplicationAction];
 
 // Time range selector constants
 
@@ -73,5 +105,8 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: TableReplicationMetric = {
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
-export const TRANSITORY_STATES = [ReplicationStatus.Initialized, ReplicationStatus.UPDATING] as const;
+export const TRANSITORY_STATES = [
+  ReplicationStatus.INITIALIZED,
+  ReplicationStatus.UPDATING
+] as const;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 10_000;

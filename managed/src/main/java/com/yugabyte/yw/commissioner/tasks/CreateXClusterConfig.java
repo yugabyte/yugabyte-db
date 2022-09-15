@@ -14,9 +14,12 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +29,8 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
+import org.yb.IndexInfo;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
@@ -55,11 +60,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // Lock the target universe.
         lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
 
+        Set<String> tableIds = xClusterConfig.getTables();
+        Map<String, List<String>> mainTableIndexTablesMap =
+            getMainTableIndexTablesMap(sourceUniverse, tableIds);
+        log.debug("mainTableIndexTablesMap for {} is {}", tableIds, mainTableIndexTablesMap);
         Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-            requestedNamespaceTablesInfoMap = checkTables();
+            requestedNamespaceTablesInfoMap = checkTables(mainTableIndexTablesMap);
 
         addSubtasksToCreateXClusterConfig(
-            sourceUniverse, targetUniverse, requestedNamespaceTablesInfoMap);
+            sourceUniverse,
+            targetUniverse,
+            requestedNamespaceTablesInfoMap,
+            mainTableIndexTablesMap);
 
         getRunnableTask().runSubTasks();
       } finally {
@@ -82,7 +94,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Universe sourceUniverse,
       Universe targetUniverse,
       Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-          requestedNamespaceTablesInfoMap) {
+          requestedNamespaceTablesInfoMap,
+      Map<String, List<String>> mainTableIndexTablesMap) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
@@ -113,6 +126,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     checkBootstrapRequiredForReplicationSetup(getTableIdsNeedBootstrap());
 
+    Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap();
     requestedNamespaceTablesInfoMap.forEach(
         (namespaceId, tablesInfoList) -> {
           Set<String> tableIdsInNamespace = getTableIds(tablesInfoList);
@@ -122,11 +136,26 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               && !getTablesNeedBootstrap(tableIdsInNamespace).isEmpty()) {
             xClusterConfig.setNeedBootstrapForTables(tableIdsInNamespace, true /* needBootstrap */);
           }
+          // If a main table or an index table of a main table needs bootstrapping, it must be done
+          // for the main table and all of its index tables due to backup/restore restrictions.
+          mainTableIndexTablesMap.forEach(
+              (mainTableId, indexTableIds) -> {
+                if (tableIdsNeedBootstrap.contains(mainTableId)
+                    || indexTableIds.stream().anyMatch(tableIdsNeedBootstrap::contains)) {
+                  xClusterConfig.setNeedBootstrapForTables(
+                      Collections.singleton(mainTableId), true /* needBootstrap */);
+                  xClusterConfig.setNeedBootstrapForTables(indexTableIds, true /* needBootstrap */);
+                }
+              });
         });
 
     // Replication for tables that do NOT need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap = getTableIdsNotNeedBootstrap();
     if (!tableIdsNotNeedBootstrap.isEmpty()) {
+      log.info(
+          "Creating a subtask to set up replication without bootstrap for tables {}",
+          tableIdsNotNeedBootstrap);
+
       // Set up the replication config.
       createXClusterConfigSetupTask(tableIdsNotNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -164,6 +193,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Set<String> tableIds = getTableIds(tablesInfoList);
       Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap(tableIds);
       if (!tableIdsNeedBootstrap.isEmpty()) {
+        log.info(
+            "Creating subtasks to set up replication using bootstrap for tables {} in "
+                + "keyspace {}",
+            tableIdsNeedBootstrap,
+            namespace);
+
         // Create checkpoints for the tables.
         createBootstrapProducerTask(tableIdsNeedBootstrap)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
@@ -189,7 +224,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               tablesInfoList
                   .stream()
                   .filter(
-                      tableInfo -> tableIdsNeedBootstrap.contains(tableInfo.getId().toStringUtf8()))
+                      tableInfo ->
+                          tableIdsNeedBootstrap.contains(tableInfo.getId().toStringUtf8())
+                              && tableInfo.getRelationType()
+                                  != MasterTypes.RelationType.INDEX_TABLE_RELATION)
                   .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
                   .collect(Collectors.toList());
           List<String> tableNamesToDeleteOnTargetUniverse =
@@ -237,15 +275,28 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
    * It ensures that all requested tables exist on the source universe, and they have the same type.
    * Also, if the table type is YSQL and bootstrap is required, it ensures all the tables in a
    * keyspace are selected because per-table backup/restore is not supported for YSQL. In addition,
-   * it ensures none of YCQL tables are index tables.
+   * it ensures none of YCQL tables are index tables. This method adds the index tables to the list
+   * of tables for replication as well.
    *
+   * @param mainTableIndexTablesMap A map of table ids to a list of their index table ids
    * @return A map of namespace ID to {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo}
    *     containing table info of the tables in that namespace requested to be in the xCluster
    *     config
    */
-  protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> checkTables() {
+  protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>> checkTables(
+      Map<String, List<String>> mainTableIndexTablesMap) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+
+    // Add index tables.
+    Set<String> indexTableIdSet =
+        mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
+    if (taskParams().createFormData.bootstrapParams == null) {
+      xClusterConfig.addTablesIfNotExist(indexTableIdSet);
+    } else {
+      xClusterConfig.addTablesIfNotExist(indexTableIdSet, indexTableIdSet);
+    }
+
     Set<String> tableIds = xClusterConfig.getTables();
     // Ensure at least one table exists to check.
     if (tableIds.isEmpty()) {
@@ -267,6 +318,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .collect(
                     Collectors.groupingBy(
                         tableInfo -> tableInfo.getNamespace().getId().toStringUtf8()));
+
     // All tables are found.
     if (requestedTablesInfoList.size() != tableIds.size()) {
       Set<String> foundTableIds = getTableIds(requestedTablesInfoList);
@@ -277,13 +329,14 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               .collect(Collectors.toSet());
       throw new IllegalArgumentException(
           String.format(
-              "Some of the tables were not found on the source universe (%s): was %d, "
-                  + "found %d, missing tables: %s",
+              "Some of the tables were not found on the source universe (%s) (Please note that "
+                  + "it might be an index table): was %d, found %d, missing tables: %s",
               xClusterConfig.sourceUniverseUUID,
               tableIds.size(),
               requestedTablesInfoList.size(),
               missingTableIds));
     }
+
     // All tables have the same type.
     if (!requestedTablesInfoList
         .stream()
@@ -300,28 +353,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         "All the requested tables in the xClusterConfig({}) are found and they have a type of {}",
         xClusterConfig,
         tableType);
-
-    // Backup index table is not supported for YCQL.
-    if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
-      Set<String> tableIdsNeedBootstrap = getTableIdsNeedBootstrap();
-      List<String> indexTablesIdWithBootstrapList =
-          requestedTablesInfoList
-              .stream()
-              .filter(
-                  tableInfo ->
-                      tableInfo.hasRelationType()
-                          && tableInfo.getRelationType()
-                              == MasterTypes.RelationType.INDEX_TABLE_RELATION)
-              .map(tableInfo -> tableInfo.getId().toStringUtf8())
-              .filter(tableIdsNeedBootstrap::contains)
-              .collect(Collectors.toList());
-      if (!indexTablesIdWithBootstrapList.isEmpty()) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Bootstrap is not supported for YCQL index tables, but %s are index tables",
-                indexTablesIdWithBootstrapList));
-      }
-    }
 
     // If table type is YSQL and bootstrap is required, all tables in the keyspace are
     // selected.
@@ -414,7 +445,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
           tablesInfoList
               .stream()
-              .filter(tableInfo -> tableIdsNeedBootstrap.contains(tableInfo.getId().toStringUtf8()))
+              .filter(
+                  tableInfo ->
+                      tableIdsNeedBootstrap.contains(tableInfo.getId().toStringUtf8())
+                          && tableInfo.getRelationType()
+                              != MasterTypes.RelationType.INDEX_TABLE_RELATION)
               .collect(Collectors.toList());
       keyspaceTable.tableNameList =
           tablesNeedBootstrapInfoList

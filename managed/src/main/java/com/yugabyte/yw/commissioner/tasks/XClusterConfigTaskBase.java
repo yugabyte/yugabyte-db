@@ -49,6 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.YBClient;
@@ -917,5 +918,61 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     xClusterConfig.setReplicationSetupDone(
         tableIdsPartitionedByReplicationSetupDone.get(false), false /* replicationSetupDone */);
     return true;
+  }
+
+  /**
+   * It gets the table schema information for a list of main tables from a universe.
+   *
+   * @param universe The universe to get the table schema information from
+   * @param mainTableUuidList A set of main table uuids to get the schema information for
+   * @return A map of main table uuid to its schema information
+   */
+  protected final Map<String, GetTableSchemaResponse> getTableSchemas(
+      Universe universe, Set<String> mainTableUuidList) {
+    if (mainTableUuidList.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    Map<String, GetTableSchemaResponse> tableSchemaMap = new HashMap<>();
+    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeCertificate = universe.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+      for (String tableUuid : mainTableUuidList) {
+        // To make sure there is no `-` in the table UUID.
+        tableUuid = tableUuid.replace("-", "");
+        tableSchemaMap.put(tableUuid, client.getTableSchemaByUUID(tableUuid));
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return tableSchemaMap;
+  }
+
+  protected final Map<String, List<String>> getMainTableIndexTablesMap(
+      Universe universe, Set<String> mainTableUuidList) {
+    Map<String, GetTableSchemaResponse> tableSchemaMap =
+        getTableSchemas(universe, mainTableUuidList);
+    Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
+    tableSchemaMap.forEach(
+        (mainTableUuid, tableSchemaResponse) -> {
+          List<String> indexTableUuidList = new ArrayList<>();
+          tableSchemaResponse
+              .getIndexes()
+              .forEach(
+                  indexInfo -> {
+                    if (!indexInfo.getIndexedTableId().equals(mainTableUuid)) {
+                      throw new IllegalStateException(
+                          String.format(
+                              "Received index table with uuid %s as part of "
+                                  + "getTableSchemaByUUID response for the main table %s, but "
+                                  + "indexedTableId in its index info is %s",
+                              indexInfo.getTableId(),
+                              mainTableUuid,
+                              indexInfo.getIndexedTableId()));
+                    }
+                    indexTableUuidList.add(indexInfo.getTableId());
+                  });
+          mainTableIndexTablesMap.put(mainTableUuid, indexTableUuidList);
+        });
+    return mainTableIndexTablesMap;
   }
 }

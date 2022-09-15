@@ -18,18 +18,24 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/client/client.h"
+#include "yb/client/transaction_rpc.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
-
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
+#include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/clock.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -43,6 +49,7 @@ TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
 
 using namespace std::chrono_literals;
+using namespace std::placeholders;
 
 namespace yb {
 namespace docdb {
@@ -99,17 +106,20 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
 // the wait queue's blocker_status_ field, which stores only weak_ptr references. Invalid references
 // in blocker_status_ are presumed to no lonber be of concern to any pending waiting transactions
 // and are discarded.
-struct WaiterData {
-  WaiterData(const TransactionId id_, LockBatch* const locks_,
+struct WaiterData : public std::enable_shared_from_this<WaiterData> {
+  WaiterData(const TransactionId id_, LockBatch* const locks_, const TabletId& status_tablet_,
              const std::vector<BlockerDataAndSubtxnInfo> blockers_,
              const WaitDoneCallback callback_,
-             std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_)
+             std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_,
+             rpc::Rpcs* rpcs)
       : id(id_),
         locks(locks_),
+        status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
         callback(std::move(callback_)),
         waiter_registration(std::move(waiter_registration_)),
-        unlocked_(locks->Unlock()) {}
+        unlocked_(locks->Unlock()),
+        rpcs_(*rpcs) {}
 
   const TransactionId id;
   LockBatch* const locks;
@@ -121,11 +131,12 @@ struct WaiterData {
 
   void InvokeCallback(const Status& status) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
-    if (!status.ok()) {
+    if (!status.ok() || !unlocked_) {
       callback(status);
       return;
     }
-    *locks = std::move(unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
+    *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
+    unlocked_.reset();
     callback(locks->status());
   }
 
@@ -133,9 +144,61 @@ struct WaiterData {
     return Format("TxnId: $0 ", id);
   }
 
+  using StatusCb = std::function<
+      void(const Status& status, const tserver::GetTransactionStatusResponsePB& resp)>;
+
+  void TriggerStatusRequest(HybridTime now, client::YBClient* client, StatusCb cb) {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+
+    if (handle_ != rpcs_.InvalidHandle()) {
+      VLOG_WITH_PREFIX(1)
+          << "Skipping GetTransactionStatus RPC for waiter already having pending RPC";
+      return;
+    }
+
+    tserver::GetTransactionStatusRequestPB req;
+    DCHECK(!status_tablet.empty());
+    req.set_tablet_id(status_tablet);
+    req.add_transaction_id(id.data(), id.size());
+    req.set_propagated_hybrid_time(now.ToUint64());
+    rpcs_.RegisterAndStart(
+        client::GetTransactionStatus(
+            TransactionRpcDeadline(),
+            nullptr /* tablet */,
+            client,
+            &req,
+            [instance = shared_from(this), cb](const auto& status, const auto& resp) {
+                {
+                  UniqueLock<decltype(mutex_)> l(instance->mutex_);
+                  if (instance->handle_ != instance->rpcs_.InvalidHandle()) {
+                    instance->rpcs_.Unregister(&instance->handle_);
+                  }
+                }
+                cb(status, resp);
+            }),
+        &handle_);
+  }
+
+  void ShutdownStatusRequest() {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (handle_ != rpcs_.InvalidHandle()) {
+      (**handle_).Abort();
+      rpcs_.Unregister(&handle_);
+    }
+  }
+
+  bool IsSingleShard() const {
+    return id.IsNil();
+  }
+
  private:
-  UnlockedBatch unlocked_;
+  std::optional<UnlockedBatch> unlocked_ = std::nullopt;
+
+  mutable rw_spinlock mutex_;
+  rpc::Rpcs& rpcs_;
+  rpc::Rpcs::Handle handle_ GUARDED_BY(mutex_) = rpcs_.InvalidHandle();
 };
+
 using WaiterDataPtr = std::shared_ptr<WaiterData>;
 
 // Data for an active transaction which is blocking another active transaction which is waiting
@@ -230,9 +293,20 @@ const Status kShuttingDownError = STATUS(
 class WaitQueue::Impl {
  public:
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
-       WaitingTxnRegistry* waiting_txn_registry)
+       WaitingTxnRegistry* waiting_txn_registry,
+       const std::shared_future<client::YBClient*>& client_future,
+       const server::ClockPtr& clock)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
-        waiting_txn_registry_(waiting_txn_registry) {}
+        waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock) {}
+
+  ~Impl() {
+    if (StartShutdown()) {
+      CompleteShutdown();
+    } else {
+      LOG_IF_WITH_PREFIX(DFATAL, !shutdown_complete_.load())
+          << "Destroying wait queue that did not complete shutdown";
+    }
+  }
 
   Status WaitOn(
       const TransactionId& waiter_txn_id, LockBatch* locks,
@@ -253,6 +327,10 @@ class WaitQueue::Impl {
       }
 
       if (waiter_status_.contains(waiter_txn_id)) {
+        // TODO(pessimistic): If two single-shard transactions come to the same tablet, we will hit
+        // this branch since they will both have waiter_txn_id=TransactionId::Nil(). We should
+        // handle this by storing single-shard transactions separately rather than indexing by
+        // TransactionId. See: https://github.com/yugabyte/yugabyte-db/issues/14014
         LOG_WITH_PREFIX_AND_FUNC(DFATAL)
             << "Existing waiter already found - " << waiter_txn_id << ". "
             << "This should not happen.";
@@ -286,13 +364,21 @@ class WaitQueue::Impl {
       // TODO(pessimistic): similar to pg, we can wait 1s or so before beginning deadlock detection.
       // See https://github.com/yugabyte/yugabyte-db/issues/13576
       auto scoped_reporter = waiting_txn_registry_->Create();
-      RETURN_NOT_OK(
-          scoped_reporter->Register(waiter_txn_id, std::move(blockers), status_tablet_id));
-      DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
+      if (!waiter_txn_id.IsNil()) {
+        // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
+        // to report single shard transactions to transaction coordinators because they can't
+        // possibly be involved in a deadlock. This is true because no transactions can wait on
+        // single shard transactions, so they only have out edges in the wait-for graph and cannot
+        // be a part of a cycle.
+        DCHECK(!status_tablet_id.empty());
+        RETURN_NOT_OK(scoped_reporter->Register(
+            waiter_txn_id, std::move(blockers), status_tablet_id));
+        DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
+      }
 
       waiter_data = std::make_shared<WaiterData>(
-          waiter_txn_id, locks, std::move(blocker_datas), std::move(callback),
-          std::move(scoped_reporter));
+          waiter_txn_id, locks, status_tablet_id, std::move(blocker_datas), std::move(callback),
+          std::move(scoped_reporter), &rpcs_);
       waiter_status_[waiter_txn_id] = waiter_data;
     }
 
@@ -309,7 +395,8 @@ class WaitQueue::Impl {
     // rather than this polling-based mechanism. We should also signal from the RunningTransaction
     // instance of the waiting transaction in case the waiter is aborted by deadlock or otherwise.
     // See https://github.com/yugabyte/yugabyte-db/issues/13578
-    const std::string kReason = "Getting status for wait queue";
+    const std::string kBlockerReason = "Getting status for blocker wait queue";
+    const std::string kWaiterReason = "Getting status for waiter in wait queue";
     std::vector<WaiterDataPtr> waiters;
     std::vector<TransactionId> blockers;
 
@@ -319,7 +406,11 @@ class WaitQueue::Impl {
         return;
       }
       for (auto it = waiter_status_.begin(); it != waiter_status_.end(); ++it) {
-        waiters.push_back(it->second);
+        auto& waiter = it->second;
+        if (!waiter->IsSingleShard()) {
+          DCHECK(!waiter->status_tablet.empty());
+          waiters.push_back(waiter);
+        }
       }
       for (auto it = blocker_status_.begin(); it != blocker_status_.end();) {
         if (auto blocker = it->second.lock()) {
@@ -342,14 +433,19 @@ class WaitQueue::Impl {
       auto duration = CoarseMonoClock::Now() - waiter->created_at;
       auto seconds = duration / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
-      // TODO(pessimistic): Allow checking status of waiting txn. Currently it may be the case that
-      // a waiting txn has not yet registered with the local txn participant if it has not yet
-      // operated on the local tablet. The semantics of txn_status_manager_->RequestStatusAt assume
-      // that any requested txn_id has participated on the local tablet at least once before, and if
-      // there is no state in the local participant relating to this txn_id it assumes it has been
-      // aborted. We should either have some path to request the status of this waiter with
-      // relaxed semantics or we should register this txn with the participant before entering the
-      // wait queue.
+      auto transaction_id = waiter->id;
+      StatusRequest request {
+        .id = &transaction_id,
+        .read_ht = now,
+        .global_limit_ht = now,
+        .serial_no = 0,
+        .reason = &kWaiterReason,
+        .flags = TransactionLoadFlags {},
+        .callback = [waiter, this](Result<TransactionStatusResult> res) {
+          HandleWaiterStatusFromParticipant(waiter, res);
+        }
+      };
+      txn_status_manager_->RequestStatusAt(request);
     }
 
     if (!blockers.empty()) {
@@ -364,7 +460,7 @@ class WaitQueue::Impl {
         .read_ht = now,
         .global_limit_ht = now,
         .serial_no = 0,
-        .reason = &kReason,
+        .reason = &kBlockerReason,
         .flags = TransactionLoadFlags {},
         .callback = [transaction_id, this](Result<TransactionStatusResult> res) {
           MaybeSignalWaitingTransactions(transaction_id, res);
@@ -374,22 +470,34 @@ class WaitQueue::Impl {
     }
   }
 
-  void StartShutdown() EXCLUDES(mutex_) {
+  bool StartShutdown() EXCLUDES(mutex_) {
     decltype(waiter_status_) waiter_status_copy;
+
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
+      if (shutting_down_) {
+        return false;
+      }
       shutting_down_ = true;
       waiter_status_copy.swap(waiter_status_);
       blocker_status_.clear();
     }
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
+      waiter_data->ShutdownStatusRequest();
       waiter_data->InvokeCallback(kShuttingDownError);
     }
+    return !shutdown_complete_;
   }
 
   void CompleteShutdown() EXCLUDES(mutex_) {
+    bool expected = false;
+    if (!shutdown_complete_.compare_exchange_strong(expected, true)) {
+      VLOG_WITH_PREFIX(1) << "Attempted to shutdown wait queue that is already shutdown";
+      return;
+    }
     SharedLock<decltype(mutex_)> l(mutex_);
+    rpcs_.Shutdown();
     LOG_IF(DFATAL, !shutting_down_)
         << "Called CompleteShutdown() while not in shutting_down_ state.";
     LOG_IF(DFATAL, !blocker_status_.empty())
@@ -399,12 +507,90 @@ class WaitQueue::Impl {
   }
 
  private:
+  void HandleWaiterStatusFromParticipant(
+      WaiterDataPtr waiter, Result<TransactionStatusResult> res) {
+    if (!res.ok() && res.status().IsNotFound()) {
+      {
+        SharedLock<decltype(mutex_)> l(mutex_);
+        if (shutting_down_) {
+          VLOG_WITH_PREFIX_AND_FUNC(1) << "Skipping status RPC for waiter in shutdown wait queue.";
+          return;
+        }
+      }
+      // Currently it may be the case that a waiting txn has not yet registered with the local
+      // txn participant if it has not yet operated on the local tablet. The semantics of
+      // txn_status_manager_->RequestStatusAt assume that any requested txn_id has participated on
+      // the local tablet at least once before, and if there is no state in the local participant
+      // relating to this txn_id it returns a NotFound status. So in that case, we send an RPC
+      // directly to the status tablet to determine the status of this transaction.
+      waiter->TriggerStatusRequest(
+          clock_->Now(), &client(),
+          std::bind(&Impl::HandleWaiterStatusRpcResponse, this, waiter->id, _1, _2));
+      return;
+    }
+    HandleWaiterStatusResponse(waiter, res);
+  }
+
+  void HandleWaiterStatusRpcResponse(
+      const TransactionId& waiter_id, const Status& status,
+      const tserver::GetTransactionStatusResponsePB& resp) {
+    if (status.ok() && resp.status(0) == PENDING) {
+      VLOG_WITH_PREFIX(4) << "Waiter status pending " << waiter_id;
+      return;
+    }
+    WaiterDataPtr waiter;
+    {
+      UniqueLock<decltype(mutex_)> l(mutex_);
+      auto it = waiter_status_.find(waiter_id);
+      if (it == waiter_status_.end()) {
+        VLOG_WITH_PREFIX(4) << "Got RPC status for removed waiter " << waiter_id;
+        return;
+      }
+      waiter = it->second;
+      waiter_status_.erase(it);
+    }
+    DCHECK(waiter != nullptr);
+
+    if (!status.ok()) {
+      waiter->InvokeCallback(
+          status.CloneAndPrepend("Failed to get txn status while waiting"));
+      return;
+    }
+    if (resp.has_error()) {
+      waiter->InvokeCallback(StatusFromPB(resp.error().status()).CloneAndPrepend(
+          "Failed to get txn status while waiting"));
+      return;
+    }
+    if (resp.status(0) == ABORTED) {
+      VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
+      waiter->InvokeCallback(
+          // We return InternalError so that TabletInvoker does not retry.
+          STATUS_FORMAT(InternalError, "Transaction $0 was aborted while waiting for locks",
+                        waiter_id));
+      return;
+    }
+    LOG(DFATAL) << "Waiting transaction " << waiter_id
+                << " found in unexpected state " << resp.status(0);
+  }
+
+  void HandleWaiterStatusResponse(
+      const WaiterDataPtr& waiter, Result<TransactionStatusResult> res) {
+    auto status = UnwrapResult(res);
+    VLOG_WITH_PREFIX(4) << "Got waiter " << waiter->id << " status result " << res.ToString();
+    if (!status.ok()) {
+      InvokeWaiterCallback(status.status(), waiter);
+    } else if (*status == ResolutionStatus::kAborted) {
+      InvokeWaiterCallback(
+          STATUS_FORMAT(Aborted, "Transaction was aborted while waiting for locks $0", waiter->id),
+          waiter);
+    }
+  }
+
   void MaybeSignalWaitingTransactions(
       const TransactionId& transaction, Result<TransactionStatusResult> res) EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction: " << transaction
                                  << " - res: " << res << " - aborted "
                                  << (res.ok() ? res->aborted_subtxn_set.ToString() : "error");
-
     std::shared_ptr<BlockerData> resolved_blocker = nullptr;
     {
       SharedLock<decltype(mutex_)> l(mutex_);
@@ -487,9 +673,13 @@ class WaitQueue::Impl {
     return Format("T $0 P $1 - ", txn_status_manager_->tablet_id(), permanent_uuid_);
   }
 
+  client::YBClient& client() { return *client_future_.get(); }
+
   mutable rw_spinlock mutex_;
 
   bool shutting_down_ GUARDED_BY(mutex_) = false;
+
+  std::atomic<bool> shutdown_complete_ = false;
 
   std::unordered_map<
       TransactionId,
@@ -503,16 +693,22 @@ class WaitQueue::Impl {
       TransactionIdHash>
     waiter_status_ GUARDED_BY(mutex_);
 
+  rpc::Rpcs rpcs_;
+
   TransactionStatusManager* const txn_status_manager_;
   const std::string& permanent_uuid_;
   WaitingTxnRegistry* const waiting_txn_registry_;
+  const std::shared_future<client::YBClient*>& client_future_;
+  const server::ClockPtr& clock_;
 };
 
 WaitQueue::WaitQueue(
     TransactionStatusManager* txn_status_manager,
     const std::string& permanent_uuid,
-    WaitingTxnRegistry* waiting_txn_registry):
-  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry)) {}
+    WaitingTxnRegistry* waiting_txn_registry,
+    const std::shared_future<client::YBClient*>& client_future,
+    const server::ClockPtr& clock):
+  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock)) {}
 
 WaitQueue::~WaitQueue() = default;
 
@@ -520,7 +716,8 @@ Status WaitQueue::WaitOn(
     const TransactionId& waiter, LockBatch* locks,
     std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
     WaitDoneCallback callback) {
-  return impl_->WaitOn(waiter, locks, std::move(blockers), status_tablet_id, callback);
+  return impl_->WaitOn(
+      waiter, locks, std::move(blockers), status_tablet_id, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {
@@ -528,7 +725,7 @@ void WaitQueue::Poll(HybridTime now) {
 }
 
 void WaitQueue::StartShutdown() {
-  return impl_->StartShutdown();
+  impl_->StartShutdown();
 }
 
 void WaitQueue::CompleteShutdown() {

@@ -17,19 +17,23 @@ export interface ReplicationTable {
 }
 
 export interface Replication {
-  name: string;
-  uuid: string;
-  sourceUniverseUUID: string;
-  targetUniverseUUID: string;
-  masterAddress?: string;
-  maxReplicationLagTime: number;
-  currentLagTime: number;
-  alertIfMaxReplicationLagTimeReached: boolean;
-  tables: string[];
   createTime: string;
   modifyTime: string;
-  status?: ReplicationStatus;
+  name: string;
   paused: boolean;
+  sourceUniverseUUID: string;
+  status: ReplicationStatus;
+  tableDetails: TableDetails[];
+  tables: string[];
+  targetUniverseUUID: string;
+  uuid: string;
+}
+
+export interface TableDetails {
+  needBootstrap: boolean;
+  replicationSetupDone: true;
+  streamId: string;
+  tableId: string;
 }
 
 export interface MetricTrace {

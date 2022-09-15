@@ -37,8 +37,10 @@ public class RestartXClusterConfig extends CreateXClusterConfig {
         xClusterConfig.setNeedBootstrapForTables(
             xClusterConfig.getTables(), true /* needBootstrap */);
 
+        Map<String, List<String>> mainTableIndexTablesMap =
+            getMainTableIndexTablesMap(sourceUniverse, xClusterConfig.getTables());
         Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-            requestedNamespaceTablesInfoMap = checkTables();
+            requestedNamespaceTablesInfoMap = checkTables(mainTableIndexTablesMap);
 
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
@@ -47,7 +49,10 @@ public class RestartXClusterConfig extends CreateXClusterConfig {
         createDeleteXClusterConfigSubtasks(xClusterConfig, true /* keepEntry */);
 
         addSubtasksToCreateXClusterConfig(
-            sourceUniverse, targetUniverse, requestedNamespaceTablesInfoMap);
+            sourceUniverse,
+            targetUniverse,
+            requestedNamespaceTablesInfoMap,
+            mainTableIndexTablesMap);
 
         getRunnableTask().runSubTasks();
       } finally {

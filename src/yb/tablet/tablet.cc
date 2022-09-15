@@ -443,7 +443,8 @@ Tablet::Tablet(const TabletInitData& data)
         data.transaction_participant_context, this, tablet_metrics_entity_);
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
-        transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry);
+        transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
+        client_future_, clock());
     }
   }
 

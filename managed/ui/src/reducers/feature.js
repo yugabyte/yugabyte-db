@@ -21,7 +21,8 @@ const initialStateFeatureInTest = {
   enableMultiRegionConfig: false,
   enableGcpKMS: false,
   enableAzuKMS: false,
-  allowOptionalAuth: false
+  allowOptionalAuth: false,
+  enablePITR: false
 };
 
 const initialStateFeatureReleased = {
@@ -45,7 +46,8 @@ const initialStateFeatureReleased = {
   enableMultiRegionConfig: false,
   enableGcpKMS: false,
   enableAzuKMS: false,
-  allowOptionalAuth: false
+  allowOptionalAuth: false,
+  enablePITR: false
 };
 
 export const FeatureFlag = (

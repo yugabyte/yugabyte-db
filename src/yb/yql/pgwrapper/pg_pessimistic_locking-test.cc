@@ -29,8 +29,10 @@
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/util/tsan_util.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 #include "yb/util/env.h"
 
@@ -40,13 +42,14 @@ DECLARE_bool(enable_pessimistic_locking);
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_uint64(rpc_connection_timeout_ms);
 
 using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
-
-
 
 class PgPessimisticLockingTest : public PgMiniTestBase {
  protected:
@@ -66,7 +69,7 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgPessimisticLockingTest, TestDeadlock) {
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -128,7 +131,7 @@ TEST_F(PgPessimisticLockingTest, TestDeadlock) {
   EXPECT_LT(succeeded_commit, kClients);
 }
 
-TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
@@ -194,68 +197,68 @@ TEST_F(PgPessimisticLockingTest, TestDeadlockWithWrites) {
 // Note: the following test fails due to a delay in the time it takes for an aborted transaction to
 // signal to the client. This requires more investigation into how pg_client handles heartbeat
 // failure while waiting on an RPC sent to the tserver.
-// TEST_F(PgPessimisticLockingTest, TestDeadlockTwoTransactions) {
-//   constexpr int kNumIndicesBase = 100;
-//   constexpr int kNumTrials = 10;
+TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
+  constexpr int kNumIndicesBase = 100;
+  constexpr int kNumTrials = 10;
 
-//   auto setup_conn = ASSERT_RESULT(Connect());
-//   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
-//   ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 1000), 0"));
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 1000), 0"));
 
-//   std::mutex mutex;
-//   Random r(2912039);
+  std::mutex mutex;
+  Random r(2912039);
 
-//   auto get_sleep_time_us = [&mutex, &r]() {
-//     std::lock_guard<decltype(mutex)> l(mutex);
-//     return r.Next32() % 5000;
-//   };
+  auto get_sleep_time_us = [&mutex, &r]() {
+    std::lock_guard<decltype(mutex)> l(mutex);
+    return r.Next32() % 5000;
+  };
 
-//   for (int trial_idx = 0; trial_idx < kNumTrials; ++trial_idx) {
-//     TestThreadHolder thread_holder;
-//     CountDownLatch did_first_select(2);
-//     CountDownLatch done(2);
-//     CountDownLatch failed(1);
-//     for (int i = 0; i != 2; ++i) {
-//       thread_holder.AddThreadFunctor(
-//           [this, i, &get_sleep_time_us, &did_first_select, &done, trial_idx, &failed] {
-//         auto failed_index = -1;
-//         auto conn = ASSERT_RESULT(Connect());
-//         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-//         auto num_indices = kNumIndicesBase + i;
-//         for (int j = 0; j < num_indices; ++j) {
-//           auto update_index = i == 0 ? j : num_indices - j - 1;
-//           auto s = conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", update_index);
-          // LOG(INFO) << (i == 0 ? "First" : "Second") << " thread executed index: "
-          //           << update_index;
-//           if (j == 0) {
-//             ASSERT_OK(s);
-//             did_first_select.CountDown();
-//           } else {
-//             if (j == num_indices - 1) {
-//               ASSERT_TRUE(did_first_select.WaitFor(10s));
-//             }
+  for (int trial_idx = 0; trial_idx < kNumTrials; ++trial_idx) {
+    TestThreadHolder thread_holder;
+    CountDownLatch did_first_select(2);
+    CountDownLatch done(2);
+    CountDownLatch failed(1);
+    for (int i = 0; i != 2; ++i) {
+      thread_holder.AddThreadFunctor(
+          [this, i, &get_sleep_time_us, &did_first_select, &done, trial_idx, &failed] {
+        auto failed_index = -1;
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        auto num_indices = kNumIndicesBase + i;
+        for (int j = 0; j < num_indices; ++j) {
+          auto update_index = i == 0 ? j : num_indices - j - 1;
+          auto s = conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", update_index);
+          LOG(INFO) << (i == 0 ? "First" : "Second") << " thread executed index: "
+                    << update_index;
+          if (j == 0) {
+            ASSERT_OK(s);
+            did_first_select.CountDown();
+          } else {
+            if (j == num_indices - 1) {
+              ASSERT_TRUE(did_first_select.WaitFor(10s));
+            }
 
-//             if (!s.ok()) {
-//               failed_index = update_index;
-//               break;
-//             }
-//           }
-//           std::this_thread::sleep_for(get_sleep_time_us() * 1us);
-//         }
+            if (!s.ok()) {
+              failed_index = update_index;
+              break;
+            }
+          }
+          std::this_thread::sleep_for(get_sleep_time_us() * 1us);
+        }
 
-//         LOG(INFO) << (i == 0 ? "First" : "Second") << " thread failed at index: " << failed_index
-//                   << " for iter " << trial_idx;
-//         if (failed_index > 0) {
-//           failed.CountDown();
-//         }
-//         EXPECT_TRUE(failed.WaitFor(10s));
-//         done.CountDown();
-//         ASSERT_TRUE(done.WaitFor(10s));
-//       });
-//     }
-//     thread_holder.WaitAndStop(10s);
-//   }
-// }
+        LOG(INFO) << (i == 0 ? "First" : "Second") << " thread failed at index: " << failed_index
+                  << " for iter " << trial_idx;
+        if (failed_index > 0) {
+          failed.CountDown();
+        }
+        EXPECT_TRUE(failed.WaitFor(10s));
+        done.CountDown();
+        ASSERT_TRUE(done.WaitFor(10s));
+      });
+    }
+    thread_holder.WaitAndStop(10s);
+  }
+}
 
 TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockExplicitLocks)) {
   auto setup_conn = ASSERT_RESULT(Connect());
@@ -487,18 +490,22 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SavepointRollbackUnbloc
 // TODO(pessimistic): Add a stress test with many concurrent accesses to the same key to test not
 // only waiting behavior but also that in-memory locks are acquired and respected as expected.
 
-class PgLeaderChangePessimisticLockingTest : public PgPessimisticLockingTest {
+class ConcurrentBlockedWaitersTest {
  protected:
-  Result<PGConn> SetupBlocker(int num_tablets, int num_waiters) {
-    auto conn = VERIFY_RESULT(Connect());
+  virtual ~ConcurrentBlockedWaitersTest() = default;
+  virtual Result<PGConn> GetDbConn() const = 0;
+
+  Status SetupData(int num_tablets) const {
+    auto conn = VERIFY_RESULT(GetDbConn());
 
     RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE TABLE foo(k INT PRIMARY KEY, v INT) SPLIT INTO $0 TABLETS", num_tablets));
 
-    RETURN_NOT_OK(conn.Execute(
-      "INSERT INTO foo SELECT generate_series(0, 1000), 0"));
+    return conn.Execute("INSERT INTO foo SELECT generate_series(0, 1000), 0");
+  }
 
-    RETURN_NOT_OK(cluster_->FlushTablets());
+  Result<PGConn> SetupBlocker(int num_waiters) const {
+    auto conn = VERIFY_RESULT(GetDbConn());
 
     RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
@@ -518,11 +525,11 @@ class PgLeaderChangePessimisticLockingTest : public PgPessimisticLockingTest {
 
     for (int i = 0; i < num_waiters; ++i) {
       thread_holder->AddThreadFunctor([this, i, num_waiters] {
-        auto waiter_conn = ASSERT_RESULT(Connect());
+        auto waiter_conn = ASSERT_RESULT(GetDbConn());
         ASSERT_OK(waiter_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
 
-        ASSERT_OK(waiter_conn.FetchFormat(
-            "SELECT * FROM foo WHERE k=$0 FOR UPDATE", num_waiters + i));
+        ASSERT_OK(waiter_conn.ExecuteFormat(
+            "UPDATE foo SET v=$0 WHERE k=$0", num_waiters + i));
         LOG(INFO) << "Started " << i;
         started_waiter_.CountDown();
         LOG(INFO) << "Continued " << i;
@@ -531,23 +538,42 @@ class PgLeaderChangePessimisticLockingTest : public PgPessimisticLockingTest {
         EXPECT_OK(waiter_conn.CommitTransaction());
         LOG(INFO) << "Finished " << i;
         finished_waiter_.CountDown();
-        EXPECT_TRUE(finished_waiter_.WaitFor(20s * kTimeMultiplier));
+        EXPECT_TRUE(finished_waiter_.WaitFor(40s * kTimeMultiplier));
       });
     }
   }
 
-  bool WaitForWaitersStarted(MonoDelta delta) {
+  bool WaitForWaitersStarted(MonoDelta delta) const {
     return started_waiter_.WaitFor(delta * kTimeMultiplier);
   }
 
-  bool WaitForWaitersFinished(MonoDelta delta) {
+  bool WaitForWaitersFinished(MonoDelta delta) const {
     return finished_waiter_.WaitFor(delta * kTimeMultiplier);
   }
 
-  uint64_t GetWaiterNotFinishedCount() {
+  uint64_t GetWaiterNotFinishedCount() const {
     return finished_waiter_.count();
   }
 
+  Status VerifyWaiterWrittenData(int num_waiters) const {
+    auto conn = VERIFY_RESULT(GetDbConn());
+    for (int i = 0; i < num_waiters; ++i) {
+      auto k = num_waiters + i;
+      auto res = VERIFY_RESULT(conn.FetchFormat("SELECT v FROM foo WHERE k=$0", k));
+      auto v = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+      EXPECT_EQ(v, k);
+    }
+    return Status::OK();
+  }
+
+ private:
+  CountDownLatch started_waiter_ = CountDownLatch(0);
+  CountDownLatch finished_waiter_ = CountDownLatch(0);
+};
+
+class PgLeaderChangePessimisticLockingTest : public PgPessimisticLockingTest,
+                                             public ConcurrentBlockedWaitersTest {
+ protected:
   Status WaitForLoadBalance(int num_tablet_servers) {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     return WaitFor(
@@ -556,20 +582,21 @@ class PgLeaderChangePessimisticLockingTest : public PgPessimisticLockingTest {
       Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
   }
 
+  Result<PGConn> GetDbConn() const override { return Connect(); }
+
  private:
   virtual size_t NumTabletServers() override {
     return 3;
   }
-
-  CountDownLatch started_waiter_ = CountDownLatch(0);
-  CountDownLatch finished_waiter_ = CountDownLatch(0);
 };
 
 TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServers)) {
   constexpr int kNumTablets = 15;
   constexpr int kNumWaiters = 30;
 
-  auto conn = ASSERT_RESULT(SetupBlocker(kNumTablets, kNumWaiters));
+  ASSERT_OK(SetupData(kNumTablets));
+  ASSERT_OK(cluster_->FlushTablets());
+  auto conn = ASSERT_RESULT(SetupBlocker(kNumWaiters));
 
   TestThreadHolder thread_holder;
   CreateWaiterThreads(kNumWaiters, &thread_holder);
@@ -593,13 +620,17 @@ TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServe
   ASSERT_TRUE(WaitForWaitersFinished(15s));
 
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
+
+  EXPECT_OK(VerifyWaiterWrittenData(kNumWaiters));
 }
 
 TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer)) {
   constexpr int kNumTablets = 15;
   constexpr int kNumWaiters = 30;
 
-  auto conn = ASSERT_RESULT(SetupBlocker(kNumTablets, kNumWaiters));
+  ASSERT_OK(SetupData(kNumTablets));
+  ASSERT_OK(cluster_->FlushTablets());
+  auto conn = ASSERT_RESULT(SetupBlocker(kNumWaiters));
 
   TestThreadHolder thread_holder;
   CreateWaiterThreads(kNumWaiters, &thread_holder);
@@ -625,6 +656,62 @@ TEST_F(PgLeaderChangePessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(StepDownOne
   ASSERT_TRUE(WaitForWaitersFinished(15s));
 
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
+
+  EXPECT_OK(VerifyWaiterWrittenData(kNumWaiters));
+}
+
+class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
+                                                public ConcurrentBlockedWaitersTest {
+ protected:
+  void SetUp() override {
+    FLAGS_rpc_connection_timeout_ms = 60000;
+    FLAGS_enable_pessimistic_locking = true;
+    FLAGS_enable_deadlock_detection = true;
+    FLAGS_enable_automatic_tablet_splitting = false;
+    PgTabletSplitTestBase::SetUp();
+  }
+
+  Result<PGConn> GetDbConn() const override { return Connect(); }
+
+ private:
+  size_t NumTabletServers() override {
+    return 3;
+  }
+};
+
+TEST_F(PgTabletSplittingPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
+  constexpr int kNumTablets = 1;
+  constexpr int kNumWaiters = 30;
+
+  ASSERT_OK(SetupData(kNumTablets));
+  ASSERT_OK(cluster_->FlushTablets());
+  auto conn = ASSERT_RESULT(SetupBlocker(kNumWaiters));
+
+  TestThreadHolder thread_holder;
+  CreateWaiterThreads(kNumWaiters, &thread_holder);
+
+  ASSERT_TRUE(WaitForWaitersStarted(10s));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("foo"));
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
+  }, 15s * kTimeMultiplier, "Wait for split completion."));
+
+  SleepFor(10s * kTimeMultiplier);
+
+  EXPECT_EQ(GetWaiterNotFinishedCount(), kNumWaiters);
+
+  ASSERT_OK(conn.CommitTransaction());
+  LOG(INFO) << "Finished blocking transaction.";
+
+  ASSERT_TRUE(WaitForWaitersFinished(15s));
+
+  thread_holder.WaitAndStop(5s * kTimeMultiplier);
+
+  EXPECT_OK(VerifyWaiterWrittenData(kNumWaiters));
 }
 
 } // namespace pgwrapper

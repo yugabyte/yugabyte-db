@@ -9,75 +9,13 @@ import {
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
-import { Replication } from './XClusterReplicationTypes';
-import { ReplicationStatus, REPLICATION_LAG_ALERT_NAME } from './constants';
+import { ReplicationAction, ReplicationStatus, REPLICATION_LAG_ALERT_NAME } from './constants';
+
+import { Replication } from './XClusterTypes';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
-
-export const getReplicationStatus = (replication: Replication) => {
-  switch (replication.status) {
-    case ReplicationStatus.UPDATING:
-      return (
-        <span className="replication-status-text updating">
-          <i className="fa fa-spinner fa-spin" />
-          Updating
-        </span>
-      );
-    case ReplicationStatus.RUNNING:
-      return replication.paused ? (
-        <span className="replication-status-text paused">
-          <i className="fa fa-pause-circle-o" />
-          Paused
-        </span>
-      ) : (
-        <span className="replication-status-text success">
-          <i className="fa fa-check" />
-          Enabled
-        </span>
-      );
-    case ReplicationStatus.Initialized:
-      return (
-        <span className="replication-status-text success">
-          <i className="fa fa-info" />
-          Initialized
-        </span>
-      );
-    case ReplicationStatus.FAILED:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-info-circle" />
-          Failed
-        </span>
-      );
-    case ReplicationStatus.DELETION_FAILED:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          Deleted
-        </span>
-      );
-    case ReplicationStatus.DELETED_UNIVERSE:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          {replication.sourceUniverseUUID === undefined
-            ? 'Source universe is deleted'
-            : replication.targetUniverseUUID === undefined
-            ? 'Target universe is deleted'
-            : 'One participating universe was tried to be destroyed'}
-        </span>
-      );
-    default:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          Not Enabled
-        </span>
-      );
-  }
-};
 
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
@@ -155,13 +93,15 @@ export const GetCurrentLag = ({
       })
   );
   const formattedLag = formatLagMetric(latestLag);
+  const isReplicationUnhealthy = latestLag > maxAcceptableLag;
 
   return (
     <span
       className={`replication-lag-value ${
-        maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
+        isReplicationUnhealthy ? 'above-threshold' : 'below-threshold'
       }`}
     >
+      {isReplicationUnhealthy && <i className="fa fa-exclamation-triangle" aria-hidden="true" />}
       {formattedLag ?? '-'}
     </span>
   );
@@ -241,7 +181,7 @@ export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
   return '';
 };
 
-export const convertToLocalTime = (time: string, timezone: string) => {
+export const convertToLocalTime = (time: string, timezone: string | undefined) => {
   return (timezone ? (moment.utc(time) as any).tz(timezone) : moment.utc(time).local()).format(
     'YYYY-MM-DD H:mm:ss'
   );
@@ -263,19 +203,27 @@ export const formatBytes = function (sizeInBytes: any) {
   }
 };
 
-export const findUniverseName = function (universeList: Array<any>, universeUUID: string) {
+export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 };
 
-export const isChangeDisabled = function (status: ReplicationStatus | undefined) {
-  // Allow the operation for an unknown situation to avoid bugs.
-  if (status === undefined) {
-    return true;
+export const getEnabledConfigActions = (replication: Replication): ReplicationAction[] => {
+  switch (replication.status) {
+    case ReplicationStatus.INITIALIZED:
+    case ReplicationStatus.UPDATING:
+    case ReplicationStatus.DELETION_FAILED:
+      return [];
+    case ReplicationStatus.RUNNING:
+      return [
+        replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
+        ReplicationAction.DELETE,
+        ReplicationAction.EDIT,
+        ReplicationAction.ADD_TABLE,
+        ReplicationAction.RESTART
+      ];
+    case ReplicationStatus.FAILED:
+      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+    case ReplicationStatus.DELETED_UNIVERSE:
+      return [ReplicationAction.DELETE];
   }
-  return (
-    status === ReplicationStatus.Initialized ||
-    status === ReplicationStatus.UPDATING ||
-    status === ReplicationStatus.DELETION_FAILED ||
-    status === ReplicationStatus.DELETED_UNIVERSE
-  );
 };

@@ -169,14 +169,14 @@ Master::~Master() {
 }
 
 string Master::ToString() const {
-  if (state_ != kRunning) {
+  if (state_.load() != kRunning) {
     return "Master (stopped)";
   }
   return strings::Substitute("Master@$0", yb::ToString(first_rpc_address()));
 }
 
 Status Master::Init() {
-  CHECK_EQ(kStopped, state_);
+  CHECK_EQ(kStopped, state_.load());
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
@@ -307,7 +307,7 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
 }
 
 Status Master::StartAsync() {
-  CHECK_EQ(kInitialized, state_);
+  CHECK_EQ(kInitialized, state_.load());
 
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterServices());
@@ -342,7 +342,7 @@ Status Master::InitCatalogManager() {
 }
 
 Status Master::WaitForCatalogManagerInit() {
-  CHECK_EQ(state_, kRunning);
+  CHECK_EQ(state_.load(), kRunning);
 
   return init_future_.get();
 }
@@ -368,7 +368,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
 }
 
 void Master::Shutdown() {
-  if (state_ == kRunning) {
+  if (state_.load() == kRunning) {
     string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
@@ -381,6 +381,9 @@ void Master::Shutdown() {
     async_client_init_->Shutdown();
     cdc_state_client_init_->Shutdown();
     RpcAndWebServerBase::Shutdown();
+    if (init_pool_) {
+      init_pool_->Shutdown();
+    }
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
   } else {

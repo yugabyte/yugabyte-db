@@ -1070,9 +1070,14 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     return Status::OK();
   }
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
-  auto txn_participant = tablet()->transaction_participant();
-  if (txn_participant) {
-    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    RETURN_NOT_OK(CheckRunning());
+    auto txn_participant = tablet_->transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
   }
   return Status::OK();
 }

@@ -16,6 +16,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -39,6 +40,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.validation.constraints.Size;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
@@ -348,16 +350,34 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   public static boolean hasEphemeralStorage(UserIntent userIntent) {
-    if (userIntent.providerType == CloudType.aws) {
+    boolean result =
+        hasEphemeralStorage(
+            userIntent.providerType, userIntent.instanceType, userIntent.deviceInfo);
+    if (userIntent.dedicatedNodes) {
+      result =
+          result
+              || hasEphemeralStorage(
+                  userIntent.providerType,
+                  userIntent.masterInstanceType,
+                  userIntent.masterDeviceInfo);
+    }
+    return result;
+  }
+
+  public static boolean hasEphemeralStorage(
+      CloudType providerType, String instanceType, DeviceInfo deviceInfo) {
+    if (providerType == CloudType.aws && instanceType != null) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
-        if (userIntent.instanceType.startsWith(prefix)) {
+        if (instanceType.startsWith(prefix)) {
           return true;
         }
       }
       return false;
-    } else if (userIntent.providerType == CloudType.gcp) {
-      return userIntent.deviceInfo != null
-          && userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch;
+    } else if (providerType == CloudType.gcp) {
+      if (deviceInfo != null
+          && deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+        return true;
+      }
     }
     return false;
   }
@@ -387,7 +407,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // for a multi-region setup.
     @ApiModelProperty public UUID preferredRegion;
 
-    // Cloud Instance Type that the user wants
+    // Cloud Instance Type that the user wants for tserver nodes.
     @Constraints.Required() @ApiModelProperty public String instanceType;
 
     // The number of nodes to provision. These include ones for both masters and tservers.
@@ -473,6 +493,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // True if user wants to have dedicated nodes for master and tserver processes.
     @ApiModelProperty public boolean dedicatedNodes = false;
 
+    // Instance type used for dedicated master nodes.
+    @Nullable @ApiModelProperty public String masterInstanceType;
+
+    // Device info for dedicated master nodes.
+    @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
+
     @Override
     public String toString() {
       return "UserIntent "
@@ -505,7 +531,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", staticPublicIP="
           + assignStaticPublicIP
           + ", tags="
-          + instanceTags;
+          + instanceTags
+          + ", masterInstanceType="
+          + masterInstanceType;
     }
 
     @Override
@@ -537,7 +565,38 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      if (deviceInfo != null) {
+        newUserIntent.deviceInfo = deviceInfo.clone();
+      }
+      newUserIntent.masterInstanceType = masterInstanceType;
+      if (masterDeviceInfo != null) {
+        newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
+      }
       return newUserIntent;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public String getInstanceTypeForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterInstanceType != null) {
+        return masterInstanceType;
+      }
+      return instanceType;
+    }
+
+    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
+      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public DeviceInfo getDeviceInfoForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+        return masterDeviceInfo;
+      }
+      return deviceInfo;
     }
 
     // NOTE: If new fields are checked, please add them to the toString() as well.
@@ -555,7 +614,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
-          && useSystemd == other.useSystemd) {
+          && useSystemd == other.useSystemd
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;
@@ -574,7 +634,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
-          && useTimeSync == other.useTimeSync) {
+          && useTimeSync == other.useTimeSync
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;

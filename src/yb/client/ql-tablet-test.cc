@@ -748,13 +748,14 @@ TEST_F(QLTabletTest, WaitFlush) {
     }
   }
 
-  auto deadline = std::chrono::steady_clock::now() + 20s;
-  while (std::chrono::steady_clock::now() <= deadline) {
+  auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() <= deadline) {
     for (const auto& peer : peers) {
       auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
+    SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
   for (const auto& peer : peers) {

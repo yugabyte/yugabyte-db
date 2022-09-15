@@ -34,6 +34,7 @@
 #include "yb/server/monitored_task.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -68,10 +69,9 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
-DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup");
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
+DEFINE_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+                 "When set, it enables automatic tablet splitting for tables that are part of an "
+                 "xCluster replication setup");
 
 DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "

@@ -19,6 +19,7 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.PriceComponentKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
@@ -137,8 +139,9 @@ public class UniverseResourceDetails {
       if (region == null) {
         continue;
       }
+      String instanceType = userIntent.getInstanceTypeForNode(nodeDetails);
       PriceComponent instancePrice =
-          context.getPriceComponent(provider.uuid, region.code, userIntent.instanceType);
+          context.getPriceComponent(provider.uuid, region.code, instanceType);
       if (instancePrice == null) {
         continue;
       }
@@ -151,21 +154,22 @@ public class UniverseResourceDetails {
 
       hourlyPrice += instancePrice.priceDetails.pricePerHour;
 
+      DeviceInfo deviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
+
       // Add price of volumes if necessary
       // TODO: Remove aws check once GCP volumes are decoupled from "EBS" designation
       // TODO(wesley): gcp options?
-      if (userIntent.deviceInfo.storageType != null
-          && userIntent.providerType.equals(Common.CloudType.aws)) {
-        Integer numVolumes = userIntent.deviceInfo.numVolumes;
-        Integer diskIops = userIntent.deviceInfo.diskIops;
-        Integer volumeSize = userIntent.deviceInfo.volumeSize;
-        Integer throughput = userIntent.deviceInfo.throughput;
+      if (deviceInfo.storageType != null && userIntent.providerType.equals(Common.CloudType.aws)) {
+        Integer numVolumes = deviceInfo.numVolumes;
+        Integer diskIops = deviceInfo.diskIops;
+        Integer volumeSize = deviceInfo.volumeSize;
+        Integer throughput = deviceInfo.throughput;
         Integer billedDiskIops = null;
         Integer billedThroughput = null;
         PriceComponent sizePrice = null;
         PriceComponent piopsPrice = null;
         PriceComponent mibpsPrice = null;
-        switch (userIntent.deviceInfo.storageType) {
+        switch (deviceInfo.storageType) {
           case IO1:
             piopsPrice = PriceComponent.get(provider.uuid, region.code, IO1_PIOPS);
             sizePrice = PriceComponent.get(provider.uuid, region.code, IO1_SIZE);

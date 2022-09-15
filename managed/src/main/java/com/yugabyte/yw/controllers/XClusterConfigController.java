@@ -160,7 +160,7 @@ public class XClusterConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
     CustomerTask.create(
         customer,
-        targetUniverse.universeUUID,
+        sourceUniverse.universeUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Create,
@@ -297,14 +297,12 @@ public class XClusterConfigController extends AuthenticatedController {
       }
     }
 
-    Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
     // Submit task to edit xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, editFormData);
     UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
     CustomerTask.create(
         customer,
-        targetUniverse.universeUUID,
+        xClusterConfig.sourceUniverseUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Edit,
@@ -362,14 +360,12 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
     verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
 
-    Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
     // Submit task to edit xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig, restartFormData);
     UUID taskUUID = commissioner.submit(TaskType.RestartXClusterConfig, params);
     CustomerTask.create(
         customer,
-        targetUniverse.universeUUID,
+        xClusterConfig.sourceUniverseUUID,
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Restart,
@@ -419,18 +415,18 @@ public class XClusterConfigController extends AuthenticatedController {
     // Submit task to delete xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig);
     UUID taskUUID = commissioner.submit(TaskType.DeleteXClusterConfig, params);
-    if (targetUniverse != null) {
+    if (sourceUniverse != null) {
       CustomerTask.create(
           customer,
-          targetUniverse.universeUUID,
+          sourceUniverse.universeUUID,
           taskUUID,
           CustomerTask.TargetType.XClusterConfig,
           CustomerTask.TaskType.Delete,
           xClusterConfig.name);
-    } else if (sourceUniverse != null) {
+    } else if (targetUniverse != null) {
       CustomerTask.create(
           customer,
-          sourceUniverse.universeUUID,
+          targetUniverse.universeUUID,
           taskUUID,
           CustomerTask.TargetType.XClusterConfig,
           CustomerTask.TaskType.Delete,

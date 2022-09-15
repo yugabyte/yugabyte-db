@@ -291,7 +291,6 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Transfer_XCluster_Certs
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
             || type == NodeCommandType.Wait_For_SSH)
@@ -1657,11 +1656,14 @@ public class NodeManager extends DevopsBase {
           if (taskParam.checkVolumesAttached) {
             UniverseDefinitionTaskParams.Cluster cluster =
                 universe.getCluster(taskParam.placementUuid);
-            if (cluster != null
-                && cluster.userIntent.deviceInfo != null
+            NodeDetails node = universe.getNode(taskParam.nodeName);
+            if (node != null
+                && cluster != null
+                && cluster.userIntent.getDeviceInfoForNode(node) != null
                 && cluster.userIntent.providerType != Common.CloudType.onprem) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(String.valueOf(cluster.userIntent.deviceInfo.numVolumes));
+              commandArgs.add(
+                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));

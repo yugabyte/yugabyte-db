@@ -448,6 +448,7 @@ Status WriteQuery::DoExecute() {
     docdb::ResolveOperationConflicts(
         doc_ops_, now, tablet().doc_db(), partial_range_key_intents,
         transaction_participant, tablet().metrics()->transaction_conflicts.get(),
+        &prepare_result_.lock_batch, tablet().wait_queue(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());

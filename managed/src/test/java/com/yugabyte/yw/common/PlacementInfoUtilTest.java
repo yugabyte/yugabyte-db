@@ -136,7 +136,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
 
-      PlacementInfoUtil.selectMasters(null, nodes, replFactor);
+      selectMasters(null, nodes, replFactor);
       UniverseUpdater updater =
           universe -> {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -1500,7 +1500,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
 
-    PlacementInfoUtil.selectMasters(null, nodes, rf);
+    selectMasters(null, nodes, rf);
     int numMasters = 0;
     Set<String> regions = new HashSet<>();
     Set<String> zones = new HashSet<>();
@@ -1867,10 +1867,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 null));
       }
     }
-
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
     SelectMastersResult selection =
         PlacementInfoUtil.selectMasters(
-            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code, true, false);
+            null, nodes, defaultRegion == null ? null : defaultRegion.code, true, userIntent);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     List<NodeDetails> masters =
@@ -1960,11 +1961,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
 
     String defaultRegionCode = defaultRegion == null ? null : defaultRegion.code;
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
     String errorMessage =
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode, true, false);
+                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegionCode, true, userIntent);
                 })
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
@@ -2028,7 +2031,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
 
-    PlacementInfoUtil.selectMasters(null, nodes, rf);
+    selectMasters(null, nodes, rf);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     // Updating node with state ToBeAdded.
@@ -2154,7 +2157,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             6, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 1);
+    selectMasters("10.0.0.1", nodes, 1);
     PlacementInfoUtil.verifyMastersSelection(nodes, 1);
   }
 
@@ -2193,7 +2196,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             7, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 3);
+    selectMasters("10.0.0.1", nodes, 3);
     PlacementInfoUtil.verifyMastersSelection(nodes, 3);
 
     // Master-leader (host-n1) should be left as the leader, the second master
@@ -2923,5 +2926,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(11 + nodesToRemove, udtp.nodeDetailsSet.size());
     assertEquals(
         11 - nodesToRemove, getNodesInCluster(primaryClusterUUID, udtp.nodeDetailsSet).size());
+  }
+
+  private SelectMastersResult selectMasters(
+      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = replicationFactor;
+    return PlacementInfoUtil.selectMasters(masterLeader, nodes, null, true, userIntent);
   }
 }
