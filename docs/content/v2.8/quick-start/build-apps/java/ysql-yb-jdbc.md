@@ -2,7 +2,7 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application with the Yugabyte JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application with the YugabyteDB JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   v2.8:
     parent: build-apps
@@ -337,4 +337,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ## Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
