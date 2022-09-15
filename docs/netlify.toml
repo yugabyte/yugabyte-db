@@ -260,8 +260,18 @@
   force = true
 
 [[redirects]]
-  from = "/:version/integrations/*-driver/"
+  from = "/:version/integrations/smart-driver/"
   to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  force = true
+
+[[redirects]]
+  from = "/:version/integrations/jdbc-driver/"
+  to = "/preview/reference/drivers/java/yugabyte-jdbc-reference/"
+  force = true
+
+[[redirects]]
+  from = "/:version/integrations/*"
+  to = "/preview/integrations/:splat"
   force = true
 
 # (this is the old version of integrations)
