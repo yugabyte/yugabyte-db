@@ -18,7 +18,7 @@
     color: $YB_VIOLET_TEXT;
   }
 
-  &.deleted,
+  &.deletionFailed,
   &.failed {
     color: $YB_FAIL_COLOR;
   }
