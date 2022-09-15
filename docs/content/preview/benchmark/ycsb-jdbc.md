@@ -153,6 +153,12 @@ ycsb=# CREATE TABLE usertable (
 
 **Load the data** before you start the `jdbc` workload:
 
+{{< note title="Note" >}}
+
+The `recordcount` parameter in the following `ycsb` commands should match the number of rows in the table.
+
+{{< /note >}}
+
 ```sh
 $ ./bin/ycsb load jdbc -s        \
       -P db.properties           \
