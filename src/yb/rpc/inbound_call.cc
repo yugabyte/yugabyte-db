@@ -224,6 +224,10 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
 }
 
 void InboundCall::Clear() {
+  {
+    std::lock_guard<simple_spinlock> lock(mutex_);
+    cleared_ = true;
+  }
   serialized_request_.clear();
   request_data_.Reset();
   request_data_memory_usage_.store(0, std::memory_order_release);
