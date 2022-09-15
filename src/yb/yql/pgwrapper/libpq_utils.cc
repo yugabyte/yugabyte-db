@@ -50,7 +50,7 @@ namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
 std::string ExecStatusTypeToStr(ExecStatusType exec_status_type) {
-#define EXEC_STATUS_SWITCH_CASE(r, data, item) case item: return #item;
+#define EXEC_STATUS_SWITCH_CASE(r, data, item) case item: return BOOST_PP_STRINGIZE(item);
 #define EXEC_STATUS_TYPE_ENUM_ELEMENTS \
     (PGRES_EMPTY_QUERY) \
     (PGRES_COMMAND_OK) \
