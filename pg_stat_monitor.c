@@ -81,10 +81,15 @@ static int	get_histogram_bucket(double q_time);
 static bool IsSystemInitialized(void);
 static bool dump_queries_buffer(int bucket_id, unsigned char *buf, int buf_len);
 static double time_diff(struct timeval end, struct timeval start);
+static void request_additional_shared_resources(void);
 
 
 /* Saved hook values in case of unload */
 
+#if PG_VERSION_NUM >= 150000
+static void pgss_shmem_request(void);
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
+#endif
 #if PG_VERSION_NUM >= 130000
 static planner_hook_type planner_hook_next = NULL;
 #endif
@@ -257,16 +262,14 @@ _PG_init(void)
 	}
 
 	/*
-	 * Request additional shared resources.  (These are no-ops if we're not in
-	 * the postmaster process.)  We'll allocate or attach to the shared
-	 * resources in pgss_shmem_startup().
-	 */
-	RequestAddinShmemSpace(hash_memsize() + HOOK_STATS_SIZE);
-	RequestNamedLWLockTranche("pg_stat_monitor", 1);
-
-	/*
 	 * Install hooks.
 	 */
+#if PG_VERSION_NUM >= 150000
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = pgss_shmem_request;
+#else
+	request_additional_shared_resources();
+#endif
 	prev_shmem_startup_hook = shmem_startup_hook;
 	shmem_startup_hook = pgss_shmem_startup;
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
@@ -333,6 +336,17 @@ pgss_shmem_startup(void)
 	pgss_startup();
 }
 
+static void
+request_additional_shared_resources(void)
+{
+	/*
+	 * Request additional shared resources.  (These are no-ops if we're not in
+	 * the postmaster process.)  We'll allocate or attach to the shared
+	 * resources in pgss_shmem_startup().
+	 */
+	RequestAddinShmemSpace(hash_memsize() + HOOK_STATS_SIZE);
+	RequestNamedLWLockTranche("pg_stat_monitor", 1);
+}
 /*
  * Select the version of pg_stat_monitor.
  */
@@ -341,6 +355,20 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(cstring_to_text(BUILD_VERSION));
 }
+
+#if PG_VERSION_NUM >= 150000
+/*
+ * shmem_request hook: request additional shared resources.  We'll allocate or
+ * attach to the shared resources in pgss_shmem_startup().
+ */
+static void
+pgss_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+			prev_shmem_request_hook();
+	request_additional_shared_resources();
+}
+#endif
 
 #if PG_VERSION_NUM >= 140000
 /*
