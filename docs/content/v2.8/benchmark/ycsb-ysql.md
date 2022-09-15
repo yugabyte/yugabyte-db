@@ -45,6 +45,7 @@ For more information about YCSB, see:
 * Workload info: https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads
 
 {{< /note >}}
+
 ## Overview
 
 This uses a new YSQL-specific binding to test the YSQL API using the YCSB benchmark.
@@ -65,7 +66,9 @@ $ wget https://github.com/yugabyte/YCSB/releases/download/1.0/ycsb.tar.gz
 $ tar -zxvf ycsb.tar.gz
 $ cd YCSB
 ```
+
 Make sure you have the YSQL shell `ysqlsh` exported to the `PATH` variable. You can download [`ysqlsh`](https://download.yugabyte.com/) if you do not have it.
+
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
@@ -96,45 +99,51 @@ The db.url field should be populated with the IPs of all the nodes that are part
 {{< /note >}}
 
 ### 4. Run the benchmark
-There is a handy script `run_ysql.sh` that loads and runs all the workloads.
+
+The script `run_ysql.sh` loads and runs all the workloads.
 
 ```sh
 $ ./run_ysql.sh --ip <ip>
 ```
 
 The above command workload will run the workload on a table with 1 million rows. If you want to run the benchmark on a table with a different row count:
+
 ```sh
 $ ./run_ysql.sh --ip <ip> --recordcount <number of rows>
 ```
 
 {{< note title="Note" >}}
-To get the maximum performance out of the system, you would have to tune the threadcount parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you used a threadcount of 32 for the loading phase and 256 for the execution phase.
+To get the maximum performance out of the system, you would have to tune the `threadcount` parameter in the script. As a reference, for a c5.4xlarge instance with 16 cores and 32GB RAM, you used a `threadcount` of 32 for the loading phase and 256 for the execution phase.
 {{< /note >}}
 
 ### 5. Verify results
 
 The script creates 2 result files per workload, one for the loading and one for the execution phase with the details of throughput and latency.
-For example for workloada it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`
+For example, for `workloada` it creates `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat`.
 
 ### 6. Run individual workloads (optional)
 
 Connect to the database using `ysqlsh`.
+
 ```sh
 $ ./bin/ysqlsh -h <ip>
 ```
 
 Create the `ycsb` database.
-```postgres
+
+```sql
 yugabyte=# CREATE DATABASE ycsb;
 ```
 
 Connect to the created database.
-```postgres
+
+```sql
 yugabyte=# \c ycsb
 ```
 
 Create the table.
-```postgres
+
+```sql
 ycsb=# CREATE TABLE usertable (
            YCSB_KEY VARCHAR(255) PRIMARY KEY,
            FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
@@ -150,8 +159,7 @@ $ ./bin/ycsb load yugabyteSQL -s \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=32          \
-      -p maxexecutiontime=180
+      -p threadcount=32
 ```
 
 Then, you can run the workload:
@@ -162,8 +170,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
 To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
@@ -174,8 +181,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
       -P workloads/workloadb     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
 ## Expected results
@@ -184,7 +190,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
 
 When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, you get the following results:
 
-### 1 Million Rows
+### 1 Million rows
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency
 -------------|-----------|------------|------------|

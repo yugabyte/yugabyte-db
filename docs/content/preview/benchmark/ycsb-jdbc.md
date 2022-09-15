@@ -45,7 +45,7 @@ For additional information about YCSB, refer to the following:
 * [YCSB Wiki](https://github.com/brianfrankcooper/YCSB/wiki)
 * [Workload info](https://github.com/brianfrankcooper/YCSB/wiki/Core-Workloads)
 
-## Running the Benchmark
+## Running the benchmark
 
 To run the benchmark, ensure that you meet the prerequisites and complete steps such as starting YugabyteDB and configuring its properties.
 
@@ -78,7 +78,7 @@ $ export PATH=$PATH:/Users/yugabyte/code/bin
 
 Start your YugabyteDB cluster by following the procedure described in [Manual Deployment](../../deploy/manual-deployment/). Note the IP addresses of the nodes in the cluster, as these addresses are required when configuring the properties file.
 
-### Configure the Properties File
+### Configure the properties file
 
 Update the file `db.properties` in the YCSB directory with the following contents, replacing values for the IP addresses in the `db.url` field with the correct values for all the nodes that are part of the cluster:
 
@@ -91,7 +91,7 @@ db.passwd=
 
 The other configuration parameters are described in [Core Properties](https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties).
 
-### Run the Benchmark
+### Run the benchmark
 
 Use the following script `run_jdbc.sh` to load and run all the workloads:
 
@@ -107,13 +107,13 @@ $ ./run_jdbc.sh --ip <ip> --recordcount <number of rows>
 
 To obtain the maximum performance out of the system, you can tune the `threadcount` parameter in the script. As a reference, for a `c5.4xlarge` instance with 16 cores and 32GB RAM, you use a threadcount of 32 for the loading phase and 256 for the execution phase.
 
-### Verify Results
+### Verify results
 
 The `run_jdbc.sh` script creates two result files per workload: one for the loading, and one for the execution phase with the details of throughput and latency.
 
 For example, for a workload it creates, inspect the `workloada-ysql-load.dat` and `workloada-ysql-transaction.dat` files.
 
-### Run Individual Workloads (optional)
+### Run individual workloads (optional)
 
 Optionally, you can run workloads individually.
 
@@ -159,8 +159,7 @@ $ ./bin/ycsb load jdbc -s        \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=32          \
-      -p maxexecutiontime=180
+      -p threadcount=32
 ```
 
 **Run the workload** as follows:
@@ -171,8 +170,7 @@ $ ./bin/ycsb run jdbc -s         \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
 **Run other workloads** (for example, `workloadb`) by changing the corresponding argument in the preceding command, as follows:
@@ -183,15 +181,14 @@ $ ./bin/ycsb run jdbc -s         \
       -P workloads/workloadb     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
-### Expected Results
+### Expected results
 
 When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ, expect the following results:
 
-**One Million Rows**
+**One million rows**
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :----------- | :------------ |
@@ -202,6 +199,6 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 | Workload E | 16,642 | 15ms scan | Not applicable |
 | Workload F | 29,500 | 2ms | 15ms read-modify-write |
 
-### Additional Examples
+### Additional examples
 
 For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](/preview/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).

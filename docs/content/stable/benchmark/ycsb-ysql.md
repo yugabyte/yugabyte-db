@@ -100,7 +100,7 @@ The db.url field should be populated with the IPs of all the nodes that are part
 
 ### 4. Run the benchmark
 
-There is a handy script `run_ysql.sh` that loads and runs all the workloads.
+The script `run_ysql.sh` loads and runs all the workloads.
 
 ```sh
 $ ./run_ysql.sh --ip <ip>
@@ -159,8 +159,7 @@ $ ./bin/ycsb load yugabyteSQL -s \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=32          \
-      -p maxexecutiontime=180
+      -p threadcount=32
 ```
 
 Then, you can run the workload:
@@ -171,8 +170,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
       -P workloads/workloada     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
 To run the other workloads (for example, `workloadb`), all you need to do is change that argument in the above command.
@@ -183,8 +181,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
       -P workloads/workloadb     \
       -p recordcount=1000000     \
       -p operationcount=10000000 \
-      -p threadcount=256         \
-      -p maxexecutiontime=180
+      -p threadcount=256
 ```
 
 ## Expected results
@@ -193,7 +190,7 @@ $ ./bin/ycsb run yugabyteSQL -s  \
 
 When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, you get the following results:
 
-### 1 Million Rows
+### 1 million rows
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :------------| :------------ |
