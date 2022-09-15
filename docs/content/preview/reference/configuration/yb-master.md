@@ -87,7 +87,7 @@ The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#
 Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/master/conf/server.conf`. For example:
 
 ```sh
-egrep -i rpc /home/yugabyte/master/conf/server.conf 
+egrep -i rpc /home/yugabyte/master/conf/server.conf
 --rpc_bind_addresses=172.161.x.x:7100
 ```
 
@@ -317,8 +317,6 @@ Default: `64`
 For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
-
-For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
 
 ##### --enable_load_balancing
 
