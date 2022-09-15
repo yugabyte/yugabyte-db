@@ -29,9 +29,14 @@
 #define PGSTAT_STAT_PERMANENT_DIRECTORY		"pg_stat"
 #define PGSTAT_STAT_PERMANENT_FILENAME		"pg_stat/global.stat"
 #define PGSTAT_STAT_PERMANENT_TMPFILE		"pg_stat/global.tmp"
+#define PGSTAT_YBSTAT_PERMANENT_FILENAME    "pg_stat/yb_global.stat"
+#define PGSTAT_YBSTAT_PERMANENT_TMPFILE     "pg_stat/yb_global.tmp"
 
 /* Default directory to store temporary statistics data in */
 #define PG_STAT_TMP_DIR		"pg_stat_tmp"
+
+/* Caps the number of queries which can be stored in the array. */
+#define TERMINATED_QUERIES_SIZE 1000
 
 /* Values for track_functions GUC variable --- order is significant! */
 typedef enum TrackFunctionsLevel
@@ -62,6 +67,7 @@ typedef enum StatMsgType
 	PGSTAT_MTYPE_BGWRITER,
 	PGSTAT_MTYPE_FUNCSTAT,
 	PGSTAT_MTYPE_FUNCPURGE,
+	PGSTAT_MTYPE_QUERYTERMINATION,
 	PGSTAT_MTYPE_RECOVERYCONFLICT,
 	PGSTAT_MTYPE_TEMPFILE,
 	PGSTAT_MTYPE_DEADLOCK
@@ -203,8 +209,10 @@ typedef struct PgStat_MsgHdr
  * platforms, but we're being conservative here.)
  * ----------
  */
-#define PGSTAT_MAX_MSG_SIZE 1000
-#define PGSTAT_MSG_PAYLOAD	(PGSTAT_MAX_MSG_SIZE - sizeof(PgStat_MsgHdr))
+#define PGSTAT_MAX_MSG_SIZE 	1000
+#define PGSTAT_MSG_PAYLOAD		(PGSTAT_MAX_MSG_SIZE - sizeof(PgStat_MsgHdr))
+#define QUERY_TEXT_SIZE 		256
+#define QUERY_TERMINATION_SIZE	256
 
 
 /* ----------
@@ -446,6 +454,19 @@ typedef struct PgStat_MsgTempFile
 	size_t		m_filesize;
 } PgStat_MsgTempFile;
 
+typedef struct PgStat_MsgQueryTermination
+{
+	PgStat_MsgHdr m_hdr;
+
+	Oid m_st_userid;
+	Oid m_databaseoid;
+	int32 backend_pid;
+	TimestampTz activity_start_timestamp;
+	TimestampTz activity_end_timestamp;
+	char query_string[QUERY_TEXT_SIZE];
+	char termination_reason[QUERY_TERMINATION_SIZE];
+} PgStat_MsgQueryTermination;
+
 /* ----------
  * PgStat_FunctionCounts	The actual per-function counts kept by a backend
  *
@@ -555,6 +576,7 @@ typedef union PgStat_Msg
 	PgStat_MsgFuncpurge msg_funcpurge;
 	PgStat_MsgRecoveryConflict msg_recoveryconflict;
 	PgStat_MsgDeadlock msg_deadlock;
+	PgStat_MsgQueryTermination msg_querytermination;
 } PgStat_Msg;
 
 
@@ -567,6 +589,42 @@ typedef union PgStat_Msg
  */
 
 #define PGSTAT_FILE_FORMAT_ID	0x01A5BC9D
+
+typedef struct PgStat_YBStatQueryEntry
+{
+	/*
+	 * query_oid is not an actual oid. It is an index that
+	 * represents its location in the array that stores the
+	 * terminated queries modulo TERMINATED_QUERIES_SIZE.
+	 */
+	Oid query_oid;
+
+	/*
+	 * We need to store the owner ID of the database for 
+	 * security validation when the queries are fetched by the user.
+	 */
+	Oid st_userid;
+	Oid database_oid;
+	int32 backend_pid;
+	TimestampTz activity_start_timestamp;
+	TimestampTz activity_end_timestamp;
+
+	/*
+	 * query_string_size: records the length of the string 
+	 * so that when writing this string to file, we only write
+	 * that many characters.
+	 */
+	size_t query_string_size;
+	char query_string[QUERY_TEXT_SIZE];
+
+	/*
+	 * termination_reason_size: records the length of the string 
+	 * so that when writing this string to file, we only write
+	 * that many characters.
+	 */
+	size_t termination_reason_size;
+	char termination_reason[QUERY_TERMINATION_SIZE];
+} PgStat_YBStatQueryEntry;
 
 /* ----------
  * PgStat_StatDBEntry			The collector's data per database
@@ -1174,6 +1232,8 @@ extern PGDLLIMPORT int pgstat_track_activity_query_size;
 extern char *pgstat_stat_directory;
 extern char *pgstat_stat_tmpname;
 extern char *pgstat_stat_filename;
+extern char *pgstat_ybstat_filename;
+extern char *pgstat_ybstat_tmpname;
 
 /*
  * BgWriter statistics counters are updated directly by bgwriter and bufmgr
@@ -1234,6 +1294,8 @@ extern void yb_pgstat_clear_entry_pid(int pid);
 
 extern void pgstat_report_activity(BackendState state, const char *cmd_str);
 extern void pgstat_report_tempfile(size_t filesize);
+extern void pgstat_report_query_termination(const char *termination_reason,
+						Oid db_oid, int32 backend_pid, int backend_id);
 extern void pgstat_report_appname(const char *appname);
 extern void pgstat_report_xact_timestamp(TimestampTz tstamp);
 extern const char *pgstat_get_wait_event(uint32 wait_event_info);
@@ -1385,6 +1447,7 @@ extern void pgstat_send_bgwriter(void);
  */
 extern PgStat_StatDBEntry *pgstat_fetch_stat_dbentry(Oid dbid);
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry(Oid relid);
+extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t* num_queries);
 extern PgBackendStatus *pgstat_fetch_stat_beentry(int beid);
 extern LocalPgBackendStatus *pgstat_fetch_stat_local_beentry(int beid);
 extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
