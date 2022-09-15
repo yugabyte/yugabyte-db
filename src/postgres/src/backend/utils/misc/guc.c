@@ -11724,6 +11724,8 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	char	   *dname;
 	char	   *tname;
 	char	   *fname;
+	char	   *yb_tname;
+	char	   *yb_fname;
 
 	/* directory */
 	dname = guc_malloc(ERROR, strlen(newval) + 1);	/* runtime dir */
@@ -11734,6 +11736,10 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	sprintf(tname, "%s/global.tmp", newval);
 	fname = guc_malloc(ERROR, strlen(newval) + 13); /* /global.stat */
 	sprintf(fname, "%s/global.stat", newval);
+	yb_tname = guc_malloc(ERROR, strlen(newval) + 15); /* /yb_global.tmp */
+	sprintf(yb_tname, "%s/yb_global.tmp", newval);
+	yb_fname = guc_malloc(ERROR, strlen(newval) + 16); /* /yb_global.stat */
+	sprintf(yb_fname, "%s/yb_global.stat", newval);
 
 	if (pgstat_stat_directory)
 		free(pgstat_stat_directory);
@@ -11744,6 +11750,12 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	if (pgstat_stat_filename)
 		free(pgstat_stat_filename);
 	pgstat_stat_filename = fname;
+	if (pgstat_ybstat_tmpname)
+		free(pgstat_ybstat_tmpname);
+	pgstat_ybstat_tmpname = yb_tname;
+	if (pgstat_ybstat_filename)
+		free(pgstat_ybstat_filename);
+	pgstat_ybstat_filename = yb_fname;
 }
 
 static bool
