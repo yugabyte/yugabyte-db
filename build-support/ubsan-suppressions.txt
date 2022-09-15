@@ -126,3 +126,6 @@ function:libicuuc.so
 # it does not matter because the loop condition (`line_end`) will cause the loop to exit in that
 # case.
 pointer-overflow:CommandLineFlagParser::ProcessOptionsFromStringLocked
+
+# https://gist.githubusercontent.com/hari90/9e85bbb08a6201970713b7a9ae982210/raw
+shift-base:elf_uncompress_lzma
