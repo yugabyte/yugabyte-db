@@ -415,8 +415,7 @@ libraryDependencies ++= Seq(
   "net.minidev" % "json-smart" % "2.4.8",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16",
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.23"
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
