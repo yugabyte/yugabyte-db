@@ -382,7 +382,7 @@ const validate = (values) => {
     errors.accountName = 'Account Name is Required';
   }
   else {
-    if(specialChars.test(!values.accountName)){
+    if(!specialChars.test(values.accountName)){
       errors.accountName = 'Account Name cannot have special characters except - and _';
     }
   }
