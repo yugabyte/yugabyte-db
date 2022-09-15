@@ -136,7 +136,7 @@ public class TestPgReadCommittedFuncs extends BasePgSQLTest {
     try {
       LOG.info("Waiting for all threads");
       for (Future<?> future : futures) {
-        future.get(10, TimeUnit.SECONDS);
+        future.get(20, TimeUnit.SECONDS);
       }
     } catch (TimeoutException ex) {
       LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
