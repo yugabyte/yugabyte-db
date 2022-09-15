@@ -51,6 +51,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -736,11 +737,17 @@ public class TaskExecutor {
       TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
       try {
+        if (log.isDebugEnabled()) {
+          log.debug(
+              "Task {} waited for {}ms",
+              task.getName(),
+              getDurationSeconds(taskScheduledTime, taskStartTime));
+        }
         writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
         }
-        publishBeforeTask();
         setTaskState(TaskInfo.State.Running);
         log.debug("Invoking run() of task {}", task.getName());
         task.run();
@@ -754,11 +761,16 @@ public class TaskExecutor {
         updateTaskDetailsOnError(TaskInfo.State.Failure, e);
         Throwables.propagate(e);
       } finally {
-        log.debug("Completed task {}", task.getName());
         taskCompletionTime = Instant.now();
+        if (log.isDebugEnabled()) {
+          log.debug(
+              "Completed task {} in {}ms",
+              task.getName(),
+              getDurationSeconds(taskStartTime, taskCompletionTime));
+        }
         writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
-        publishAfterTask(t);
         task.terminate();
+        publishAfterTask(t);
       }
     }
 
@@ -766,12 +778,8 @@ public class TaskExecutor {
       return taskInfo.getTaskState() == TaskInfo.State.Running;
     }
 
-    public synchronized boolean hasTaskSucceeded() {
-      return taskInfo.getTaskState() == TaskInfo.State.Success;
-    }
-
-    public synchronized boolean hasTaskFailed() {
-      return taskInfo.getTaskState() == TaskInfo.State.Failure;
+    public synchronized boolean hasTaskCompleted() {
+      return taskInfo.hasCompleted();
     }
 
     @Override
@@ -793,7 +801,7 @@ public class TaskExecutor {
 
     protected abstract Instant getAbortTime();
 
-    protected abstract TaskExecutionListener getTaskExecutionLister();
+    protected abstract TaskExecutionListener getTaskExecutionListener();
 
     Duration getTimeLimit() {
       return timeLimit;
@@ -862,14 +870,14 @@ public class TaskExecutor {
     }
 
     void publishBeforeTask() {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionLister();
+      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.beforeTask(taskInfo);
       }
     }
 
     void publishAfterTask(Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionLister();
+      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
       }
@@ -884,7 +892,8 @@ public class TaskExecutor {
     private final CountDownLatch waiterLatch = new CountDownLatch(1);
     // Current execution position of subtasks.
     private int subTaskPosition = 0;
-    private TaskExecutionListener taskExecutionListener;
+    private AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
+        new AtomicReference<>();
     // Time when the abort is set.
     private volatile Instant abortTime;
 
@@ -899,7 +908,7 @@ public class TaskExecutor {
      * @param taskExecutionListener the TaskExecutionListener instance.
      */
     public void setTaskExecutionListener(TaskExecutionListener taskExecutionListener) {
-      this.taskExecutionListener = taskExecutionListener;
+      taskExecutionListenerRef.set(taskExecutionListener);
     }
 
     /** Invoked by the ExecutorService. Do not invoke this directly. */
@@ -950,8 +959,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected TaskExecutionListener getTaskExecutionLister() {
-      return taskExecutionListener;
+    protected TaskExecutionListener getTaskExecutionListener() {
+      return taskExecutionListenerRef.get();
     }
 
     public synchronized void doHeartbeat() {
@@ -1085,8 +1094,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected synchronized TaskExecutionListener getTaskExecutionLister() {
-      return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionLister();
+    protected synchronized TaskExecutionListener getTaskExecutionListener() {
+      return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionListener();
     }
 
     public synchronized void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {

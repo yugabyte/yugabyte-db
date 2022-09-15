@@ -312,4 +312,19 @@ public class CustomerTaskController extends AuthenticatedController {
     }
     return YBPSuccess.withMessage("Task is being aborted.");
   }
+
+  @ApiOperation(
+      hidden = true,
+      value = "Resume a paused task",
+      notes = "Resumes a paused task",
+      response = YBPSuccess.class)
+  // Hidden API for internal consumption.
+  public Result resumeTask(UUID customerUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    boolean isSuccess = commissioner.resumeTask(taskUUID);
+    if (!isSuccess) {
+      return YBPSuccess.withMessage("Task is not paused.");
+    }
+    return YBPSuccess.withMessage("Task is resumed.");
+  }
 }
