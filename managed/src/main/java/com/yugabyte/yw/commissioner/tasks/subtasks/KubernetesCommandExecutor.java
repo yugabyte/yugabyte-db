@@ -714,14 +714,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
 
-        if (certInfo.certType == CertConfigType.K8SCertManager) {
-          // User configuring a K8SCertManager type of certificate on a Universe enables
-          // the cert-manager integration for this Universe. The name of
-          // Issuer/ClusterIssuer will come from the Provider yaml override. Rest of the
-          // setup happens here.
+        if (certInfo.certType == CertConfigType.K8SCertManager
+            && (azConfig.containsKey("CERT-MANAGER-ISSUER")
+                || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
+          // User configuring a K8SCertManager type of certificate on a Universe and setting
+          // the corresponding azConfig enables the cert-manager integration for this
+          // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
           Map<String, Object> certManager = new HashMap<>();
           certManager.put("enabled", true);
           certManager.put("bootstrapSelfsigned", false);
+          boolean useClusterIssuer = azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER");
+          certManager.put("useClusterIssuer", useClusterIssuer);
+          if (useClusterIssuer) {
+            certManager.put("clusterIssuer", azConfig.get("CERT-MANAGER-CLUSTERISSUER"));
+          } else {
+            certManager.put("issuer", azConfig.get("CERT-MANAGER-ISSUER"));
+          }
           tlsInfo.put("certManager", certManager);
         } else {
           CertificateProviderInterface certProvider =
