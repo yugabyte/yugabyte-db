@@ -48,6 +48,11 @@ class PgCommandTestBase : public PgWrapperTestBase {
     db_name_ = db_name;
   }
 
+  YB_STRONGLY_TYPED_BOOL(TuplesOnly);
+
+  Result<std::string> RunPsqlCommand(
+      const std::string &statement, TuplesOnly tuples_only = TuplesOnly::kFalse);
+
   void RunPsqlCommand(
       const std::string &statement, const std::string &expected_output, bool tuples_only = false);
 

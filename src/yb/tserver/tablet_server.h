@@ -231,6 +231,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
+  void RegisterPgConfigReloader(PgConfigReloader reloader) override;
+
+  Status ReloadPgConfig() override;
+
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const
       EXCLUDES(xcluster_safe_time_mutex_);
 
@@ -327,6 +331,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   mutable rw_spinlock xcluster_safe_time_mutex_;
   std::unordered_map<NamespaceId, HybridTime> xcluster_safe_time_map_
       GUARDED_BY(xcluster_safe_time_mutex_);
+
+  PgConfigReloader pg_config_reloader_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

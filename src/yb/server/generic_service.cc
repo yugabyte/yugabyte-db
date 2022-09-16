@@ -198,14 +198,26 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   if (ret.empty()) {
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
-  } else {
-    bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
-    LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: " << flag_to_set << " from '"
-              << (is_sensitive ? "***" : old_val) << "' to '"
-              << (is_sensitive ? "***" : value_to_set) << "'";
-    resp->set_result(SetFlagResponsePB::SUCCESS);
-    resp->set_msg(ret);
+    rpc.RespondSuccess();
+    return;
   }
+
+  if (ContainsKey(tags, FlagTag::kPg)) {
+    auto status = server_->ReloadPgConfig();
+    if (!status.ok()) {
+      resp->set_result(SetFlagResponsePB::PG_SET_FAILED);
+      resp->set_msg(Format("Unable to set flag: $0", status.message()));
+      rpc.RespondSuccess();
+      return;
+    }
+  }
+
+  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
+  LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: " << flag_to_set << " from '"
+            << (is_sensitive ? "***" : old_val) << "' to '" << (is_sensitive ? "***" : value_to_set)
+            << "'";
+  resp->set_result(SetFlagResponsePB::SUCCESS);
+  resp->set_msg(ret);
 
   rpc.RespondSuccess();
 }
