@@ -65,13 +65,30 @@ This is a second-level tab widget, that uses different files for each tab - same
 
 If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
 
+| Table | Description |
+| :--- | :--- |
+| A table | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+| A table | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+| A table | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+: Another paragraph in the definition.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+: Another paragraph in the definition.
+
 ### Heading 3
 
 Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
 
 >**Sort of a side-note/callout**
 >
->For content that is outside of a set of instructions; sort of explanatory but peripheral to the task at hand. Advice, what's happening here sort of thing. But not a full blown Note or Warning. I'm the only one who uses it. Sorry.
+>For content that is outside of a set of instructions; sort of explanatory but peripheral to the task at hand. Advice, what's happening here sort of thing. But not a full blown Note or Warning. It's actually a blockquote in markdown. I'm the only one who uses it. Sorry.
 >
 >The heading is simply bolded text.
 
