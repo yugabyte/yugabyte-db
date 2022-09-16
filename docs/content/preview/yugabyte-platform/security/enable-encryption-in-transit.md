@@ -61,7 +61,7 @@ You can also modify TLS settings for an existing universe, as follows:
       <br>Use the expanded **TLS Configuration** dialog shown in the following illustration to change the settings to meet your requirements:<br>
 
       ![TLS Configuration Expanded](/images/yp/encryption-in-transit/tls-config2.png)
-  
+    
       <br>
 
     - If encryption in transit is currently enabled for the universe, you can either disable or modify it, as follows:
@@ -373,7 +373,7 @@ For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configur
 
 - The cert-manager is running in the Kubernetes cluster.
 - A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same root certificate file must be prepared for upload to YugabyteDB Anywhere.
-- An Issuer or ClusterIssuer Kind of the cert-manager resource is prepared and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
+- An Issuer or ClusterIssuer Kind is configured on the cert-manager and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
 
 During the universe creation, you can enable TLS certificates issued by the cert-manager, as follows:
 
@@ -389,7 +389,9 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Since an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected.
+2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Since an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+
+   ![img](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
 3. Create the universe:
 
