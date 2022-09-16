@@ -59,7 +59,9 @@ This is a top-level tab widget, that uses different files for each tab. Everythi
   </ul>
 </div>
 
-This is a second-level tab widget, that uses different files for each tab - same as the one above, just styled differently. Everything that follows is in this tab's file. If you change tabs, you get a whole new page.
+This is a second-level tab widget, that uses different files for each tab - same as the one above, just styled differently. We should be using this style instead of the buttons for this type of tab. Many pages need to be changed to do that.
+
+Everything that follows is in this tab's file. If you change tabs, you get a whole new page.
 
 ## Heading 2
 
@@ -92,13 +94,37 @@ Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser,
 >
 >The heading is simply bolded text.
 
+{{< note title="Note" >}}
+
+This is an actual Note. Maybe a bit overkill.
+
+{{< /note >}}
+
+{{< tip title="Tip" >}}
+
+This is an actual Tip. Maybe there's a cool alternative to what you are doing.
+
+{{< /tip >}}
+
+{{< warning title="Warning" >}}
+
+This is an actual Warning. Whatever you are doing may threaten your data if you do it wrong.
+
+{{< /warning >}}
+
 What follows is an image, some numbered steps, some code, text indented under a step:
 
 ![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
 
-1. On the **Clusters** page, ensure your cluster is selected.
+1. Numbered list with indented lists.
 
-1. Click **Connect** to display the **Connect to Cluster** dialog.
+    1. Second level numbered list indent.
+
+    1. Second level numbered list indent.
+
+        1. Third level numbered list indent.
+
+        1. Third level numbered list indent.
 
 1. Under **Cloud Shell**, click **Launch Cloud Shell**.
 
@@ -122,25 +148,17 @@ What follows is an image, some numbered steps, some code, text indented under a 
     yugabyte=>
     ```
 
-The command line interface (CLI) being used is called [ysqlsh](../admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../api/ysql/). Cloud Shell also supports [ycqlsh](../admin/ycqlsh/), a CLI for the [YCQL API](../api/ycql/).
+Bulleted lists with levels of indent:
 
-{{< note title="Note" >}}
+- Bulleted list with indented lists.
 
-This is an actual Note. Maybe a bit overkill.
+  - Second level Bulleted list indent.
 
-{{< /note >}}
+  - Second level Bulleted list indent.
 
-{{< tip title="Tip" >}}
+    - Third level Bulleted list indent.
 
-This is an actual Tip. Maybe there's a cool alternative to what you are doing.
-
-{{< /tip >}}
-
-{{< warning title="Warning" >}}
-
-This is an actual Warning. Whatever you are doing may threaten your data if you do it wrong.
-
-{{< /warning >}}
+    - Third level Bulleted list indent.
 
 #### Heading 4
 
@@ -184,17 +202,8 @@ To build and run the application, do the following:
 
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Managed [cluster CA certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
-
-1. Build the application.
-
-    ```sh
-    $ mvn clean package
-    ```
 
 1. Start the application.
 
@@ -212,16 +221,9 @@ You should see output similar to the following:
 >>>> Selecting accounts:
 name = Jessica, age = 28, country = USA, balance = 10000
 name = John, age = 28, country = Canada, balance = 9000
-
->>>> Transferred 800 between accounts.
->>>> Selecting accounts:
-name = Jessica, age = 28, country = USA, balance = 9200
-name = John, age = 28, country = Canada, balance = 9800
 ```
 
 You have successfully executed a basic Java application that works with YugabyteDB Managed.
-
-[Explore the application logic](../develop/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -250,23 +252,8 @@ To build and run the application, do the following:
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Managed [cluster CA certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     3. Save the file.
-
-1. Initialize the `GO111MODULE` variable.
-
-    ```sh
-    $ export GO111MODULE=auto
-    ```
-
-1. Import the Go PostgreSQL driver.
-
-    ```sh
-    $ go get github.com/lib/pq
-    ```
 
 1. Start the application.
 
