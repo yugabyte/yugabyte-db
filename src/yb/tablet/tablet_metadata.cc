@@ -489,13 +489,33 @@ Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_
   return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
-  std::lock_guard<MutexType> lock(data_mutex_);
-  return GetTableInfoUnlocked(table_id);
+Status MakeColocatedTableNotFound(
+    const ColocationId& colocation_id, const RaftGroupId& raft_group_id) {
+  std::ostringstream string_stream;
+  string_stream << "Table with colocation id " << colocation_id << " not found in Raft group "
+                << raft_group_id;
+  std::string msg = string_stream.str();
+  return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const std::string& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(
+    const TableId& table_id, const ColocationId& colocation_id) const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return GetTableInfoUnlocked(table_id, colocation_id);
+}
+
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(
+    const TableId& table_id, const ColocationId& colocation_id) const {
   const auto& tables = kv_store_.tables;
+
+  if (table_id.empty() && colocation_id != kColocationIdNotSet) {
+    const auto& colocation_to_table = kv_store_.colocation_to_table;
+    const auto iter = colocation_to_table.find(colocation_id);
+    if (iter == colocation_to_table.end()) {
+      return MakeColocatedTableNotFound(colocation_id, raft_group_id_);
+    }
+    return iter->second;
+  }
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
   if (iter == tables.end()) {
@@ -1374,13 +1394,10 @@ std::string RaftGroupMetadata::namespace_name(const TableId& table_id) const {
   return table_info->namespace_name;
 }
 
-std::string RaftGroupMetadata::table_name(const TableId& table_id) const {
+std::string RaftGroupMetadata::table_name(
+    const TableId& table_id, const ColocationId& colocation_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  if (table_id.empty()) {
-    return primary_table_info()->table_name;
-  }
-  const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
-  return table_info->table_name;
+  return CHECK_RESULT(GetTableInfo(table_id, colocation_id))->table_name;
 }
 
 TableType RaftGroupMetadata::table_type(const TableId& table_id) const {
@@ -1392,10 +1409,10 @@ TableType RaftGroupMetadata::table_type(const TableId& table_id) const {
   return table_info->table_type;
 }
 
-SchemaPtr RaftGroupMetadata::schema(const TableId& table_id) const {
+SchemaPtr RaftGroupMetadata::schema(
+    const TableId& table_id, const ColocationId& colocation_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  const TableInfoPtr table_info =
-      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
   return SchemaPtr(table_info, &table_info->doc_read_context->schema);
 }
 
@@ -1406,10 +1423,10 @@ std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) 
   return std::shared_ptr<IndexMap>(table_info, table_info->index_map.get());
 }
 
-SchemaVersion RaftGroupMetadata::schema_version(const TableId& table_id) const {
+SchemaVersion RaftGroupMetadata::schema_version(
+    const TableId& table_id, const ColocationId& colocation_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  const TableInfoPtr table_info =
-      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  const TableInfoPtr table_info = CHECK_RESULT(GetTableInfo(table_id, colocation_id));
   return table_info->schema_version;
 }
 
