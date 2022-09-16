@@ -231,8 +231,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
+  Result<TableInfoPtr> GetTableInfo(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const
+      REQUIRES(data_mutex_);
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -257,15 +260,18 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the name, type, schema, index map, schema, etc of the table.
   std::string namespace_name(const TableId& table_id = "") const;
 
-  std::string table_name(const TableId& table_id = "") const;
+  std::string table_name(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   TableType table_type(const TableId& table_id = "") const;
 
-  yb::SchemaPtr schema(const TableId& table_id = "") const;
+  yb::SchemaPtr schema(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
