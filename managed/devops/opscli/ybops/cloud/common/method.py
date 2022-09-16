@@ -1636,17 +1636,19 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             ssh_user = DEFAULT_SSH_USER
 
         if args.use_ssh:
-            use_default_port = not self.update_open_ssh_port(args)
             self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                     default_port=use_default_port))
+                                                     default_port=True))
             self.extra_vars.update({"ssh_user": ssh_user})
-            rc, stdout, stderr = remote_exec_command(
+            self.update_open_ssh_port(args)
+            _, _, stderr = remote_exec_command(
                                     self.extra_vars["ssh_host"],
                                     self.extra_vars["ssh_port"],
                                     self.extra_vars["ssh_user"],
                                     args.private_key_file,
                                     'sudo reboot', ssh2_enabled=args.ssh2_enabled)
-            if rc:
+            # Cannot rely on rc, as for reboot script won't exit gracefully,
+            # & we will be returned -1.
+            if (isinstance(stderr, list) and len(stderr) > 0):
                 raise YBOpsRecoverableError(f"Failed to connect to {args.search_pattern}")
 
             self.wait_for_host(args, False)
