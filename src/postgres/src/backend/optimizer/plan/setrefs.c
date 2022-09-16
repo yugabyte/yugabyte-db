@@ -652,6 +652,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			break;
 
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			set_join_references(root, (Join *) plan, rtoffset);
@@ -1662,9 +1663,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 								   rtoffset);
 
 	/* Now do join-type-specific stuff */
-	if (IsA(join, NestLoop))
+	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = (NestLoop *) join;
+		NestLoop   *nl = IsA(join, NestLoop) 
+						 ? (NestLoop *) join
+						 : &((YbBatchedNestLoop *) join)->nl;
 		ListCell   *lc;
 
 		foreach(lc, nl->nestParams)
@@ -1681,6 +1684,56 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				  nlp->paramval->varno == OUTER_VAR))
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
+		List *innerAttNos = NIL;
+		List *outerParamNos = NIL;
+
+		ListCell *l;
+		if (IsA(join, YbBatchedNestLoop))
+		{
+			YbBatchedNestLoop *batchednl = (YbBatchedNestLoop *) join;
+			ListCell *ll;
+			/* Fill in batchednl->innerHashAttNos if applicable */
+			forboth(l, join->joinqual, ll, batchednl->hashOps)
+			{
+				Expr *clause = (Expr *) lfirst(l);
+				Oid hashOp = lfirst_oid(ll);
+				if (OidIsValid(hashOp))
+				{
+					Assert(IsA(clause, OpExpr));
+					OpExpr *opexpr = (OpExpr *) clause;
+					Assert(list_length(opexpr->args) == 2);
+					Assert(IsA(lsecond(opexpr->args), Var));
+					Expr *leftArg = linitial(opexpr->args);
+					Expr *rightArg = lsecond(opexpr->args);
+
+					Var *innerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								? leftArg
+								: rightArg);
+					Var *outerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								 ? rightArg
+								 : leftArg);
+					Assert(IsA((Expr*) outerArg, Var));
+					
+					Assert(innerArg->varno = INNER_VAR);
+
+					innerAttNos =
+						lappend_int(innerAttNos,
+									((Var *) innerArg)->varattno);
+					outerParamNos =
+						lappend_int(outerParamNos, outerArg->varattno);
+				} else {
+					innerAttNos =
+						lappend_int(innerAttNos, InvalidOid);
+					outerParamNos =
+						lappend_int(outerParamNos, InvalidOid);
+				}
+			}
+			batchednl->innerHashAttNos = innerAttNos;
+			batchednl->outerParamNos =  outerParamNos;
+		}
+
 	}
 	else if (IsA(join, MergeJoin))
 	{

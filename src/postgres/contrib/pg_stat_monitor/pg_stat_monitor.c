@@ -1892,6 +1892,13 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(var->varlevelsup);
 			}
 			break;
+		case T_YbBatchedExpr:
+			{
+				YbBatchedExpr	*bexpr = (YbBatchedExpr *) node;
+
+				JumbleExpr(jstate, (Node *) bexpr->orig_expr);
+			}
+			break;
 		case T_Const:
 			{
 				Const	   *c = (Const *) node;

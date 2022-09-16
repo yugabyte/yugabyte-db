@@ -1,0 +1,1268 @@
+CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
+CREATE INDEX p1_b_idx ON p1 (b ASC);
+ANALYZE p1;
+CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
+ANALYZE p2;
+CREATE TABLE p3 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p3 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 5 = 0;
+ANALYZE p3;
+CREATE TABLE p4 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p4 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 7 = 0;
+ANALYZE p4;
+-- We're testing nested loop join batching in this file
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_seqscan = off;
+SET enable_material = off;
+SET yb_bnl_batch_size = 3;
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.a)
+   ->  Seq Scan on p2 t2
+         Filter: (a <= 100)
+   ->  Index Scan using p1_pkey on p1 t1
+         Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
+         Filter: (a <= 100)
+(7 rows)
+
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+ a  | b  |  c   | a  | b  |  c   
+----+----+------+----+----+------
+ 78 |  3 | 0078 | 78 |  3 | 0078
+ 12 | 12 | 0012 | 12 | 12 | 0012
+ 90 | 15 | 0090 | 90 | 15 | 0090
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 42 | 17 | 0042 | 42 | 17 | 0042
+ 48 | 23 | 0048 | 48 | 23 | 0048
+ 96 | 21 | 0096 | 96 | 21 | 0096
+ 60 | 10 | 0060 | 60 | 10 | 0060
+ 72 | 22 | 0072 | 72 | 22 | 0072
+ 36 | 11 | 0036 | 36 | 11 | 0036
+ 54 |  4 | 0054 | 54 |  4 | 0054
+ 18 | 18 | 0018 | 18 | 18 | 0018
+ 66 | 16 | 0066 | 66 | 16 | 0066
+ 30 |  5 | 0030 | 30 |  5 | 0030
+ 84 |  9 | 0084 | 84 |  9 | 0084
+  0 |  0 | 0000 |  0 |  0 | 0000
+ 24 | 24 | 0024 | 24 | 24 | 0024
+(17 rows)
+
+-- Disabling batching for compound clauses
+/*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((a = p2.b) AND (b = p2.a))
+(4 rows)
+
+/*+ Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t3.a = t1.a)
+   ->  Seq Scan on p3 t3
+         Filter: (a <= 30)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
+         ->  Index Scan using p1_pkey on p1 t1
+               Index Cond: (a = ANY (ARRAY[t3.a, $1, $2]))
+               Filter: (a <= 100)
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
+               Filter: (a <= 100)
+(12 rows)
+
+SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
+ a  | b  |  c   | a  
+----+----+------+----
+ 10 | 10 | 0010 | 10
+ 15 | 15 | 0015 |   
+  5 |  5 | 0005 |   
+  0 |  0 | 0000 |  0
+  0 |  0 | 0000 |  0
+ 25 |  0 | 0025 |   
+ 30 |  5 | 0030 |   
+ 20 | 20 | 0020 | 20
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (t3.a = t1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.a = t2.b)
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: (b <= 15)
+         ->  Index Scan using p1_pkey on p1 t1
+               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
+   ->  Index Scan using p3_pkey on p3 t3
+         Index Cond: (a = ANY (ARRAY[t1.a, $4, $5]))
+(10 rows)
+
+SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+ a  | b  |  c   | a  
+----+----+------+----
+ 10 | 10 | 0010 | 10
+    |    |      |  6
+    |    |      |  6
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+    |    |      |  8
+    |    |      |  4
+    |    |      |  2
+    |    |      |  2
+  0 |  0 | 0000 |  0
+  0 |  0 | 0000 |  0
+ 10 | 10 | 0010 | 10
+  0 |  0 | 0000 |  0
+    |    |      |  4
+    |    |      |  8
+    |    |      |  6
+    |    |      |  4
+    |    |      |  4
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+    |    |      |  4
+    |    |      |  2
+    |    |      |  8
+    |    |      |  6
+    |    |      |  4
+    |    |      |  2
+    |    |      |  8
+  0 |  0 | 0000 |  0
+ 10 | 10 | 0010 | 10
+    |    |      |  6
+  0 |  0 | 0000 |  0
+    |    |      |  4
+    |    |      |  8
+  0 |  0 | 0000 |  0
+  0 |  0 | 0000 |  0
+    |    |      |  2
+    |    |      |  2
+    |    |      |  4
+    |    |      |  8
+    |    |      |  2
+    |    |      |  8
+    |    |      |  6
+  0 |  0 | 0000 |  0
+    |    |      |  8
+    |    |      |  6
+ 10 | 10 | 0010 | 10
+    |    |      |  2
+    |    |      |  6
+(48 rows)
+
+-- anti join--
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Anti Join
+   Join Filter: (t1.a = t2.a)
+   ->  Seq Scan on p1 t1
+         Filter: (a <= 40)
+   ->  Index Scan using p2_pkey on p2 t2
+         Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(6 rows)
+
+SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+ a  | b  |  c   
+----+----+------
+ 38 | 13 | 0038
+ 16 | 16 | 0016
+ 40 | 15 | 0040
+ 32 |  7 | 0032
+ 34 |  9 | 0034
+ 10 | 10 | 0010
+  4 |  4 | 0004
+  2 |  2 | 0002
+  8 |  8 | 0008
+ 22 | 22 | 0022
+ 14 | 14 | 0014
+ 20 | 20 | 0020
+ 28 |  3 | 0028
+ 26 |  1 | 0026
+(14 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Anti Join
+   Join Filter: (t1.a = t2.b)
+   ->  Seq Scan on p1 t1
+         Filter: (a <= 40)
+   ->  Index Scan using p2_pkey on p2 t2
+         Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
+(6 rows)
+
+SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+ a  | b  |  c   
+----+----+------
+ 38 | 13 | 0038
+ 40 | 15 | 0040
+ 32 |  7 | 0032
+ 34 |  9 | 0034
+ 36 | 11 | 0036
+ 30 |  5 | 0030
+ 28 |  3 | 0028
+ 26 |  1 | 0026
+(8 rows)
+
+-- semi join--
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.a)
+   ->  Seq Scan on p1 t1
+         Filter: (a <= 40)
+   ->  Index Scan using p2_pkey on p2 t2
+         Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(6 rows)
+
+SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
+ a  | b  |  c   
+----+----+------
+ 12 | 12 | 0012
+  6 |  6 | 0006
+ 36 | 11 | 0036
+ 18 | 18 | 0018
+ 30 |  5 | 0030
+  0 |  0 | 0000
+ 24 | 24 | 0024
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.b)
+   ->  HashAggregate
+         Group Key: t2.b
+         ->  Seq Scan on p2 t2
+   ->  Index Scan using p1_pkey on p1 t1
+         Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
+         Filter: (a <= 40)
+(8 rows)
+
+SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
+ a  | b  |  c   
+----+----+------
+  8 |  8 | 0008
+  4 |  4 | 0004
+ 24 | 24 | 0024
+  0 |  0 | 0000
+ 14 | 14 | 0014
+ 22 | 22 | 0022
+ 20 | 20 | 0020
+ 10 | 10 | 0010
+  2 |  2 | 0002
+ 18 | 18 | 0018
+  6 |  6 | 0006
+ 16 | 16 | 0016
+ 12 | 12 | 0012
+(13 rows)
+
+CREATE TABLE int2type (a int2, PRIMARY KEY(a ASC));
+INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
+-- testing batching on join conditions across different types (int2, int4)
+-- We shouldn't cause any casting on inner expressions.
+/*+Leading((i2 p))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (i2.a = p.a)
+   ->  Index Scan using int2type_pkey on int2type i2
+   ->  Index Scan using p1_pkey on p1 p
+         Index Cond: (a = ANY (ARRAY[(i2.a)::integer, ($1)::integer, ($2)::integer]))
+(5 rows)
+
+/*+Leading((i2 p))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
+ a | a | b |  c   
+---+---+---+------
+ 4 | 4 | 4 | 0004
+(1 row)
+
+-- This shouldn't be batched as the LHS of the batched IN expression would
+-- have a cast.
+/*+Leading((p i2))*/ EXPLAIN (COSTS OFF) SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1 p
+   ->  Index Scan using int2type_pkey on int2type i2
+         Index Cond: (a = p.a)
+(4 rows)
+
+/*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
+ a | a | b |  c   
+---+---+---+------
+ 4 | 4 | 4 | 0004
+(1 row)
+
+DROP TABLE int2type;
+set yb_bnl_batch_size to 10;
+explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: a.a, d.a
+   ->  Nested Loop
+         ->  YB Batched Nested Loop Join
+               Join Filter: (a.a = b.a)
+               ->  YB Batched Nested Loop Join
+                     Join Filter: (a.a = c.a)
+                     ->  Index Scan using p1_b_idx on p1 a
+                           Index Cond: (b = 10)
+                     ->  Index Scan using p3_pkey on p3 c
+                           Index Cond: (a = ANY (ARRAY[a.a, $1, $2, $3, $4, $5, $6, $7, $8, $9]))
+               ->  Index Scan using p2_pkey on p2 b
+                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, $13, $14, $15, $16, $17, $18, $19]))
+         ->  Index Scan using p4_pkey on p4 d
+               Index Cond: (b = 10)
+(15 rows)
+
+select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
+  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c   |  a  | b  |  c   
+-----+----+------+-----+----+------+-----+----+------+-----+----+------
+  60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 |  35 | 10 | 0035
+  60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 | 210 | 10 | 0210
+  60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 | 385 | 10 | 0385
+  60 | 10 | 0060 |  60 | 10 | 0060 |  60 | 10 | 0060 | 560 | 10 | 0560
+ 210 | 10 | 0210 | 210 | 10 | 0210 | 210 | 10 | 0210 |  35 | 10 | 0035
+ 210 | 10 | 0210 | 210 | 10 | 0210 | 210 | 10 | 0210 | 210 | 10 | 0210
+ 210 | 10 | 0210 | 210 | 10 | 0210 | 210 | 10 | 0210 | 385 | 10 | 0385
+ 210 | 10 | 0210 | 210 | 10 | 0210 | 210 | 10 | 0210 | 560 | 10 | 0560
+ 360 | 10 | 0360 | 360 | 10 | 0360 | 360 | 10 | 0360 |  35 | 10 | 0035
+ 360 | 10 | 0360 | 360 | 10 | 0360 | 360 | 10 | 0360 | 210 | 10 | 0210
+ 360 | 10 | 0360 | 360 | 10 | 0360 | 360 | 10 | 0360 | 385 | 10 | 0385
+ 360 | 10 | 0360 | 360 | 10 | 0360 | 360 | 10 | 0360 | 560 | 10 | 0560
+ 510 | 10 | 0510 | 510 | 10 | 0510 | 510 | 10 | 0510 |  35 | 10 | 0035
+ 510 | 10 | 0510 | 510 | 10 | 0510 | 510 | 10 | 0510 | 210 | 10 | 0210
+ 510 | 10 | 0510 | 510 | 10 | 0510 | 510 | 10 | 0510 | 385 | 10 | 0385
+ 510 | 10 | 0510 | 510 | 10 | 0510 | 510 | 10 | 0510 | 560 | 10 | 0560
+(16 rows)
+
+DROP TABLE p1;
+DROP TABLE p2;
+DROP TABLE p3;
+DROP TABLE p4;
+-- Test on unhashable join operations. These should use the tuplestore
+-- strategy.
+SET yb_bnl_batch_size = 3;
+CREATE TABLE m1 (a money, primary key(a asc));
+INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
+CREATE TABLE m2 (a money, primary key(a asc));
+INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join (actual rows=5 loops=1)
+   Join Filter: (t1.a = t2.a)
+   Rows Removed by Join Filter: 8
+   ->  Index Scan using m1_pkey on m1 t1 (actual rows=25 loops=1)
+         Index Cond: (a <= (50)::money)
+   ->  Index Scan using m2_pkey on m2 t2 (actual rows=1 loops=9)
+         Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(7 rows)
+
+SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
+   a    |   a    
+--------+--------
+ $10.00 | $10.00
+ $20.00 | $20.00
+ $30.00 | $30.00
+ $40.00 | $40.00
+ $50.00 | $50.00
+(5 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Left Join (actual rows=10 loops=1)
+   Join Filter: (t1.a = t2.a)
+   Rows Removed by Join Filter: 7
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+         Index Cond: (a <= (50)::money)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1 loops=4)
+         Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(7 rows)
+
+SELECT * FROM m2 t1 LEFT JOIN m1 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
+   a    |   a    
+--------+--------
+ $10.00 | $10.00
+  $5.00 |       
+ $15.00 |       
+ $20.00 | $20.00
+ $30.00 | $30.00
+ $25.00 |       
+ $40.00 | $40.00
+ $35.00 |       
+ $45.00 |       
+ $50.00 | $50.00
+(10 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Anti Join (actual rows=5 loops=1)
+   Join Filter: (t1.a = t2.a)
+   Rows Removed by Join Filter: 8
+   ->  Index Scan using m2_pkey on m2 t1 (actual rows=10 loops=1)
+         Index Cond: (a <= (50)::money)
+   ->  Index Scan using m1_pkey on m1 t2 (actual rows=1 loops=4)
+         Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
+(7 rows)
+
+SELECT * FROM m2 t1 WHERE NOT EXISTS (SELECT 1 FROM m1 t2 WHERE t1.a = t2.a) AND t1.a <= 50::money;
+   a    
+--------
+  $5.00
+ $15.00
+ $25.00
+ $35.00
+ $45.00
+(5 rows)
+
+DROP TABLE m1;
+DROP TABLE m2;
+create table q1 (c1 int, c2 int, primary key (c1 asc, c2 asc));
+create table q2 (c1 int, c2 int, primary key (c2 hash, c1 asc));
+insert into q1 select i, i / 4 from generate_series(0, 199) i;
+insert into q2 select i, i / 2 from generate_series(0, 999) i;
+analyze q1;
+analyze q2;
+SET yb_bnl_batch_size = 3;
+-- Make sure a sort node is inserted above a batched NL join when appropriate
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: q1.c1
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q1.c2 = q2.c2)
+               ->  Index Scan using q1_pkey on q1
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(8 rows)
+
+select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+ c1 
+----
+  0
+  0
+  1
+  1
+  2
+  2
+  3
+  3
+  4
+  4
+(10 rows)
+
+create table q3(a int, b int, c name, primary key(a,b));
+create index q3_range on q3(a asc);
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (p2.c1 = p1.c1)
+   ->  Index Scan using q1_pkey on q1 p1
+   ->  Nested Loop
+         ->  Index Only Scan using q3_range on q3 p3
+         ->  Index Scan using q2_pkey on q2 p2
+               Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2]))
+(7 rows)
+
+-- this should not be a batched NL join as it contains an unbatchable clause
+-- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
+-- present
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Nested Loop Left Join
+   ->  Index Scan using q1_pkey on q1 p1
+   ->  Nested Loop
+         ->  Index Only Scan using q3_range on q3 p3
+               Index Cond: (a <= p1.c1)
+         ->  Index Scan using q2_pkey on q2 p2
+               Index Cond: (c1 = p1.c1)
+(7 rows)
+
+DROP TABLE q1;
+DROP TABLE q2;
+DROP TABLE q3;
+SELECT '' AS "xxx", *
+  FROM J1_TBL AS tx order by 1, 2, 3, 4;
+ xxx | i | j |   t   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL tx  order by 1, 2, 3, 4;
+ xxx | i | j |   t   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL AS t1 (a, b, c)  order by 1, 2, 3, 4;
+ xxx | a | b |   c   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c)  order by 1, 2, 3, 4;
+ xxx | a | b |   c   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)  order by 1, 2, 3, 4, 5, 6;
+ xxx | a | b |   c   | d | e
+-----+---+---+-------+---+----
+     | 0 |   | zero  | 0 |
+     | 0 |   | zero  | 1 | -1
+     | 0 |   | zero  | 2 |  2
+     | 0 |   | zero  | 2 |  4
+     | 0 |   | zero  | 3 | -3
+     | 0 |   | zero  | 5 | -5
+     | 0 |   | zero  | 5 | -5
+     | 0 |   | zero  |   |  0
+     | 0 |   | zero  |   |
+     | 1 | 4 | one   | 0 |
+     | 1 | 4 | one   | 1 | -1
+     | 1 | 4 | one   | 2 |  2
+     | 1 | 4 | one   | 2 |  4
+     | 1 | 4 | one   | 3 | -3
+     | 1 | 4 | one   | 5 | -5
+     | 1 | 4 | one   | 5 | -5
+     | 1 | 4 | one   |   |  0
+     | 1 | 4 | one   |   |
+     | 2 | 3 | two   | 0 |
+     | 2 | 3 | two   | 1 | -1
+     | 2 | 3 | two   | 2 |  2
+     | 2 | 3 | two   | 2 |  4
+     | 2 | 3 | two   | 3 | -3
+     | 2 | 3 | two   | 5 | -5
+     | 2 | 3 | two   | 5 | -5
+     | 2 | 3 | two   |   |  0
+     | 2 | 3 | two   |   |
+     | 3 | 2 | three | 0 |
+     | 3 | 2 | three | 1 | -1
+     | 3 | 2 | three | 2 |  2
+     | 3 | 2 | three | 2 |  4
+     | 3 | 2 | three | 3 | -3
+     | 3 | 2 | three | 5 | -5
+     | 3 | 2 | three | 5 | -5
+     | 3 | 2 | three |   |  0
+     | 3 | 2 | three |   |
+     | 4 | 1 | four  | 0 |
+     | 4 | 1 | four  | 1 | -1
+     | 4 | 1 | four  | 2 |  2
+     | 4 | 1 | four  | 2 |  4
+     | 4 | 1 | four  | 3 | -3
+     | 4 | 1 | four  | 5 | -5
+     | 4 | 1 | four  | 5 | -5
+     | 4 | 1 | four  |   |  0
+     | 4 | 1 | four  |   |
+     | 5 | 0 | five  | 0 |
+     | 5 | 0 | five  | 1 | -1
+     | 5 | 0 | five  | 2 |  2
+     | 5 | 0 | five  | 2 |  4
+     | 5 | 0 | five  | 3 | -3
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  |   |  0
+     | 5 | 0 | five  |   |
+     | 6 | 6 | six   | 0 |
+     | 6 | 6 | six   | 1 | -1
+     | 6 | 6 | six   | 2 |  2
+     | 6 | 6 | six   | 2 |  4
+     | 6 | 6 | six   | 3 | -3
+     | 6 | 6 | six   | 5 | -5
+     | 6 | 6 | six   | 5 | -5
+     | 6 | 6 | six   |   |  0
+     | 6 | 6 | six   |   |
+     | 7 | 7 | seven | 0 |
+     | 7 | 7 | seven | 1 | -1
+     | 7 | 7 | seven | 2 |  2
+     | 7 | 7 | seven | 2 |  4
+     | 7 | 7 | seven | 3 | -3
+     | 7 | 7 | seven | 5 | -5
+     | 7 | 7 | seven | 5 | -5
+     | 7 | 7 | seven |   |  0
+     | 7 | 7 | seven |   |
+     | 8 | 8 | eight | 0 |
+     | 8 | 8 | eight | 1 | -1
+     | 8 | 8 | eight | 2 |  2
+     | 8 | 8 | eight | 2 |  4
+     | 8 | 8 | eight | 3 | -3
+     | 8 | 8 | eight | 5 | -5
+     | 8 | 8 | eight | 5 | -5
+     | 8 | 8 | eight |   |  0
+     | 8 | 8 | eight |   |
+     |   | 0 | zero  | 0 |
+     |   | 0 | zero  | 1 | -1
+     |   | 0 | zero  | 2 |  2
+     |   | 0 | zero  | 2 |  4
+     |   | 0 | zero  | 3 | -3
+     |   | 0 | zero  | 5 | -5
+     |   | 0 | zero  | 5 | -5
+     |   | 0 | zero  |   |  0
+     |   | 0 | zero  |   |
+     |   |   | null  | 0 |
+     |   |   | null  | 1 | -1
+     |   |   | null  | 2 |  2
+     |   |   | null  | 2 |  4
+     |   |   | null  | 3 | -3
+     |   |   | null  | 5 | -5
+     |   |   | null  | 5 | -5
+     |   |   | null  |   |  0
+     |   |   | null  |   |
+(99 rows)
+
+SELECT '' AS "xxx", t1.a, t2.e
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
+  WHERE t1.a = t2.d  order by 1, 2, 3;
+ xxx | a | e
+-----+---+----
+     | 0 |
+     | 1 | -1
+     | 2 |  2
+     | 2 |  4
+     | 3 | -3
+     | 5 | -5
+     | 5 | -5
+(7 rows)
+
+--
+--
+-- Inner joins (equi-joins)
+--
+--
+--
+-- Inner joins (equi-joins) with USING clause
+-- The USING syntax changes the shape of the resulting table
+-- by including a column in the USING clause only once in the result.
+--
+-- Inner equi-join on specified column
+SELECT '' AS "xxx", *
+  FROM J1_TBL INNER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+-- Same as above, slightly different syntax
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
+  ORDER BY a, d;
+ xxx | a | b |   c   | d
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
+  ORDER BY b, t1.a;
+ xxx | b | a |   c   | a
+-----+---+---+-------+---
+     | 0 | 5 | five  |
+     | 0 |   | zero  |
+     | 2 | 3 | three | 2
+     | 4 | 1 | one   | 2
+(4 rows)
+
+--
+-- NATURAL JOIN
+-- Inner equi-join on all columns with the same name
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL NATURAL JOIN J2_TBL order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) order by 1, 2, 3, 4, 5;
+ xxx | a | b |   c   | d
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) order by 1, 2, 3, 4, 5;
+ xxx | a | b |  c   | d
+-----+---+---+------+---
+     | 0 |   | zero |
+     | 2 | 3 | two  | 2
+     | 4 | 1 | four | 2
+(3 rows)
+
+-- mismatch number of columns
+-- currently, Postgres will fill in with underlying names
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) order by 1, 2, 3, 4, 5;
+ xxx | a | b |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+--
+-- Inner joins (equi-joins)
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |   t   | i | k
+-----+---+---+-------+---+----
+     | 0 |   | zero  | 0 |
+     | 1 | 4 | one   | 1 | -1
+     | 2 | 3 | two   | 2 |  2
+     | 2 | 3 | two   | 2 |  4
+     | 3 | 2 | three | 3 | -3
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  | 5 | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |  t   | i | k
+-----+---+---+------+---+---
+     | 0 |   | zero |   | 0
+     | 2 | 3 | two  | 2 | 2
+     | 4 | 1 | four | 2 | 4
+(3 rows)
+
+--
+-- Non-equi-joins
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |   t   | i | k
+-----+---+---+-------+---+---
+     | 0 |   | zero  | 2 | 2
+     | 0 |   | zero  | 2 | 4
+     | 0 |   | zero  |   | 0
+     | 1 | 4 | one   | 2 | 2
+     | 1 | 4 | one   | 2 | 4
+     | 2 | 3 | two   | 2 | 2
+     | 2 | 3 | two   | 2 | 4
+     | 3 | 2 | three | 2 | 4
+     | 4 | 1 | four  | 2 | 4
+(9 rows)
+
+--
+-- Outer joins
+-- Note that OUTER is a noise word
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |
+     | 7 | 7 | seven |
+     | 8 | 8 | eight |
+     |   |   | null  |
+     |   | 0 | zero  |
+(13 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |
+     | 7 | 7 | seven |
+     | 8 | 8 | eight |
+     |   |   | null  |
+     |   | 0 | zero  |
+(13 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     |   |   |       |  0
+     |   |   |       |
+(9 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     |   |   |       |  0
+     |   |   |       |
+(9 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |
+     | 7 | 7 | seven |
+     | 8 | 8 | eight |
+     |   |   |       |  0
+     |   |   | null  |
+     |   | 0 | zero  |
+     |   |   |       |
+(15 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL FULL JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k
+-----+---+---+-------+----
+     | 0 |   | zero  |
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |
+     | 7 | 7 | seven |
+     | 8 | 8 | eight |
+     |   |   |       |  0
+     |   |   | null  |
+     |   | 0 | zero  |
+     |   |   |       |
+(15 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) order by 1, 2, 3, 4, 5;
+ xxx | i | j | t | k
+-----+---+---+---+---
+(0 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) order by 1, 2, 3, 4, 5;
+ xxx | i | j |  t  | k
+-----+---+---+-----+----
+     | 1 | 4 | one | -1
+(1 row)
+
+--
+-- semijoin selectivity for <>
+--
+-- explain (costs off)
+-- select * from int4_tbl i4, tenk1 a
+-- where exists(select * from tenk1 b
+--              where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
+--       and i4.f1 = a.tenthous;
+--
+-- More complicated constructs
+--
+--
+-- Multiway full join
+--
+SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) order by 1, 2, 3, 4;
+ name | n  | n  | n
+------+----+----+----
+ bb   | 11 | 12 | 13
+ cc   |    | 22 | 23
+ dd   |    |    | 33
+ ee   |    | 42 |
+(4 rows)
+
+--
+-- Test interactions of join syntax and subqueries
+--
+-- Basic cases (we expect planner to pull up the subquery here)
+SELECT * FROM
+(SELECT * FROM t2) as s2
+INNER JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+(2 rows)
+
+SELECT * FROM
+(SELECT * FROM t2) as s2
+LEFT JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+ ee   | 42 |
+(3 rows)
+
+SELECT * FROM
+(SELECT * FROM t2) as s2
+FULL JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+ dd   |    | 33
+ ee   | 42 |
+(4 rows)
+
+-- Cases with non-nullable expressions in subquery results;
+-- make sure these go to null as expected
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL INNER JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
+ name | s2_n | s2_2 | s3_n | s3_2
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+(2 rows)
+
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL LEFT JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
+ name | s2_n | s2_2 | s3_n | s3_2
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+ ee   |   42 |    2 |      |
+(3 rows)
+
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL FULL JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4;
+ name | s2_n | s2_2 | s3_n | s3_2
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+ dd   |      |      |   33 |    3
+ ee   |   42 |    2 |      |
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+NATURAL INNER JOIN
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL INNER JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
+ name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2
+------+------+------+------+------+------+------
+ bb   |   11 |    1 |   12 |    2 |   13 |    3
+(1 row)
+
+SELECT * FROM
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+NATURAL FULL JOIN
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL FULL JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
+ name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2
+------+------+------+------+------+------+------
+ bb   |   11 |    1 |   12 |    2 |   13 |    3
+ cc   |      |      |   22 |    2 |   23 |    3
+ dd   |      |      |      |      |   33 |    3
+ ee   |      |      |   42 |    2 |      |
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n FROM t1) as s1
+NATURAL FULL JOIN
+  (SELECT * FROM
+    (SELECT name, n as s2_n FROM t2) as s2
+    NATURAL FULL JOIN
+    (SELECT name, n as s3_n FROM t3) as s3
+  ) ss2 order by 1, 2, 3, 4;
+ name | s1_n | s2_n | s3_n
+------+------+------+------
+ bb   |   11 |   12 |   13
+ cc   |      |   22 |   23
+ dd   |      |      |   33
+ ee   |      |   42 |
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n FROM t1) as s1
+NATURAL FULL JOIN
+  (SELECT * FROM
+    (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+    NATURAL FULL JOIN
+    (SELECT name, n as s3_n FROM t3) as s3
+  ) ss2 order by 1, 2, 3, 4, 5;
+ name | s1_n | s2_n | s2_2 | s3_n
+------+------+------+------+------
+ bb   |   11 |   12 |    2 |   13
+ cc   |      |   22 |    2 |   23
+ dd   |      |      |      |   33
+ ee   |      |   42 |    2 |
+(4 rows)
+
+-- Test for propagation of nullability constraints into sub-joins
+create temp table x (x1 int, x2 int);
+insert into x values (1,11);
+insert into x values (2,22);
+insert into x values (3,null);
+insert into x values (4,44);
+insert into x values (5,null);
+create temp table y (y1 int, y2 int);
+insert into y values (1,111);
+insert into y values (2,222);
+insert into y values (3,333);
+insert into y values (4,null);
+select * from x order by 1, 2;
+ x1 | x2
+----+----
+  1 | 11
+  2 | 22
+  3 |
+  4 | 44
+  5 |
+(5 rows)
+
+select * from y order by 1, 2;
+ y1 | y2
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 |
+(4 rows)
+
+select * from x left join y on (x1 = y1 and x2 is not null) order by 1, 2, 3, 4;
+ x1 | x2 | y1 | y2
+----+----+----+-----
+  1 | 11 |  1 | 111
+  2 | 22 |  2 | 222
+  3 |    |    |
+  4 | 44 |  4 |
+  5 |    |    |
+(5 rows)
+
+select * from x left join y on (x1 = y1 and y2 is not null) order by 1, 2, 3, 4;
+ x1 | x2 | y1 | y2
+----+----+----+-----
+  1 | 11 |  1 | 111
+  2 | 22 |  2 | 222
+  3 |    |  3 | 333
+  4 | 44 |    |
+  5 |    |    |
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |   5 |
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and x2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |     |
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |     |
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and y2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |
+  4 | 44 |  4 |     |     |
+  5 |    |    |     |     |
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and xx2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |     |
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |     |
+(5 rows)
+
+-- these should NOT give the same answers as above
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (x2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  4 | 44 |  4 |     |   4 |  44
+(3 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (y2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |
+(3 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (xx2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  4 | 44 |  4 |     |   4 |  44
+(3 rows)

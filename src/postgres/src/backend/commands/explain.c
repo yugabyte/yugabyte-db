@@ -1059,6 +1059,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_NestLoop:
 			pname = sname = "Nested Loop";
 			break;
+		case T_YbBatchedNestLoop:
+			pname = sname = "YB Batched Nested Loop";
+			break;
 		case T_MergeJoin:
 			pname = "Merge";	/* "Join" gets added by jointype switch */
 			sname = "Merge Join";
@@ -1343,6 +1346,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			ExplainModifyTarget((ModifyTable *) plan, es);
 			break;
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			{
@@ -1513,6 +1517,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	switch (nodeTag(plan))
 	{
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			/* try not to be too chatty about this in text mode */
@@ -1761,6 +1766,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			}
 			break;
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 			show_upper_qual(((NestLoop *) plan)->join.joinqual,
 							"Join Filter", planstate, ancestors, es);
 			if (((NestLoop *) plan)->join.joinqual)

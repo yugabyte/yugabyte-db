@@ -769,6 +769,17 @@ _outNestLoop(StringInfo str, const NestLoop *node)
 }
 
 static void
+_outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
+{
+	WRITE_NODE_TYPE("YbBatchedNestLoop");
+
+	_outNestLoop(str, &node->nl);
+	WRITE_NODE_FIELD(hashOps);
+	WRITE_NODE_FIELD(innerHashAttNos);
+	WRITE_NODE_FIELD(outerParamNos);
+}
+
+static void
 _outMergeJoin(StringInfo str, const MergeJoin *node)
 {
 	int			numCols;
@@ -1198,6 +1209,13 @@ _outVar(StringInfo str, const Var *node)
 	WRITE_UINT_FIELD(varnoold);
 	WRITE_INT_FIELD(varoattno);
 	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outYbBatchedExpr(StringInfo str, const YbBatchedExpr *node)
+{
+	WRITE_NODE_TYPE("BATCHEDEXPR");
+	outNode(str, node->orig_expr);
 }
 
 static void
@@ -3866,6 +3884,9 @@ outNode(StringInfo str, const void *obj)
 			case T_NestLoop:
 				_outNestLoop(str, obj);
 				break;
+			case T_YbBatchedNestLoop:
+				_outYbBatchedNestLoop(str, obj);
+				break;
 			case T_MergeJoin:
 				_outMergeJoin(str, obj);
 				break;
@@ -3937,6 +3958,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_Var:
 				_outVar(str, obj);
+				break;
+			case T_YbBatchedExpr:
+				_outYbBatchedExpr(str, obj);
 				break;
 			case T_Const:
 				_outConst(str, obj);
