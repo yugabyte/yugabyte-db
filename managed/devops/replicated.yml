@@ -646,12 +646,26 @@ config:
         value_cmd:
           name: host_ip
           value_at: 0
+        test_proc:
+          run_on_save: true
+          display_name: Check hostname is valid
+          command: regex_match
+          args:
+            - '^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$'
+            - "Enter a valid hostname or IP address without http(s)"
         required: true
       - name: support_origin_url
         title: Support Origin URL
         type: text
         value: ""
         default: http://localhost
+        test_proc:
+          run_on_save: true
+          display_name: Check Support Origin URL is valid
+          command: regex_match
+          args:
+            - '^http[s]?:\/\/\w+([\.\-\_]\w+)*(:[0-9]+)?(\/.*)?$'
+            - "Enter a valid URL of the form http://localhost:3000"
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
       - name: expose_app_port
         title: Expose Yugaware HTTP Port
