@@ -5014,11 +5014,32 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
   uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
 
   if (!table_info->matview_pg_table_id().empty()) {
-      table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->matview_pg_table_id()));
+    // Confirm that the relfilenode oid of pg_class entry with OID matview_pg_table_id
+    // is table_oid.
+    uint32_t matview_pg_table_oid = VERIFY_RESULT(
+        GetPgsqlTableOid(table_info->matview_pg_table_id()));
+    uint32_t relfilenode_id = VERIFY_RESULT(
+        sys_catalog_->ReadPgClassColumnWithOidValue(
+            database_oid,
+            matview_pg_table_oid,
+            "relfilenode"));
+    if (relfilenode_id != table_oid) {
+      // This must be an orphaned matview from a failed REFRESH.
+      return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
+          std::to_string(table_oid));
+    }
+    // Set table_oid to matview_pg_table_oid to read correct pg_class entry for matviews.
+    table_oid = matview_pg_table_oid;
   }
 
   const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
+      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, table_oid, "relnamespace"));
+
+  if (relnamespace_oid == kPgInvalidOid) {
+    return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
+        std::to_string(table_oid));
+  }
+
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 

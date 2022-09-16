@@ -183,8 +183,9 @@ class SysCatalogTable {
     TableToTablespaceIdMap *table_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.
-  Result<uint32_t> ReadPgClassRelnamespace(const uint32_t database_oid,
-                                           const uint32_t table_oid);
+  Result<uint32_t> ReadPgClassColumnWithOidValue(const uint32_t database_oid,
+                                                 const uint32_t table_oid,
+                                                 const string& column_name);
 
   // Read nspname string from the pg_namespace catalog table.
   Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
