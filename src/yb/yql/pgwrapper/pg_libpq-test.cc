@@ -2692,6 +2692,55 @@ TEST_F_EX(PgLibPqTest,
 }
 #endif
 
+class PgLibPqRefreshMatviewFailure: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_test_fail_matview_refresh_after_creation=true"));
+    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
+  }
+};
+
+// Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
+// by transaction GC.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestRefreshMatviewFailure),
+          PgLibPqRefreshMatviewFailure) {
+
+  const string kDatabaseName = "yugabyte";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_class WHERE relname = 'mv'"));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  auto matview_oid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_user_ddl_operation_timeout_sec", "1"));
+  ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW mv"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the orphaned materialized view.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(40), "Verify Table was removed by Transaction GC"));
+}
+
 class PgLibPqCatalogVersionTest : public PgLibPqTest {
  public:
   struct YsqlCatalogVersion {
