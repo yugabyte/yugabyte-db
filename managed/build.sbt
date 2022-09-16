@@ -187,6 +187,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//

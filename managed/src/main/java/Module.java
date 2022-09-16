@@ -58,6 +58,8 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -95,6 +97,7 @@ public class Module extends AbstractModule {
       log.info("Using Evolutions. Not using flyway migrations.");
     }
 
+    Security.addProvider(new PemKeyStoreProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CloudModules());
 
