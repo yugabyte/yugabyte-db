@@ -293,7 +293,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           }}
           disabled={
             tablesInUniverse?.data.length === 0 ||
-            currentUniverse?.data?.universeConfig?.takeBackups === 'false'
+            currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
+            currentUniverse?.data?.universeDetails?.universePaused
           }
         />
         <BackupCreateModal
@@ -432,7 +433,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                 btnIcon="fa fa-upload"
                 disabled={
                   tablesInUniverse?.data.length === 0 ||
-                  currentUniverse?.data?.universeConfig?.takeBackups === 'false'
+                  currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
+                  currentUniverse?.data?.universeDetails?.universePaused
                 }
               />
               <DropdownButton
@@ -446,8 +448,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                 <MenuItem
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (currentUniverse?.data?.universeDetails?.universePaused) return;
                     setShowAdvancedRestore(true);
                   }}
+                  disabled={currentUniverse?.data?.universeDetails?.universePaused}
                 >
                   Advanced Restore
                 </MenuItem>
