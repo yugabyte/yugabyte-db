@@ -22,6 +22,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -88,6 +89,7 @@ public class Provider extends Model {
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
+  @Encrypted
   private Map<String, String> config;
 
   @OneToMany(cascade = CascadeType.ALL)
@@ -181,18 +183,11 @@ public class Provider extends Model {
 
   // End Transient Properties
 
-  // Set and encrypt config
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
     Map<String, String> newConfigMap = this.getUnmaskedConfig();
     newConfigMap.putAll(configMap);
-    if (this.customerUUID != null) {
-      this.config = encryptProviderConfig(newConfigMap, this.customerUUID, this.code);
-    } else {
-      // When a Provider object is not being persisted, it may not have a customer ID. In this
-      // case, we can't encrypt.
-      this.config = newConfigMap;
-    }
+    this.config = newConfigMap;
   }
 
   @JsonProperty("config")
@@ -200,23 +195,10 @@ public class Provider extends Model {
     return maskConfigNew(this.getUnmaskedConfig());
   }
 
-  // Get the decrypted config
   @JsonIgnore
   public Map<String, String> getUnmaskedConfig() {
-    if (this.config == null) {
-      return new HashMap<>();
-    } else if (!this.config.containsKey("encrypted")) {
-      // When a Provider object is not being persisted, it may not be encrypted.
-      return new HashMap<>(this.config);
-    } else {
-      return decryptProviderConfig(this.config, this.customerUUID, this.code);
-    }
-  }
-
-  // Get the raw config
-  @JsonIgnore
-  public Map<String, String> getConfig() {
-    return this.config;
+    if (config == null) return new HashMap<>();
+    return config;
   }
 
   @JsonIgnore

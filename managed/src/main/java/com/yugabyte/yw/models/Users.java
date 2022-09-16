@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -124,7 +125,7 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   public Date creationDate;
 
-  private String authToken;
+  @Encrypted private String authToken;
 
   @Column(nullable = true)
   @ApiModelProperty(

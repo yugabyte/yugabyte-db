@@ -135,7 +135,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   private void checkEditableFields(ObjectNode formData, KeyProvider keyProvider, UUID configUUID) {
 
     KmsConfig config = KmsConfig.get(configUUID);
-    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
@@ -164,7 +164,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   private ObjectNode addNonEditableFieldsData(
       ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
-    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     if (keyProvider.equals(KeyProvider.AWS)) {
       formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
       if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
