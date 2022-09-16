@@ -3,23 +3,28 @@
 package main
 
 import (
-	"fmt"
-	"node-agent/adapters/cli"
-	"node-agent/app/task"
+	"node-agent/cli"
 	"node-agent/util"
 )
 
-// Entry for CLI
-func main() {
-	err := util.InitConfig(util.DefaultConfig)
+func setDefaultConfigs() {
+	config := util.CurrentConfig()
+	_, err := config.CompareAndUpdate(util.NodeLoggerKey, "", util.NodeAgentDefaultLog)
 	if err != nil {
-		fmt.Printf("Error while initializing the config %s", err.Error())
-		return
+		panic(err)
 	}
-	config := util.GetConfig()
-	config.Update(util.NodeLogger, util.NodeAgentDefaultLog)
-	util.InitCommonLoggers()
-	util.FileLogger.Info("Starting yb node agent app")
-	task.InitHttpClient(util.GetConfig())
+	_, err = config.CompareAndUpdate(util.NodePortKey, "", util.NodePort)
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.PlatformVersionKey, "", util.Version())
+	if err != nil {
+		panic(err)
+	}
+}
+
+// Entry for CLI.
+func main() {
+	setDefaultConfigs()
 	cli.Execute()
 }

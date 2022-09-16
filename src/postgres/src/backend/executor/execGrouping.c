@@ -89,7 +89,6 @@ execTuplesMatchPrepare(TupleDesc desc,
  * hash functions associated with the equality operators.  *eqFunctions and
  * *hashFunctions receive the palloc'd result arrays.
  *
- * Note: we expect that the given operators are not cross-type comparisons.
  */
 void
 execTuplesHashPrepare(int numCols,
@@ -183,6 +182,7 @@ BuildTupleHashTableExt(PlanState *parent,
 	hashtable->tableslot = NULL;	/* will be made on first lookup */
 	hashtable->inputslot = NULL;
 	hashtable->in_hash_funcs = NULL;
+	hashtable->in_keyColIdx = NULL;
 	hashtable->cur_eq_func = NULL;
 
 	/*
@@ -292,6 +292,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 	/* set up data needed by hash and match functions */
 	hashtable->inputslot = slot;
 	hashtable->in_hash_funcs = hashtable->tab_hash_funcs;
+	hashtable->in_keyColIdx = hashtable->keyColIdx;
 	hashtable->cur_eq_func = hashtable->tab_eq_func;
 
 	key = NULL;					/* flag to reference inputslot */
@@ -332,13 +333,15 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
  * case of LookupTupleHashEntry, except that it supports cross-type
  * comparisons, in which the given tuple is not of the same type as the
  * table entries.  The caller must provide the hash functions to use for
- * the input tuple, as well as the equality functions, since these may be
+ * the input tuple, as well as the equality functions, and key attributes
+ * to use for looking up with the given tuple since these may be
  * different from the table's internal functions.
  */
 TupleHashEntry
 FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 				   ExprState *eqcomp,
-				   FmgrInfo *hashfunctions)
+				   FmgrInfo *hashfunctions,
+				   AttrNumber *keyColIdx)
 {
 	TupleHashEntry entry;
 	MemoryContext oldContext;
@@ -350,6 +353,7 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 	/* Set up data needed by hash and match functions */
 	hashtable->inputslot = slot;
 	hashtable->in_hash_funcs = hashfunctions;
+	hashtable->in_keyColIdx = keyColIdx;
 	hashtable->cur_eq_func = eqcomp;
 
 	/* Search the hash table */
@@ -389,6 +393,7 @@ TupleHashTableHash(struct tuplehash_hash *tb, const MinimalTuple tuple)
 		/* Process the current input tuple for the table */
 		slot = hashtable->inputslot;
 		hashfunctions = hashtable->in_hash_funcs;
+		keyColIdx = hashtable->in_keyColIdx;
 	}
 	else
 	{

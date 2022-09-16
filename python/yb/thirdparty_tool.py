@@ -169,6 +169,9 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         self.sha = target_commitish or self.github_release.target_commitish
 
         tag = self.github_release.tag_name
+        if tag.endswith('-snyk-scan'):
+            raise SkipThirdPartyReleaseException(f"Skipping a tag ending with '-snyk-scan': {tag}")
+
         tag_match = TAG_RE.match(tag)
         if not tag_match:
             logging.info(f"Full regular expression for release tags: {TAG_RE_STR}")

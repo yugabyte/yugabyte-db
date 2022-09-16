@@ -2932,7 +2932,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
   const auto termination_duration =
       (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
   ASSERT_GT(termination_duration, 0);
-  ASSERT_LT(termination_duration, 2000);
+  ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
 } // namespace pgwrapper
