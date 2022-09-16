@@ -76,13 +76,15 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
     JsonNode payloadJson = requestJson.get("payload");
     assertThat(
         payloadJson.get("summary").asText(),
-        equalTo("alertConfiguration Alert for test@customer.com is firing.\n\nUniverse on fire!"));
+        equalTo(
+            "alertConfiguration alert with severity level 'SEVERE'"
+                + " for customer 'test@customer.com' is firing.\n\nUniverse on fire!"));
     assertThat(payloadJson.get("source").asText(), equalTo("YB Platform test@customer.com"));
     assertThat(payloadJson.get("severity").asText(), equalTo("error"));
     assertThat(payloadJson.get("group").asText(), equalTo("UNIVERSE"));
     assertThat(
         payloadJson.get("class").asText(),
-        equalTo("YugabyteDB Anywhere Alert - <[test@customer.com][tc]>"));
+        equalTo("YugabyteDB Anywhere SEVERE alert alertConfiguration fired for test@customer.com"));
   }
 
   @Test

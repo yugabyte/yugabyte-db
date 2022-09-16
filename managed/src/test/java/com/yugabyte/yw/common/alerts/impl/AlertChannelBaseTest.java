@@ -10,7 +10,7 @@
 package com.yugabyte.yw.common.alerts.impl;
 
 import static com.yugabyte.yw.common.alerts.impl.AlertChannelBase.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
-import static com.yugabyte.yw.common.alerts.impl.AlertChannelBase.DEFAULT_ALERT_NOTIFICATION_TITLE;
+import static com.yugabyte.yw.common.alerts.impl.AlertChannelBase.DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -72,8 +72,9 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
+    AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
     assertEquals(
-        String.format(DEFAULT_ALERT_NOTIFICATION_TITLE, defaultCustomer.getTag()),
+        substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE),
         channelBase.getNotificationTitle(alert, channel));
   }
 
