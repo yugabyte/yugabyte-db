@@ -14,6 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -42,10 +44,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes;
+import org.yb.Schema;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
@@ -135,6 +139,40 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     //    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
+    GetTableSchemaResponse mockTableSchemaResponseTable1 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID1",
+            exampleTableID1,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    GetTableSchemaResponse mockTableSchemaResponseTable2 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID2",
+            exampleTableID2,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    try {
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+          .thenReturn(mockTableSchemaResponseTable1);
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+          .thenReturn(mockTableSchemaResponseTable2);
+    } catch (Exception ignored) {
+    }
   }
 
   private TaskInfo submitTask(XClusterConfig xClusterConfig) {

@@ -428,8 +428,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public void updateOnPremNodeUuidsOnTaskParams() {
     for (Cluster cluster : taskParams().clusters) {
       if (cluster.userIntent.providerType == CloudType.onprem) {
-        setOnpremData(
-            taskParams().getNodesInCluster(cluster.uuid), cluster.userIntent.instanceType);
+        updateOnPremNodeUuids(taskParams().getNodesInCluster(cluster.uuid), cluster);
       }
     }
   }
@@ -447,10 +446,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
             .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
-      setOnpremData(
-          universeDetails.getNodesInCluster(onPremCluster.uuid),
-          onPremCluster.userIntent.instanceType);
+      updateOnPremNodeUuids(universeDetails.getNodesInCluster(onPremCluster.uuid), onPremCluster);
     }
+  }
+
+  private void updateOnPremNodeUuids(Collection<NodeDetails> clusterNodes, Cluster cluster) {
+    Map<String, List<NodeDetails>> groupByType =
+        clusterNodes
+            .stream()
+            .collect(Collectors.groupingBy(n -> cluster.userIntent.getInstanceTypeForNode(n)));
+    groupByType.forEach(
+        (instanceType, nodes) -> {
+          setOnpremData(new HashSet<>(nodes), instanceType);
+        });
   }
 
   public void setCloudNodeUuids(Universe universe) {
@@ -509,12 +517,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           PlacementInfoUtil.selectMasters(
               masterLeader,
               primaryNodes,
-              primaryCluster.userIntent.replicationFactor,
               taskParams().mastersInDefaultRegion
                   ? PlacementInfoUtil.getDefaultRegionCode(taskParams())
                   : null,
               applySelection,
-              primaryCluster.userIntent.dedicatedNodes);
+              primaryCluster.userIntent);
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
@@ -677,7 +684,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -783,7 +790,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add device info.
-      params.deviceInfo = userIntent.deviceInfo;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Set numVolumes if user did not set it
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
@@ -923,7 +930,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void fillSetupParamsForNode(
       AnsibleSetupServer.Params params, UserIntent userIntent, NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -952,7 +959,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void fillCreateParamsForNode(
       AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Set the region code.
     params.azUuid = node.azUuid;
     params.placementUuid = node.placementUuid;
@@ -1052,7 +1059,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1129,7 +1136,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = userIntent.deviceInfo;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
@@ -1483,7 +1490,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
         UserIntent userIntent = cluster.userIntent;
         params.nodeName = node.nodeName;
-        params.deviceInfo = userIntent.deviceInfo;
+        params.deviceInfo = userIntent.getDeviceInfoForNode(node);
         params.azUuid = node.azUuid;
         params.universeUUID = taskParams().universeUUID;
         UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
@@ -1938,7 +1945,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

@@ -373,6 +373,8 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   if (depth != "") {
     max_depth = std::stoi(depth);
   }
+  string full_path_arg = FindWithDefault(req.parsed_args, "show_full_path", "true");
+  bool use_full_path = ParseLeadingBoolValue(full_path_arg.c_str(), true);
 
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
@@ -388,8 +390,9 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
         HumanReadableNumBytes::ToString(tracker->consumption());
     const std::string peak_consumption_str =
         HumanReadableNumBytes::ToString(tracker->peak_consumption());
+    const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
     *output << Format("  <tr data-depth=\"$0\" class=\"level$0\">\n", data.depth);
-    *output << "    <td>" << tracker->id() << "</td>";
+    *output << "    <td>" << tracker_id << "</td>";
     // UpdateConsumption returns true if consumption is taken from external source,
     // for instance tcmalloc stats. So we should show only it in this case.
     if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {

@@ -133,8 +133,10 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
-      const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
-      const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration);
+      const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
+      const MonoDelta& cdc_sdk_op_id_expiration);
+
+  void RollbackCdcReplicatedIndexEntry(const string& tablet_id);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;

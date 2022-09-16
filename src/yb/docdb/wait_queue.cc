@@ -131,11 +131,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   void InvokeCallback(const Status& status) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
-    if (!status.ok()) {
+    if (!status.ok() || !unlocked_) {
       callback(status);
       return;
     }
-    *locks = std::move(unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
+    *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
+    unlocked_.reset();
     callback(locks->status());
   }
 
@@ -186,8 +187,12 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     }
   }
 
+  bool IsSingleShard() const {
+    return id.IsNil();
+  }
+
  private:
-  UnlockedBatch unlocked_;
+  std::optional<UnlockedBatch> unlocked_ = std::nullopt;
 
   mutable rw_spinlock mutex_;
   rpc::Rpcs& rpcs_;
@@ -322,6 +327,10 @@ class WaitQueue::Impl {
       }
 
       if (waiter_status_.contains(waiter_txn_id)) {
+        // TODO(pessimistic): If two single-shard transactions come to the same tablet, we will hit
+        // this branch since they will both have waiter_txn_id=TransactionId::Nil(). We should
+        // handle this by storing single-shard transactions separately rather than indexing by
+        // TransactionId. See: https://github.com/yugabyte/yugabyte-db/issues/14014
         LOG_WITH_PREFIX_AND_FUNC(DFATAL)
             << "Existing waiter already found - " << waiter_txn_id << ". "
             << "This should not happen.";
@@ -355,9 +364,17 @@ class WaitQueue::Impl {
       // TODO(pessimistic): similar to pg, we can wait 1s or so before beginning deadlock detection.
       // See https://github.com/yugabyte/yugabyte-db/issues/13576
       auto scoped_reporter = waiting_txn_registry_->Create();
-      RETURN_NOT_OK(
-          scoped_reporter->Register(waiter_txn_id, std::move(blockers), status_tablet_id));
-      DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
+      if (!waiter_txn_id.IsNil()) {
+        // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
+        // to report single shard transactions to transaction coordinators because they can't
+        // possibly be involved in a deadlock. This is true because no transactions can wait on
+        // single shard transactions, so they only have out edges in the wait-for graph and cannot
+        // be a part of a cycle.
+        DCHECK(!status_tablet_id.empty());
+        RETURN_NOT_OK(scoped_reporter->Register(
+            waiter_txn_id, std::move(blockers), status_tablet_id));
+        DCHECK_GE(scoped_reporter->GetDataUseCount(), 1);
+      }
 
       waiter_data = std::make_shared<WaiterData>(
           waiter_txn_id, locks, status_tablet_id, std::move(blocker_datas), std::move(callback),
@@ -390,8 +407,10 @@ class WaitQueue::Impl {
       }
       for (auto it = waiter_status_.begin(); it != waiter_status_.end(); ++it) {
         auto& waiter = it->second;
-        DCHECK(!waiter->status_tablet.empty());
-        waiters.push_back(waiter);
+        if (!waiter->IsSingleShard()) {
+          DCHECK(!waiter->status_tablet.empty());
+          waiters.push_back(waiter);
+        }
       }
       for (auto it = blocker_status_.begin(); it != blocker_status_.end();) {
         if (auto blocker = it->second.lock()) {
@@ -697,7 +716,8 @@ Status WaitQueue::WaitOn(
     const TransactionId& waiter, LockBatch* locks,
     std::vector<BlockingTransactionData>&& blockers, const TabletId& status_tablet_id,
     WaitDoneCallback callback) {
-  return impl_->WaitOn(waiter, locks, std::move(blockers), status_tablet_id, callback);
+  return impl_->WaitOn(
+      waiter, locks, std::move(blockers), status_tablet_id, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {

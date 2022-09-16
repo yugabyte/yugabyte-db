@@ -11,11 +11,15 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -134,39 +138,113 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return "Smart resizing is only supported for AWS / GCP, It is: "
           + currentUserIntent.providerType.toString();
     }
+    List<String> errors = new ArrayList<>();
     // Checking disk.
-    boolean diskChanged = false;
-    if (newUserIntent.deviceInfo != null && newUserIntent.deviceInfo.volumeSize != null) {
-      Integer currDiskSize = currentUserIntent.deviceInfo.volumeSize;
-      if (verifyVolumeSize && currDiskSize > newUserIntent.deviceInfo.volumeSize) {
-        return "Disk size cannot be decreased. It was "
-            + currDiskSize
-            + " got "
-            + newUserIntent.deviceInfo.volumeSize;
+    boolean diskChanged =
+        checkDiskChanged(
+            currentUserIntent,
+            newUserIntent,
+            intent -> intent.deviceInfo,
+            errors::add,
+            verifyVolumeSize);
+    boolean masterDiskChanged =
+        newUserIntent.dedicatedNodes
+            ? masterDiskChanged =
+                checkDiskChanged(
+                    currentUserIntent,
+                    newUserIntent,
+                    intent -> intent.masterDeviceInfo,
+                    errors::add,
+                    verifyVolumeSize)
+            : false;
+    // Checking instance type.
+    boolean instanceTypeChanged =
+        checkInstanceTypeChanged(
+            currentUserIntent,
+            newUserIntent,
+            intent -> intent.instanceType,
+            errors::add,
+            allowUnsupportedInstances);
+    boolean masterInstanceTypeChanged =
+        newUserIntent.dedicatedNodes
+            ? checkInstanceTypeChanged(
+                currentUserIntent,
+                newUserIntent,
+                intent -> intent.masterInstanceType,
+                errors::add,
+                allowUnsupportedInstances)
+            : false;
+
+    if (errors.size() > 0) {
+      return errors.get(0);
+    }
+    if ((diskChanged || instanceTypeChanged)
+        && hasEphemeralStorage(
+            currentUserIntent.providerType,
+            currentUserIntent.instanceType,
+            currentUserIntent.deviceInfo)) {
+      return "ResizeNode operation is not supported for instances with ephemeral drives";
+    }
+    if ((masterDiskChanged || masterInstanceTypeChanged)
+        && hasEphemeralStorage(
+            currentUserIntent.providerType,
+            currentUserIntent.masterInstanceType,
+            currentUserIntent.masterDeviceInfo)) {
+      return "ResizeNode operation is not supported for instances with ephemeral drives";
+    }
+    if (verifyVolumeSize
+        && !diskChanged
+        && !instanceTypeChanged
+        && !masterDiskChanged
+        && !masterInstanceTypeChanged) {
+      return "Nothing changed!";
+    }
+    return null;
+  }
+
+  private static boolean checkDiskChanged(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Function<UserIntent, DeviceInfo> getter,
+      Consumer<String> errorConsumer,
+      boolean verifyVolumeSize) {
+    DeviceInfo newDeviceInfo = getter.apply(newUserIntent);
+    DeviceInfo currentDeviceInfo = getter.apply(currentUserIntent);
+
+    if (newDeviceInfo != null && newDeviceInfo.volumeSize != null) {
+      Integer currDiskSize = currentDeviceInfo.volumeSize;
+      if (verifyVolumeSize && currDiskSize > newDeviceInfo.volumeSize) {
+        errorConsumer.accept(
+            "Disk size cannot be decreased. It was "
+                + currDiskSize
+                + " got "
+                + newDeviceInfo.volumeSize);
       }
       // If numVolumes is specified in the newUserIntent,
       // make sure it is the same as the current value.
-      if (newUserIntent.deviceInfo.numVolumes != null
-          && !newUserIntent.deviceInfo.numVolumes.equals(currentUserIntent.deviceInfo.numVolumes)) {
-        return "Number of volumes cannot be changed. It was "
-            + currentUserIntent.deviceInfo.numVolumes
-            + " got "
-            + newUserIntent.deviceInfo.numVolumes;
+      if (newDeviceInfo.numVolumes != null
+          && !newDeviceInfo.numVolumes.equals(currentDeviceInfo.numVolumes)) {
+        errorConsumer.accept(
+            "Number of volumes cannot be changed. It was "
+                + currentDeviceInfo.numVolumes
+                + " got "
+                + newDeviceInfo.numVolumes);
       }
-      diskChanged = !Objects.equals(currDiskSize, newUserIntent.deviceInfo.volumeSize);
+      return !Objects.equals(currDiskSize, newDeviceInfo.volumeSize);
     }
+    return false;
+  }
 
-    String newInstanceTypeCode = newUserIntent.instanceType;
-    if (verifyVolumeSize
-        && !diskChanged
-        && currentUserIntent.instanceType.equals(newInstanceTypeCode)) {
-      return "Nothing changed!";
-    }
-    if (hasEphemeralStorage(currentUserIntent)) {
-      return "ResizeNode operation is not supported for instances with ephemeral drives";
-    }
-    // Checking new instance is valid.
-    if (!newInstanceTypeCode.equals(currentUserIntent.instanceType)) {
+  private static boolean checkInstanceTypeChanged(
+      UserIntent currentUserIntent,
+      UserIntent newUserIntent,
+      Function<UserIntent, String> getter,
+      Consumer<String> errorConsumer,
+      boolean allowUnsupportedInstances) {
+    String currentInstanceTypeCode = getter.apply(currentUserIntent);
+    String newInstanceTypeCode = getter.apply(newUserIntent);
+    if (newInstanceTypeCode != null
+        && !Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
       String provider = currentUserIntent.provider;
       List<InstanceType> instanceTypes =
           InstanceType.findByProvider(
@@ -181,13 +259,14 @@ public class ResizeNodeParams extends UpgradeTaskParams {
               .findFirst()
               .orElse(null);
       if (newInstanceType == null) {
-        return String.format(
-            "Provider %s of type %s does not contain the intended instance type '%s'",
-            currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
+        errorConsumer.accept(
+            String.format(
+                "Provider %s of type %s does not contain the intended instance type '%s'",
+                currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode));
       }
+      return true;
     }
-
-    return null;
+    return false;
   }
 
   public static class Converter extends BaseConverter<ResizeNodeParams> {}

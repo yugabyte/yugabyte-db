@@ -14,9 +14,11 @@
  */
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_class.h"
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_coerce.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
@@ -36,6 +38,7 @@
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
+extern int yb_bnl_batch_size;
 
 
 /* Elements of the postponed_qual_list used during deconstruct_recurse */
@@ -77,6 +80,7 @@ static bool check_equivalence_delay(PlannerInfo *root,
 static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
+static void check_batchable(RestrictInfo *restrictinfo);
 
 
 /*****************************************************************************
@@ -1922,6 +1926,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * relation, or between vars and consts.
 	 */
 	check_mergejoinable(restrictinfo);
+	check_batchable(restrictinfo);
 
 	/*
 	 * If it is a true equivalence clause, send it to the EquivalenceClass
@@ -2407,6 +2412,7 @@ build_implied_join_equality(Oid opno,
 	/* Set mergejoinability/hashjoinability flags */
 	check_mergejoinable(restrictinfo);
 	check_hashjoinable(restrictinfo);
+	check_batchable(restrictinfo);
 
 	return restrictinfo;
 }
@@ -2652,4 +2658,122 @@ check_hashjoinable(RestrictInfo *restrictinfo)
 	if (op_hashjoinable(opno, exprType(leftarg)) &&
 		!contain_volatile_functions((Node *) clause))
 		restrictinfo->hashjoinoperator = opno;
+}
+
+/*
+ * check_batchable
+ *	  If the restrictinfo's clause can potentially be a batched join clause
+ *	  then yb_batched_rinfo is filled in with candidate batched versions of
+ *	  this clause.
+ *		
+ *	  Note that this does nothing if yb_bnl_batch_size indicates no batching.
+ *	  Right now we only support batching mergejoinable conditions of the form
+ *	  var_1 op var_2. These yield batched expressions,
+ *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
+ */
+static void
+check_batchable(RestrictInfo *restrictinfo)
+{
+	Expr	   *clause = restrictinfo->clause;
+	Node	   *leftarg;
+	Node	   *rightarg;
+	OpExpr	   *opexpr = (OpExpr *) clause;
+
+	if (yb_bnl_batch_size <= 1)
+		return;
+
+	if (!restrictinfo->mergeopfamilies)
+		return;
+
+	leftarg = linitial(opexpr->args);
+	rightarg = lsecond(opexpr->args);
+
+	Node *outer = leftarg;
+	Node *inner = rightarg;
+
+	if (!IsA(outer, Var) || !IsA(inner, Var))
+		return;
+	if (bms_overlap(restrictinfo->left_relids, restrictinfo->right_relids))
+		return;
+
+	Oid outerType = exprType(outer);
+	int outerTypMod = exprTypmod(outer);
+	Oid innerType = exprType(inner);
+	int innerTypMod = exprTypmod(inner);
+	Oid opno = opexpr->opno;
+
+	int num_batched_rinfos = 2;
+
+	if (outerType != innerType)
+	{
+		/* We need to coerce one of the operands to a common type. */
+		Oid finalargtype = innerType;
+		Oid finalargtypmod = innerTypMod;
+		Node *coerced = coerce_to_target_type(NULL, outer, outerType,
+											  finalargtype, finalargtypmod,
+											  COERCION_IMPLICIT,
+											  COERCE_IMPLICIT_CAST, -1);
+		if (coerced == NULL)
+		{
+			finalargtype = outerType;
+			finalargtypmod = outerTypMod;
+			coerced = coerce_to_target_type(NULL, inner, innerType,
+											finalargtype, finalargtypmod,
+											COERCION_IMPLICIT,
+											COERCE_IMPLICIT_CAST, -1);
+
+			/* If we can't cast either operand, we can't batch. */
+			if (coerced == NULL)
+				return;
+
+			inner = outer;
+		}
+		
+		/* Casted operand needs to always be on the outer side for now. */
+		outer = coerced;
+
+		char *opname = get_opname(opno);
+		List *names = lappend(NIL, makeString(opname));
+		
+		/* Find an equivalent operator whose operands are of the same type. */
+		Oid newopno = 
+			OpernameGetOprid(names, finalargtype, finalargtype);
+		if (!OidIsValid(newopno))
+			return;
+		
+		opno = newopno;
+		pfree(opname);
+
+		/* Only one isomoporh of this expression is batchable. */
+		num_batched_rinfos = 1;
+	}
+
+	for (size_t i = 0; i < num_batched_rinfos; i++)
+	{
+		YbBatchedExpr *bexpr = makeNode(YbBatchedExpr);
+		bexpr->orig_expr = (Expr*) copyObject(outer);
+
+		Expr *batched_op = make_opclause(opno,
+										 opexpr->opresulttype,
+										 opexpr->opretset,
+										 (Expr *) inner,
+										 (Expr *) bexpr,
+										 opexpr->opcollid,
+										 opexpr->inputcollid);
+		RestrictInfo *batched =
+			make_restrictinfo(batched_op,
+							  restrictinfo->is_pushed_down,
+							  restrictinfo->outerjoin_delayed,
+							  false,
+							  restrictinfo->security_level,
+							  restrictinfo->required_relids,
+							  restrictinfo->outer_relids,
+							  restrictinfo->nullable_relids);
+		restrictinfo->yb_batched_rinfo =
+			lappend(restrictinfo->yb_batched_rinfo, batched);
+		
+		Node *tmp = outer;
+		outer = inner;
+		inner = tmp;
+	}
 }
