@@ -18,6 +18,8 @@ Powerful -- AGE adds graph database support to the already popular PostgreSQL da
 Flexible -- AGE allows you to perform openCypher queries, which make complex queries much easier to write.
 Intelligent -- AGE allows you to perform graph queries that are the basis for many next level web services such as fraud & intrusion detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
 
+Also, while the technology can be integrated with against many data layers, a graph database is also the perfect companion for a [GraphQL](https://graphql.org/) API! Since the information is already in a native format, it simplifies many factors and even allows many of the default operations to be generated automatically. GraphQL is rapidly  superceeding REST as the standard for cloud applications. 
+
 ## Overview
 
 - **Apache AGE is currently being developed for the PostgreSQL 11 release** and will support PostgreSQL 12, 13 and all the future releases of PostgreSQL.
