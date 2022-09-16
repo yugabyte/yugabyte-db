@@ -285,6 +285,30 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status CreateColocatedObjects(Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) TABLEGROUP tg1;"));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test2(id2 text primary key) TABLEGROUP tg1;"));
+    return Status::OK();
+  }
+
+  Status PopulateColocatedData(Cluster* cluster, int insert_count, bool transaction = false) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    if (transaction) {
+      RETURN_NOT_OK(conn.Execute("BEGIN"));
+    }
+    for (int i = 0; i < insert_count; ++i) {
+      LOG(INFO) << "Inserting entry " << i;
+      RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", i));
+      RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ('$0')", i));
+    }
+    if (transaction) {
+      RETURN_NOT_OK(conn.Execute("COMMIT"));
+    }
+    return Status::OK();
+  }
+
   Status WriteEnumsRows(
       uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix = "",
       string database_name = kNamespaceName, string table_name = kTableName,
@@ -3688,6 +3712,102 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWhenAFollowerIsUna
   // Call the test RPC to get last active time of the current leader (original), and it must
   // be greater than or equal to the previously recorded last_active_time.
   CompareExpirationTime(tablets[0].tablet_id(), first_expiry_time, first_leader_index, true);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    LOG(INFO) << "Record found: " << record.ShortDebugString();
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(std::to_string(expected_key2), record.row_message().new_tuple(0).datum_string());
+        expected_key2++;
+      }
+    }
+  }
+
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = table.table_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 30;
+  ASSERT_OK(PopulateColocatedData(&test_cluster_, insert_count, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key1 = 0;
+  int expected_key2 = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    const auto record = change_resp.cdc_sdk_proto_records(i);
+    LOG(INFO) << "Record found: " << record.ShortDebugString();
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().table() == "test1") {
+        ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
+        expected_key1++;
+      } else if (record.row_message().table() == "test2") {
+        ASSERT_EQ(std::to_string(expected_key2), record.row_message().new_tuple(0).datum_string());
+        expected_key2++;
+      }
+    }
+  }
+
+  ASSERT_EQ(insert_count, expected_key1);
+  ASSERT_EQ(insert_count, expected_key2);
 }
 
 }  // namespace enterprise
