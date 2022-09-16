@@ -90,11 +90,11 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
-lazy val buildNodeAgent = taskKey[Int]("Build Node Agent")
+lazy val buildModules = taskKey[Int]("Build modules")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
-lazy val cleanNodeAgent = taskKey[Int]("Clean Node Agent")
+lazy val cleanModules = taskKey[Int]("Clean modules")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -284,10 +284,9 @@ externalResolvers := {
 }
 
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+  ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
   buildUI.value
-  //buildNodeAgent.value
   versionGenerate.value
 }
 
@@ -295,7 +294,7 @@ cleanPlatform := {
   clean.value
   cleanVenv.value
   cleanUI.value
-  cleanNodeAgent.value
+  cleanModules.value
 }
 
 versionGenerate := {
@@ -321,9 +320,9 @@ buildUI := {
   status
 }
 
-buildNodeAgent := {
-  ybLog("Building node agent...")
-  val status = Process("./build.sh clean build package " + version.value, baseDirectory.value / "node-agent").!
+buildModules := {
+  ybLog("Building modules...")
+  val status = Process("mvn install -f parent.xml").!
   status
 }
 
@@ -339,9 +338,9 @@ cleanUI := {
   status
 }
 
-cleanNodeAgent := {
+cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("./build.sh clean", baseDirectory.value / "node-agent").!
+  val status = Process("mvn clean -f parent.xml").!
   status
 }
 

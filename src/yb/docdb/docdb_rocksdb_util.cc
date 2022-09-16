@@ -615,7 +615,8 @@ void InitRocksDBOptions(
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
-  options->disableDataSync = true;
+  // We should always sync data to ensure we can recover rocksdb from crash.
+  options->disableDataSync = false;
   options->statistics = statistics;
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;

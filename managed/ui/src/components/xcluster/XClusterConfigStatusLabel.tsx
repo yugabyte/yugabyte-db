@@ -41,9 +41,9 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
       );
     case ReplicationStatus.DELETION_FAILED:
       return (
-        <span className={clsx(styles.label, styles.deleted)}>
+        <span className={clsx(styles.label, styles.deletionFailed)}>
           <i className="fa fa-close" />
-          Deleted
+          Deletion Failed
         </span>
       );
     case ReplicationStatus.DELETED_UNIVERSE: {
