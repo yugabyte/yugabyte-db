@@ -38,13 +38,14 @@
 
 #include "yb/util/pb_util.h"
 
-DECLARE_bool(enable_pessimistic_locking);
+DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 
 using namespace std::literals;
 
@@ -58,9 +59,10 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_ysql_pg_conf_csv = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
-    FLAGS_enable_pessimistic_locking = true;
+    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
+    FLAGS_auto_promote_nonlocal_transactions_to_global = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -665,9 +667,10 @@ class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
  protected:
   void SetUp() override {
     FLAGS_rpc_connection_timeout_ms = 60000;
-    FLAGS_enable_pessimistic_locking = true;
+    FLAGS_enable_wait_queue_based_pessimistic_locking = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
+    FLAGS_auto_promote_nonlocal_transactions_to_global = false;
     PgTabletSplitTestBase::SetUp();
   }
 

@@ -72,9 +72,6 @@ DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
-            "Automatically promote transactions touching data outside of region to global.");
-
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
 
@@ -92,6 +89,8 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
+
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 
 namespace yb {
 namespace client {
