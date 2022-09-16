@@ -141,10 +141,17 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
   bool is_matview = relfilenode_oid.empty() ? false : true;
+  std::vector<GStringPiece> col_names;
+
+  if (is_matview) {
+    col_names = {"oid", "relfilenode"};
+  } else {
+    col_names = {"oid"};
+  }
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;
-  RETURN_NOT_OK(pg_database_schema.CreateProjectionByNames({"oid"}, &projection,
+  RETURN_NOT_OK(pg_database_schema.CreateProjectionByNames(col_names, &projection,
                 pg_database_schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
