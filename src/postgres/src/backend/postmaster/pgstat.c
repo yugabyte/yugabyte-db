@@ -120,7 +120,6 @@
  */
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
 
-
 /* ----------
  * GUC parameters
  * ----------
@@ -3120,6 +3119,7 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_state = STATE_DISABLED;
 			beentry->st_state_start_timestamp = 0;
+			beentry->yb_new_conn = 0;
 			beentry->st_activity_raw[0] = '\0';
 			beentry->st_activity_start_timestamp = 0;
 			/* st_xact_start_timestamp and wait_event_info are also disabled */
@@ -3151,6 +3151,10 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 	 */
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
+	if ((state == STATE_RUNNING || state == STATE_FASTPATH) &&
+		beentry->st_state != state) {
+		beentry->yb_new_conn++;
+	}
 	beentry->st_state = state;
 	beentry->st_state_start_timestamp = current_timestamp;
 
