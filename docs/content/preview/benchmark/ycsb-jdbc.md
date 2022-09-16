@@ -3,6 +3,7 @@ title: Benchmark YSQL performance with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
 description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
+headcontent: Benchmark YSQL performance with YCSB using the standard JDBC binding.
 menu:
   preview:
     identifier: ycsb-1-ysql
@@ -62,7 +63,7 @@ $ tar -xzf ycsb.tar.gz
 $ cd YCSB
 ```
 
-Ensure that you have the YSQL shell `ysqlsh` and that its location is included in the `PATH` variable, as follows:
+Ensure that you have the YSQL shell [ysqlsh](../../admin/ysqlsh/) and that its location is included in the `PATH` variable, as follows:
 
 ```sh
 $ export PATH=$PATH:/path/to/ysqlsh
@@ -76,7 +77,7 @@ $ export PATH=$PATH:/Users/yugabyte/code/bin
 
 ### Start YugabyteDB
 
-Start your YugabyteDB cluster by following the procedure described in [Manual Deployment](../../deploy/manual-deployment/). Note the IP addresses of the nodes in the cluster, as these addresses are required when configuring the properties file.
+Start your YugabyteDB cluster by following the procedure described in [Manual deployment](../../deploy/manual-deployment/). Note the IP addresses of the nodes in the cluster, as these addresses are required when configuring the properties file.
 
 ### Configure the properties file
 
@@ -115,84 +116,82 @@ For example, for a workload it creates, inspect the `workloada-ysql-load.dat` an
 
 ### Run individual workloads (optional)
 
-Optionally, you can run workloads individually.
+Optionally, you can run workloads individually using the following steps:
 
-**Start the YSQL shell** using the following command:
+1. Start the YSQL shell using the following command:
 
-```sh
-$ ./bin/ysqlsh -h <ip>
-```
+    ```sh
+    $ ./bin/ysqlsh -h <ip>
+    ```
 
-**Create the `ycsb` database** as follows:
+1. Create the `ycsb` database as follows:
 
-```sql
-yugabyte=# CREATE DATABASE ycsb;
-```
+    ```sql
+    yugabyte=# CREATE DATABASE ycsb;
+    ```
 
-**Connect to the database** as follows:
+1. Connect to the database** as follows:
 
-```sql
-yugabyte=# \c ycsb
-```
+    ```sql
+    yugabyte=# \c ycsb
+    ```
 
-**Create the table** as follows:
+1. Create the table as follows:
 
-```sql
-ycsb=# CREATE TABLE usertable (
-            YCSB_KEY TEXT,
-            FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
-            FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
-            FIELD8 TEXT, FIELD9 TEXT,
-            PRIMARY KEY (YCSB_KEY ASC))
-            SPLIT AT VALUES (('user10'),('user14'),('user18'),
-            ('user22'),('user26'),('user30'),('user34'),('user38'),
-            ('user42'),('user46'),('user50'),('user54'),('user58'),
-            ('user62'),('user66'),('user70'),('user74'),('user78'),
-            ('user82'),('user86'),('user90'),('user94'),('user98'));
-```
+    ```sql
+    ycsb=# CREATE TABLE usertable (
+                YCSB_KEY TEXT,
+                FIELD0 TEXT, FIELD1 TEXT, FIELD2 TEXT, FIELD3 TEXT,
+                FIELD4 TEXT, FIELD5 TEXT, FIELD6 TEXT, FIELD7 TEXT,
+                FIELD8 TEXT, FIELD9 TEXT,
+                PRIMARY KEY (YCSB_KEY ASC))
+                SPLIT AT VALUES (('user10'),('user14'),('user18'),
+                ('user22'),('user26'),('user30'),('user34'),('user38'),
+                ('user42'),('user46'),('user50'),('user54'),('user58'),
+                ('user62'),('user66'),('user70'),('user74'),('user78'),
+                ('user82'),('user86'),('user90'),('user94'),('user98'));
+    ```
 
-**Load the data** before you start the `jdbc` workload:
+1. Load the data before you start the `jdbc` workload:
 
-```sh
-$ ./bin/ycsb load jdbc -s        \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=32
-```
+    ```sh
+    $ ./bin/ycsb load jdbc -s        \
+          -P db.properties           \
+          -P workloads/workloada     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=32
+    ```
 
-**Run the workload** as follows:
+1. Run the workload as follows:
 
-{{< note title="Note" >}}
+    {{< note title="Note" >}}
 The `recordcount` parameter in the following `ycsb` commands should match the number of rows in the table.
-{{< /note >}}
+    {{< /note >}}
 
-```sh
-$ ./bin/ycsb run jdbc -s         \
-      -P db.properties           \
-      -P workloads/workloada     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256
-```
+    ```sh
+    $ ./bin/ycsb run jdbc -s         \
+          -P db.properties           \
+          -P workloads/workloada     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=256
+    ```
 
-**Run other workloads** (for example, `workloadb`) by changing the corresponding argument in the preceding command, as follows:
+1. Run other workloads (for example, `workloadb`) by changing the corresponding argument in the preceding command, as follows:
 
-```sh
-$ ./bin/ycsb run jdbc -s         \
-      -P db.properties           \
-      -P workloads/workloadb     \
-      -p recordcount=1000000     \
-      -p operationcount=10000000 \
-      -p threadcount=256
-```
+    ```sh
+    $ ./bin/ycsb run jdbc -s         \
+          -P db.properties           \
+          -P workloads/workloadb     \
+          -p recordcount=1000000     \
+          -p operationcount=10000000 \
+          -p threadcount=256
+    ```
 
-### Expected results
+## Expected results
 
-When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same AZ with the client VM running in the same AZ, expect the following results:
-
-**One million rows**
+When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same availability zone with the client VM running in the same availability zone, expect the following results for _1 million rows_:
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :----------- | :------------ |
@@ -203,6 +202,6 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 | Workload E | 16,642 | 15ms scan | Not applicable |
 | Workload F | 29,500 | 2ms | 15ms read-modify-write |
 
-### Additional examples
+## Additional examples
 
-For additional examples, refer to [Example Using a YCSB Workload with Automatic Tablet Splitting](/preview/architecture/docdb-sharding/tablet-splitting/#example-using-a-ycsb-workload-with-automatic-tablet-splitting).
+For additional examples, refer to [YCSB workload with automatic tablet splitting example](../../architecture/docdb-sharding/tablet-splitting/#ycsb-workload-with-automatic-tablet-splitting-example).
