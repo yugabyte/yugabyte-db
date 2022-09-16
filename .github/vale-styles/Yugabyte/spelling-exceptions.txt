@@ -1,5 +1,7 @@
 accessor
 accessors
+airgap
+airgapped
 Akismet
 Alertmanager
 Algolia
@@ -14,6 +16,7 @@ anonymized
 Ansible
 Anthos
 Apdex
+APIs
 Apparmor
 approvers
 architected
@@ -233,6 +236,7 @@ Getter
 Getters
 gettext
 GFlag
+GFlags
 Git
 Gitaly
 Gitea
@@ -480,6 +484,7 @@ pseudonymized
 pseudonymizer
 psql
 Puma
+pushdown
 pytest
 Python
 Qualys
@@ -567,6 +572,8 @@ runtimes
 Salesforce
 sandboxing
 sanitization
+savepoint
+savepoints
 sbt
 scalers
 scatterplot
@@ -667,6 +674,9 @@ Sysbench
 syscall
 syscalls
 syslog
+systemd
+tablegroup
+tablegroups
 tablespace
 tablespaces
 tanuki
@@ -705,10 +715,13 @@ triaging
 Trivy
 Truststore
 truthy
+TServer
+TServers
 Twilio
 Twitter
 TypeScript
 Ubuntu
+ulimit
 unapplied
 unapprove
 unapproved
@@ -809,6 +822,8 @@ upvote
 upvoted
 upvotes
 URIs
+UUID
+UUIDs
 Vagrantfile
 validator
 validators
@@ -840,6 +855,7 @@ Wordpress
 worktree
 worktrees
 Worldline
+xCluster
 Xcode
 Xeon
 ycqlsh
