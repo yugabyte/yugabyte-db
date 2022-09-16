@@ -777,6 +777,33 @@ export function fetchSlowQueries(universeUUID, cancelFn) {
   return request;
 }
 
+export async function fetchUnusedIndexesSuggestions(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/unused_indexes`);
+  } catch (e) {
+    return e.response;
+  }
+}
+
+export async function fetchQueryLoadSkewSuggestions(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/query_distribution_suggestions`);
+  } catch (e) {
+    return e.response;
+  }
+}
+
+export async function fetchRangeShardingSuggestions(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/range_hash`);
+  } catch (e) {
+    return e.response;
+  }
+}
+
 export function resetSlowQueries(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
