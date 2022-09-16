@@ -122,7 +122,7 @@ Optionally, you can run workloads individually using the following steps:
     yugabyte=# CREATE DATABASE ycsb;
     ```
 
-1. Connect to the database** as follows:
+1. Connect to the database as follows:
 
     ```sql
     yugabyte=# \c ycsb
@@ -177,7 +177,7 @@ The `recordcount` parameter in the following `ycsb` commands should match the nu
 
 ## Expected results
 
-When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same availability zone with the client VM running in the same availability zone we get the following results for _1 million rows_:
+When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same availability zone with the client VM running in the same availability zone, you get the following results for _1 million rows_:
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :------------| :------------ |

@@ -191,7 +191,7 @@ The `recordcount` parameter in the following `ycsb` commands should match the nu
 
 ## Expected results
 
-When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RAM and 2 EBS volumes) all belonging to the same availability zone with the client VM running in the same availability zone, expect the following results for _1 million rows_:
+When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RAM, and 2 EBS volumes) all belonging to the same availability zone with the client VM running in the same availability zone, expect the following results for _1 million rows_:
 
 | Workload | Throughput (ops/sec) | Read Latency | Write Latency |
 | :------- | :------------------- | :----------- | :------------ |
@@ -202,6 +202,4 @@ When run on a 3-node cluster of `c5.4xlarge` AWS instances (16 cores, 32GB of RA
 | Workload E | 16,642 | 15ms scan | Not applicable |
 | Workload F | 29,500 | 2ms | 15ms read-modify-write |
 
-## Additional examples
-
-For additional examples, refer to [YCSB workload with automatic tablet splitting example](../../architecture/docdb-sharding/tablet-splitting/#ycsb-workload-with-automatic-tablet-splitting-example).
+For an additional example, refer to [Example: YCSB workload with automatic tablet splitting example](../../architecture/docdb-sharding/tablet-splitting/#example-ycsb-workload-with-automatic-tablet-splitting).

@@ -119,7 +119,7 @@ For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES]
 
 ## Manual tablet splitting
 
-Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. 
+Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually.
 
 {{< note title="Note" >}}
 
@@ -235,10 +235,11 @@ In the event that performance suffers due to automatic tablet splitting, the fol
 
 [Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags)
 
-* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by defualt. Tablets that are performing post-split compactions count against this limit.
+* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by default. Tablets that are performing post-split compactions count against this limit.
 * `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
 
 [TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags)
+
 ### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database:
@@ -306,4 +307,3 @@ The following known limitations are planned to be resolved in upcoming releases:
 * Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
-
