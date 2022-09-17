@@ -17,21 +17,17 @@ Debezium is an open-source distributed platform used to capture the changes in a
 
 ## Get the Debezium connector for YugabyteDB
 
-### Pull the connector from Docker
-
-Using Docker, get the connector from Quay:
+Using Docker, you can get the connector from Quay:
 
 ```sh
 docker pull quay.io/yugabyte/debezium-connector:1.3.7-BETA
 ```
 
-### Build the Debezium connector yourself
-
-If you want to build the connector image yourself, follow the steps listed in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
+If you want to build the connector image yourself, follow the steps in the [README for debezium-connector-yugabytedb](https://github.com/yugabyte/debezium/blob/final-connector-ybdb/debezium-connector-yugabytedb2/README.md).
 
 ## Run Debezium locally
 
-Follow the steps in this section to run CDC with Debezium on a local YugabyteDB cluster.
+Use the following steps to run change data capture (CDC) with Debezium on a local YugabyteDB cluster:
 
 1. Start Zookeeper.
 
@@ -73,13 +69,13 @@ Follow the steps in this section to run CDC with Debezium on a local YugabyteDB 
 
 ### Create a database stream ID
 
-[`yb-admin`](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with the commands to manage stream IDs for Change data capture. Use it to create a stream ID:
+[`yb-admin`](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with commands to manage stream IDs for CDC. Use it to create a stream ID:
 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
 ```
 
-The above command will result an output similar to this:
+You should see output similar to the following:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
@@ -122,13 +118,11 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 }'
 ```
 
-{{< note title="Note" >}}
+### Use SSL
 
-If you have an SSL enabled cluster, you need to provide the path to the root certificate in the `database.sslrootcert` configuration property.
+If you have an SSL-enabled cluster, you need to provide the path to the root certificate in the `database.sslrootcert` configuration property.
 
-{{< /note >}}
-
-If you have an SSL enabled YugabyteDB cluster, do the following:
+Do the following:
 
 1. Copy the certificate file to your Docker container (assuming that the file exists on the root directory of your machine):
 
@@ -160,11 +154,11 @@ If you have an SSL enabled YugabyteDB cluster, do the following:
     }'
     ```
 
-For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< warning title="Warning" >}}
 
-YugabyteDB's CDC implementation doesn't support DROP TABLE and TRUNCATE TABLE commands yet, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+YugabyteDB's CDC implementation doesn't currently support DROP TABLE and TRUNCATE TABLE, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
 
 See [limitations](../../../explore/change-data-capture/#limitations) for more details on upcoming feature support.
 
