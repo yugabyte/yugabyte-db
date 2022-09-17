@@ -200,7 +200,7 @@ export function TargetUniverseForm({
               .filter(
                 (universe) =>
                   universe.universeUUID !== currentUniverseUUID &&
-                  universe.state === universeState.GOOD
+                  universe.state !== universeState.PAUSED
               )
               .map((universe) => {
                 return {
