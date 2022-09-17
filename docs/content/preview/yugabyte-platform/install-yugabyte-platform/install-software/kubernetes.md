@@ -172,6 +172,64 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
     --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
   ```
 
+## Control placement of YugabyteDB Anywhere Pod
+
+The helm chart gives you ways to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster. You can use `nodeSelector`, `zoneAffinity` and `toleration` for this.
+Note that when using any of these methods to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage Volumes (PVC) until the pod has been placed first. Otherwise, the PVC could end up getting created in a location that is not accessible to the pod, and result in a failure to bring up the pod to a running state. This is achieved by using a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer` as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding). Such a storage class YAML for Google Kubernetes Engine (GKE) would look like this.
+
+```yaml
+kind: StorageClass
+metadata:
+  name: yb-storage
+provisioner: kubernetes.io/gce-pd
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: pd-ssd
+  fstype: xfs
+```
+
+### nodeSelector
+
+Kubernetes nodeSelector allows constraining pods to only nodes with specific labels. So you can use this command to restrict the placement of YugabyteDB Anywhere pod on a particular node.
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--set nodeSelector.kubernetes\\.io/hostname=node-name-1
+```
+
+### zoneAffinity
+
+Kubernetes provides a more flexible nodeAffinity construct to constraint the placement of pods to nodes in a given zone. When your Kubernetes cluster nodes are spread across multiple zones, you could use this command to explicitly place the YugabyteDB Anywhere pod on a particular zone(s).
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--set "zoneAffinity={us-west1-a,us-west1-b}"
+```
+
+### toleration
+
+Kubernetes nodes could have `taints` that repel normal pods from being placed on it. Only pods with a `toleration` for the same `taint` are permitted. This method is described further in Taints and Tolerations. Let us say that a few nodes in your Kubernetes cluster are earmarked for experimentation, and so have a taint `dedicated=experimental:NoSchedule`. This prevents a normal pod from being placed on these nodes. Only a pod with a toleration for `dedicated=experimental:NoSchedule` will be allowed. This can be done with a command like this.
+
+```sh
+helm install yw-test yugabytedb/yugaware/ -n yb-platform \
+--version 2.15.2 --set yugaware.storageClass=yb-storage \
+--values=/tmp/overrides.yaml
+```
+
+Where the overrides.yaml has the contents:
+
+```yaml
+tolerations:
+- key: "dedicated"
+  operator: "Equal"
+  value: "experimental"
+  effect: "NoSchedule"
+```
+
 ## Delete the Helm Installation of YugabyteDB Anywhere
 
 To delete the Helm installation, run the following command:
