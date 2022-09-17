@@ -297,6 +297,12 @@ When you open `ysqlsh`, the following default flags (aka flags) are set so that 
 - port: `-p 5433`
 - user: `-U yugabyte`
 
+---
+
+## Horizontal rule
+
+Once in awhile, there is a horizontal rule. No, really.
+
 ## Flags
 
 Flags are documented often using these heading 5
