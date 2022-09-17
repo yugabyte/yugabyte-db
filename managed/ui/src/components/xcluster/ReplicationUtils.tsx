@@ -211,7 +211,7 @@ export const getEnabledConfigActions = (replication: Replication): ReplicationAc
   switch (replication.status) {
     case ReplicationStatus.INITIALIZED:
     case ReplicationStatus.UPDATING:
-      return [];
+      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
     case ReplicationStatus.RUNNING:
       return [
         replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
