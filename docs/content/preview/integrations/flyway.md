@@ -17,7 +17,7 @@ The YugabyteDB-specific implementation of the Flyway APIs has been added to the 
 
 ## Prerequisites
 
-Before you can start using Flyway, ensure that you have the following installed and configured:
+To use Flyway with YugabyteDB, you need the following:
 
 - YugabyteDB version 2.4 or later (see [Quick Start](../../quick-start/)).
 

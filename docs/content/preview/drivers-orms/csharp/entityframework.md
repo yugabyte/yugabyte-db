@@ -4,6 +4,8 @@ linkTitle: Use an ORM
 description: C# ORM support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /preview/integrations/entity-framework/
 menu:
   preview:
     identifier: csharp-orm

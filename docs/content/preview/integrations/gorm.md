@@ -15,7 +15,7 @@ This document describes how to use [GORM](https://gorm.io/index.html), an object
 
 ## Prerequisites
 
-Before you can start using GORM, ensure that you have the following available:
+To use GORM with YugabyteDB, you need the following:
 
 - YugabyteDB version 2.6 or later (see [Quick Start](../../quick-start/)).
 - Python version 2.7 or later.
