@@ -1484,5 +1484,15 @@ std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
   return table_ids;
 }
 
+Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
+  auto data_state = metadata.tablet_data_state();
+  if (!CanServeTabletData(data_state)) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 data state not ready: $1", metadata.raft_group_id(),
+        TabletDataState_Name(data_state));
+  }
+  return Status::OK();
+}
+
 } // namespace tablet
 } // namespace yb
