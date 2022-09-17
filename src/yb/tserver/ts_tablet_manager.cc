@@ -1797,12 +1797,7 @@ TabletPeerPtr TSTabletManager::LookupTabletUnlocked(const Key& tablet_id) const 
 template <class Key>
 Result<TabletPeerPtr> TSTabletManager::DoGetServingTablet(const Key& tablet_id) const {
   auto tablet = VERIFY_RESULT(GetTablet(tablet_id));
-  TabletDataState data_state = tablet->tablet_metadata()->tablet_data_state();
-  if (!CanServeTabletData(data_state)) {
-    return STATUS_FORMAT(
-        IllegalState, "Tablet $0 data state not ready: $1", tablet_id,
-        TabletDataState_Name(data_state));
-  }
+  RETURN_NOT_OK(CheckCanServeTabletData(*tablet->tablet_metadata()));
   return tablet;
 }
 

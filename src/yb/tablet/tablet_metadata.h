@@ -621,6 +621,8 @@ inline bool CanServeTabletData(TabletDataState state) {
          state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
 }
 
+Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
+
 } // namespace tablet
 } // namespace yb
 
