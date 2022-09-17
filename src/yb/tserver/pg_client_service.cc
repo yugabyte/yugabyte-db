@@ -336,11 +336,13 @@ class PgClientServiceImpl::Impl {
       const PgGetTableDiskSizeRequestPB& req, PgGetTableDiskSizeResponsePB* resp,
       rpc::RpcContext* context) {
     auto result =
-        VERIFY_RESULT(client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id())));
-
-    resp->set_size(result.table_size);
-    resp->set_num_missing_tablets(result.num_missing_tablets);
-
+        client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    if (!result.ok()) {
+      StatusToPB(result.status(), resp->mutable_status());
+    } else {
+      resp->set_size(result->table_size);
+      resp->set_num_missing_tablets(result->num_missing_tablets);
+    }
     return Status::OK();
   }
 
