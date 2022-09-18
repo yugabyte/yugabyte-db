@@ -42,20 +42,26 @@
 #include <deque>
 #include <functional>
 #include <future>
+#include <iomanip>
 #include <iosfwd>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <list>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <optional>
 #include <ostream>
+#include <queue>
 #include <random>
 #include <set>
 #include <shared_mutex>
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -63,6 +69,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -82,6 +89,7 @@
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
@@ -104,6 +112,7 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/range/iterator_range.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -111,7 +120,9 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/variant.hpp>
 #include <boost/version.hpp>
@@ -134,8 +145,10 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -179,6 +192,8 @@
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/auto_flags.h"
+#include "yb/util/auto_flags_util.h"
 #include "yb/util/background_task.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
@@ -195,6 +210,8 @@
 #include "yb/util/crc.h"
 #include "yb/util/cross_thread_mutex.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
@@ -210,6 +227,9 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/init.h"
+#include "yb/util/io.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/lockfree.h"
@@ -220,6 +240,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
@@ -236,6 +258,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/ntp_clock.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
@@ -265,6 +288,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_util.h"
@@ -281,13 +305,16 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/user.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/web_callback_registry.h"
 #include "yb/util/yb_partition.h"
+#include "yb/util/yb_pg_errcodes.h"
