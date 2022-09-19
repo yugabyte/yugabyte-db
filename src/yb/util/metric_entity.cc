@@ -275,7 +275,6 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (MatchMetricInList(id(), entity_options.exclude_metrics)) {
     return Status::OK();
   }
-
   bool select_all = MatchMetricInList(id(), entity_options.metrics);
 
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
@@ -306,9 +305,8 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (!entity_options.metrics.empty() && !select_all && metrics.empty()) {
     return Status::OK();
   }
-  AttributeMap prometheus_attr;
-  // PrometheusWriter* cdc_writer;
 
+  AttributeMap prometheus_attr;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
   if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
@@ -325,13 +323,6 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
-  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
-    prometheus_attr["table_id"] = attrs["table_id"];
-    prometheus_attr["table_name"] = attrs["table_name"];
-    prometheus_attr["namespace_name"] = attrs["namespace_name"];
-    prometheus_attr["stream_id"] = attrs["stream_id"];
-    // cdc_writer = new PrometheusWriter(writer->GetOutputString(),
-    // AggregationMetricLevel::kStream);
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
   } else {
@@ -341,28 +332,14 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   prometheus_attr["metric_type"] = prototype_->name();
   prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
 
-  /*if (strcmp(prototype_->name(), "cdc") == 0) {
-    for (OrderedMetricMap::value_type& val : metrics) {
-      WARN_NOT_OK(
-          val.second->WriteForPrometheus(cdc_writer, prometheus_attr, opts),
-          Format("Failed to write $0 as Prometheus", val.first));
-    }
-    // Run the external metrics collection callback if there is one set.
-    for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
-      cb(cdc_writer, opts);
-    }
-  } else */
-
-    for (OrderedMetricMap::value_type& val : metrics) {
-      WARN_NOT_OK(
-          val.second->WriteForPrometheus(writer, prometheus_attr, opts),
-          Format("Failed to write $0 as Prometheus", val.first));
-    }
-    // Run the external metrics collection callback if there is one set.
-    for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
-      cb(writer, opts);
-    }
-
+  for (OrderedMetricMap::value_type& val : metrics) {
+    WARN_NOT_OK(val.second->WriteForPrometheus(writer, prometheus_attr, opts),
+                Format("Failed to write $0 as Prometheus", val.first));
+  }
+  // Run the external metrics collection callback if there is one set.
+  for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
+    cb(writer, opts);
+  }
 
   return Status::OK();
 }

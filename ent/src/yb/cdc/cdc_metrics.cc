@@ -40,9 +40,9 @@
 METRIC_DEFINE_coarse_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
   yb::MetricUnit::kBytes,
   "Payload size of responses to CDC GetChanges requests (only when records are included)");
-METRIC_DEFINE_counter(
-    cdc, rpc_heartbeats_responded, "CDC Rpc Heartbeat Count", yb::MetricUnit::kRequests,
-    "Number of responses to CDC GetChanges requests without a record payload.");
+METRIC_DEFINE_counter(cdc, rpc_heartbeats_responded, "CDC Rpc Heartbeat Count",
+  yb::MetricUnit::kRequests,
+  "Number of responses to CDC GetChanges requests without a record payload.");
 METRIC_DEFINE_gauge_int64(cdc, last_read_opid_term, "CDC Last Read OpId (Term)",
   yb::MetricUnit::kOperations,
   "ID of the Last Read Producer Operation from a CDC GetChanges request. Format = term.index");
@@ -74,33 +74,6 @@ METRIC_DEFINE_gauge_int64(cdc, async_replication_committed_lag_micros,
                           yb::MetricUnit::kMicroseconds,
                           "Lag between last record applied on consumer and producer.",
                           {0, yb::AggregationFunction::kMax} /* optional_args */);
-METRIC_DEFINE_gauge_int64(cdcsdk,
-    cdcsdk_sent_lag_micros, "CDCSDK sent Lag",
-    yb::MetricUnit::kMicroseconds,
-    "Lag between last committed record in the producer and last send record to user.",
-    {0, yb::AggregationFunction::kMax} /* optional_args */);
-METRIC_DEFINE_gauge_int64(
-    cdcsdk, cdcsdk_committed_lag_micros,
-    "CDCSDK committed Lag",
-    yb::MetricUnit::kMicroseconds,
-    "Lag between last committed record in the producer and first send record to user.",
-    {0, yb::AggregationFunction::kMax} /* optional_args */);
-
-METRIC_DEFINE_counter(cdcsdk,
-    cdcsdk_traffic_sent, "CDCSDK sent traffic in bytes.", yb::MetricUnit::kBytes,
-    "Total number of traffic sent in bytes.");
-
-METRIC_DEFINE_gauge_int64(
-    cdcsdk, cdcsdk_change_event_count, "Number change event sent", yb::MetricUnit::kOperations,
-    "Number of change events sent to user.",
-    {0, yb::AggregationFunction::kSum} /* optional_args */);
-
-METRIC_DEFINE_gauge_uint64(
-    cdcsdk, cdcsdk_expiry_time_ms, "CDCSDK stream expiry in milliseconds",
-    yb::MetricUnit::kMilliseconds, "CDCSDK stream expiry in milliseconds.",
-    {0, yb::AggregationFunction::kMax} /* optional_args */);
-
-
 METRIC_DEFINE_gauge_bool(cdc,
                          is_bootstrap_required,
                          "Is Bootstrap Required",
@@ -149,16 +122,9 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(last_caughtup_physicaltime),
       entity_(entity) {}
 
-CDCSDKTabletMetrics::CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& entity)
-    : GINIT(cdcsdk_sent_lag_micros),
-      GINIT(cdcsdk_committed_lag_micros),
-      MINIT(cdcsdk_traffic_sent),
-      GINIT(cdcsdk_change_event_count),
-      GINIT(cdcsdk_expiry_time_ms),
-      entity_(entity) {}
-
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)
-    : MINIT(cdc_rpc_proxy_count), entity_(entity) {}
+    : MINIT(cdc_rpc_proxy_count),
+      entity_(entity) { }
 #undef MINIT
 #undef GINIT
 
