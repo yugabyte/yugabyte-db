@@ -531,7 +531,7 @@ set -euo pipefail
     fi
     flock -w 60 200
     # Clean up any pending removals before we unpack the archive.
-    rm -rf '{remote_yb_src_removal}/*'
+    rm -rf {remote_yb_src_removal}/*
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
