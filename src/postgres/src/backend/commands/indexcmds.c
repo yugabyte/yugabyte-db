@@ -684,7 +684,7 @@ DefineIndex(Oid relationId,
 	bool is_colocated =
 		IsYBRelation(rel) &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
+		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -1618,7 +1618,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	Oid tablegroupId = InvalidOid;
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates())
+		!YbIsConnectedToTemplateDb())
 	{
 		Relation rel = RelationIdGetRelation(relId);
 		if (IsYBRelation(rel))
