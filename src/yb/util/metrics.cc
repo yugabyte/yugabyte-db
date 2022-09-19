@@ -215,51 +215,27 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
     std::lock_guard<simple_spinlock> l(lock_);
     entities = entities_;
   }
+
   for (const EntityMap::value_type& e : entities) {
-    // LOG(INFO)<< "Sumukh Inside entitymap: "<< e.first<<" "<<e.second->prototype().name();
     if (TabletHasBeenShutdown(e.second)) {
       continue;
     }
-    /* if (strcmp(e.second->prototype().name(), "cdc") == 0) {
-       WARN_NOT_OK(
-           e.second->WriteForPrometheus(cdc_writer, entity_options, opts),
-           Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
-       LOG(INFO) << "SUMUKH: Inside WriteForPrometheus: "
-                 << e.second->prototype().name()
-                 << std::endl;
-     } else {*/
-      WARN_NOT_OK(
-          e.second->WriteForPrometheus(writer, entity_options, opts),
-          Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
 
-      }
-    //  RETURN_NOT_OK(cdc_writer->FlushAggregatedValues(
-    //      opts.max_tables_metrics_breakdowns, entity_options.priority_regex));
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, entity_options, opts),
+                Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+  }
+  RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
+                entity_options.priority_regex));
 
-      RETURN_NOT_OK(writer->FlushAggregatedValues(
-           opts.max_tables_metrics_breakdowns, entity_options.priority_regex));
-
-      // Rather than having a thread poll metrics periodically to retire old ones,
-      // we'll just retire them here. The only downside is that, if no one is polling
-      // metrics, we may end up leaving them around indefinitely; however, metrics are
-      // small, and one might consider it a feature: if monitoring stops polling for
-      // metrics, we should keep them around until the next poll.
-      entities.clear();  // necessary to deref metrics we just dumped before doing retirement scan.
-      const_cast<MetricRegistry*>(this)->RetireOldMetrics();
-      return Status::OK();
+  // Rather than having a thread poll metrics periodically to retire old ones,
+  // we'll just retire them here. The only downside is that, if no one is polling
+  // metrics, we may end up leaving them around indefinitely; however, metrics are
+  // small, and one might consider it a feature: if monitoring stops polling for
+  // metrics, we should keep them around until the next poll.
+  entities.clear(); // necessary to deref metrics we just dumped before doing retirement scan.
+  const_cast<MetricRegistry*>(this)->RetireOldMetrics();
+  return Status::OK();
 }
-
-void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
-  EntityMap entities;
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    entities = entities_;
-  }
-  for (const EntityMap::value_type& e : entities) {
-    prototypes.insert(e.second->prototype().name());
-  }
-
-  }
 
 void MetricRegistry::RetireOldMetrics() {
   std::lock_guard<simple_spinlock> l(lock_);

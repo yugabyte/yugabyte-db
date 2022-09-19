@@ -688,7 +688,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
 
   // Now check that UpdateLagMetrics deletes the metric.
-  cdc_service->UpdateCDCMetrics();
+  cdc_service->UpdateLagMetrics();
   auto metrics = cdc_service->GetCDCTabletMetrics(
       {"" /* UUID */, stream_id_, tablet_id},
       /* tablet_peer */ nullptr,
@@ -979,7 +979,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
   auto cdc_service = CDCService(leader_tserver);
-  cdc_service->UpdateCDCMetrics();
+  cdc_service->UpdateLagMetrics();
   auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
   auto timestamp_after_write = GetCurrentTimeMicros();
   auto lag_after_write = metrics->async_replication_committed_lag_micros->value();

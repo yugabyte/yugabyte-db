@@ -52,7 +52,7 @@ namespace cdc {
 // Container for all metrics specific to a single tablet.
 class CDCTabletMetrics {
  public:
-  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdcsdk);
+  explicit CDCTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc);
 
   scoped_refptr<Histogram> rpc_payload_bytes_responded;
   scoped_refptr<Counter> rpc_heartbeats_responded;
@@ -84,22 +84,6 @@ class CDCTabletMetrics {
 
   // Info on the time till which the consumer is caught-up with the producer.
   scoped_refptr<AtomicGauge<uint64_t>> last_caughtup_physicaltime;
-
- private:
-  scoped_refptr<MetricEntity> entity_;
-};
-
-class CDCSDKTabletMetrics {
- public:
-  explicit CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdc);
-
-  // Lag between last committed record in the producer and last send record to user.
-  scoped_refptr<AtomicGauge<int64_t>> cdcsdk_sent_lag_micros;
-  // Lag between last committed record in the producer and first send record to user.
-  scoped_refptr<AtomicGauge<int64_t>> cdcsdk_committed_lag_micros;
-  scoped_refptr<Counter> cdcsdk_traffic_sent;
-  scoped_refptr<AtomicGauge<int64_t>> cdcsdk_change_event_count;
-  scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_expiry_time_ms;
 
  private:
   scoped_refptr<MetricEntity> entity_;
