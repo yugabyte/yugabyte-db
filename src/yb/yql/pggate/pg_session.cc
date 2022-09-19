@@ -596,6 +596,19 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   }
 }
 
+Result<uint64_t> PgSession::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_db_catalog_version(db_oid_shm_index);
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgSession::GetTserverCatalogVersionInfo() {
+  return VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
+}
+
 Result<uint64_t> PgSession::GetSharedAuthKey() {
   if (tserver_shared_object_) {
     return (**tserver_shared_object_).postgres_auth_key();

@@ -198,6 +198,25 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
+  void get_ysql_db_catalog_version(uint32_t db_oid,
+                                   uint64_t* current_version,
+                                   uint64_t* last_breaking_version) const override {
+    std::lock_guard<simple_spinlock> l(lock_);
+    auto it = ysql_db_catalog_version_map_.find(db_oid);
+    bool not_found = it == ysql_db_catalog_version_map_.end();
+    // If db_oid represents a newly created database, it may not yet exist in
+    // ysql_db_catalog_version_map_ because the latter is updated via tserver to master
+    // heartbeat response which has a delay. Return 0 as if it were a stale version.
+    // Note that even if db_oid is found in ysql_db_catalog_version_map_ the catalog version
+    // can also be stale due to the heartbeat delay.
+    if (current_version) {
+      *current_version = not_found ? 0UL : it->second.current_version;
+    }
+    if (last_breaking_version) {
+      *last_breaking_version = not_found ? 0UL : it->second.last_breaking_version;
+    }
+  }
+
   Status get_ysql_db_oid_to_cat_version_info_map(
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 

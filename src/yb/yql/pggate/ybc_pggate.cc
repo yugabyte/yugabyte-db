@@ -509,6 +509,12 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
 }
 
+YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
+                                        uint32_t db_oid,
+                                        uint64_t db_catalog_cache_version) {
+  return ToYBCStatus(pgapi->SetDBCatalogCacheVersion(handle, db_oid, db_catalog_cache_version));
+}
+
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
   return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
 }
@@ -1225,6 +1231,45 @@ bool YBCGetDisableTransparentCacheRefreshRetry() {
 
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
+}
+
+YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version) {
+  return ExtractValueFromResult(pgapi->GetSharedDBCatalogVersion(db_oid_shm_index),
+                                                                 catalog_version);
+}
+
+YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info) {
+  const auto result = pgapi->GetTserverCatalogVersionInfo();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto& info = result.get();
+  VLOG(2) << "info: " << info.ShortDebugString();
+  DCHECK_EQ(info.db_oid_size(), info.shm_index_size());
+  YbTserverCatalogInfo info_data = static_cast<YbTserverCatalogInfo>(
+      YBCPAlloc(sizeof(YbTserverCatalogInfoData)));
+  const uint32_t num_databases = info.db_oid_size();
+  info_data->num_databases = num_databases;
+  if (info.db_oid_size() == 0) {
+    info_data->versions = nullptr;
+  } else {
+    info_data->versions = static_cast<YbTserverCatalogVersion*>(
+        YBCPAlloc(sizeof(YbTserverCatalogVersion) * num_databases));
+    for (uint i = 0; i < num_databases; i++) {
+      info_data->versions[i].db_oid = info.db_oid(i);
+      info_data->versions[i].current_version = info.current_version(i);
+      info_data->versions[i].shm_index = info.shm_index(i);
+    }
+  }
+  *tserver_catalog_info = info_data;
+#ifndef NDEBUG
+  // The db oids should be in ascending order.
+  for (uint i = 1; i < num_databases; i++) {
+    CHECK_LT(info_data->versions[i - 1].db_oid, info_data->versions[i].db_oid);
+  }
+#endif
+  return YBCStatusOK();
 }
 
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {

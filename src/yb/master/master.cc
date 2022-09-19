@@ -292,6 +292,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
+          master_tablet_server_.get() /* tablet_server */,
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
           &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 

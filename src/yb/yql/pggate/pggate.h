@@ -150,6 +150,8 @@ class PgApiImpl {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion();
+  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
   Result<uint64_t> GetSharedAuthKey();
 
   // Setup the table to store sequences data.
@@ -316,6 +318,10 @@ class PgApiImpl {
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
+
+  Status SetDBCatalogCacheVersion(PgStatement *handle,
+                                  uint32_t db_oid,
+                                  uint64_t catalog_cache_version);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
