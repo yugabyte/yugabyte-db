@@ -3015,7 +3015,7 @@ pgstat_bestart(void)
 /*
  * When backends die due to abnormal termination, cleanup is required.
  *
- * This function performs all the operations done by pgstat_bestshutdown_hook,
+ * This function performs all the operations done by pgstat_beshutdown_hook,
  * which is executed during safe backend terminations. However, it does not
  * report the remaining stats to the pgstat collector as the backend has
  * already died.
@@ -3040,9 +3040,6 @@ yb_pgstat_clear_entry_pid(int pid)
 		}
 		beentry++;
 	}
-	ereport(LOG,
-			(errmsg("unable to find pgstat entry for abnormally terminated PID %d",
-					pid)));
 }
 
 /*
