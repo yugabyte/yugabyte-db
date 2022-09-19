@@ -161,6 +161,8 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 METRIC_DEFINE_entity(cdc);
 
+METRIC_DEFINE_entity(cdcsdk);
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -1410,23 +1412,35 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 
   auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
   tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+  // auto tablet_metric_cdcsdk = GetCDCSDKTabletMetrics(producer_tablet, tablet_peer);
+
+   /* std::shared_ptr<void> tablet_metric;
+   if (record.source_type == CDCRequestSource::CDCSDK) {
+     tablet_metric = static_pointer_cast<CDCSDKTabletMetrics>(GetCDCTabletMetrics(
+         producer_tablet, tablet_peer, CreateCDCMetricsEntity::kTrue, CDCRequestSource::CDCSDK));
+   } else {
+     tablet_metric = static_pointer_cast<CDCTabletMetrics>(GetCDCTabletMetrics(
+         producer_tablet, tablet_peer, CreateCDCMetricsEntity::kTrue, CDCRequestSource::XCLUSTER));
+   }
+   tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+   */
 
   RPC_STATUS_RETURN_ERROR(
-      status,
-      resp->mutable_error(),
-      status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
-      context);
+       status,
+       resp->mutable_error(),
+       status.IsNotFound() ? CDCErrorPB::CHECKPOINT_TOO_OLD : CDCErrorPB::UNKNOWN_ERROR,
+       context);
   tablet_peer_result = context_->GetServingTablet(req->tablet_id());
   status = ResultToStatus(tablet_peer_result);
   tablet_peer = ResultToValue(std::move(tablet_peer_result), {});
 
   // Verify leadership was maintained for the duration of the GetChanges() read.
   if (status.IsNotFound() || !IsTabletPeerLeader(tablet_peer) ||
-      tablet_peer->LeaderTerm() != original_leader_term) {
-    SetupErrorAndRespond(resp->mutable_error(),
-        STATUS(NotFound, Format("Not leader for $0", req->tablet_id())),
-        CDCErrorPB::TABLET_NOT_FOUND, &context);
-    return;
+       tablet_peer->LeaderTerm() != original_leader_term) {
+     SetupErrorAndRespond(
+         resp->mutable_error(), STATUS(NotFound, Format("Not leader for $0", req->tablet_id())),
+         CDCErrorPB::TABLET_NOT_FOUND, &context);
+     return;
   }
 
   // Store information about the last server read & remote client ACK.
@@ -1552,24 +1566,39 @@ void CDCServiceImpl::UpdateCDCMetrics() {
       continue;
     }
 
-    ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
-    tablets_in_cdc_state_table.insert(tablet_info);
-    auto tablet_metric = GetCDCTabletMetrics(tablet_info, tablet_peer);
-    if (!tablet_metric) {
-      continue;
-    }
     auto get_stream_metadata = GetStream(stream_id);
     if (!get_stream_metadata.ok()) {
       continue;
     }
     StreamMetadata& record = **get_stream_metadata;
 
+    ProducerTabletInfo tablet_info = {"" /* universe_uuid */, stream_id, tablet_id};
+    tablets_in_cdc_state_table.insert(tablet_info);
+    LOG(INFO) << "Sumukh: Inside UpdateCDCMetrics type: " << record.source_type;
+    auto tablet_metric_cdcsdk = GetCDCSDKTabletMetrics(tablet_info, tablet_peer);
+    auto tablet_metric = GetCDCTabletMetrics(tablet_info, tablet_peer);
+    /* std::shared_ptr<void> tablet_metric;
+    if (record.source_type == CDCRequestSource::CDCSDK) {
+      tablet_metric = static_pointer_cast<CDCSDKTabletMetrics>(GetCDCTabletMetrics(
+          tablet_info, tablet_peer, CreateCDCMetricsEntity::kTrue, CDCRequestSource::CDCSDK));
+    } else {
+      tablet_metric = static_pointer_cast<CDCTabletMetrics>(GetCDCTabletMetrics(
+          tablet_info, tablet_peer, CreateCDCMetricsEntity::kTrue, CDCRequestSource::XCLUSTER));
+    }
+    */
+    if (!tablet_metric || !tablet_metric_cdcsdk) {
+      LOG(INFO) << "Sumukh: Inside UpdateCDCMetrics type: Could not create tablet_metric"
+                << std::endl;
+      continue;
+    }
+
     if (tablet_peer->LeaderStatus() != consensus::LeaderStatus::LEADER_AND_READY) {
       // Set lag to 0 because we're not the leader for this tablet anymore, which means another peer
       // is responsible for tracking this tablet's lag.
       if (record.source_type == CDCSDK) {
-        tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
-        tablet_metric->cdcsdk_committed_lag_micros->set_value(0);
+        // tablet_metric = static_pointer_cast<CDCSDKTabletMetrics>(tablet_metric);
+        tablet_metric_cdcsdk->cdcsdk_sent_lag_micros->set_value(0);
+        tablet_metric_cdcsdk->cdcsdk_committed_lag_micros->set_value(0);
       } else {
         tablet_metric->async_replication_sent_lag_micros->set_value(0);
         tablet_metric->async_replication_committed_lag_micros->set_value(0);
@@ -1584,12 +1613,12 @@ void CDCServiceImpl::UpdateCDCMetrics() {
       auto last_sent_micros = tablet_metric->last_read_physicaltime->value();
       ComputeLagMetric(
           last_replicated_micros, last_sent_micros, cdc_state_last_replication_time_micros,
-          record.source_type == CDCSDK ? tablet_metric->cdcsdk_sent_lag_micros
+          record.source_type == CDCSDK ? tablet_metric_cdcsdk->cdcsdk_sent_lag_micros
                                        : tablet_metric->async_replication_sent_lag_micros);
       auto last_committed_micros = tablet_metric->last_checkpoint_physicaltime->value();
       ComputeLagMetric(
           last_replicated_micros, last_committed_micros, cdc_state_last_replication_time_micros,
-          record.source_type == CDCSDK ? tablet_metric->cdcsdk_committed_lag_micros
+          record.source_type == CDCSDK ? tablet_metric_cdcsdk->cdcsdk_committed_lag_micros
                                        : tablet_metric->async_replication_committed_lag_micros);
 
       // Time elapsed since last GetChanges, or since stream creation if no GetChanges received.
@@ -1609,7 +1638,7 @@ void CDCServiceImpl::UpdateCDCMetrics() {
           auto active_time =
               CheckedStoInt<int64_t>(row.column(3).map_value().values(0).string_value());
           if (!active_time.ok()) {
-            tablet_metric->cdcsdk_expiry_time_ms->set_value(
+            tablet_metric_cdcsdk->cdcsdk_expiry_time_ms->set_value(
                 GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
           } else {
             int64_t last_active_time = *active_time;
@@ -1620,9 +1649,9 @@ void CDCServiceImpl::UpdateCDCMetrics() {
             if (now < expiry_time) {
               // Convert to milli seconds.
               remaining_expiry_time = (expiry_time - now) / 1000;
-              tablet_metric->cdcsdk_expiry_time_ms->set_value(remaining_expiry_time);
+              tablet_metric_cdcsdk->cdcsdk_expiry_time_ms->set_value(remaining_expiry_time);
             } else {
-              tablet_metric->cdcsdk_expiry_time_ms->set_value(remaining_expiry_time);
+              tablet_metric_cdcsdk->cdcsdk_expiry_time_ms->set_value(remaining_expiry_time);
             }
           }
         }
@@ -1645,6 +1674,9 @@ void CDCServiceImpl::UpdateCDCMetrics() {
         continue;
       }
       // Don't create new tablet metrics if they have already been deleted.
+
+      auto tablet_metric_cdcsdk = GetCDCSDKTabletMetrics(
+          checkpoint.producer_tablet_info, tablet_peer, CreateCDCMetricsEntity::kFalse);
       auto tablet_metric = GetCDCTabletMetrics(
           checkpoint.producer_tablet_info, tablet_peer, CreateCDCMetricsEntity::kFalse);
       if (!tablet_metric) {
@@ -1652,8 +1684,8 @@ void CDCServiceImpl::UpdateCDCMetrics() {
       }
       tablet_metric->async_replication_sent_lag_micros->set_value(0);
       tablet_metric->async_replication_committed_lag_micros->set_value(0);
-      tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
-      tablet_metric->cdcsdk_committed_lag_micros->set_value(0);
+      tablet_metric_cdcsdk->cdcsdk_sent_lag_micros->set_value(0);
+      tablet_metric_cdcsdk->cdcsdk_committed_lag_micros->set_value(0);
       RemoveCDCTabletMetrics(checkpoint.producer_tablet_info, tablet_peer);
     }
   }
@@ -3102,8 +3134,15 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
     const OpId& op_id,
     const CDCRequestSource source_type,
     int64_t last_readable_index) {
+  // auto tablet_metric =
+  //    GetCDCTabletMetrics(producer_tablet, tablet_peer,
+  //    CreateCDCMetricsEntity::kTrue,source_type);
+  // if (!tablet_metric) {
+  //  return;
+  //}
+  auto tablet_metric_cdcsdk = GetCDCSDKTabletMetrics(producer_tablet, tablet_peer);
   auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
-  if (!tablet_metric) {
+  if (!tablet_metric_cdcsdk || !tablet_metric) {
     return;
   }
 
@@ -3116,11 +3155,13 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
 
   if (source_type == CDCSDK) {
     if (resp->cdc_sdk_proto_records_size() > 0) {
-      tablet_metric->cdcsdk_traffic_sent->IncrementBy(
+      tablet_metric_cdcsdk->cdcsdk_traffic_sent->IncrementBy(
           resp->cdc_sdk_proto_records_size() * resp->cdc_sdk_proto_records(0).ByteSize());
     }
-    tablet_metric->cdcsdk_change_event_count->set_value(resp->cdc_sdk_proto_records_size());
-    tablet_metric->cdcsdk_expiry_time_ms->set_value(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+    tablet_metric_cdcsdk->cdcsdk_change_event_count->set_value(
+        resp->cdc_sdk_proto_records_size());
+    tablet_metric_cdcsdk->cdcsdk_expiry_time_ms->set_value(
+        GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
   }
 
   if (resp->records_size() > 0 || resp->cdc_sdk_proto_records_size() > 0) {
@@ -3139,7 +3180,8 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
     // Get the physical time of the last committed record on producer.
     auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
     if (resp->cdc_sdk_proto_records_size() > 0) {
-      tablet_metric->cdcsdk_sent_lag_micros->set_value(last_replicated_micros - last_record_micros);
+      tablet_metric_cdcsdk->cdcsdk_sent_lag_micros->set_value(
+          last_replicated_micros - last_record_micros);
     } else {
       tablet_metric->async_replication_sent_lag_micros->set_value(
           last_replicated_micros - last_record_micros);
@@ -3152,7 +3194,7 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
     tablet_metric->last_caughtup_physicaltime->set_value(
         std::max(tablet_metric->last_caughtup_physicaltime->value(), first_record_micros));
     if (resp->cdc_sdk_proto_records_size() > 0) {
-      tablet_metric->cdcsdk_committed_lag_micros->set_value(
+      tablet_metric_cdcsdk->cdcsdk_committed_lag_micros->set_value(
           last_replicated_micros - first_record_micros);
     } else {
       tablet_metric->async_replication_committed_lag_micros->set_value(
@@ -3167,8 +3209,8 @@ void CDCServiceImpl::UpdateCDCTabletMetrics(
     tablet_metric->last_caughtup_physicaltime->set_value(GetCurrentTimeMicros());
     tablet_metric->async_replication_sent_lag_micros->set_value(0);
     tablet_metric->async_replication_committed_lag_micros->set_value(0);
-    tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
-    tablet_metric->cdcsdk_committed_lag_micros->set_value(0);
+    tablet_metric_cdcsdk->cdcsdk_sent_lag_micros->set_value(0);
+    tablet_metric_cdcsdk->cdcsdk_committed_lag_micros->set_value(0);
   }
 }
 
@@ -3226,8 +3268,10 @@ const std::string GetCDCMetricsKey(const std::string& stream_id) {
 
 std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
     const ProducerTabletInfo& producer,
-    std::shared_ptr<tablet::TabletPeer> tablet_peer,
-    CreateCDCMetricsEntity create) {
+    std::shared_ptr<tablet::TabletPeer>
+        tablet_peer,
+    CreateCDCMetricsEntity create,
+    CDCRequestSource type) {
   // 'nullptr' not recommended: using for tests.
   if (tablet_peer == nullptr) {
     auto tablet_peer_result = context_->GetServingTablet(producer.tablet_id);
@@ -3251,13 +3295,79 @@ std::shared_ptr<CDCTabletMetrics> CDCServiceImpl::GetCDCTabletMetrics(
       attrs["table_name"] = raft_group_metadata->table_name();
       attrs["stream_id"] = producer.stream_id;
     }
-    auto entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_, producer.MetricsString(), attrs);
+    LOG(INFO) << "Sumukh: Inside GetCDCTabletMetrics: type = "<< type << std::endl;
+    // if (type == CDCSDK) {
+    //  LOG(INFO) << "Sumukh: Inside GetCDCTabletMetrics: "
+    //            << producer.MetricsString() << std::endl;
+    //  entity = METRIC_ENTITY_cdcsdk.Instantiate(
+    //           metric_registry_, producer.MetricsString(), attrs);
+      // metrics_raw = std::make_shared<CDCSDKTabletMetrics>(entity);
+      // tablet->AddAdditionalMetadata(key, metrics_raw);
+    //} else {
+    //  LOG(INFO) << "Sumukh: Inside GetCDCTabletMetrics: Inside else part: "
+    // <<producer.MetricsString()<< std::endl;
+    scoped_refptr<MetricEntity> entity =
+        METRIC_ENTITY_cdc.Instantiate(metric_registry_, producer.MetricsString(), attrs);
+    // metrics_raw = std::make_shared<CDCTabletMetrics>(entity);
+    // tablet->AddAdditionalMetadata(key, metrics_raw);
+    // }
+
     metrics_raw = std::make_shared<CDCTabletMetrics>(entity);
     // Adding the new metric to the tablet so it maintains the same lifetime scope.
     tablet->AddAdditionalMetadata(key, metrics_raw);
   }
+  LOG(INFO) << "Sumukh: Leaving GetCDCTabletMetrics " << std::endl;
 
   return std::static_pointer_cast<CDCTabletMetrics>(metrics_raw);
+}
+
+std::shared_ptr<CDCSDKTabletMetrics> CDCServiceImpl::GetCDCSDKTabletMetrics(
+    const ProducerTabletInfo& producer,
+    std::shared_ptr<tablet::TabletPeer>
+        tablet_peer,
+    CreateCDCMetricsEntity create,
+    CDCRequestSource type) {
+  // 'nullptr' not recommended: using for tests.
+  if (tablet_peer == nullptr) {
+    auto tablet_peer_result = context_->GetServingTablet(producer.tablet_id);
+    if (!tablet_peer_result.ok()) return nullptr;
+    tablet_peer = std::move(*tablet_peer_result);
+  }
+
+  auto tablet = tablet_peer->shared_tablet();
+  if (tablet == nullptr) return nullptr;
+
+  const std::string key = GetCDCMetricsKey(producer.stream_id);
+  std::shared_ptr<void> metrics_raw = tablet->GetAdditionalMetadata(key);
+  if (metrics_raw == nullptr && create) {
+    //  Create a new METRIC_ENTITY_cdc here.
+    MetricEntity::AttributeMap attrs;
+    {
+      SharedLock<rw_spinlock> l(mutex_);
+      auto raft_group_metadata = tablet_peer->tablet()->metadata();
+      attrs["table_id"] = raft_group_metadata->table_id();
+      attrs["namespace_name"] = raft_group_metadata->namespace_name();
+      attrs["table_name"] = raft_group_metadata->table_name();
+      attrs["stream_id"] = producer.stream_id;
+    }
+    scoped_refptr<MetricEntity> entity;
+    LOG(INFO) << "Sumukh: Inside GetCDCSDKTabletMetrics: type = " << type << std::endl;
+    //  if (type == CDCSDK) {
+    // LOG(INFO) << "Sumukh: Inside GetCDCTabletMetrics: " << producer.MetricsString() << std::endl;
+      entity = METRIC_ENTITY_cdcsdk.Instantiate(metric_registry_, producer.MetricsString(), attrs);
+    // } else {
+    // LOG(INFO) << "Sumukh: Inside GetCDCTabletMetrics: Inside else part: "
+    //            << producer.MetricsString() << std::endl;
+    //  entity = METRIC_ENTITY_cdc.Instantiate(metric_registry_, producer.MetricsString(), attrs);
+    //}
+
+    metrics_raw = std::make_shared<CDCSDKTabletMetrics>(entity);
+    // Adding the new metric to the tablet so it maintains the same lifetime scope.
+    tablet->AddAdditionalMetadata(key, metrics_raw);
+  }
+  LOG(INFO) << "Sumukh: Leaving GetCDCSDKTabletMetrics " << std::endl;
+
+  return std::static_pointer_cast<CDCSDKTabletMetrics>(metrics_raw);
 }
 
 void CDCServiceImpl::RemoveCDCTabletMetrics(
@@ -3561,7 +3671,17 @@ void CDCServiceImpl::CheckReplicationDrain(const CheckReplicationDrainRequestPB*
         continue;
       }
 
-      auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
+      auto get_stream_metadata = GetStream(stream_id);
+      if (!get_stream_metadata.ok()) {
+       continue;
+      }
+      StreamMetadata& record = **get_stream_metadata;
+
+      auto tablet_metric = GetCDCTabletMetrics(
+          producer_tablet,
+          tablet_peer,
+          CreateCDCMetricsEntity::kTrue,
+          record.source_type);
       if (!tablet_metric) {
         LOG_WITH_FUNC(INFO) << "Tablet metrics uninitialized: " << producer_tablet.ToString();
         unfinished_stream_tablet.push_back({stream_id, tablet_id});
