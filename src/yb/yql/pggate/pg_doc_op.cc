@@ -15,10 +15,7 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
-#include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
 #include "yb/common/row_mark.h"
 
@@ -37,14 +34,6 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
-using std::lower_bound;
-using std::list;
-using std::vector;
-using std::shared_ptr;
-using std::make_shared;
-using std::unique_ptr;
-using std::move;
-
 namespace yb {
 namespace pggate {
 namespace {
@@ -59,14 +48,16 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
       : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
   }
 
-  Status GetResult(std::list<PgDocResult> *rowsets) override {
-    if (data_) {
-      for (const auto& d : *data_) {
-        rowsets->emplace_back(d);
+  Result<std::list<PgDocResult>> GetResult() override {
+    std::list<PgDocResult> result;
+    PrefetchedDataHolder data;
+    data.swap(data_);
+    if (data) {
+      for (const auto& d : *data) {
+        result.emplace_back(d);
       }
-      data_.reset();
     }
-    return Status::OK();
+    return result;
   }
 
   Status ExecuteInit(const PgExecParameters* exec_params) override {
@@ -90,11 +81,6 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return STATUS(InternalError, "DoCreateRequests is not defined for PgDocReadOpCached");
   }
 
-  PgsqlOpPtr CloneFromTemplate() override {
-    CHECK(false) << "CloneFromTemplate is not defined for PgDocReadOpCached";
-    return nullptr;
-  }
-
  private:
   Status CompleteProcessResponse() override {
     return STATUS(InternalError, "CompleteProcessResponse is not defined for PgDocReadOpCached");
@@ -103,21 +89,43 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
   PrefetchedDataHolder data_;
 };
 
+// Helper function to build row order. In the vast majority of cases order info came with response.
+// But there is 2 situations when response may not have row order info:
+// - response came from old t-server
+// - response belong to non ybctid request
+// In both these situation local order info is used.
+// The first case is rare and only possible in case of upgrade from quite old release.
+// In the second case op_row_order is empty and function will return empty result (which is valid)
+// Caution: local order info might be irrelevant in case of dynamic tablet splitting (case #1).
+auto BuildRowOrders(const LWPgsqlResponsePB& response,
+                    const PgDocOp::OperationRowOrders& op_row_order,
+                    const PgsqlOp& op) {
+  std::vector<int64_t> orders;
+  const auto& batch_orders = response.batch_orders();
+  if (!batch_orders.empty()) {
+    orders.assign(batch_orders.begin(), batch_orders.end());
+  } else {
+    orders.reserve(op_row_order.size());
+    for (const auto& i : op_row_order) {
+      if (i.operation.lock().get() == &op) {
+        orders.push_back(i.order);
+      }
+    }
+  }
+  return orders;
+}
+
 } // namespace
 
-PgDocResult::PgDocResult(rpc::SidecarHolder data) : data_(std::move(data)) {
+PgDocResult::PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders)
+    : data_(std::move(data)),
+      row_orders_(std::move(row_orders)),
+      current_row_order_(row_orders_.begin()) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
-
-PgDocResult::PgDocResult(rpc::SidecarHolder data, std::list<int64_t> row_orders)
-    : data_(std::move(data)), row_orders_(std::move(row_orders)) {
-  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
-}
-
-PgDocResult::~PgDocResult() = default;
 
 int64_t PgDocResult::NextRowOrder() {
-  return row_orders_.size() > 0 ? row_orders_.front() : -1;
+  return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
 }
 
 Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
@@ -138,12 +146,7 @@ Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *p
     target->TranslateData(&row_iterator_, header, attr_num - 1, pg_tuple);
   }
 
-  if (row_orders_.size()) {
-    *row_order = row_orders_.front();
-    row_orders_.pop_front();
-  } else {
-    *row_order = -1;
-  }
+  *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
   return Status::OK();
 }
 
@@ -256,10 +259,10 @@ Result<RequestSent> PgDocOp::Execute(bool force_non_bufferable) {
   return RequestSent(response_.Valid());
 }
 
-Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
+Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
-
+  std::list<PgDocResult> result;
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
@@ -267,19 +270,17 @@ Status PgDocOp::GetResult(list<PgDocResult> *rowsets) {
     }
 
     DCHECK(response_.Valid());
-    auto result = response_.Get();
-    auto rows = VERIFY_RESULT(ProcessResponse(result));
+    result = VERIFY_RESULT(ProcessResponse(response_.Get()));
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
-    DCHECK(!rows.empty() || end_of_data_);
-    rowsets->splice(rowsets->end(), rows);
+    DCHECK(!result.empty() || end_of_data_);
     // Prefetch next portion of data if needed.
     if (!(end_of_data_ || suppress_next_result_prefetching_)) {
       RETURN_NOT_OK(SendRequest(true /* force_non_bufferable */));
     }
   }
 
-  return Status::OK();
+  return result;
 }
 
 Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
@@ -288,51 +289,11 @@ Result<int32_t> PgDocOp::GetRowsAffectedCount() const {
   return rows_affected_count_;
 }
 
-Status PgDocOp::ClonePgsqlOps(size_t op_count) {
-  // Allocate batch operator, one per partition.
-  SCHECK(op_count > 0, InternalError, "Table must have at least one partition");
-  if (pgsql_ops_.size() < op_count) {
-    pgsql_ops_.resize(op_count);
-    for (auto& op : pgsql_ops_) {
-      op = CloneFromTemplate();
-
-      // Initialize as inactive. Turn it on when setup argument for a specific partition.
-      op->set_active(false);
-    }
-
-    // Set parallism_level_ to maximum possible of operators to be executed at one time.
-    parallelism_level_ = pgsql_ops_.size();
-  }
-
-  return Status::OK();
-}
-
 void PgDocOp::MoveInactiveOpsOutside() {
-  // Move inactive op to the end.
-  const ssize_t total_op_count = pgsql_ops_.size();
-  bool has_sorting_order = !batch_row_orders_.empty();
-  ssize_t left_iter = 0;
-  ssize_t right_iter = total_op_count - 1;
-  while (true) {
-    // Advance left iterator.
-    while (left_iter < total_op_count && pgsql_ops_[left_iter]->is_active()) left_iter++;
-
-    // Advance right iterator.
-    while (right_iter >= 0 && !pgsql_ops_[right_iter]->is_active()) right_iter--;
-
-    // Move inactive operator to the end by swapping the pointers.
-    if (left_iter < right_iter) {
-      std::swap(pgsql_ops_[left_iter], pgsql_ops_[right_iter]);
-      if (has_sorting_order) {
-        std::swap(batch_row_orders_[left_iter], batch_row_orders_[right_iter]);
-      }
-    } else {
-      break;
-    }
-  }
-
-  // Set active op count.
-  active_op_count_ = left_iter;
+  const auto inactive_op_begin = std::partition(
+      pgsql_ops_.begin(), pgsql_ops_.end(),
+      [](const auto& op) { return op->is_active(); });
+  active_op_count_ = inactive_op_begin - pgsql_ops_.begin();
 }
 
 Status PgDocOp::SendRequest(bool force_non_bufferable) {
@@ -390,18 +351,20 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
 Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
   std::list<PgDocResult> result;
-  bool no_sorting_order = batch_row_orders_.empty();
 
   rows_affected_count_ = 0;
-  // Check for errors reported by tablet server.
-  for (size_t op_index = 0; op_index < active_op_count_; op_index++) {
-    auto& pgsql_op = pgsql_ops_[op_index];
-    auto* op_response = pgsql_op->response();
+  for (auto& op : pgsql_ops_) {
+    if (!op->is_active()) {
+      break;
+    }
+    auto* op_response = op->response();
     if (!op_response) {
       continue;
     }
-    // Get total number of rows that are operated on.
     rows_affected_count_ += op_response->rows_affected_count();
+    if (!op_response->has_rows_data_sidecar()) {
+      continue;
+    }
 
     // A single batch of requests almost always is directed to fetch data from a single tablet.
     // However, when tablets split, data can be sharded/distributed across multiple tablets.
@@ -425,22 +388,8 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
     // obtain the orders of requests executed in each partition and send it along with the responses
     // so that pg_gate can send responses to the postgres layer in the correct order.
 
-    // Get contents.
-    if (!op_response->has_rows_data_sidecar()) {
-      continue;
-    }
     auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
-    if (no_sorting_order) {
-      result.emplace_back(std::move(rows_data));
-    } else {
-      const auto& batch_orders = op_response->batch_orders();
-      if (!batch_orders.empty()) {
-        result.emplace_back(std::move(rows_data),
-                            std::list<int64_t>(batch_orders.begin(), batch_orders.end()));
-      } else {
-        result.emplace_back(std::move(rows_data), std::move(batch_row_orders_[op_index]));
-      }
-    }
+    result.emplace_back(std::move(rows_data), BuildRowOrders(*op_response, batch_row_orders_, *op));
   }
 
   return result;
@@ -467,8 +416,8 @@ Status PgDocOp::PopulateDmlByYbctidOps(const YbctidGenerator& generator) {
 }
 
 Status PgDocOp::CompleteRequests() {
-  for (size_t i = 0; i != active_op_count_; ++i) {
-    RETURN_NOT_OK(pgsql_ops_[i]->InitPartitionKey(*table_));
+  for (const auto& op : pgsql_ops_) {
+    RETURN_NOT_OK(op->InitPartitionKey(*table_));
   }
   return Status::OK();
 }
@@ -588,12 +537,11 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // 5- Send requests to tablet servers to read data from <tab> associated with ybctid values.
   //
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
-  RETURN_NOT_OK(InitializeYbctidOperators());
-  // Begin a batch of ybctids.
+  InitializeYbctidOperators();
   end_of_data_ = false;
-  // Assign ybctid values.
+  batch_row_orders_.reserve(generator.capacity);
   while (true) {
-    auto ybctid = generator();
+    auto ybctid = generator.next();
     if (ybctid.empty()) {
       break;
     }
@@ -603,7 +551,8 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
 
     // Assign ybctids to operators.
-    auto& read_req = GetReadReq(partition);
+    auto& read_op = GetReadOp(partition);
+    auto& read_req = read_op.read_request();
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
@@ -614,12 +563,9 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     arg_value->dup_binary_value(ybctid);
 
     // Remember the order number for each request.
-    batch_row_orders_[partition].push_back(batch_row_ordering_counter_);
+    batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
 
-    // Increment counter for the next row.
-    ++batch_row_ordering_counter_;
-
-    pgsql_ops_[partition]->set_active(true);
+    read_op.set_active(true);
     read_req.set_is_forward_scan(true);
 
     // For every read operation set partition boundary. In case a tablet is split between
@@ -634,32 +580,21 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   return Status::OK();
 }
 
-Status PgDocReadOp::InitializeYbctidOperators() {
-  auto op_count = table_->GetPartitionCount();
-
-  if (batch_row_orders_.size() == 0) {
-    // First batch:
-    // - Create operators.
-    // - Allocate row orders for each tablet server.
-    // - Protobuf fields in requests are not yet set so not needed to be cleared.
-    RETURN_NOT_OK(ClonePgsqlOps(op_count));
-    batch_row_orders_.resize(op_count);
-
+void PgDocReadOp::InitializeYbctidOperators() {
+  if (pgsql_ops_.empty()) {
+    // First batch.
     // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
     // in the batch and then order them before returning result to Postgres layer.
     wait_for_batch_completion_ = true;
-
+    ClonePgsqlOps(table_->GetPartitionCount());
   } else {
-    // Second and later batches: Reuse all state variables.
-    // - Clear row orders for this batch to be set later.
-    // - Clear protobuf fields ybctids and others before reusing them in this batch.
-    RETURN_NOT_OK(ResetInactivePgsqlOps());
+    // Second and later batches. Reuse all state variables.
+    ResetInactivePgsqlOps();
   }
-  return Status::OK();
 }
 
-Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
-  RETURN_NOT_OK(InitializeHashPermutationStates());
+bool PgDocReadOp::PopulateNextHashPermutationOps() {
+  InitializeHashPermutationStates();
 
   // Set the index at the start of inactive operators.
   auto op_count = pgsql_ops_.size();
@@ -689,11 +624,12 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
 }
 
 // Collect hash expressions to prepare for generating permutations.
-Status PgDocReadOp::InitializeHashPermutationStates() {
+void PgDocReadOp::InitializeHashPermutationStates() {
   // Return if state variables were initialized.
   if (!partition_exprs_.empty()) {
     // Reset the protobuf request before reusing the operators.
-    return ResetInactivePgsqlOps();
+    ResetInactivePgsqlOps();
+    return;
   }
 
   // Initialize partition_exprs_.
@@ -725,7 +661,7 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
   // at the moment, the number of operators never exceeds the number of tablets except for hash
   // permutation operation, so the work on this GFLAG can be done when it is necessary.
   int max_op_count = std::min(total_permutation_count_, FLAGS_ysql_request_limit);
-  RETURN_NOT_OK(ClonePgsqlOps(max_op_count));
+  ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
   for (int op_index = 0; op_index < max_op_count; op_index++) {
@@ -740,8 +676,6 @@ Status PgDocReadOp::InitializeHashPermutationStates() {
   // Initialize counters.
   next_permutation_idx_ = 0;
   active_op_count_ = 0;
-
-  return Status::OK();
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
@@ -751,8 +685,8 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
-  // Set "pararallelism_level_" to control how many operators can be sent at one time.
+  ClonePgsqlOps(table_->GetPartitionCount());
+  // Set "parallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
   // the following calculation needs to be refined before it can be used for all statements.
@@ -792,7 +726,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
 
 Result<bool> PgDocReadOp::PopulateSamplingOps() {
   // Create one PgsqlOp per partition
-  RETURN_NOT_OK(ClonePgsqlOps(table_->GetPartitionCount()));
+  ClonePgsqlOps(table_->GetPartitionCount());
   // Partitions are sampled sequentially, one at a time
   parallelism_level_ = 1;
   // Assign partitions to operators.
@@ -870,7 +804,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
   auto send_count = std::min(parallelism_level_, active_op_count_);
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
-    auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[op_index]);
+    auto& read_op = GetReadOp(op_index);
     RETURN_NOT_OK(ReviewResponsePagingState(*table_, &read_op));
 
     // Check for completion.
@@ -1027,7 +961,7 @@ void PgDocReadOp::SetReadTimeForBackfill() {
   }
 }
 
-Status PgDocReadOp::ResetInactivePgsqlOps() {
+void PgDocReadOp::ResetInactivePgsqlOps() {
   // Clear the existing ybctids.
   for (auto op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
     auto& read_req = GetReadReq(op_index);
@@ -1040,14 +974,19 @@ Status PgDocReadOp::ResetInactivePgsqlOps() {
     read_req.clear_upper_bound();
   }
 
-  // Clear row orders.
-  if (batch_row_orders_.size() > 0) {
-    for (auto op_index = active_op_count_; op_index < pgsql_ops_.size(); op_index++) {
-      batch_row_orders_[op_index].clear();
-    }
+  if (!active_op_count_) {
+    // Optimized version in case all operations are inactive
+    batch_row_orders_.clear();
+  } else {
+    batch_row_orders_.erase(
+      std::remove_if(
+          batch_row_orders_.begin(), batch_row_orders_.end(),
+          [](const auto& item) {
+            auto ptr = item.operation.lock();
+            return !ptr || !ptr->is_active();
+          }),
+      batch_row_orders_.end());
   }
-
-  return Status::OK();
 }
 
 void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req) {
@@ -1069,8 +1008,12 @@ void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_r
   }
 }
 
+PgsqlReadOp& PgDocReadOp::GetReadOp(size_t op_index) {
+  return down_cast<PgsqlReadOp&>(*pgsql_ops_[op_index]);
+}
+
 LWPgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
-  return down_cast<PgsqlReadOp&>(*pgsql_ops_[op_index]).read_request();
+  return GetReadOp(op_index).read_request();
 }
 
 Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition) {
@@ -1085,6 +1028,19 @@ Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size
                                         upper_bound,
                                         /* upper_bound_is_inclusive */ false));
   return true;
+}
+
+void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
+  // Allocate batch operator, one per partition.
+  DCHECK_GT(op_count, 0);
+  pgsql_ops_.reserve(op_count);
+  while (pgsql_ops_.size() < op_count) {
+    pgsql_ops_.push_back(read_op_->DeepCopy(read_op_));
+    // Initialize as inactive. Turn it on when setup argument for a specific partition.
+    pgsql_ops_.back()->set_active(false);
+  }
+  // Set parallelism_level_ to maximum possible of operators to be executed at one time.
+  parallelism_level_ = pgsql_ops_.size();
 }
 
 //--------------------------------------------------------------------------------------------------
