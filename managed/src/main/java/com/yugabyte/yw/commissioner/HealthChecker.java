@@ -434,7 +434,7 @@ public class HealthChecker {
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+    if (!runtimeConfigFactory.forUniverse(u).getBoolean("yb.health.trigger_api.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
