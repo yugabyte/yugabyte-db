@@ -4331,6 +4331,55 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
   return Status::OK();
 }
 
+Status CatalogManager::AddTransactionStatusTablet(
+    const AddTransactionStatusTabletRequestPB* req, AddTransactionStatusTabletResponsePB* resp,
+    rpc::RpcContext *rpc) {
+  TableInfoPtr table;
+  TabletInfoPtr old_tablet;
+  TabletInfoPtr new_tablet;
+  Partition left_partition;
+  TableInfo::WriteLock write_lock;
+  {
+    LockGuard lock(mutex_);
+    table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
+    write_lock = table->LockForWrite();
+
+    Schema schema;
+    RETURN_NOT_OK(table->GetSchema(&schema));
+
+    auto split = VERIFY_RESULT(table->FindSplittableHashPartitionForStatusTable());
+    old_tablet = std::move(split.tablet);
+    left_partition = std::move(split.left);
+
+    Partition old_partition;
+    Partition::FromPB(old_tablet->LockForRead()->pb.partition(), &old_partition);
+
+    auto tablets = VERIFY_RESULT(CreateTabletsFromTable({ split.right }, table));
+    SCHECK_EQ(1, tablets.size(), IllegalState, "Mismatch in number of tablets created");
+
+    new_tablet = std::move(tablets[0]);
+    SCHECK_EQ(SysTabletsEntryPB::PREPARING, new_tablet->metadata().dirty().pb.state(),
+              IllegalState, "New tablet not in PREPARING state");
+  }
+
+  table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet);
+  auto s = sys_catalog_->Upsert(leader_ready_term(), table);
+  if (PREDICT_FALSE(!s.ok())) {
+    return s;
+  }
+
+  write_lock.Commit();
+  TRACE("Wrote table to system table");
+
+  new_tablet->mutable_metadata()->CommitMutation();
+
+  // Increment transaction status version if needed.
+  RETURN_NOT_OK(IncrementTransactionTablesVersion());
+
+  DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
+  return Status::OK();
+}
+
 bool CatalogManager::DoesTransactionTableExistForTablespace(const TablespaceId& tablespace_id) {
   SharedLock lock(mutex_);
   for (const auto& table_id : transaction_table_ids_set_) {
