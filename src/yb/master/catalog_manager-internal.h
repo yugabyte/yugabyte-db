@@ -41,6 +41,9 @@ namespace yb {
 
 namespace master {
 
+static const string kRelnamespaceNotFoundErrorStr =
+    "Not found or invalid relnamespace oid for table oid ";
+
 inline CHECKED_STATUS SetupError(MasterErrorPB* error,
                                  MasterErrorPB::Code code,
                                  const Status& s) {

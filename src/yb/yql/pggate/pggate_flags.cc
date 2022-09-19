@@ -136,3 +136,6 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
             "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
             "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
             "implementation instead.");
+
+DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
+                 "Fail a refresh on a matview after the creation of a new relation.");
