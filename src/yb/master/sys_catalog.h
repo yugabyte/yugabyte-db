@@ -164,6 +164,11 @@ class SysCatalogTable {
   Status ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                 uint64_t* catalog_version,
                                 uint64_t* last_breaking_version);
+  // Read the per-db ysql catalog version info from the pg_yb_catalog_version catalog table.
+  Status ReadYsqlDBCatalogVersion(TableId ysql_catalog_table_id,
+                                  uint32_t db_oid,
+                                  uint64_t* catalog_version,
+                                  uint64_t* last_breaking_version);
   // Read the ysql catalog version info for all databases from the pg_yb_catalog_version
   // catalog table.
   Status ReadYsqlAllDBCatalogVersions(
@@ -271,11 +276,13 @@ class SysCatalogTable {
   void InitLocalRaftPeerPB();
 
   // Read from pg_yb_catalog_version catalog table. If 'catalog_version/last_breaking_version'
-  // are set, we only read the global catalog version. If 'versions' is set we read all rows
-  // in the table. Either 'catalog_version/last_breaking_version' or 'version' should be set
-  // but not both.
+  // are set, we only read the global catalog version if db_oid is 0 (kInvalidOid), or read the
+  // per-db catalog version if db_oid is valid (not kInvalidOid). If 'versions' is set we read
+  // all rows in the table and db_oid is ignored.
+  // Either 'catalog_version/last_breaking_version' or 'versions' should be set but not both.
   Status ReadYsqlDBCatalogVersionImpl(
       TableId ysql_catalog_table_id,
+      uint32_t db_oid,
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);

@@ -432,8 +432,13 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
-      tablet_manager_->client_future(), clock(), std::bind(&TabletServer::TransactionPool, this),
-      metric_entity(), &messenger()->scheduler(), &xcluster_safe_time_map_);
+      this /* tablet_server */,
+      tablet_manager_->client_future(),
+      clock(),
+      std::bind(&TabletServer::TransactionPool, this),
+      metric_entity(),
+      &messenger()->scheduler(),
+      &xcluster_safe_time_map_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
@@ -606,6 +611,7 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     auto* entry = resp->add_entries();
     entry->set_db_oid(it.first);
     entry->set_shm_index(it.second.shm_index);
+    entry->set_current_version(it.second.current_version);
   }
   return Status::OK();
 }

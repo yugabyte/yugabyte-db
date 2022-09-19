@@ -350,7 +350,12 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */
-	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_state->handle, yb_catalog_cache_version));
+	if (YBIsDBCatalogVersionMode())
+		HandleYBStatus(YBCPgSetDBCatalogCacheVersion(
+			ybc_state->handle, MyDatabaseId, yb_catalog_cache_version));
+	else
+		HandleYBStatus(YBCPgSetCatalogCacheVersion(
+			ybc_state->handle, yb_catalog_cache_version));
 }
 
 /*

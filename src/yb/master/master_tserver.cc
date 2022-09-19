@@ -20,6 +20,7 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/client/async_initializer.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -104,6 +105,12 @@ Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapReques
 
 void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
                                                   uint64_t* last_breaking_version) const {
+  get_ysql_db_catalog_version(kPgInvalidOid, current_version, last_breaking_version);
+}
+
+void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
+                                                     uint64_t* current_version,
+                                                     uint64_t* last_breaking_version) const {
   auto fill_vers = [current_version, last_breaking_version](){
     /*
      * This should never happen, but if it does then we cannot guarantee that user requests
@@ -128,8 +135,10 @@ void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
     }
   }
 
-  Status s = master_->catalog_manager()->GetYsqlCatalogVersion(current_version,
-                                                               last_breaking_version);
+  Status s = db_oid == kPgInvalidOid ?
+    master_->catalog_manager()->GetYsqlCatalogVersion(current_version, last_breaking_version) :
+    master_->catalog_manager()->GetYsqlDBCatalogVersion(
+        db_oid, current_version, last_breaking_version);
   if (!s.ok()) {
     LOG(ERROR) << "Could not get YSQL catalog version for master's tserver API: "
                << s.ToUserMessage();
