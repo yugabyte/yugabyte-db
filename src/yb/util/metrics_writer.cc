@@ -123,7 +123,10 @@ Status PrometheusWriter::WriteSingleEntry(
     break;
   }
   case AggregationMetricLevel::kStream: {
-    AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value, aggregation_function);
+    MetricEntity::AttributeMap new_attr = attr;
+    new_attr.erase("table_id");
+    new_attr.erase("table_name");
+    AddAggregatedEntry(attr.find("stream_id")->second, new_attr, name, value, aggregation_function);
     // LOG(INFO) << "sumukh: Inside WriteSingleEntry " << name << " " << value << std::endl;
     break;
   }

@@ -521,8 +521,25 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   std::stringstream* output = &resp->output;
   // LOG(INFO) <<"Sumukh : Inside WriteMetricsForPrometheus entity_opts.size() "
   // << entities_opts.size()<<std::endl;
+  std::set<std::string> prototypes;
+  metrics->get_all_prototypes(prototypes);
+
   if (entities_opts.empty()) {
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+    /*entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdc");
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("table");
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("tablet");
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("server");
+   // entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+    */
+    if (prototypes.find("cdcsdk") != prototypes.end()) {
+      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdcsdk");
+      LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus : " << "cdcsdk";
+      prototypes.erase("cdcsdk");
+    }
+    for (auto prototype : prototypes) {
+      LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus : "<< prototype;
+      entities_opts[AggregationMetricLevel::kTable].metrics.push_back(prototype);
+    }
   }
   for (const auto& entity_options : entities_opts) {
     PrometheusWriter writer(output, entity_options.first);

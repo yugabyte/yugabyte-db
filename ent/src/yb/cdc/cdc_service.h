@@ -154,10 +154,19 @@ class CDCServiceImpl : public CDCServiceIf {
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.
   // If the metrics object is not present, then create it if create == true (eg if we have just
   // moved leaders) and not else (used to not recreate deleted metrics).
+  // std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
   std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
-      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
+      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue,
+      CDCRequestSource type = XCLUSTER);
+
+  std::shared_ptr<CDCSDKTabletMetrics> GetCDCSDKTabletMetrics(
+      const ProducerTabletInfo& producer,
+      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
+      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue,
+      CDCRequestSource type = CDCSDK);
+
 
   void RemoveCDCTabletMetrics(
       const ProducerTabletInfo& producer,
