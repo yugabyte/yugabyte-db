@@ -513,40 +513,18 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  // LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus outside loop "<<std::endl;
   MetricPrometheusOptions opts;
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
-  std::stringstream* output = &resp->output;
-  // LOG(INFO) <<"Sumukh : Inside WriteMetricsForPrometheus entity_opts.size() "
-  // << entities_opts.size()<<std::endl;
-  std::set<std::string> prototypes;
-  metrics->get_all_prototypes(prototypes);
-
+  std::stringstream *output = &resp->output;
   if (entities_opts.empty()) {
-    /*entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdc");
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("table");
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("tablet");
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("server");
-   // entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
-    */
-    if (prototypes.find("cdcsdk") != prototypes.end()) {
-      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdcsdk");
-      LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus : " << "cdcsdk";
-      prototypes.erase("cdcsdk");
-    }
-    for (auto prototype : prototypes) {
-      LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus : "<< prototype;
-      entities_opts[AggregationMetricLevel::kTable].metrics.push_back(prototype);
-    }
+    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
   }
   for (const auto& entity_options : entities_opts) {
     PrometheusWriter writer(output, entity_options.first);
-    WARN_NOT_OK(
-        metrics->WriteForPrometheus(&writer, entity_options.second, opts),
-        "Couldn't write text metrics for Prometheus");
-    // LOG(INFO) << "Sumukh: Inside WriteMetricsForPrometheus"<<std::endl;
+    WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
+                "Couldn't write text metrics for Prometheus");
   }
 }
 

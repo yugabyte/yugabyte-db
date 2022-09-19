@@ -48,8 +48,7 @@ enum class MetricLevel {
 
 enum class AggregationMetricLevel {
   kServer,
-  kTable,
-  kStream
+  kTable
 };
 
 struct MetricJsonOptions {
