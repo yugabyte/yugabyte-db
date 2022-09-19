@@ -2440,7 +2440,7 @@ TEST_F(
   RunManyConcurrentReadersTest();
 }
 
-TEST_F(PgMiniTest, TestSerializableStrongReadLockNotAborted) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAborted)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
   for (int i = 0; i < 100; ++i) {
