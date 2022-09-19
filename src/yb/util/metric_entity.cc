@@ -275,6 +275,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (MatchMetricInList(id(), entity_options.exclude_metrics)) {
     return Status::OK();
   }
+
   bool select_all = MatchMetricInList(id(), entity_options.metrics);
 
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
@@ -324,6 +325,11 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["namespace_name"] = attrs["namespace_name"];
+    prometheus_attr["stream_id"] = attrs["stream_id"];
     // cdc_writer = new PrometheusWriter(writer->GetOutputString(),
     // AggregationMetricLevel::kStream);
   } else if (strcmp(prototype_->name(), "drive") == 0) {
@@ -346,7 +352,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
       cb(cdc_writer, opts);
     }
   } else */
-  {
+
     for (OrderedMetricMap::value_type& val : metrics) {
       WARN_NOT_OK(
           val.second->WriteForPrometheus(writer, prometheus_attr, opts),
@@ -356,7 +362,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
       cb(writer, opts);
     }
-  }
+
 
   return Status::OK();
 }
