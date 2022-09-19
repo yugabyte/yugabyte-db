@@ -143,7 +143,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             <div className="details-rest">
               <div>
                 <div className="header-text">Backup Type</div>
-                <div>{backup_details.backupType ? 'On Demand' : 'Scheduled'}</div>
+                <div>{backup_details.onDemand ? 'On Demand' : 'Scheduled'}</div>
               </div>
               <div>
                 <div className="header-text">Table Type</div>
