@@ -226,6 +226,11 @@ class CatalogManager :
                                                       const TablespaceId* tablespace_id,
                                                       const ReplicationInfoPB* replication_info);
 
+  // Add a tablet to a transaction status table.
+  Status AddTransactionStatusTablet(const AddTransactionStatusTabletRequestPB* req,
+                                    AddTransactionStatusTabletResponsePB* resp,
+                                    rpc::RpcContext* rpc);
+
   // Check if there is a transaction table whose tablespace id matches the given tablespace id.
   bool DoesTransactionTableExistForTablespace(
       const TablespaceId& tablespace_id) EXCLUDES(mutex_);

@@ -642,6 +642,9 @@ class YBClient {
       const std::string& table_name,
       const master::ReplicationInfoPB* replication_info = nullptr);
 
+  // Add a tablet to a transaction table.
+  Status AddTransactionStatusTablet(const TableId& table_id);
+
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   // Version with table_id is preferable due to parallel run of RPCs.

@@ -282,6 +282,8 @@ class ClusterAdminClient {
 
   Status CreateTransactionsStatusTable(const std::string& table_name);
 
+  Status AddTransactionStatusTablet(const TableId& table_id);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
