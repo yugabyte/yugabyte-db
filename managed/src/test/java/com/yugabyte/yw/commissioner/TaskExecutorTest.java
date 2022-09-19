@@ -30,6 +30,8 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -93,7 +95,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
                     bind(PlatformReplicationManager.class)
                         .toInstance(mock(PlatformReplicationManager.class)))
                 .overrides(
-                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class)))
+                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
+                .overrides(
+                    bind(CustomWsClientFactory.class)
+                        .toProvider(CustomWsClientFactoryProvider.class)))
         .build();
   }
 
