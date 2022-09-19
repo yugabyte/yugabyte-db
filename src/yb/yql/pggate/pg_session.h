@@ -280,9 +280,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  // Return the local tserver's catalog version stored in shared memory or an error if the shared
-  // memory has not been initialized (e.g. in initdb).
+  // Return the local tserver's global catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
+
+  // Return the local tserver's per-db catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
+
+  // Return the tserver catalog version info that can be used to translate a database oid to the
+  // index of its slot in the shared memory array db_catalog_versions_.
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+
   // Return the local tserver's postgres authentication key stored in shared memory or an error if
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();

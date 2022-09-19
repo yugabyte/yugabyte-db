@@ -332,6 +332,8 @@ message GetTserverCatalogVersionInfoResponsePB {
     optional uint32 db_oid = 1;
     // The index of the tserver shared memory catalog version array for this database.
     optional int32 shm_index = 2;
+    // The current catalog version for this database.
+    optional uint64 current_version = 3;
   }
 
   // Error message, if any.

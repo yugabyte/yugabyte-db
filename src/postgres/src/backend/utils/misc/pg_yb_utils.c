@@ -91,6 +91,14 @@
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
+YbTserverCatalogInfo yb_tserver_catalog_info = NULL;
+
+/*
+ * Shared memory array db_catalog_versions_ index of the slot allocated for the
+ * MyDatabaseId.
+ */
+int yb_my_database_id_shm_index = -1;
+
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
 	    YBGetDdlNestingLevel() > 0)

@@ -54,4 +54,12 @@ YbCatalogVersionType YbGetCatalogVersionType();
 /* Get actual db_oid for pg_yb_catalog_version */
 Oid YbMasterCatalogVersionTableDBOid();
 
+/* Return the catalog version info that is fetched from the local tserver. */
+YbTserverCatalogInfo YbGetTserverCatalogVersionInfo();
+
+/*
+ * Return the tserver catalog version info of MyDatabaseId.
+ */
+YbTserverCatalogVersion *YbGetTserverCatalogVersion();
+
 #endif							/* YB_CATALOG_VERSION_H */

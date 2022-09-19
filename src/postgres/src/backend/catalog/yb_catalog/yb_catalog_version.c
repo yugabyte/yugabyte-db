@@ -450,3 +450,27 @@ Oid YbMasterCatalogVersionTableDBOid()
 	return YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId)
 		? MyDatabaseId : TemplateDbOid;
 }
+
+YbTserverCatalogInfo YbGetTserverCatalogVersionInfo()
+{
+	YbTserverCatalogInfo tserver_catalog_info = NULL;
+	HandleYBStatus(YBCGetTserverCatalogVersionInfo(&tserver_catalog_info));
+	return tserver_catalog_info;
+}
+
+static int yb_compare_db_oid(const void *a, const void *b) {
+	return ((YbTserverCatalogVersion*)a)->db_oid -
+		   ((YbTserverCatalogVersion*)b)->db_oid;
+}
+
+YbTserverCatalogVersion *YbGetTserverCatalogVersion()
+{
+	if (yb_tserver_catalog_info == NULL)
+		return NULL;
+	return (YbTserverCatalogVersion*) bsearch(
+				&MyDatabaseId,
+				yb_tserver_catalog_info->versions,
+				yb_tserver_catalog_info->num_databases,
+				sizeof(YbTserverCatalogVersion),
+				yb_compare_db_oid);
+}
