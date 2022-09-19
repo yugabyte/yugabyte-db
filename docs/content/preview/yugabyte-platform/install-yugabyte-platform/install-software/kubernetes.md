@@ -174,8 +174,7 @@ You can customize YugabyteDB Anywhere on a Kubernetes cluster in a number of way
 
 ## Control placement of YugabyteDB Anywhere Pod
 
-The helm chart gives you ways to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster. You can use `nodeSelector`, `zoneAffinity` and `toleration` for this.
-Note that when using any of these methods to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage Volumes (PVC) until the pod has been placed first. Otherwise, the PVC could end up getting created in a location that is not accessible to the pod, and result in a failure to bring up the pod to a running state. This is achieved by using a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer` as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding). Such a storage class YAML for Google Kubernetes Engine (GKE) would look like this.
+The Helm chart allows you to control the placement of the pod when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity` and `toleration`. When you use these mechanisms to restrict placement of the YugabyteDB Anywhere pod, you should delay the creation of storage volumes (known as PersistentVolumeClaim (PVC)) until the pod has been placed. To do this, you would use a `StorageClass` with its `VolumeBindingMode` set to `WaitForFirstConsumer`, as described in [Configure storage class volume binding](../../../troubleshoot/universe-issues/#configure-storage-class-volume-binding). The following is a storage class YAML file for Google Kubernetes Engine (GKE):
 
 ```yaml
 kind: StorageClass
@@ -189,10 +188,11 @@ parameters:
   type: pd-ssd
   fstype: xfs
 ```
+If you do not delay the creation of the PVC, it may be created in a location that is not accessible to the pod, resulting in a failure to bring up the pod to a running state.
 
 ### nodeSelector
 
-Kubernetes nodeSelector allows constraining pods to only nodes with specific labels. So you can use this command to restrict the placement of YugabyteDB Anywhere pod on a particular node.
+The Kubernetes `nodeSelector` field provides the means to constrain pods to nodes with specific labels, allowing you to restrict the placement of YugabyteDB Anywhere pod on a particular node, as demonstrated by the following example:
 
 ```sh
 helm install yw-test yugabytedb/yugaware/ -n yb-platform \
@@ -202,7 +202,9 @@ helm install yw-test yugabytedb/yugaware/ -n yb-platform \
 
 ### zoneAffinity
 
-Kubernetes provides a more flexible nodeAffinity construct to constraint the placement of pods to nodes in a given zone. When your Kubernetes cluster nodes are spread across multiple zones, you could use this command to explicitly place the YugabyteDB Anywhere pod on a particular zone(s).
+Kubernetes provides a flexible `nodeAffinity` construct to constrain the placement of pods to nodes in a given zone.
+
+When your Kubernetes cluster nodes are spread across multiple zones, you can use this command to explicitly place the YugabyteDB Anywhere pod on specific zones, as demonstrated by the following example:
 
 ```sh
 helm install yw-test yugabytedb/yugaware/ -n yb-platform \
@@ -212,7 +214,9 @@ helm install yw-test yugabytedb/yugaware/ -n yb-platform \
 
 ### toleration
 
-Kubernetes nodes could have `taints` that repel normal pods from being placed on it. Only pods with a `toleration` for the same `taint` are permitted. This method is described further in Taints and Tolerations. Let us say that a few nodes in your Kubernetes cluster are earmarked for experimentation, and so have a taint `dedicated=experimental:NoSchedule`. This prevents a normal pod from being placed on these nodes. Only a pod with a toleration for `dedicated=experimental:NoSchedule` will be allowed. This can be done with a command like this.
+Kubernetes nodes could have `taints` that repel pods from being placed on it. Only pods with a `toleration` for the same `taint` are permitted. For more information, see [Taints and Tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
+
+For example, if some of the nodes in your Kubernetes cluster are earmarked for experimentation and have a taint `dedicated=experimental:NoSchedule`, only pods with the matching toleration will be allowed; other pods will be prevented from being placed on these nodes.
 
 ```sh
 helm install yw-test yugabytedb/yugaware/ -n yb-platform \
@@ -220,7 +224,7 @@ helm install yw-test yugabytedb/yugaware/ -n yb-platform \
 --values=/tmp/overrides.yaml
 ```
 
-Where the overrides.yaml has the contents:
+Where the `/tmp/overrides.yaml` has the contents:
 
 ```yaml
 tolerations:
