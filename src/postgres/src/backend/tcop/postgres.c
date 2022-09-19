@@ -4684,23 +4684,6 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
-	// TODO(neil) Once we have our system DB, remove the following code.
-	// It is a hack to help us getting by for now.
-	for (int i = 0; i < argc; i++) {
-		if (strcmp(argv[i], "template0") == 0 || strcmp(argv[i], "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-	if (dbname) {
-		if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	} else if (username) {
-		if (strcmp(username, "template0") == 0 || strcmp(username, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
@@ -4734,6 +4717,11 @@ PostgresMain(int argc, char *argv[],
 					 errmsg("%s: no database nor user name specified",
 							progname)));
 	}
+
+	// TODO(neil) Once we have our system DB, remove the following code.
+	// It is a hack to help us getting by for now.
+	if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)
+		YbSetConnectedToTemplateDb();
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
 	if (!IsUnderPostmaster)

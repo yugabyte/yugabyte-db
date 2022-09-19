@@ -171,12 +171,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	if (IsYsqlUpgrade)
 		elog(ERROR, "CREATE DATABASE is disallowed in YSQL upgrade mode");
 
-	if (dbname != NULL && (strcmp(dbname, "template0") == 0 ||
-		strcmp(dbname, "template1") == 0))
-	{
-		YBSetPreparingTemplates();
-	}
-
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
 	{
