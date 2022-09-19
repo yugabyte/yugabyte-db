@@ -15,9 +15,11 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
-#include <variant>
 #include <list>
 #include <memory>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
@@ -39,9 +41,7 @@ YB_STRONGLY_TYPED_BOOL(RequestSent);
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
 class PgDocResult {
  public:
-  explicit PgDocResult(rpc::SidecarHolder data);
-  PgDocResult(rpc::SidecarHolder data, std::list<int64_t> row_orders);
-  ~PgDocResult();
+  explicit PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders = {});
 
   PgDocResult(const PgDocResult&) = delete;
   PgDocResult& operator=(const PgDocResult&) = delete;
@@ -55,8 +55,7 @@ class PgDocResult {
   }
 
   // Get the postgres tuple from this batch.
-  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
-                              int64_t *row_order);
+  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple* pg_tuple, int64_t* row_order);
 
   // Get system columns' values from this batch.
   // Currently, we only have ybctids, but there could be more.
@@ -64,7 +63,7 @@ class PgDocResult {
 
   // Update the reservoir with ybctids from this batch.
   // The update is expected to be sparse, so ybctids come as index/value pairs.
-  Status ProcessSparseSystemColumns(std::string *reservoir);
+  Status ProcessSparseSystemColumns(std::string* reservoir);
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
@@ -90,12 +89,14 @@ class PgDocResult {
 
   // The indexing order of the row in this batch.
   // These order values help to identify the row order across all batches.
-  std::list<int64_t> row_orders_;
+  using RowOrders = std::vector<int64_t>;
+  RowOrders row_orders_;
+  RowOrders::const_iterator current_row_order_;
 
   // System columns.
   // - ybctids_ contains pointers to the buffers "data_".
   // - System columns must be processed before these fields have any meaning.
-  vector<Slice> ybctids_;
+  std::vector<Slice> ybctids_;
   bool syscol_processed_ = false;
 };
 
@@ -253,10 +254,16 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using Sender = std::function<Result<PgDocResponse>(
       PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
 
-  // Constructors & Destructors.
-  PgDocOp(
-      const PgSession::ScopedRefPtr& pg_session, PgTable* table,
-      const Sender& = Sender(&PgDocOp::DefaultSender));
+  struct OperationRowOrder {
+    OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
+        : operation(operation_), order(order_) {}
+
+    std::weak_ptr<const PgsqlOp> operation;
+    int64_t order;
+  };
+
+  using OperationRowOrders = std::vector<OperationRowOrder>;
+
   virtual ~PgDocOp();
 
   // Initialize doc operator.
@@ -275,8 +282,18 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
   // Get the result of the op. No rows will be added to rowsets in case end of data reached.
-  virtual Status GetResult(std::list<PgDocResult> *rowsets);
+  virtual Result<std::list<PgDocResult>> GetResult();
   Result<int32_t> GetRowsAffectedCount() const;
+
+  struct YbctidGenerator {
+    using Next = LWFunction<Slice()>;
+
+    YbctidGenerator(const Next& next_, size_t capacity_)
+        : next(next_), capacity(capacity_) {}
+
+    const Next& next;
+    const size_t capacity;
+  };
 
   // This operation is requested internally within PgGate, and that request does not go through
   // all the steps as other operation from Postgres thru PgDocOp. This is used to create requests
@@ -284,7 +301,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
   // After ybctids are queried from INDEX, PgGate will call "PopulateDmlByYbctidOps" to create
   // operators to fetch rows whose rowids equal queried ybctids.
-  using YbctidGenerator = LWFunction<Slice()>;
   Status PopulateDmlByYbctidOps(const YbctidGenerator& generator);
 
   bool has_out_param_backfill_spec() {
@@ -306,6 +322,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgTable& table() const { return table_; }
 
  protected:
+  PgDocOp(
+    const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+    const Sender& = Sender(&PgDocOp::DefaultSender));
+
   uint64_t& GetInTxnLimit();
 
   // Populate Protobuf requests using the collected information for this DocDB operator.
@@ -313,50 +333,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) = 0;
 
-  // Create operators.
-  // - Each operator is used for one request.
-  // - When parallelism by partition is applied, each operator is associated with one partition,
-  //   and each operator has a batch of arguments that belong to that partition.
-  //   * The higher the number of partition_count, the higher the parallelism level.
-  //   * If (partition_count == 1), only one operator is needed for the entire partition range.
-  //   * If (partition_count > 1), each operator is used for a specific partition range.
-  //   * This optimization is used by
-  //       PopulateDmlByYbctidOps()
-  //       PopulateParallelSelectOps()
-  // - When parallelism by arguments is applied, each operator has only one argument.
-  //   When tablet server will run the requests in parallel as it assigned one thread per request.
-  //       PopulateNextHashPermutationOps()
-  Status ClonePgsqlOps(size_t op_count);
-
   // Only active operators are kept in the active range [0, active_op_count_)
   // - Not execute operators that are outside of range [0, active_op_count_).
   // - Sort the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
   void MoveInactiveOpsOutside();
 
-  // Clone READ or WRITE "template_op_" into new operators.
-  virtual PgsqlOpPtr CloneFromTemplate() = 0;
-
- private:
-  Status SendRequest(bool force_non_bufferable);
-
-  Status SendRequestImpl(bool force_non_bufferable);
-
-  Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
-
-  Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
-
-  Result<std::list<PgDocResult>> ProcessCallResponse(const rpc::CallResponse& response);
-
-  virtual Status CompleteProcessResponse() = 0;
-
-  Status CompleteRequests();
-
-  static Result<PgDocResponse> DefaultSender(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, bool force_non_bufferable);
-
-  //----------------------------------- Data Members -----------------------------------------------
- protected:
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
@@ -426,22 +407,17 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //
   //  These respective ybctids are stored in batch_ybctid_ also.
   //  In other words,
-  //     batch_ybctid_[partition 1] contains  (ybctid_1, ybctid_3, ybctid_4)
-  //     batch_ybctid_[partition 2] contains  (ybctid_2, ybctid_6)
-  //     batch_ybctid_[partition 3] contains  (ybctid_5, ybctid_7)
+  //     batch_ybctid_[partition 1] contains (ybctid_1, ybctid_3, ybctid_4)
+  //     batch_ybctid_[partition 2] contains (ybctid_2, ybctid_6)
+  //     batch_ybctid_[partition 3] contains (ybctid_5, ybctid_7)
   //
   //   After getting the rows of data from pgsql, the rows must be then ordered from 1 thru 7.
   //   To do so, for each pgsql_op we kept an array of orders, batch_row_orders_.
-  //   For the above pgsql_ops_, the orders would be cached as the following.
-  //     vector orders { partition 1: list ( 1, 3, 4 ),
-  //                     partition 2: list ( 2, 6 ),
-  //                     partition 3: list ( 5, 7 ) }
-  //
-  //   When the "pgsql_ops_" elements are sorted and swapped order, the "batch_row_orders_"
-  //   must be swaped also.
-  //     std::swap ( pgsql_ops_[1], pgsql_ops_[3])
-  //     std::swap ( batch_row_orders_[1], batch_row_orders_[3] )
-  std::vector<std::list<int64_t>> batch_row_orders_;
+  //  Caution: batch_row_orders_ might have irrelevant data in case of dynamic tablet splitting
+  //           In the vast majority of cases ordering information will came with response.
+  //           Local ordering info is only required for upgrade scenario when new YSQL communicates
+  //           With quite old t-server. In future this field must be removed.
+  OperationRowOrders batch_row_orders_;
 
   // This counter is used to maintain the row order when the operator sends requests in parallel
   // by partition. Currently only query by YBCTID uses this variable.
@@ -453,9 +429,27 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   size_t parallelism_level_ = 1;
 
   // Output parameter of the execution.
-  string out_param_backfill_spec_;
+  std::string out_param_backfill_spec_;
 
  private:
+  Status SendRequest(bool force_non_bufferable);
+
+  Status SendRequestImpl(bool force_non_bufferable);
+
+  Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
+
+  Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
+
+  Result<std::list<PgDocResult>> ProcessCallResponse(const rpc::CallResponse& response);
+
+  virtual Status CompleteProcessResponse() = 0;
+
+  Status CompleteRequests();
+
+  static Result<PgDocResponse> DefaultSender(
+      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      uint64_t in_txn_limit, bool force_non_bufferable);
+
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
@@ -498,7 +492,7 @@ class PgDocReadOp : public PgDocOp {
   // - Optimization for statement
   //     SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX)
   // - After being queried from inner select, ybctids are used for populate request for outer query.
-  Status InitializeYbctidOperators();
+  void InitializeYbctidOperators();
 
   // Create operators by partition arguments.
   // - Optimization for statement:
@@ -508,8 +502,8 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator is assigned a hash permutation, it is marked as active to be executed.
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
-  Result<bool> PopulateNextHashPermutationOps();
-  Status InitializeHashPermutationStates();
+  bool PopulateNextHashPermutationOps();
+  void InitializeHashPermutationStates();
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -527,7 +521,7 @@ class PgDocReadOp : public PgDocOp {
   Status ProcessResponseReadStates();
 
   // Reset pgsql operators before reusing them with new arguments / inputs from Postgres.
-  Status ResetInactivePgsqlOps();
+  void ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
@@ -543,16 +537,29 @@ class PgDocReadOp : public PgDocOp {
 
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
-  // Clone the template into actual requests to be sent to server.
-  PgsqlOpPtr CloneFromTemplate() override {
-    return read_op_->DeepCopy(read_op_);
-  }
+  // Get the read_op for a specific operation index from pgsql_ops_.
+  PgsqlReadOp& GetReadOp(size_t op_index);
 
   // Get the read_req for a specific operation index from pgsql_ops_.
   LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
 
   // Re-format the request when connecting to older server during rolling upgrade.
   void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);
+
+  // Create operators.
+  // - Each operator is used for one request.
+  // - When parallelism by partition is applied, each operator is associated with one partition,
+  //   and each operator has a batch of arguments that belong to that partition.
+  //   * The higher the number of partition_count, the higher the parallelism level.
+  //   * If (partition_count == 1), only one operator is needed for the entire partition range.
+  //   * If (partition_count > 1), each operator is used for a specific partition range.
+  //   * This optimization is used by
+  //       PopulateDmlByYbctidOps()
+  //       PopulateParallelSelectOps()
+  // - When parallelism by arguments is applied, each operator has only one argument.
+  //   When tablet server will run the requests in parallel as it assigned one thread per request.
+  //       PopulateNextHashPermutationOps()
+  void ClonePgsqlOps(size_t op_count);
 
   //----------------------------------- Data Members -----------------------------------------------
 
@@ -625,11 +632,6 @@ class PgDocWriteOp : public PgDocOp {
 
   // Get WRITE operator for a specific operator index in pgsql_ops_.
   LWPgsqlWriteRequestPB& GetWriteOp(int op_index);
-
-  // Clone user data from template to actual protobuf requests.
-  PgsqlOpPtr CloneFromTemplate() override {
-    return write_op_->DeepCopy(write_op_);
-  }
 
   //----------------------------------- Data Members -----------------------------------------------
   // Template operation all write ops.
