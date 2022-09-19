@@ -255,7 +255,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testTriggerHealthCheck() {
-    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    when(mockRuntimeConfig.getBoolean("yb.health.trigger_api.enabled")).thenReturn(true);
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/"
