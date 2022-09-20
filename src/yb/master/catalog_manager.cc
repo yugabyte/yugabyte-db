@@ -7061,7 +7061,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint &&
-      !cstate.has_leader_uuid() && cstate.current_term() == 0) {
+      !cstate.has_leader_uuid() && cstate.current_term() == kMinimumTerm) {
     StartElectionIfReady(cstate, tablet.get());
   }
 
@@ -9231,8 +9231,14 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
       InsertOrDie(replica_locations.get(), existing_replica->ts_desc->permanent_uuid(),
           *existing_replica);
     } else {
+      // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
+      // sender. Initialize the other replicas with an unknown state.
+      const RaftGroupStatePB replica_state =
+          (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
+
       TabletReplica replica;
-      CreateNewReplicaForLocalMemory(ts_desc.get(), &consensus_state, report, &replica);
+      CreateNewReplicaForLocalMemory(
+          ts_desc.get(), &consensus_state, report, replica_state, &replica);
       auto result = replica_locations.get()->insert({replica.ts_desc->permanent_uuid(), replica});
       LOG_IF(FATAL, !result.second) << "duplicate uuid: " << replica.ts_desc->permanent_uuid();
       if (existing_replica) {
@@ -9251,7 +9257,7 @@ void CatalogManager::UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
                                                       const ReportedTabletPB& report,
                                                       const scoped_refptr<TabletInfo>& tablet) {
   TabletReplica replica;
-  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, report, &replica);
+  CreateNewReplicaForLocalMemory(ts_desc, consensus_state, report, report.state(), &replica);
   tablet->UpdateReplicaLocations(replica);
   tablet_locations_version_.fetch_add(1, std::memory_order_acq_rel);
 }
@@ -9259,6 +9265,7 @@ void CatalogManager::UpdateTabletReplicaInLocalMemory(TSDescriptor* ts_desc,
 void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                                     const ConsensusStatePB* consensus_state,
                                                     const ReportedTabletPB& report,
+                                                    const RaftGroupStatePB& state,
                                                     TabletReplica* new_replica) {
   // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
   if (consensus_state == nullptr) {
@@ -9266,7 +9273,7 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
     new_replica->member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
   } else {
     CHECK(consensus_state != nullptr) << "No cstate: " << ts_desc->permanent_uuid()
-                                      << " - " << report.state();
+                                      << " - " << state;
     new_replica->role = GetConsensusRole(ts_desc->permanent_uuid(), *consensus_state);
     new_replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(), *consensus_state);
   }
@@ -9276,7 +9283,7 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   if (report.has_fs_data_dir()) {
     new_replica->fs_data_dir = report.fs_data_dir();
   }
-  new_replica->state = report.state();
+  new_replica->state = state;
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
     auto last_heartbeat = ts_desc->LastHeartbeatTime();
@@ -10188,21 +10195,15 @@ Status CatalogManager::SelectReplicasForTablet(
   consensus::RaftConfigPB *config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
-  Status s = HandlePlacementUsingReplicationInfo(
-      replication_info, ts_descs, config, per_table_state, global_state);
-  if (!s.ok()) {
-    return s;
-  }
+  RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
+      replication_info, ts_descs, config, per_table_state, global_state));
 
   std::ostringstream out;
   out << "Initial tserver uuids for tablet " << tablet->tablet_id() << ": ";
   for (const RaftPeerPB& peer : config->peers()) {
     out << peer.permanent_uuid() << " ";
   }
-
-  if (VLOG_IS_ON(0)) {
-    out.str();
-  }
+  VLOG(0) << out.str();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -10379,7 +10380,8 @@ void CatalogManager::StartElectionIfReady(
   int majority_size = num_voters / 2 + 1;
   int running_voters = 0;
   for (const auto& replica : *replicas) {
-    if (replica.second.member_type == PeerMemberType::VOTER) {
+    if (replica.second.member_type == PeerMemberType::VOTER &&
+        replica.second.state == RaftGroupStatePB::RUNNING) {
       ++running_voters;
     }
   }

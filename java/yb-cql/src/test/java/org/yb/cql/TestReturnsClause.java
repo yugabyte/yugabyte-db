@@ -423,12 +423,15 @@ public class TestReturnsClause extends BaseCQLTest {
   }
 
   @Test
-  public void testBatchDMLWithUniqueIndex() {
+  public void testBatchDMLWithUniqueIndex() throws Exception {
     // Test batch insert of a table with unique index. Verify that only 1 insert succeed for the
     // same unique index value.
     session.execute("CREATE TABLE test_unique (k int primary key, v int) " +
                     "with transactions = { 'enabled' : true };");
     session.execute("CREATE UNIQUE INDEX test_unique_idx ON test_unique (v);");
+
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
 
     final int KEY_COUNT = 50;
     HashSet<Integer> allKeys = new HashSet<>();
