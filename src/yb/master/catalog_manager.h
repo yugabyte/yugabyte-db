@@ -1176,6 +1176,7 @@ class CatalogManager :
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
                                              const ReportedTabletPB& report,
+                                             const tablet::RaftGroupStatePB& state,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets

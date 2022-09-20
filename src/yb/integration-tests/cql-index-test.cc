@@ -267,6 +267,9 @@ void CqlIndexTest::TestConcurrentModify2Columns(const std::string& expr) {
       "transactions = { 'enabled' : true }"));
   ASSERT_OK(session.ExecuteQuery("CREATE INDEX v1_idx ON t (v1)"));
 
+  // Wait for the table alterations to complete.
+  std::this_thread::sleep_for(5000ms);
+
   auto prepared1 = ASSERT_RESULT(session.Prepare(Format(expr, "v1")));
   auto prepared2 = ASSERT_RESULT(session.Prepare(Format(expr, "v2")));
 

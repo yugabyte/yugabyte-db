@@ -218,7 +218,10 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     const bool replica_is_stale = replica.IsStale();
     VLOG(2) << "Tablet " << tablet_id << " for table " << table_id_
               << " is in state " << RaftGroupStatePB_Name(tablet_state) << " on peer " << ts_uuid;
-    if (tablet_state == tablet::RUNNING) {
+
+    // The 'UNKNOWN' tablet state was introduced as a pre-'RUNNING' state. Treat 'UNKNOWN' as a
+    // 'RUNNING' state to maintain the existing behavior.
+    if (tablet_state == tablet::UNKNOWN || tablet_state == tablet::RUNNING) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     } else if (!replica_is_stale &&
                 (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {

@@ -83,6 +83,9 @@ public class TestIndex extends BaseCQLTest {
                     "primary key ((h), r1, r2)) with transactions = { 'enabled' : true};");
     session.execute("create index i on test_index (h, r2, r1) include (c);");
 
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
+
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
     session.execute("insert into i (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\")" +
                     " values (1, 3, 2, 4);");
