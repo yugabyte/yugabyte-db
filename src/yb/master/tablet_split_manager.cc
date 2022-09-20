@@ -299,11 +299,19 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(
     }
   }
 
-  Schema schema;
-  RETURN_NOT_OK(tablet.table()->GetSchema(&schema));
+  bool has_default_ttl = false;
+  {
+    auto l = tablet.table()->LockForRead();
+    // TODO: IMPORTANT - As of 09/15/22 the default ttl in protobuf is unsigned integer
+    // while in-memory it is signed integer thus there is an implicit conversion between -1
+    // and UINT64_MAX. We should look at this and fix it. Tracked in GI#14028.
+    int64_t default_ttl = l->schema().table_properties().has_default_time_to_live() ?
+        l->schema().table_properties().default_time_to_live() : kNoDefaultTtl;
+    has_default_ttl = (default_ttl != kNoDefaultTtl);
+  }
+
   auto ts_desc = VERIFY_RESULT(tablet.GetLeader());
-  if (!ignore_ttl_validation
-      && schema.table_properties().HasDefaultTimeToLive()
+  if (!ignore_ttl_validation && has_default_ttl
       && ts_desc->get_disable_tablet_split_if_default_ttl()) {
     DisableSplittingForTtlTable(tablet.table()->id());
     return STATUS_FORMAT(
