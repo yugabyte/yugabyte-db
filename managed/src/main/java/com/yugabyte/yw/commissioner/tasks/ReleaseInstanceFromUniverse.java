@@ -105,6 +105,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
+                universe,
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,

@@ -351,6 +351,15 @@ public class Audit extends Model {
     @EnumValue("Create Backup Schedule")
     CreateBackupSchedule,
 
+    @EnumValue("Create PITR Config")
+    CreatePitrConfig,
+
+    @EnumValue("Restore Snapshot")
+    RestoreSnapshot,
+
+    @EnumValue("Delete PITR Config")
+    DeletePitrConfig,
+
     @EnumValue("Edit Backup Schedule")
     EditBackupSchedule,
 

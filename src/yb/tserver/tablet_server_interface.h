@@ -35,6 +35,7 @@ class MemTracker;
 namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
+using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {
  public:
@@ -68,6 +69,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual void SetPublisher(rpc::Publisher service) = 0;
 
   virtual void RegisterCertificateReloader(CertificateReloader reloader) = 0;
+
+  virtual void RegisterPgConfigReloader(PgConfigReloader reloader) = 0;
 
   client::YBClient* client() const {
     return client_future().get();

@@ -171,6 +171,22 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       }
       return;
     }
+
+    // find if the duplicate values is present in rename values
+    const duplicatesInRenameValues: boolean[] = values.keyspaces
+      .filter(Boolean)
+      .map((item: string, index: number) => values.keyspaces.indexOf(item) === index);
+
+    if (!duplicatesInRenameValues.every((val) => val)) {
+      duplicatesInRenameValues.forEach(
+        (val, index) =>
+          !val &&
+          options.setFieldError &&
+          options.setFieldError(`keyspaces[${index}]`, 'Duplicate name')
+      );
+      return;
+    }
+
     setIsFetchingTables(true);
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);

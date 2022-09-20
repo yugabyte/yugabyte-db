@@ -806,5 +806,15 @@ void TabletServer::UpdateXClusterSafeTime(
   }
 }
 
+void TabletServer::RegisterPgConfigReloader(PgConfigReloader reloader) {
+  pg_config_reloader_ = std::move(reloader);
+}
+
+Status TabletServer::ReloadPgConfig() {
+  if (pg_config_reloader_) {
+    return pg_config_reloader_();
+  }
+  return Status::OK();
+}
 }  // namespace tserver
 }  // namespace yb

@@ -196,7 +196,7 @@ export default class NodeDetailsTable extends Component {
 
       const hideQueries =
         !isNotHidden(customer.currentCustomer.data.features, 'universes.details.queries') ||
-        !row.isTServer;
+        row.isTServer === '-';
 
       if (hideIP) {
         const index = row.allowedActions.indexOf('CONNECT');

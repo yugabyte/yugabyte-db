@@ -66,6 +66,11 @@ DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
+METRIC_DEFINE_coarse_histogram(server, read_time_wait,
+                               "Read Time Wait",
+                               yb::MetricUnit::kMicroseconds,
+                               "Number of microseconds read queries spend waiting for safe time");
+
 namespace yb {
 namespace tserver {
 
@@ -88,7 +93,12 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
       TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
       ReadResponsePB* resp, rpc::RpcContext context)
       : server_(*server), read_tablet_provider_(*read_tablet_provider), req_(req), resp_(resp),
-        context_(std::move(context)) {}
+        context_(std::move(context)) {
+    auto metric_entity = server->MetricEnt();
+    if (metric_entity) {
+      read_time_wait_ = METRIC_read_time_wait.Instantiate(metric_entity);
+    }
+  }
 
   void Perform() {
     RespondIfFailed(DoPerform());
@@ -166,6 +176,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
+
+  scoped_refptr<Histogram> read_time_wait_;
 };
 
 bool ReadQuery::transactional() const {
@@ -409,6 +421,10 @@ Status ReadQuery::DoPerform() {
 }
 
 Status ReadQuery::DoPickReadTime(server::Clock* clock) {
+  MonoTime start_time;
+  if (read_time_wait_) {
+    start_time = MonoTime::Now();
+  }
   if (!read_time_) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
@@ -440,6 +456,10 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
              ? current_safe_time
              : VERIFY_RESULT(abstract_tablet_->SafeTime(
                    require_lease_, read_time_.read, context_.GetClientDeadline())));
+  }
+  if (read_time_wait_) {
+    auto safe_time_wait = MonoTime::Now() - start_time;
+    read_time_wait_->Increment(safe_time_wait.ToMicroseconds());
   }
   return Status::OK();
 }

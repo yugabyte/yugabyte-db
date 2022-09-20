@@ -15,15 +15,11 @@ import (
 var dummyApiToken = "123456"
 
 func TestHandleAgentRegistration(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	t.Logf("cuuid: %s", config.GetString(util.CustomerId))
-	testRegistrationHandler := HandleAgentRegistration(dummyApiToken)
+	config := util.CurrentConfig()
+	t.Logf("cuuid: %s", config.String(util.CustomerIdKey))
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
 	ctx := context.Background()
-	result, err := testRegistrationHandler(ctx)
+	result, err := testRegistrationHandler.Handle(ctx)
 
 	if err != nil {
 		t.Errorf("Error while running test registration handler - %s", err.Error())
@@ -43,18 +39,13 @@ func TestHandleAgentRegistration(t *testing.T) {
 }
 
 func TestHandleAgentRegistrationFailure(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-
-	cuid := config.GetString(util.CustomerId)
-	config.Update(util.CustomerId, "dummy")
-	defer config.Update(util.CustomerId, cuid)
-	testRegistrationHandler := HandleAgentRegistration(dummyApiToken)
+	config := util.CurrentConfig()
+	cuid := config.String(util.CustomerIdKey)
+	config.Update(util.CustomerIdKey, "dummy")
+	defer config.Update(util.CustomerIdKey, cuid)
+	testRegistrationHandler := NewAgentRegistrationHandler(dummyApiToken)
 	ctx := context.Background()
-	_, err = testRegistrationHandler(ctx)
+	_, err := testRegistrationHandler.Handle(ctx)
 
 	if err == nil {
 		t.Errorf("Expected error")
@@ -67,14 +58,9 @@ func TestHandleAgentRegistrationFailure(t *testing.T) {
 }
 
 func TestHandleAgentUnregistration(t *testing.T) {
-	config, err := util.GetTestConfig()
-	InitHttpClient(config)
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	testUnregistrationHandler := HandleAgentUnregister(true, dummyApiToken)
+	testUnregistrationHandler := NewAgentUnregistrationHandler(true, dummyApiToken)
 	ctx := context.Background()
-	result, err := testUnregistrationHandler(ctx)
+	result, err := testUnregistrationHandler.Handle(ctx)
 
 	if err != nil {
 		t.Errorf("Error while running test registration handler - %s", err.Error())
@@ -141,13 +127,8 @@ func TestGetNodeConfig(t *testing.T) {
 }
 
 func TestHandleGetPlatformConfig(t *testing.T) {
-	config, err := util.GetTestConfig()
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	InitHttpClient(config)
-	handler := HandleGetPlatformConfig()
-	response, err := handler(context.Background())
+	handler := NewGetPlatformCurrentConfigHandler()
+	response, err := handler.Handle(context.Background())
 	if err != nil {
 		t.Errorf("Unexpected error %s", err.Error())
 	}
@@ -159,14 +140,8 @@ func TestHandleGetPlatformConfig(t *testing.T) {
 
 func TestHandleNodeCapability(t *testing.T) {
 	data := getTestPreflightCheckVal()
-
-	config, err := util.GetTestConfig()
-	if err != nil {
-		t.Errorf("Failed to load test config")
-	}
-	InitHttpClient(config)
-	handler := HandleSendNodeCapability(data)
-	testResponseData, err := handler(context.Background())
+	handler := NewSendNodeCapabilityHandler(data)
+	testResponseData, err := handler.Handle(context.Background())
 	if err != nil {
 		t.Errorf("Unexpected Error %s ", err.Error())
 	}

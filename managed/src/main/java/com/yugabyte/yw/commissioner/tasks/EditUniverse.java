@@ -471,6 +471,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

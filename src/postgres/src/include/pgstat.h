@@ -1018,6 +1018,8 @@ typedef struct PgBackendStatus
 
 	/* current state */
 	BackendState st_state;
+	/* new connection count */
+	int yb_new_conn;
 
 	/* application name; MUST be null-terminated */
 	char	   *st_appname;

@@ -1,8 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertNull;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -58,7 +58,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -77,7 +77,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -108,7 +108,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -130,7 +130,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }
@@ -154,7 +154,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     UpgradeYbc upgradeYbcTask = AbstractTaskBase.createTask(UpgradeYbc.class);
     upgradeYbcTask.initialize(params);
     try {
-      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any());
+      doNothing().when(mockYbcUpgrade).upgradeYBC(any(), any(), anyBoolean());
     } catch (Exception e) {
       assertNull(e);
     }

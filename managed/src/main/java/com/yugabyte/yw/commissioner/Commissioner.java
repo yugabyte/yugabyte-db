@@ -29,8 +29,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,7 @@ import play.libs.Json;
 public class Commissioner {
 
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
+  public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
@@ -53,6 +56,9 @@ public class Commissioner {
   // active. Recently completed tasks are also in this list, their completion percentage should be
   // persisted before removing the task from this map.
   private final Map<UUID, RunnableTask> runningTasks = new ConcurrentHashMap<>();
+
+  // A map of task UUIDs to latches for currently paused tasks.
+  private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
 
   @Inject
   public Commissioner(
@@ -99,26 +105,10 @@ public class Commissioner {
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
     try {
-      final int subTaskAbortPosition = getSubTaskAbortPosition();
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
-      if (subTaskAbortPosition >= 0) {
-        taskRunnable.setTaskExecutionListener(
-            new TaskExecutionListener() {
-              @Override
-              public void beforeTask(TaskInfo taskInfo) {
-                if (taskInfo.getPosition() >= subTaskAbortPosition) {
-                  LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
-                  throw new CancellationException("Subtask cancelled");
-                }
-              }
-
-              @Override
-              public void afterTask(TaskInfo taskInfo, Throwable t) {
-                LOG.info("Task {} is completed", taskInfo);
-              }
-            });
-      }
+      // Add the consumer to handle before task if available.
+      taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
@@ -152,8 +142,34 @@ public class Commissioner {
       LOG.warn("Task {} is not running", taskUUID);
       return false;
     }
+    CountDownLatch latch = pauseLatches.get(taskUUID);
+    if (latch != null) {
+      // Resume if it is already paused to abort faster.
+      latch.countDown();
+    }
     Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
     return optional.isPresent();
+  }
+
+  /**
+   * Resumes a paused task. This is useful for fault injection to pause a task at a predefined
+   * position (e.g 0) and get the list of subtasks to set the abort position during resume.
+   *
+   * @param taskUUID the UUID of the task to be resumed.
+   * @return true if the task is found to be paused else false.
+   */
+  public boolean resumeTask(UUID taskUUID) {
+    TaskInfo.getOrBadRequest(taskUUID);
+    CountDownLatch latch = pauseLatches.get(taskUUID);
+    if (latch == null) {
+      return false;
+    }
+    RunnableTask runnableTask = runningTasks.get(taskUUID);
+    if (runnableTask != null) {
+      runnableTask.setTaskExecutionListener(getTaskExecutionListener());
+    }
+    latch.countDown();
+    return true;
   }
 
   public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
@@ -199,6 +215,11 @@ public class Commissioner {
                     "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
               });
     }
+    if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
+      // Set this only if it is true. The thread is just parking. From the task state
+      // perspective, it is still running.
+      responseJson.put("paused", true);
+    }
     return Optional.of(responseJson);
   }
 
@@ -225,18 +246,78 @@ public class Commissioner {
     }
   }
 
-  private int getSubTaskAbortPosition() {
-    int abortPosition = -1;
-    String value = (String) MDC.get(SUBTASK_ABORT_POSITION_PROPERTY);
+  private int getSubTaskPositionFromContext(String property) {
+    int position = -1;
+    String value = (String) MDC.get(property);
     if (!Strings.isNullOrEmpty(value)) {
       try {
-        abortPosition = Integer.parseInt(value);
+        position = Integer.parseInt(value);
       } catch (NumberFormatException e) {
-        LOG.warn("Error in parsing subtask abort position, ignoring it.", e);
-        abortPosition = -1;
+        LOG.warn("Error in parsing subtask position for {}, ignoring it.", property, e);
+        position = -1;
       }
     }
-    return abortPosition;
+    return position;
+  }
+
+  // Returns the TaskExecutionListener instance.
+  private TaskExecutionListener getTaskExecutionListener() {
+    TaskExecutionListener listener = null;
+    Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
+    if (beforeTaskConsumer != null) {
+      listener =
+          new TaskExecutionListener() {
+            @Override
+            public void beforeTask(TaskInfo taskInfo) {
+              LOG.info("About to execute task {}", taskInfo);
+              beforeTaskConsumer.accept(taskInfo);
+            }
+
+            @Override
+            public void afterTask(TaskInfo taskInfo, Throwable t) {
+              LOG.info("Task {} is completed", taskInfo);
+            }
+          };
+    }
+    return listener;
+  }
+
+  // Returns the composed for before task callback of TaskExecutionListener.
+  private Consumer<TaskInfo> getBeforeTaskConsumer() {
+    Consumer<TaskInfo> consumer = null;
+    final int subTaskAbortPosition = getSubTaskPositionFromContext(SUBTASK_ABORT_POSITION_PROPERTY);
+    final int subTaskPausePosition = getSubTaskPositionFromContext(SUBTASK_PAUSE_POSITION_PROPERTY);
+    if (subTaskAbortPosition >= 0) {
+      // Handle abort of subtask.
+      Consumer<TaskInfo> abortConsumer =
+          taskInfo -> {
+            if (taskInfo.getPosition() >= subTaskAbortPosition) {
+              LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
+              throw new CancellationException("Subtask cancelled");
+            }
+          };
+      consumer = abortConsumer;
+    }
+    if (subTaskPausePosition >= 0) {
+      // Handle pause of subtask.
+      Consumer<TaskInfo> pauseConsumer =
+          taskInfo -> {
+            if (taskInfo.getPosition() >= subTaskPausePosition) {
+              LOG.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
+              final UUID subTaskUUID = taskInfo.getParentUUID();
+              try {
+                // Insert if absent and get the latch.
+                pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
+              } catch (InterruptedException e) {
+                throw new CancellationException("Subtask cancelled: " + e.getMessage());
+              } finally {
+                pauseLatches.remove(subTaskUUID);
+              }
+            }
+          };
+      consumer = consumer == null ? pauseConsumer : consumer.andThen(pauseConsumer);
+    }
+    return consumer;
   }
 
   /**
@@ -283,16 +364,12 @@ public class Commissioner {
         while (iter.hasNext()) {
           Entry<UUID, RunnableTask> entry = iter.next();
           RunnableTask taskRunnable = entry.getValue();
-
           // If the task is still running, update its latest timestamp as a part of the heartbeat.
           if (taskRunnable.isTaskRunning()) {
             taskRunnable.doHeartbeat();
-          } else if (taskRunnable.hasTaskSucceeded()) {
-            LOG.info("Task {} has succeeded.", taskRunnable.toString());
-            // Remove task from the set of live tasks.
-            iter.remove();
-          } else if (taskRunnable.hasTaskFailed()) {
-            LOG.info("Task {} has failed.", taskRunnable.toString());
+          } else if (taskRunnable.hasTaskCompleted()) {
+            LOG.info(
+                "Task {} has completed with {} state.", taskRunnable, taskRunnable.getTaskState());
             // Remove task from the set of live tasks.
             iter.remove();
           }

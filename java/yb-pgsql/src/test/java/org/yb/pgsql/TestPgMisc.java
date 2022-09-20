@@ -13,6 +13,8 @@
 
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.*;
+
 import java.util.*;
 
 import org.junit.Test;
@@ -21,14 +23,14 @@ import com.yugabyte.util.PSQLException;
 import com.yugabyte.util.PSQLWarning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.SQLWarning;
-
-import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgMisc extends BasePgSQLTest {
@@ -40,6 +42,24 @@ public class TestPgMisc extends BasePgSQLTest {
     super.resetSettings();
     // Starts CQL proxy for the cross Postgres/CQL testNamespaceSeparation test case.
     startCqlProxy = true;
+  }
+
+  @Test
+  public void testTemplateConnectionWithOldInitdb() throws Exception {
+    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+
+    ConnectionBuilder templateCb =
+        getConnectionBuilder().withTServer(0).withDatabase("template1");
+
+    // Testing that first connection (that creates a relcache init file)
+    // and second one (that reads it) both work.
+    for (int i = 0; i < 2; ++i) {
+      try (Connection conn = templateCb.connect();
+           Statement stmt = conn.createStatement()) {
+        // Any query would do.
+        assertGreaterThan(getSingleRow(stmt, "SELECT COUNT(*) FROM pg_class").getLong(0), 0L);
+      }
+    }
   }
 
   @Test

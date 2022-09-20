@@ -1,0 +1,74 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.yb</groupId>
+		<artifactId>yb-anywhere-modules</artifactId>
+		<version>${revision}</version>
+		<relativePath>../parent.xml</relativePath>
+	</parent>
+
+	<name>Node Agent</name>
+	<description>YB Node Agent</description>
+
+	<groupId>org.yb</groupId>
+	<artifactId>node-agent</artifactId>
+	<packaging>jar</packaging>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.google.protobuf</groupId>
+			<artifactId>protobuf-java</artifactId>
+		</dependency>
+	</dependencies>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<artifactId>exec-maven-plugin</artifactId>
+				<groupId>org.codehaus.mojo</groupId>
+				<executions>
+					<execution>
+						<id>Clean Node Agent</id>
+						<phase>clean</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/build.sh</executable>
+							<arguments>
+								<argument>clean</argument>
+							</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>Build Node Agent</id>
+						<phase>compile</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>${basedir}/build.sh</executable>
+							<arguments>
+								<argument>build</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.xolstice.maven.plugins</groupId>
+				<artifactId>protobuf-maven-plugin</artifactId>
+				<configuration>
+					<protocExecutable>${project.basedir}/third-party/bin/protoc</protocExecutable>
+					<protoSourceRoot>${project.basedir}/proto</protoSourceRoot>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+</project>

@@ -90,11 +90,11 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
-lazy val buildNodeAgent = taskKey[Int]("Build Node Agent")
+lazy val buildModules = taskKey[Int]("Build modules")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
-lazy val cleanNodeAgent = taskKey[Int]("Clean Node Agent")
+lazy val cleanModules = taskKey[Int]("Clean modules")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -187,6 +187,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -284,10 +285,9 @@ externalResolvers := {
 }
 
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+  ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
   buildUI.value
-  //buildNodeAgent.value
   versionGenerate.value
 }
 
@@ -295,7 +295,7 @@ cleanPlatform := {
   clean.value
   cleanVenv.value
   cleanUI.value
-  cleanNodeAgent.value
+  cleanModules.value
 }
 
 versionGenerate := {
@@ -321,9 +321,9 @@ buildUI := {
   status
 }
 
-buildNodeAgent := {
-  ybLog("Building node agent...")
-  val status = Process("./build.sh clean build package " + version.value, baseDirectory.value / "node-agent").!
+buildModules := {
+  ybLog("Building modules...")
+  val status = Process("mvn install -f parent.xml").!
   status
 }
 
@@ -339,9 +339,9 @@ cleanUI := {
   status
 }
 
-cleanNodeAgent := {
+cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("./build.sh clean", baseDirectory.value / "node-agent").!
+  val status = Process("mvn clean -f parent.xml").!
   status
 }
 
@@ -405,8 +405,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.22-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b3"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -415,8 +415,7 @@ libraryDependencies ++= Seq(
   "net.minidev" % "json-smart" % "2.4.8",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16",
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.23"
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"

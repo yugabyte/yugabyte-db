@@ -346,10 +346,10 @@ extern void YBReportIfYugaByteEnabled();
 bool YBShouldRestartAllChildrenIfOneCrashes();
 
 /*
- * These functions help indicating if we are creating system catalog.
+ * These functions help indicating if we are connected to template0 or template1.
  */
-void YBSetPreparingTemplates();
-bool YBIsPreparingTemplates();
+void YbSetConnectedToTemplateDb();
+bool YbIsConnectedToTemplateDb();
 
 /*
  * Whether every ereport of the ERROR level and higher should log a stack trace.

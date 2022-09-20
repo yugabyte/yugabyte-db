@@ -16,6 +16,21 @@ import { connect as formikConnect, getIn, Field, ErrorMessage, FieldArray } from
 import { REGION_METADATA, REGION_DICT } from '../../../../config';
 import _ from 'lodash';
 
+const ISSUER_TYPE = [
+  {
+    label: 'None',
+    value: 'NONE'
+  },
+  {
+    label: 'Issuer',
+    value: 'ISSUER'
+  },
+  {
+    label: 'Cluster Issuer',
+    value: 'CLUSTER'
+  }
+];
+
 class AddRegionList extends Component {
   constructor(props) {
     super(props);
@@ -39,7 +54,8 @@ class AddRegionList extends Component {
           namespace: '',
           kubeDomain: '',
           zoneKubeConfig: formik.values.kubeConfig,
-          zoneOverrides: ''
+          zoneOverrides: '',
+          issuerType: 'NONE'
         }
       ]
     });
@@ -122,7 +138,8 @@ class AddRegionList extends Component {
                 namespace: '',
                 kubeDomain: '',
                 zoneKubeConfig: vals.kubeConfig,
-                zoneOverrides: ''
+                zoneOverrides: '',
+                issuerType: 'NONE'
               });
               this.setState({
                 showZoneForm: true
@@ -144,7 +161,8 @@ class AddRegionList extends Component {
       namespace: '',
       kubeDomain: '',
       zoneKubeConfig: formik.values.kubeConfig,
-      zoneOverrides: ''
+      zoneOverrides: '',
+      issuerType: 'NONE'
     });
     if (!this.state.showZoneForm) {
       this.setState({
@@ -199,6 +217,16 @@ class AddRegionList extends Component {
         (touchedZones && errorZones));
     const displayedRegions = regionList.filter((v) => v.isValid);
 
+    const isZoneValid = (zoneInfo) => {
+      if (!zoneInfo.zoneLabel) return false;
+
+      if (['CLUSTER', 'ISSUER'].includes(zoneInfo.issuerType) && !zoneInfo.issuerName) return false;
+
+      if (['ISSUER'].includes(zoneInfo.issuerType) && !zoneInfo.namespace) return false;
+
+      return true;
+    };
+
     return (
       <Row>
         <Col lg={7}>
@@ -215,6 +243,7 @@ class AddRegionList extends Component {
                     showCancelButton={true}
                     disableSubmit={disableRegionSubmit}
                     title="Add new region"
+                    className="add-zone-form"
                     onHide={() => this.hideModal(arrayHelpers)}
                     onFormSubmit={() => {
                       if (!currentRegion.zoneList[currentRegion.zoneList.length - 1].zoneLabel) {
@@ -227,202 +256,276 @@ class AddRegionList extends Component {
                       closeModal();
                     }}
                   >
-                    <Row className="config-provider-row">
-                      <Col lg={3}>
-                        <div className="form-item-custom-label">Region</div>
-                      </Col>
-                      <Col lg={7}>
-                        <Field
-                          name={`regionList[${regionIndex}].regionCode`}
-                          component={YBFormSelect}
-                          options={regionOptions}
-                        />
-                      </Col>
-                    </Row>
+                    <div className="form-field-grid">
+                      <Row className="config-provider-row">
+                        <Col lg={3}>
+                          <div className="form-item-custom-label">Region</div>
+                        </Col>
+                        <Col lg={7}>
+                          <Field
+                            name={`regionList[${regionIndex}].regionCode`}
+                            component={YBFormSelect}
+                            options={regionOptions}
+                          />
+                        </Col>
+                      </Row>
+                    </div>
+
                     {currentRegion && currentRegion.regionCode && (
                       <FieldArray
                         name={`regionList[${regionIndex}].zoneList`}
-                        render={(zoneArrayHelpers) => (
-                          <Fragment>
-                            <div className="divider"></div>
-                            <h5>Specify zones</h5>
-                            <div className="form-field-grid">
-                              {(!showZoneForm || currentRegion.zoneList.length > 1) && (
-                                <BootstrapTable
-                                  data={showZoneForm ? nonEditingZones : currentRegion.zoneList}
-                                  trClassName="zone-bs-table"
-                                >
-                                  <TableHeaderColumn
-                                    dataField="zoneLabel"
-                                    isKey={true}
-                                    columnClassName="no-border"
-                                    className="no-border"
-                                    dataAlign="left"
+                        render={(zoneArrayHelpers) => {
+                          const { zoneList } = zoneArrayHelpers.form.values.regionList[regionIndex];
+                          const zoneInfo = zoneList[zoneIndex];
+                          return (
+                            <Fragment>
+                              <h4>Specify zones</h4>
+                              <div className="divider"></div>
+                              <div className="form-field-grid">
+                                {(!showZoneForm || currentRegion.zoneList.length > 1) && (
+                                  <BootstrapTable
+                                    data={showZoneForm ? nonEditingZones : currentRegion.zoneList}
+                                    trClassName="zone-bs-table"
                                   >
-                                    LABEL
-                                  </TableHeaderColumn>
-                                  <TableHeaderColumn
-                                    dataField="storageClasses"
-                                    columnClassName="no-border name-column"
-                                    className="no-border"
-                                  >
-                                    STORAGE CLASS
-                                  </TableHeaderColumn>
-                                  <TableHeaderColumn
-                                    dataField="namespace"
-                                    columnClassName="no-border name-column"
-                                    className="no-border"
-                                  >
-                                    NAMESPACE
-                                  </TableHeaderColumn>
-                                  <TableHeaderColumn
-                                    dataField="kubeDomain"
-                                    columnClassName="no-border name-column"
-                                    className="no-border"
-                                  >
-                                    DNS DOMAIN
-                                  </TableHeaderColumn>
-                                  <TableHeaderColumn
-                                    dataField="zoneKubeConfig.name"
-                                    dataFormat={this.zoneConfigFormatter}
-                                    columnClassName="no-border name-column"
-                                    className="no-border"
-                                  >
-                                    ZONE CONFIG
-                                  </TableHeaderColumn>
-                                  <TableHeaderColumn
-                                    dataField="actions"
-                                    dataFormat={this.actionFormatter(zoneArrayHelpers)}
-                                    width="40px"
-                                  />
-                                </BootstrapTable>
-                              )}
-                              {showZoneForm && (
-                                <div className="zone-form-wrapper">
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Zone</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneLabel`}
-                                        placeholder="Zone Label"
-                                        component={YBFormInput}
-                                        className={'kube-provider-input-field'}
-                                      />
-                                      {
-                                        typeof getIn(formik.errors, `regionList[${regionIndex}].zoneList`) === 'string' ? (
+                                    <TableHeaderColumn
+                                      dataField="zoneLabel"
+                                      isKey={true}
+                                      columnClassName="no-border"
+                                      className="no-border"
+                                      dataAlign="left"
+                                    >
+                                      LABEL
+                                    </TableHeaderColumn>
+                                    <TableHeaderColumn
+                                      dataField="storageClasses"
+                                      columnClassName="no-border name-column"
+                                      className="no-border"
+                                    >
+                                      STORAGE CLASS
+                                    </TableHeaderColumn>
+                                    <TableHeaderColumn
+                                      dataField="namespace"
+                                      columnClassName="no-border name-column"
+                                      className="no-border"
+                                    >
+                                      NAMESPACE
+                                    </TableHeaderColumn>
+                                    <TableHeaderColumn
+                                      dataField="kubeDomain"
+                                      columnClassName="no-border name-column"
+                                      className="no-border"
+                                    >
+                                      DNS DOMAIN
+                                    </TableHeaderColumn>
+                                    <TableHeaderColumn
+                                      dataField="zoneKubeConfig.name"
+                                      dataFormat={this.zoneConfigFormatter}
+                                      columnClassName="no-border name-column"
+                                      className="no-border"
+                                    >
+                                      ZONE CONFIG
+                                    </TableHeaderColumn>
+                                    <TableHeaderColumn
+                                      dataField="actions"
+                                      dataFormat={this.actionFormatter(zoneArrayHelpers)}
+                                      width="40px"
+                                    />
+                                  </BootstrapTable>
+                                )}
+                                {showZoneForm && (
+                                  <div className="zone-form-wrapper">
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Zone</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneLabel`}
+                                          placeholder="Zone Label"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                        {typeof getIn(
+                                          formik.errors,
+                                          `regionList[${regionIndex}].zoneList`
+                                        ) === 'string' ? (
                                           <div className="input-feedback">
                                             <ErrorMessage
                                               name={`regionList[${regionIndex}].zoneList`}
                                             />
                                           </div>
-                                        ) : null
-                                      }
-                                    </Col>
-                                  </Row>
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Storage Classes</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].storageClasses`}
-                                        placeholder="Storage Class for this Zone"
-                                        component={YBFormInput}
-                                        className={'kube-provider-input-field'}
-                                      />
-                                    </Col>
-                                    <Col lg={1} className="config-zone-tooltip">
-                                      <YBInfoTip
-                                        title="Storage Classes"
-                                        content={
-                                          "Default is '' (not specified). Will attempt to use Kubernetes cluster default."
-                                        }
-                                      />
-                                    </Col>
-                                  </Row>
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Namespace</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].namespace`}
-                                        placeholder="Namespace for this Zone"
-                                        component={YBFormInput}
-                                        className={'kube-provider-input-field'}
-                                      />
-                                    </Col>
-                                    <Col lg={1} className="config-zone-tooltip">
-                                      <YBInfoTip
-                                        title="Namespace"
-                                        content={
-                                          "An existing namespace into which pods in this zone will be deployed."
-                                        }
-                                      />
-                                    </Col>
-                                  </Row>
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Cluster DNS Domain</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].kubeDomain`}
-                                        placeholder="Cluster DNS Domain for this Zone"
-                                        component={YBFormInput}
-                                        className={'kube-provider-input-field'}
-                                      />
-                                    </Col>
-                                    <Col lg={1} className="config-zone-tooltip">
-                                      <YBInfoTip
-                                        title="Cluster DNS Domain"
-                                        content={
-                                          "The dns domain name used in the Kubernetes cluster (default \"cluster.local\")"
-                                        }
-                                      />
-                                    </Col>
-                                  </Row>
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Kube Config</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
-                                        component={YBFormDropZone}
-                                        className="upload-file-button"
-                                        title={'Upload Kube Config file'}
-                                      />
-                                    </Col>
-                                  </Row>
-                                  <Row className="config-provider-row">
-                                    <Col lg={3}>
-                                      <div className="form-item-custom-label">Overrides</div>
-                                    </Col>
-                                    <Col lg={7}>
-                                      <Field
-                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneOverrides`}
-                                        placeholder="Optional Zone Config Overrides"
-                                        component={YBFormInput}
-                                        componentClass="textarea"
-                                        className={'kube-provider-input-field'}
-                                      />
-                                    </Col>
-                                  </Row>
-                                </div>
-                              )}
-                              {(_.get(currentRegion, `zoneList[${zoneIndex}].zoneLabel`) ||
-                                !showZoneForm) && (
+                                        ) : null}
+                                      </Col>
+                                    </Row>
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">
+                                          Storage Classes
+                                        </div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].storageClasses`}
+                                          placeholder="Storage Class for this Zone"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                      <Col lg={1} className="config-zone-tooltip">
+                                        <YBInfoTip
+                                          title="Storage Classes"
+                                          content={
+                                            "Default is '' (not specified). Will attempt to use Kubernetes cluster default."
+                                          }
+                                        />
+                                      </Col>
+                                    </Row>
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Namespace</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].namespace`}
+                                          placeholder="Namespace for this Zone"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                      <Col lg={1} className="config-zone-tooltip">
+                                        <YBInfoTip
+                                          title="Namespace"
+                                          content={
+                                            'An existing namespace into which pods in this zone will be deployed.'
+                                          }
+                                        />
+                                      </Col>
+                                    </Row>
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">
+                                          Cluster DNS Domain
+                                        </div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].kubeDomain`}
+                                          placeholder="Cluster DNS Domain for this Zone"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                      <Col lg={1} className="config-zone-tooltip">
+                                        <YBInfoTip
+                                          title="Cluster DNS Domain"
+                                          content={
+                                            'The dns domain name used in the Kubernetes cluster (default "cluster.local")'
+                                          }
+                                        />
+                                      </Col>
+                                    </Row>
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Kube Config</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
+                                          component={YBFormDropZone}
+                                          className="upload-file-button"
+                                          title={'Upload Kube Config file'}
+                                        />
+                                      </Col>
+                                    </Row>
+
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Overrides</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneOverrides`}
+                                          placeholder="Optional Zone Config Overrides"
+                                          component={YBFormInput}
+                                          componentClass="textarea"
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                    </Row>
+
+                                    <h5>cert-manager</h5>
+
+                                    <Row className="config-provider-row issuer-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">Issuer Type</div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Row className="issuer-radio-field-c">
+                                          {ISSUER_TYPE.map(({ label, value }) => (
+                                            <Col
+                                              key={`issuer-type-${value}`}
+                                              className="issuer-radio-field"
+                                            >
+                                              <Field
+                                                name={`regionList[${regionIndex}].zoneList[${zoneIndex}].issuerType`}
+                                                type="radio"
+                                                component="input"
+                                                value={value}
+                                                checked={value === zoneInfo.issuerType}
+                                              />
+                                              &nbsp;&nbsp;{label}
+                                            </Col>
+                                          ))}
+                                        </Row>
+                                      </Col>
+                                    </Row>
+
+                                    {zoneInfo.issuerType !== 'NONE' && (
+                                      <Row className="config-provider-row">
+                                        <Col lg={3}>
+                                          <div className="form-item-custom-label">
+                                            {zoneInfo.issuerType === 'CLUSTER'
+                                              ? 'Cluster Issuer Name'
+                                              : 'Issuer Name'}
+                                          </div>
+                                        </Col>
+                                        <Col lg={7}>
+                                          <Field
+                                            name={`regionList[${regionIndex}].zoneList[${zoneIndex}].issuerName`}
+                                            component={YBFormInput}
+                                            className={'kube-provider-input-field'}
+                                          />
+                                        </Col>
+                                      </Row>
+                                    )}
+                                  </div>
+                                )}
+
                                 <YBAddRowButton
                                   btnText="Add zone"
-                                  onClick={() => this.addZone(zoneArrayHelpers.push)}
+                                  className={'btn'}
+                                  onClick={() => {
+                                    //touch fields so that validation fires
+                                    zoneArrayHelpers.form.setFieldTouched(
+                                      `regionList[${regionIndex}].zoneList[${zoneIndex}].zoneLabel`
+                                    );
+                                    zoneArrayHelpers.form.setFieldTouched(
+                                      `regionList[${regionIndex}].zoneList[${zoneIndex}].issuerName`
+                                    );
+                                    zoneArrayHelpers.form.setFieldTouched(
+                                      `regionList[${regionIndex}].zoneList[${zoneIndex}].namespace`
+                                    );
+                                    //validate form
+                                    zoneArrayHelpers.form.validateForm();
+
+                                    (isZoneValid(zoneInfo) || !showZoneForm) &&
+                                      this.addZone(zoneArrayHelpers.push);
+                                  }}
                                 />
-                              )}
-                            </div>
-                          </Fragment>
-                        )}
+                              </div>
+                            </Fragment>
+                          );
+                        }}
                       />
                     )}
                   </YBModal>

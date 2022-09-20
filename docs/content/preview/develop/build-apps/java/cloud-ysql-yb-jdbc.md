@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../../../../integrations/jdbc-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [YugabyteDB JDBC driver](../../../../reference/drivers/java/yugabyte-jdbc-reference/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
 ## Prerequisites
 
@@ -87,7 +87,7 @@ Open the `SampleApp.java` file in the application `/src/main/java/` folder to re
 
 ### main
 
-The `main` method establishes a connection with your cluster via the topology-aware Yugabyte JDBC driver.
+The `main` method establishes a connection with your cluster via the topology-aware YugabyteDB JDBC driver.
 
 ```java
 YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
@@ -166,4 +166,4 @@ try {
 
 ## Learn more
 
-[Yugabyte JDBC driver](../../../../integrations/jdbc-driver/)
+[YugabyteDB JDBC driver](../../../../reference/drivers/java/yugabyte-jdbc-reference/)

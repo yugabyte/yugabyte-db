@@ -31,6 +31,7 @@
 //
 #include "yb/server/generic_service.h"
 
+#include <ctype.h>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -51,6 +52,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 #include "yb/server/server_base.h"
@@ -66,6 +68,7 @@ using std::string;
 using std::unordered_set;
 
 DECLARE_string(flagfile);
+DECLARE_string(vmodule);
 
 #ifdef COVERAGE_BUILD
 extern "C" void __gcov_flush(void);
@@ -83,6 +86,65 @@ GenericServiceImpl::GenericServiceImpl(RpcServerBase* server)
 GenericServiceImpl::~GenericServiceImpl() {
 }
 
+namespace {
+// Validates that the requested updates to vmodule can be made, and calls
+// google::SetVLOGLevel accordingly.
+// modules not explicitly specified in the request are reset to 0.
+// Returns the updated string to be used for --vmodule. or error status.
+Result<string> ValidateAndSetVLOG(const SetFlagRequestPB* req) {
+  vector<string> existing_settings = strings::Split(FLAGS_vmodule, ",");
+  std::map<string, int> module_values;
+  // Only modules which are already controlled through --vmodule may be updated.
+  for (const auto& module_value : existing_settings) {
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv[0].empty()) {
+      continue;
+    }
+    module_values.emplace(kv[0], 0);
+  }
+  auto requested_settings = strings::Split(req->value(), ",");
+  for (const auto& module_value : requested_settings) {
+    // Handle empty string.
+    if (module_value == "") {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.size() != 2) {
+      LOG(WARNING) << "Malformed request to set vmodule to " << req->value();
+      return STATUS(InvalidArgument, "Unable to set flag: bad value");
+    } else if (module_values.find(kv[0]) == module_values.end()) {
+      LOG(WARNING) << "Cannot update vmodule setting for module " << kv[0];
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Cannot update vmodule for module $0 at runtime. Process was not started with vmodule "
+          "set for $0. Now, it can only be controlled through --v. If you desire to enable "
+          "vmodule for $0, it will require the process to be restarted with the correct vmodule.",
+          kv[0]);
+    } else if (kv[0].empty() || kv[1].empty()) {
+      LOG(WARNING) << "Malformed value to set vmodule. " << module_value
+                   << " contains an empty string";
+      return STATUS(InvalidArgument, "Unable to set flag: bad value");
+    }
+    for (size_t i = 0; i < kv[1].size(); i++) {
+      if (!isdigit(kv[1][i])) {
+        LOG(WARNING) << "Cannot update vmodule setting for module " << kv[0];
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "$1 is not a valid number. Cannot update vmodule setting for module $0.", kv[1], kv[0]);
+      }
+    }
+    module_values[kv[0]] = std::atoi(kv[1].c_str());
+  }
+  std::stringstream set_vmodules;
+  bool is_first = true;
+  for (auto iter = module_values.begin(); iter != module_values.end(); iter++) {
+    google::SetVLOGLevel(iter->first.c_str(), iter->second);
+    set_vmodules << (is_first ? "" : ",") << iter->first << "=" << iter->second;
+    is_first = false;
+  }
+  return set_vmodules.str();
+}
+}  // namespace
 void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
                                  SetFlagResponsePB* resp,
                                  rpc::RpcContext rpc) {
@@ -113,26 +175,49 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
 
   resp->set_old_value(old_val);
 
+  const string& flag_to_set = req->flag();
+  string value_to_set = req->value();
+  if (flag_to_set == "vmodule") {
+    // Special handling for vmodule
+    auto res = ValidateAndSetVLOG(req);
+    if (!res) {
+      resp->set_result(SetFlagResponsePB::BAD_VALUE);
+      resp->set_msg(res.status().ToString());
+      rpc.RespondSuccess();
+      return;
+    }
+    value_to_set = *res;
+  }
   // The gflags library sets new values of flags without synchronization.
   // TODO: patch gflags to use proper synchronization.
   ANNOTATE_IGNORE_WRITES_BEGIN();
   // Try to set the new value.
-  string ret = google::SetCommandLineOption(
-      req->flag().c_str(),
-      req->value().c_str());
+  string ret = google::SetCommandLineOption(flag_to_set.c_str(), value_to_set.c_str());
   ANNOTATE_IGNORE_WRITES_END();
 
   if (ret.empty()) {
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
-  } else {
-    bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
-    LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
-              << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
-              << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
-    resp->set_result(SetFlagResponsePB::SUCCESS);
-    resp->set_msg(ret);
+    rpc.RespondSuccess();
+    return;
   }
+
+  if (ContainsKey(tags, FlagTag::kPg)) {
+    auto status = server_->ReloadPgConfig();
+    if (!status.ok()) {
+      resp->set_result(SetFlagResponsePB::PG_SET_FAILED);
+      resp->set_msg(Format("Unable to set flag: $0", status.message()));
+      rpc.RespondSuccess();
+      return;
+    }
+  }
+
+  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
+  LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: " << flag_to_set << " from '"
+            << (is_sensitive ? "***" : old_val) << "' to '" << (is_sensitive ? "***" : value_to_set)
+            << "'";
+  resp->set_result(SetFlagResponsePB::SUCCESS);
+  resp->set_msg(ret);
 
   rpc.RespondSuccess();
 }

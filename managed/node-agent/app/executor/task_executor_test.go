@@ -30,11 +30,10 @@ func TestExecutor(t *testing.T) {
 		t.Errorf("Submitting task to the executor failed - %s", err.Error())
 	}
 
-	result := future.Get()
-	if result.err != nil {
+	data, err := future.Get()
+	if err != nil {
 		t.Errorf("Future.Get() failed - %s", err.Error())
 	}
-	data := result.data
 	data, ok := data.(string)
 	if !ok {
 		t.Errorf("Future.Get() returned incorrect data - %s", err.Error())
@@ -52,13 +51,9 @@ func TestExecutorFailure(t *testing.T) {
 	if err != nil {
 		t.Errorf("Submitting task to the executor failed - %s", err.Error())
 	}
-	result := future.Get()
-	if result.err == nil {
+	_, err = future.Get()
+	if err == nil {
 		t.Errorf("Expected Failure")
-	}
-
-	if result.status != "error" {
-		t.Errorf("Expected Error status")
 	}
 }
 
@@ -71,12 +66,12 @@ func TestExecutorCancel(t *testing.T) {
 		t.Errorf("Submitting task to the executor failed - %s", err.Error())
 	}
 	cancelFunc()
-	result := future.Get()
-	if result.err == nil {
+	_, err = future.Get()
+	if err == nil {
 		t.Errorf("Expected Failure")
 	}
 
-	if result.status != "canceled" {
+	if err.Error() != "Task is cancelled" {
 		t.Errorf("Expected Canceled status")
 	}
 }
