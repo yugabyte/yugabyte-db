@@ -181,10 +181,10 @@ After the data import step, remember to recreate any constraints and triggers th
 
 Following are some steps that can be verified to ensure that the migration was successful.
 
-<!-- ### Verify database objects
+### Verify database objects
 
 - Verify that all the tables and indexes have been created in YugabyteDB.
-- Ensure that triggers and constraints are migrated and are working as expected. -->
+- Ensure that triggers and constraints are migrated and are working as expected.
 
 ### Verify row counts for tables
 
@@ -192,7 +192,7 @@ Run a `COUNT(*)` command to verify that the total number of rows match between t
 
 #### Run count query in YSQL
 
-This can be done as shown below using a PLPGSQL function:
+Use a PLPGSQL function to do the following:
 
 **Step 1.** Create the following function to print the number of rows in a single table.
 
@@ -311,7 +311,7 @@ Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_cod
 
 In YCQL, the count() query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
 
-The tool uses the exposed hash_partition function in order to execute smaller, more manageable queries which have are individually less resource intensive, and so they don't time out.
+The tool uses the exposed `hash_partition` function in order to execute smaller, more manageable queries which are individually less resource intensive, and so they don't time out.
 
 Following are the steps to set up and run the ycrc tool:
 
