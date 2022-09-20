@@ -191,20 +191,16 @@ class TransactionStatusManager {
 
   // Registers new request assigning next serial no to it. So this serial no could be used
   // to check whether one request happened before another one.
-  virtual int64_t RegisterRequest() = 0;
+  virtual Result<int64_t> RegisterRequest() = 0;
 
   // request_id - is request id returned by RegisterRequest, that should be unregistered.
   virtual void UnregisterRequest(int64_t request_id) = 0;
 };
 
-// Utility class that invokes RegisterRequest on creation and UnregisterRequest on deletion.
+// Utility class that invokes UnregisterRequest on deletion.
 class NODISCARD_CLASS RequestScope {
  public:
   RequestScope() noexcept : status_manager_(nullptr), request_id_(0) {}
-
-  explicit RequestScope(TransactionStatusManager* status_manager)
-      : status_manager_(status_manager), request_id_(status_manager->RegisterRequest()) {
-  }
 
   RequestScope(RequestScope&& rhs) noexcept
       : status_manager_(rhs.status_manager_), request_id_(rhs.request_id_) {
@@ -227,7 +223,15 @@ class NODISCARD_CLASS RequestScope {
   RequestScope(const RequestScope&) = delete;
   void operator=(const RequestScope&) = delete;
 
+  static Result<RequestScope> Create(TransactionStatusManager* status_manager) {
+    return RequestScope(status_manager, VERIFY_RESULT(status_manager->RegisterRequest()));
+  }
+
  private:
+  RequestScope(TransactionStatusManager* status_manager, uint64_t request_id)
+      : status_manager_(status_manager), request_id_(request_id) {
+  }
+
   void Reset() {
     if (status_manager_) {
       status_manager_->UnregisterRequest(request_id_);
