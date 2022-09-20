@@ -145,6 +145,7 @@ const initialState = {
   enableEncryptionAtRest: false,
   useSystemd: false,
   customizePorts: false,
+  dedicatedNodes: false,
   // Geo-partitioning settings.
   defaultRegion: '',
   mastersInDefaultRegion: true,
@@ -211,6 +212,7 @@ export default class ClusterFields extends Component {
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
     this.tlsCertChanged = this.tlsCertChanged.bind(this);
+    this.toggleDedicatedNodes = this.toggleDedicatedNodes.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -436,10 +438,10 @@ export default class ClusterFields extends Component {
           regionList: userIntent.regionList,
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
-          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion
+          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
+          dedicatedNodes: userIntent.dedicatedNodes,
         });
       }
-
       this.props.getRegionListItems(providerUUID);
       if (
         clusterType === 'primary' &&
@@ -1044,6 +1046,12 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     updateFormField(`${clusterType}.useTimeSync`, event.target.checked);
     this.setState({ useTimeSync: event.target.checked });
+  }
+
+  toggleDedicatedNodes(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.dedicatedNodes`, event.target.checked);
+    this.setState({ nodeSetViaAZList: false, dedicatedNodes: event.target.checked });
   }
 
   toggleAssignPublicIP(event) {
@@ -1971,6 +1979,7 @@ export default class ClusterFields extends Component {
       }
     }
 
+    let dedicatedNodes = <span />;
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
@@ -1987,6 +1996,28 @@ export default class ClusterFields extends Component {
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
+    const showDedicatedNodesToggle =
+        featureFlags.test['enableDedicatedNodes'] ||
+        featureFlags.released['enableDedicatedNodes'];
+    if (
+        isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === 'aws' ||
+         currentProvider.code === 'gcp' ||
+         currentProvider.code === 'azu' ||
+         currentProvider.code === 'onprem') &&
+         clusterType === 'primary' &&
+         showDedicatedNodesToggle) {
+      dedicatedNodes = (
+        <Field
+          name={`${clusterType}.dedicatedNodes`}
+          component={YBToggle}
+          checkedVal={this.state.dedicatedNodes}
+          onToggle={this.toggleDedicatedNodes}
+          label="Use dedicated nodes for processes"
+          subLabel="Place tserver and master processes on separate nodes."
+        />
+      );
+    }
     if (
       isDefinedNotNull(currentProvider) &&
       (currentProvider.code === 'aws' ||
@@ -2761,6 +2792,14 @@ export default class ClusterFields extends Component {
                 </Col>
               </Col>
             </Row>
+          </Row>
+
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
+                {dedicatedNodes}
+              </div>
+            </Col>
           </Row>
 
           <Row>

@@ -22,7 +22,8 @@ const initialStateFeatureInTest = {
   enableGcpKMS: false,
   enableAzuKMS: false,
   allowOptionalAuth: false,
-  enablePITR: false
+  enablePITR: false,
+  enableDedicatedNodes: false
 };
 
 const initialStateFeatureReleased = {
@@ -47,7 +48,8 @@ const initialStateFeatureReleased = {
   enableGcpKMS: false,
   enableAzuKMS: false,
   allowOptionalAuth: false,
-  enablePITR: false
+  enablePITR: false,
+  enableDedicatedNodes: false
 };
 
 export const FeatureFlag = (
