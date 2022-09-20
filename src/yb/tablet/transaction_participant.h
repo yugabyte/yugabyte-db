@@ -232,7 +232,7 @@ class TransactionParticipant : public TransactionStatusManager {
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
  private:
-  int64_t RegisterRequest() override;
+  Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
   class Impl;
