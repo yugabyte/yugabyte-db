@@ -79,7 +79,7 @@ type: indexpage
     <a class="section-link icon-offset" href="pg-hint-plan/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Using pg_hint_plan</div>
+        <div class="title">Optimize YSQL queries using pg_hint_plan</div>
       </div>
       <div class="body">
         Control query execution plans with hinting phrases.
