@@ -65,6 +65,41 @@ import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.FutureListener;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.Charset;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
@@ -1170,6 +1205,54 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     DeleteCDCStreamRequest request =
         new DeleteCDCStreamRequest(this.masterTable, streamIds, ignoreErrors, forceDelete);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(this.masterTable, databaseType, keyspaceName,
+                                          retentionInSecs, timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
+      UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    DeleteSnapshotScheduleRequest request =
+        new DeleteSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotSchedulesResponse> listSnapshotSchedules(UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    ListSnapshotSchedulesRequest request =
+        new ListSnapshotSchedulesRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<RestoreSnapshotResponse> restoreSnapshot(UUID snapshotUUID,
+                                                           long restoreHybridTime) {
+    checkIsClosed();
+    RestoreSnapshotRequest request =
+        new RestoreSnapshotRequest(this.masterTable, snapshotUUID, restoreHybridTime);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotsResponse> listSnapshots(UUID snapshotUUID,
+                                                       boolean listDeletedSnapshots) {
+    checkIsClosed();
+    ListSnapshotsRequest request =
+        new ListSnapshotsRequest(this.masterTable, snapshotUUID, listDeletedSnapshots);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

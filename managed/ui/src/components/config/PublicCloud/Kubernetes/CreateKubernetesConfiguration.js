@@ -62,17 +62,25 @@ class CreateKubernetesConfiguration extends Component {
         code,
         latitude,
         longitude,
-        zoneList: region.zoneList.map((zone) => ({
-          code: convertStrToCode(zone.zoneLabel),
-          name: zone.zoneLabel,
-          config: {
+        zoneList: region.zoneList.map((zone) => {
+          const config = {
             STORAGE_CLASS: zone.storageClasses || undefined,
             KUBENAMESPACE: zone.namespace || undefined,
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined
-          }
-        }))
+          };
+
+          //Add cert manager issuer
+          if (zone.issuerType === 'ISSUER') config['CERT-MANAGER-ISSUER'] = zone.issuerName;
+          if (zone.issuerType === 'CLUSTER') config['CERT-MANAGER-CLUSTERISSUER'] = zone.issuerName;
+
+          return {
+            code: convertStrToCode(zone.zoneLabel),
+            name: zone.zoneLabel,
+            config
+          };
+        })
       };
     });
 
@@ -83,8 +91,8 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_PROVIDER: vals.providerType
             ? vals.providerType.value
             : providerTypeMetadata
-              ? providerTypeMetadata.code
-              : 'gke',
+            ? providerTypeMetadata.code
+            : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
@@ -135,8 +143,10 @@ class CreateKubernetesConfiguration extends Component {
     } else {
       providerTypeOptions = KUBERNETES_PROVIDERS
         // skip providers with dedicated tab
-        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks'
-                && provider.code !== 'openshift')
+        .filter(
+          (provider) =>
+            provider.code !== 'tanzu' && provider.code !== 'pks' && provider.code !== 'openshift'
+        )
         .map((provider) => ({ value: provider.code, label: provider.name }));
     }
 
@@ -163,8 +173,9 @@ class CreateKubernetesConfiguration extends Component {
     });
 
     const validationSchema = Yup.object().shape({
-      accountName: Yup.string().required('Config name is Required').matches(
-        specialChars, 'Config Name cannot contain special characters except - and _'),
+      accountName: Yup.string()
+        .required('Config name is Required')
+        .matches(specialChars, 'Config Name cannot contain special characters except - and _'),
 
       serviceAccount: Yup.string().required('Service Account name is Required'),
 
@@ -182,7 +193,17 @@ class CreateKubernetesConfiguration extends Component {
             .of(
               Yup.object()
                 .shape({
-                  zoneLabel: Yup.string().required('Zone label is required')
+                  zoneLabel: Yup.string().required('Zone label is required'),
+                  namespace: Yup.string().when('issuerType', {
+                    is: 'ISSUER',
+                    then: Yup.string().required('Namespace is Required')
+                  }),
+                  issuerName: Yup.string().when('issuerType', (issuerType) => {
+                    if (issuerType === 'CLUSTER')
+                      return Yup.string().required('Cluster Issuer Name is Required');
+                    if (issuerType === 'ISSUER')
+                      return Yup.string().required('Issuer Name is Required');
+                  })
                 })
                 .required()
             )
@@ -214,7 +235,11 @@ class CreateKubernetesConfiguration extends Component {
                 <div className="editor-container">
                   <Row>
                     <Col lg={8}>
-                      <Row className={clsx('config-provider-row', { 'hidden': providerTypeOptions.length === 1 })}>
+                      <Row
+                        className={clsx('config-provider-row', {
+                          hidden: providerTypeOptions.length === 1
+                        })}
+                      >
                         <Col lg={3}>
                           <div className="form-item-custom-label">Type</div>
                         </Col>
@@ -281,8 +306,12 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="imageRegistry"
-                            placeholder={ providerTypeOptions.length === 1 && providerTypeOptions[0].value === 'openshift'
-                                          ? redhatImageRegistry : quayImageRegistry }
+                            placeholder={
+                              providerTypeOptions.length === 1 &&
+                              providerTypeOptions[0].value === 'openshift'
+                                ? redhatImageRegistry
+                                : quayImageRegistry
+                            }
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />

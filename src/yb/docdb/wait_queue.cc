@@ -48,6 +48,15 @@ TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
 
+DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
+              "The amount of time to wait before sending the client of a single shard transaction "
+              "a retryable error. Such clients are periodically sent a retryable error to ensure "
+              "we don't maintain waiters in the wait queue for unresponsive or disconnected "
+              "clients. This is not required for multi-tablet transactions which have a "
+              "transaction ID and are rolled back if the transaction coordinator does not receive "
+              "a heartbeat, since for these we will eventually discover that the transaction has "
+              "been rolled back and remove the waiter. If set to zero, this will default to 30s.");
+
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
@@ -62,6 +71,14 @@ CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
     return FLAGS_wait_for_relock_unblocked_txn_keys_ms * 1ms + CoarseMonoClock::Now();
   }
   return kDefaultWaitForRelockUnblockedTxnKeys + CoarseMonoClock::Now();
+}
+
+auto GetMaxSingleShardWaitDuration() {
+  constexpr uint64_t kDefaultMaxSingleShardWaitDurationMs = 30000;
+  if (FLAGS_force_single_shard_waiter_retry_ms == 0) {
+    return kDefaultMaxSingleShardWaitDurationMs * 1ms;
+  }
+  return FLAGS_force_single_shard_waiter_retry_ms * 1ms;
 }
 
 YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted));
@@ -131,12 +148,19 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   void InvokeCallback(const Status& status) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
-    if (!status.ok() || !unlocked_) {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (!unlocked_) {
+      LOG_WITH_PREFIX(INFO)
+          << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
+          << "be rare.";
+      return;
+    }
+    if (!status.ok()) {
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_.reset();
+    unlocked_ = std::nullopt;;
     callback(locks->status());
   }
 
@@ -149,6 +173,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   void TriggerStatusRequest(HybridTime now, client::YBClient* client, StatusCb cb) {
     UniqueLock<decltype(mutex_)> l(mutex_);
+    if (!unlocked_) {
+      VLOG_WITH_PREFIX(1)
+          << "Skipping GetTransactionStatus RPC for waiter whose callback was already invoked.";
+      return;
+    }
 
     if (handle_ != rpcs_.InvalidHandle()) {
       VLOG_WITH_PREFIX(1)
@@ -192,9 +221,8 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
  private:
-  std::optional<UnlockedBatch> unlocked_ = std::nullopt;
-
   mutable rw_spinlock mutex_;
+  std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   rpc::Rpcs& rpcs_;
   rpc::Rpcs::Handle handle_ GUARDED_BY(mutex_) = rpcs_.InvalidHandle();
 };
@@ -288,6 +316,10 @@ class BlockerData {
 const Status kShuttingDownError = STATUS(
     IllegalState, "Tablet shutdown in progress - there may be a new leader.");
 
+const Status kRetrySingleShardOp = STATUS(
+    TimedOut,
+    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
+
 } // namespace
 
 class WaitQueue::Impl {
@@ -327,10 +359,6 @@ class WaitQueue::Impl {
       }
 
       if (waiter_status_.contains(waiter_txn_id)) {
-        // TODO(pessimistic): If two single-shard transactions come to the same tablet, we will hit
-        // this branch since they will both have waiter_txn_id=TransactionId::Nil(). We should
-        // handle this by storing single-shard transactions separately rather than indexing by
-        // TransactionId. See: https://github.com/yugabyte/yugabyte-db/issues/14014
         LOG_WITH_PREFIX_AND_FUNC(DFATAL)
             << "Existing waiter already found - " << waiter_txn_id << ". "
             << "This should not happen.";
@@ -379,7 +407,13 @@ class WaitQueue::Impl {
       waiter_data = std::make_shared<WaiterData>(
           waiter_txn_id, locks, status_tablet_id, std::move(blocker_datas), std::move(callback),
           std::move(scoped_reporter), &rpcs_);
-      waiter_status_[waiter_txn_id] = waiter_data;
+      if (waiter_data->IsSingleShard()) {
+        DCHECK(single_shard_waiters_.size() == 0 ||
+               waiter_data->created_at >= single_shard_waiters_.front()->created_at);
+        single_shard_waiters_.push_front(waiter_data);
+      } else {
+        waiter_status_[waiter_txn_id] = waiter_data;
+      }
     }
 
     DCHECK(waiter_data);
@@ -399,6 +433,7 @@ class WaitQueue::Impl {
     const std::string kWaiterReason = "Getting status for waiter in wait queue";
     std::vector<WaiterDataPtr> waiters;
     std::vector<TransactionId> blockers;
+    std::vector<WaiterDataPtr> stale_single_shard_waiters;
 
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
@@ -427,6 +462,13 @@ class WaitQueue::Impl {
         }
         it = blocker_status_.erase(it);
       }
+      EraseIf([&stale_single_shard_waiters](const auto& waiter) {
+        if (waiter->created_at + GetMaxSingleShardWaitDuration() < CoarseMonoClock::Now()) {
+          stale_single_shard_waiters.push_back(waiter);
+          return true;
+        }
+        return false;
+      }, &single_shard_waiters_);
     }
 
     for (const auto& waiter : waiters) {
@@ -468,10 +510,15 @@ class WaitQueue::Impl {
       };
       txn_status_manager_->RequestStatusAt(request);
     }
+
+    for (const auto& waiter : stale_single_shard_waiters) {
+      waiter->InvokeCallback(kRetrySingleShardOp);
+    }
   }
 
   bool StartShutdown() EXCLUDES(mutex_) {
     decltype(waiter_status_) waiter_status_copy;
+    decltype(single_shard_waiters_) single_shard_waiters_copy;
 
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
@@ -480,11 +527,15 @@ class WaitQueue::Impl {
       }
       shutting_down_ = true;
       waiter_status_copy.swap(waiter_status_);
+      single_shard_waiters_copy.swap(single_shard_waiters_);
       blocker_status_.clear();
     }
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->ShutdownStatusRequest();
+      waiter_data->InvokeCallback(kShuttingDownError);
+    }
+    for (const auto& waiter_data : single_shard_waiters_copy) {
       waiter_data->InvokeCallback(kShuttingDownError);
     }
     return !shutdown_complete_;
@@ -626,7 +677,13 @@ class WaitQueue::Impl {
 
   void InvokeWaiterCallback(
       const Status& status, const WaiterDataPtr& waiter_data) EXCLUDES(mutex_) {
+    if (waiter_data->IsSingleShard()) {
+      waiter_data->InvokeCallback(status);
+      return;
+    }
+
     auto res = 0ul;
+
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
       res = waiter_status_.erase(waiter_data->id);
@@ -692,6 +749,8 @@ class WaitQueue::Impl {
       WaiterDataPtr,
       TransactionIdHash>
     waiter_status_ GUARDED_BY(mutex_);
+
+  std::list<WaiterDataPtr> single_shard_waiters_ GUARDED_BY(mutex_);
 
   rpc::Rpcs rpcs_;
 

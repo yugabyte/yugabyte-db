@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
@@ -58,6 +59,8 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import de.dentrassi.crypto.pem.PemKeyStoreProvider;
+import java.security.Security;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
@@ -95,6 +98,7 @@ public class Module extends AbstractModule {
       log.info("Using Evolutions. Not using flyway migrations.");
     }
 
+    Security.addProvider(new PemKeyStoreProvider());
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     install(new CloudModules());
 
@@ -124,6 +128,7 @@ public class Module extends AbstractModule {
       bind(Scheduler.class).asEagerSingleton();
       bind(HealthChecker.class).asEagerSingleton();
       bind(TaskGarbageCollector.class).asEagerSingleton();
+      bind(PitrConfigPoller.class).asEagerSingleton();
       bind(BackupGarbageCollector.class).asEagerSingleton();
       bind(SupportBundleCleanup.class).asEagerSingleton();
       bind(EncryptionAtRestManager.class).asEagerSingleton();

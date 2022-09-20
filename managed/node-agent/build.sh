@@ -5,9 +5,10 @@ set -e
 
 export GO111MODULE=on
 
+readonly protoc_version=21.5
 readonly package_name='node-agent'
 readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build")
+readonly skip_dirs=("third-party" "proto" "generated" "build", "resources")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -23,9 +24,6 @@ if [[ ! -d $build_output_dir ]]; then
     mkdir $build_output_dir
 fi
 readonly grpc_output_dir="${project_dir}/generated"
-if [[ ! -d $grpc_output_dir ]]; then
-    mkdir $grpc_output_dir
-fi
 readonly grpc_proto_dir=${project_dir}/proto
 readonly grpc_proto_files="${grpc_proto_dir}/*.proto"
 
@@ -35,9 +33,39 @@ to_lower() {
 }
 
 readonly build_os=$(to_lower "$(uname -s)")
-readonly uild_arch=$(to_lower "$(uname -m)")
+readonly build_arch=$(to_lower "$(uname -m)")
+
+
+setup_protoc() {
+    if [ ! -f $GOBIN/protoc ]; then
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+        local release_url=https://github.com/protocolbuffers/protobuf/releases
+        local protoc_os=$build_os
+        if [ $protoc_os == "darwin" ]; then
+            protoc_os=osx
+        fi
+        local protoc_arch=$build_arch
+        local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
+        pushd $GOPATH
+        curl -LO ${release_url}/download/v${protoc_version}/${protoc_filename}
+        unzip -o $protoc_filename -d tmp
+        cp -rf tmp/bin/protoc $GOBIN/protoc
+        rm -rf tmp $protoc_filename
+        popd
+    fi
+    which protoc
+    protoc --version
+    which protoc-gen-go
+    protoc-gen-go --version
+    which protoc-gen-go-grpc
+    protoc-gen-go-grpc --version
+}
 
 generate_grpc_files() {
+    if [[ ! -d $grpc_output_dir ]]; then
+        mkdir -p $grpc_output_dir
+    fi
     protoc -I$grpc_proto_dir --go_out=$grpc_output_dir --go-grpc_out=$grpc_output_dir  \
     --go-grpc_opt=require_unimplemented_servers=false $grpc_proto_files
 }
@@ -98,14 +126,19 @@ format() {
 }
 
 run_tests() {
+    # Run all tests if one fails.
     pushd $project_dir
     for dir in */ ; do
         # Remove trailing slash.
         dir=$(echo ${dir} | sed 's/\/$//')
         if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+            echo "Skipping directory ${dir}"
             continue
         fi
+        echo "Running tests in ${dir}..."
+        set +e
         go test --tags testonly -v ./$dir/...
+        set -e
     done
     popd
 }
@@ -115,8 +148,9 @@ package_for_platform() {
     local arch=$2
     local version=$3
     staging_dir_name="node_agent-${version}-${os}-${arch}"
-    script_dir="${build_output_dir}/${staging_dir_name}/${version}/scripts"
-    bin_dir="${build_output_dir}/${staging_dir_name}/${version}/bin"
+    version_dir="${build_output_dir}/${staging_dir_name}/${version}"
+    script_dir="${version_dir}/scripts"
+    bin_dir="${version_dir}/bin"
     echo "Packaging ${staging_dir_name}"
     os_exec_name=$(get_executable_name $os $arch)
     exec_name="node-agent"
@@ -130,6 +164,7 @@ package_for_platform() {
     mkdir -p $script_dir
     mkdir -p $bin_dir
     cp -rf $os_exec_name ${bin_dir}/$exec_name
+    cp -rf ../version.txt ${version_dir}/version.txt
     pushd "$project_dir/resources"
     cp -rf preflight_check.sh ${script_dir}/preflight_check.sh
     cp -rf yb-node-agent.sh ${bin_dir}/yb-node-agent.sh
@@ -137,7 +172,6 @@ package_for_platform() {
     chmod 755 ${bin_dir}/*.sh
     popd
     tar -zcf ${staging_dir_name}.tar.gz -C $staging_dir_name .
-    rm -rf $staging_dir_name
     popd
 }
 
@@ -154,7 +188,7 @@ package_for_platforms() {
 }
 
 update_dependencies() {
-    go mod tidy
+    go mod tidy -e
 }
 
 build=false
@@ -168,6 +202,7 @@ show_help() {
 Usage:
 ./build.sh <fmt|build|clean|test|package <version>|update-dependencies>
 EOT
+exit 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -240,8 +275,12 @@ fi
 if [ "$build" == "true" ]; then
     help_needed=false
     echo "Building..."
+    if [ ! -f "go.mod" ]; then
+        go mod init node-agent
+    fi
     format
-    # generate_grpc_files
+    setup_protoc
+    generate_grpc_files
     build_for_platforms "${PLATFORMS[@]}"
 fi
 

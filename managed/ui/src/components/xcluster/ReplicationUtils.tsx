@@ -211,8 +211,7 @@ export const getEnabledConfigActions = (replication: Replication): ReplicationAc
   switch (replication.status) {
     case ReplicationStatus.INITIALIZED:
     case ReplicationStatus.UPDATING:
-    case ReplicationStatus.DELETION_FAILED:
-      return [];
+      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
     case ReplicationStatus.RUNNING:
       return [
         replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
@@ -224,6 +223,7 @@ export const getEnabledConfigActions = (replication: Replication): ReplicationAc
     case ReplicationStatus.FAILED:
       return [ReplicationAction.DELETE, ReplicationAction.RESTART];
     case ReplicationStatus.DELETED_UNIVERSE:
+    case ReplicationStatus.DELETION_FAILED:
       return [ReplicationAction.DELETE];
   }
 };

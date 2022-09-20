@@ -198,6 +198,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::AddTransactionStatusTabletRequestPB;
+using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
@@ -1735,6 +1737,14 @@ Status YBClient::CreateTransactionsStatusTable(
     *req.mutable_replication_info() = *replication_info;
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, CreateTransactionStatusTable);
+  return Status::OK();
+}
+
+Status YBClient::AddTransactionStatusTablet(const TableId& table_id) {
+  master::AddTransactionStatusTabletRequestPB req;
+  master::AddTransactionStatusTabletResponsePB resp;
+  req.set_table_id(table_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, AddTransactionStatusTablet);
   return Status::OK();
 }
 

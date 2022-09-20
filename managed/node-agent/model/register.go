@@ -2,7 +2,9 @@
 
 package model
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type RegisterRequest struct {
 	CommonInfo
@@ -52,6 +54,11 @@ type User struct {
 	UserId     string `json:"uuid"`
 	CustomerId string `json:"customerUUID"`
 	Role       string `json:"role"`
+}
+
+type SessionInfo struct {
+	CustomerId string `json:"customerUUID"`
+	UserId     string `json:"UserUUID"`
 }
 
 type DisplayInterface interface {

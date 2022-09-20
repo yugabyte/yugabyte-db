@@ -41,6 +41,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
+#include "yb/common/partition.h"
 
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -378,6 +379,13 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
 
+// A tablet, and two partitions that together cover the tablet's partition.
+struct TabletWithSplitPartitions {
+  TabletInfoPtr tablet;
+  Partition left;
+  Partition right;
+};
+
 // The information about a table, including its state and tablets.
 //
 // This object uses copy-on-write techniques similarly to TabletInfo.
@@ -444,6 +452,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);
+
+  // Finds a tablet whose partition can be shrunk.
+  // This is only used for transaction status tables.
+  Result<TabletWithSplitPartitions> FindSplittableHashPartitionForStatusTable() const;
+
+  // Add a tablet to this table, by shrinking old_tablet's partition to the passed in partition.
+  // new_tablet's partition should be the remainder of old_tablet's original partition.
+  // This should only be used for transaction status tables, where the partition ranges
+  // are not actually used.
+  void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
+                                        const Partition& partition,
+                                        const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
   void ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);

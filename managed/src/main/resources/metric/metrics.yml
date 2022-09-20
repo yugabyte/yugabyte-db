@@ -1559,6 +1559,19 @@ lsm_rocksdb_compaction:
         "rocksdb_compact_write_bytes": "Bytes Written"
       ticksuffix: "&nbsp;MB"
 
+lsm_rocksdb_compaction_tasks:
+  metric: "compaction_tasks"
+  function: "avg_over_time|sum"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  group_by: "state"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction tasks"
+    xaxis:
+      type: "date"
+
 lsm_rocksdb_compaction_numfiles:
   metric: "rocksdb_numfiles_in_singlecompaction.avg"
   function: "rate|sum by (exported_instance)|avg"

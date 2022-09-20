@@ -706,10 +706,8 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
     }
   });
 
-  WritableFileOptions opts;
-  opts.sync_on_close = true;
   std::unique_ptr<WritableFile> writer;
-  RETURN_NOT_OK_PREPEND(env().NewWritableFile(opts, temp_dest_path, &writer),
+  RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
                         "Unable to open file for writing");
 
   auto start = MonoTime::Now();

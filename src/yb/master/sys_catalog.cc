@@ -1182,9 +1182,10 @@ Status SysCatalogTable::ReadPgClassInfo(
   return Status::OK();
 }
 
-Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t database_oid,
-                                                          const uint32_t table_oid) {
-  TRACE_EVENT0("master", "ReadPgClassRelnamespace");
+Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t database_oid,
+                                                                const uint32_t table_oid,
+                                                                const string& column_name) {
+  TRACE_EVENT0("master", "ReadPgClassOidColumn");
 
   const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
 
@@ -1193,10 +1194,10 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
   const Schema& schema = table_info->schema();
 
   Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "relnamespace"}, &projection,
+  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", column_name}, &projection,
                 schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto relnamespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("relnamespace")).rep();
+  const auto result_col_id = VERIFY_RESULT(projection.ColumnIdByName(column_name)).rep();
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
       projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
   {
@@ -1222,20 +1223,13 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
     RETURN_NOT_OK(iter->NextRow(&row));
 
     // Process the relnamespace oid for this table/index.
-    const auto& relnamespace_oid_col = row.GetValue(relnamespace_col_id);
-    if (!relnamespace_oid_col) {
-      return STATUS(Corruption, "Could not read relnamespace column from pg_class");
+    const auto& result_oid_col = row.GetValue(result_col_id);
+    if (!result_oid_col) {
+      return STATUS(Corruption, "Could not read " + column_name + " column from pg_class");
     }
 
-    oid = relnamespace_oid_col->uint32_value();
-    VLOG(1) << "Table oid: " << table_oid << " relnamespace oid: " << oid;
-  }
-
-  if (oid == kInvalidOid) {
-    // This error is thrown in the case that the table is deleted in YSQL but not docdb.
-    // Currently, this is checked for in the backup flow, see gh #13361.
-    return STATUS(NotFound, "Not found or invalid relnamespace oid for table oid " +
-        std::to_string(table_oid));
+    oid = result_oid_col->uint32_value();
+    VLOG(1) << "Table oid: " << table_oid << column_name << " oid: " << oid;
   }
 
   return oid;

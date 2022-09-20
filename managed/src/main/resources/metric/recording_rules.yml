@@ -105,15 +105,26 @@ groups:
         labels:
           saved_name: glog_error_messages_irate
 
-      - record: glog_error_messages_irate
-        expr: 'irate(glog_error_messages[1m])'
+      - record: compaction_tasks
+        expr: 'active_task_metrics_compaction_tasks_added - ignoring(saved_name)
+          active_task_metrics_compaction_tasks_removed'
         labels:
-          saved_name: glog_error_messages_irate
+          saved_name: compaction_tasks
+          state: Active
 
-      - record: glog_error_messages_irate
-        expr: 'irate(glog_error_messages[1m])'
+      - record: compaction_tasks
+        expr: 'paused_task_metrics_compaction_tasks_added - ignoring(saved_name)
+          paused_task_metrics_compaction_tasks_removed'
         labels:
-          saved_name: glog_error_messages_irate
+          saved_name: compaction_tasks
+          state: Paused
+
+      - record: compaction_tasks
+        expr: 'queued_task_metrics_compaction_tasks_added - ignoring(saved_name)
+          queued_task_metrics_compaction_tasks_removed'
+        labels:
+          saved_name: compaction_tasks
+          state: Queued
 
       - record: rpc_inbound_calls_created_irate
         expr: 'irate(rpc_inbound_calls_created[1m])'
