@@ -555,6 +555,34 @@ The preferred way to create transaction status tables with YSQL is to create a t
 
 {{< /note >}}
 
+#### add_transaction_tablet
+
+Add a tablet to a transaction status table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    add_transaction_tablet \
+    <keyspace> <table_name>
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *keyspace*: The name of the keyspace.
+* *table_name*: The name of the transaction status table name.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    add_transaction_tablet \
+    system transactions
+```
+
+To verify that the new status tablet has been created, run the [`yb-admin list_tablets`](#list_tablets) command.
+
 ### Backup and snapshot commands
 
 The following backup and snapshot commands are available:
