@@ -433,7 +433,7 @@ public class CertificateHelper {
         throw new PlatformServiceException(BAD_REQUEST, "Not a valid request for HashicorpVault");
       }
       String certPath = getCACertPath(storagePath, customerUUID, rootCA_UUID);
-      writeCertBundleToCertPath(convertStringToX509CertList(certContent), certPath);
+      writeCertBundleToCertPath(x509CACerts, certPath);
 
       CertificateInfo cert;
       switch (certType) {
@@ -476,6 +476,21 @@ public class CertificateHelper {
                     certExpiry,
                     certPath,
                     customServerCertInfo);
+            break;
+          }
+        case K8SCertManager:
+          {
+            keyPath = null;
+            cert =
+                CertificateInfo.create(
+                    rootCA_UUID,
+                    customerUUID,
+                    label,
+                    certStart,
+                    certExpiry,
+                    keyPath,
+                    certPath,
+                    certType);
             break;
           }
         default:
@@ -521,7 +536,10 @@ public class CertificateHelper {
   }
 
   public static String getKeyPEM(CertificateInfo cert) {
-    if (cert.certType == CertConfigType.HashicorpVault) return "";
+    if (cert.certType == CertConfigType.HashicorpVault
+        || (cert.certType == CertConfigType.K8SCertManager)) {
+      return "";
+    }
     String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;

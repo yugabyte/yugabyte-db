@@ -132,6 +132,16 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                        UpdateTransactionStatusLocationResponsePB* resp,
                                        rpc::RpcContext context) override;
 
+  void UpdateTransactionWaitingForStatus(
+      const UpdateTransactionWaitingForStatusRequestPB* req,
+      UpdateTransactionWaitingForStatusResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ProbeTransactionDeadlock(
+      const ProbeTransactionDeadlockRequestPB* req,
+      ProbeTransactionDeadlockResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Truncate(const TruncateRequestPB* req,
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
@@ -156,6 +166,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void GetSharedData(const GetSharedDataRequestPB* req,
                      GetSharedDataResponsePB* resp,
                      rpc::RpcContext context) override;
+
+  void GetTserverCatalogVersionInfo(const GetTserverCatalogVersionInfoRequestPB* req,
+                                    GetTserverCatalogVersionInfoResponsePB* resp,
+                                    rpc::RpcContext context) override;
 
   void Shutdown() override;
 

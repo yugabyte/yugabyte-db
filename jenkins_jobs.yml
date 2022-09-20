@@ -7,7 +7,7 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang12
+    compiler: clang14
     build_type: tsan
     release_artifact: false
 

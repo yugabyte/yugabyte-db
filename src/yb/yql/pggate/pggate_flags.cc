@@ -47,8 +47,8 @@ DEFINE_int32(ysql_request_limit, 1024,
 DEFINE_uint64(ysql_prefetch_limit, 1024,
               "Maximum number of rows to prefetch");
 
-DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
-              "Scale factor to reduce ysql_prefetch_limit for backward scan");
+DEFINE_double(ysql_backward_prefetch_scale_factor, 1.,
+              "DEPRECATED. Feature has been removed.");
 
 DEFINE_uint64(ysql_session_max_batch_size, 3072,
               "Use session variable ysql_session_max_batch_size instead. "

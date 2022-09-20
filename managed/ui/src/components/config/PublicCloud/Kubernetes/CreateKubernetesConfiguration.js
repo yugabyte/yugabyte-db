@@ -15,6 +15,7 @@ import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
+import { specialChars } from '../../constants';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
@@ -162,7 +163,8 @@ class CreateKubernetesConfiguration extends Component {
     });
 
     const validationSchema = Yup.object().shape({
-      accountName: Yup.string().required('Config name is Required'),
+      accountName: Yup.string().required('Config name is Required').matches(
+        specialChars, 'Config Name cannot contain special characters except - and _'),
 
       serviceAccount: Yup.string().required('Service Account name is Required'),
 

@@ -37,6 +37,7 @@ MetricEntity::AttributeMap prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
+static int* too_many_conn_p = NULL;
 
 static postgresCallbacks pgCallbacks;
 
@@ -49,6 +50,8 @@ static const char *METRIC_ID_YB_YSQLSERVER = "yb.ysqlserver";
 
 static const char *PSQL_SERVER_CONNECTION_TOTAL = "yb_ysqlserver_connection_total";
 static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_connection_total";
+// This is the total number of connections rejected due to "too many clients already"
+static const char *PSQL_SERVER_CONNECTION_OVER_LIMIT = "yb_ysqlserver_connection_over_limit_total";
 
 namespace {
 
@@ -79,6 +82,12 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
       pwriter->WriteSingleEntryNonTable(
           prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections),
       errMsg.str());
+  if (too_many_conn_p) {
+    WARN_NOT_OK(
+      pwriter->WriteSingleEntryNonTable(
+          prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *too_many_conn_p),
+      errMsg.str());
+  }
   pgCallbacks.freeRpczEntries();
 }
 
@@ -342,10 +351,12 @@ void RegisterResetYsqlStatStatements(void (*fn)()) {
 }
 
 void RegisterRpczEntries(
-    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer) {
+    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
+    int* too_many_conn_ptr) {
   pgCallbacks = *callbacks;
   num_backends = num_backends_ptr;
   rpczResultPointer = rpczEntriesPointer;
+  too_many_conn_p = too_many_conn_ptr;
 }
 
 YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {

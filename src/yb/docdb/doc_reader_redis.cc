@@ -181,11 +181,10 @@ Status BuildSubDocument(
         continue;
       } else if (IsPrimitiveValueType(value_type)) {
         // Choose the user supplied timestamp if present.
-        const UserTimeMicros user_timestamp = doc_value.user_timestamp();
         doc_value.mutable_primitive_value()->SetWriteTime(
-            user_timestamp == ValueControlFields::kInvalidUserTimestamp
-            ? write_time.hybrid_time().GetPhysicalValueMicros()
-            : doc_value.user_timestamp());
+            doc_value.has_timestamp()
+                ? doc_value.timestamp()
+                : write_time.hybrid_time().GetPhysicalValueMicros());
         if (!data.high_index->CanInclude(current_values_observed)) {
           iter->SeekOutOfSubDoc(&key_copy);
           return Status::OK();

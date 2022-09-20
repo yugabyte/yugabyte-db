@@ -100,7 +100,7 @@ class UnsignedIntSet {
   }
 
   bool operator==(const UnsignedIntSet<T>& other) const {
-    return interval_set_ == other.interval_set_;
+    return boost::icl::is_element_equal(interval_set_, other.interval_set_);
   }
 
  private:

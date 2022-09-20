@@ -103,6 +103,16 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
+    createUpgradeTask(
+        universe, softwareVersion, isMasterChanged, isTServerChanged, CommandType.HELM_UPGRADE);
+  }
+
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      CommandType commandType) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
@@ -137,7 +147,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           isMasterChanged,
           isTServerChanged,
           newNamingStyle,
-          /*isReadOnlyCluster*/ false);
+          /*isReadOnlyCluster*/ false,
+          commandType);
     }
 
     if (isTServerChanged) {
@@ -157,7 +168,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           false, // master change is false since it has already been upgraded.
           isTServerChanged,
           newNamingStyle,
-          /*isReadOnlyCluster*/ false);
+          /*isReadOnlyCluster*/ false,
+          commandType);
 
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
@@ -181,7 +193,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             false, // master change is false since it has already been upgraded.
             isTServerChanged,
             newNamingStyle,
-            /*isReadOnlyCluster*/ true);
+            /*isReadOnlyCluster*/ true,
+            commandType);
       }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }

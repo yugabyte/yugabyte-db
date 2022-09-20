@@ -54,6 +54,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/logging.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
@@ -390,7 +391,9 @@ int32_t GetMaxBackgroundFlushes() {
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
     auto flushes = 1 + kNumCpus / kCpusPerFlushThread;
     auto max_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
-    LOG(INFO) << "Overriding FLAGS_rocksdb_max_background_flushes to " << max_flushes;
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_max_background_flushes was not set, automatically configuring "
+        << max_flushes << " max background flushes";
     return max_flushes;
   } else {
     return FLAGS_rocksdb_max_background_flushes;
@@ -423,7 +426,8 @@ int32_t GetMaxBackgroundCompactions() {
   } else {
     rocksdb_max_background_compactions = 4;
   }
-  LOG(INFO) << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
       << rocksdb_max_background_compactions << " background compactions.";
   return rocksdb_max_background_compactions;
 }
@@ -435,7 +439,8 @@ int32_t GetBaseBackgroundCompactions() {
 
   if (FLAGS_rocksdb_base_background_compactions == -1) {
     const auto base_background_compactions = GetMaxBackgroundCompactions();
-    LOG(INFO) << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
         << base_background_compactions << " base background compactions.";
     return base_background_compactions;
   }
@@ -594,7 +599,8 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     }
   }
 
-  LOG(INFO) << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
       << priority_thread_pool_size << ".";
 
   return priority_thread_pool_size;
@@ -609,7 +615,8 @@ void InitRocksDBOptions(
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
-  options->disableDataSync = true;
+  // We should always sync data to ensure we can recover rocksdb from crash.
+  options->disableDataSync = false;
   options->statistics = statistics;
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;

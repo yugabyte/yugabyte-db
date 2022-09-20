@@ -939,6 +939,23 @@ struct SplitTabletIds {
   }
 };
 
+struct PersistentXClusterSafeTimeInfo
+    : public Persistent<XClusterSafeTimePB, SysRowEntryType::XCLUSTER_SAFE_TIME> {};
+
+class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTimeInfo> {
+ public:
+  XClusterSafeTimeInfo() {}
+  ~XClusterSafeTimeInfo() = default;
+
+  virtual const std::string& id() const override { return fake_id_; }
+
+  void Clear();
+
+ private:
+  // This is a singleton, so We do not use the ID field.
+  const std::string fake_id_;
+};
+
 }  // namespace master
 }  // namespace yb
 

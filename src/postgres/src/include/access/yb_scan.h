@@ -184,8 +184,6 @@ Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
 /*
  * Backwards scans are more expensive in DocDB.
- * TODO: the ysql_backward_prefetch_scale_factor gflag is correlated to this
- * but is too low (1/16 implying 16x slower) to be used here.
  */
 #define YBC_BACKWARDS_SCAN_COST_FACTOR 1.1
 

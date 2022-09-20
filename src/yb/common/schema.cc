@@ -45,6 +45,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/util/compare_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
@@ -134,6 +135,17 @@ size_t ColumnSchema::memory_footprint_excluding_this() const {
 
 size_t ColumnSchema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
+}
+
+bool ColumnSchema::TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs) {
+  return lhs.Equals(rhs) &&
+         YB_STRUCT_EQUALS(is_nullable_,
+                          is_hash_key_,
+                          is_static_,
+                          is_counter_,
+                          order_,
+                          sorting_type_,
+                          pg_type_oid_);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -308,6 +320,7 @@ Schema& Schema::operator=(const Schema& other) {
 void Schema::CopyFrom(const Schema& other) {
   num_key_columns_ = other.num_key_columns_;
   num_hash_key_columns_ = other.num_hash_key_columns_;
+  max_col_id_ = other.max_col_id_;
   cols_ = other.cols_;
   col_ids_ = other.col_ids_;
   col_offsets_ = other.col_offsets_;
@@ -653,6 +666,22 @@ Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
     return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", id.ToString());
   }
   return cols_[idx];
+}
+
+bool Schema::TEST_Equals(const Schema& lhs, const Schema& rhs) {
+  return lhs.Equals(rhs) &&
+         YB_STRUCT_EQUALS(num_hash_key_columns_,
+                          max_col_id_,
+                          col_ids_,
+                          col_offsets_,
+                          name_to_index_,
+                          name_to_index_,
+                          id_to_index_,
+                          has_nullables_,
+                          has_statics_,
+                          cotable_id_,
+                          colocation_id_,
+                          pgschema_name_);
 }
 
 // ============================================================================

@@ -293,6 +293,11 @@ extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 							Relids required_outer);
 extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,
 					 Relids required_outer);
+extern ParamPathInfo *yb_find_batched_param_path_info(
+	RelOptInfo *rel,
+	Relids required_outer,
+	Relids yb_required_batched_outer,
+	Relids yb_required_unbatched_outer);
 extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
 					 RelOptInfo *outer_rel, RelOptInfo *inner_rel,
 					 RelOptInfo *parent_joinrel, List *restrictlist,

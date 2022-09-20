@@ -81,6 +81,13 @@ typedef std::function<void()> UpdateMaxMemoryFunctor;
 typedef std::function<void()> PollChildrenConsumptionFunctors;
 
 struct SoftLimitExceededResult {
+  static SoftLimitExceededResult NotExceeded() {
+    return SoftLimitExceededResult {
+      .tracker_path = "", .exceeded = false, .current_capacity_pct = 0
+    };
+  }
+
+  std::string tracker_path;
   bool exceeded;
   double current_capacity_pct;
 };

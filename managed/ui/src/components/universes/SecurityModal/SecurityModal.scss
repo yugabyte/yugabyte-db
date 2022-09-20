@@ -1,0 +1,25 @@
+.manage-key-container {
+  .btn-group-radio {
+    margin-bottom: 15px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .btn-group-radio,
+  .form-item-custom-label,
+  .form-item-label {
+    font-weight: 400 !important;
+  }
+
+  .btn-group-radio input {
+    margin-right: 4px;
+  }
+
+  .universe-key-op {
+    max-width: 200px;
+  }
+
+  .master-key-rotation {
+    cursor: not-allowed;
+  }
+}

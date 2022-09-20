@@ -23,7 +23,7 @@ import {
   ReplicationTable,
   StandardMetricTimeRangeOption,
   TableReplicationMetric
-} from '../XClusterReplicationTypes';
+} from '../XClusterTypes';
 
 import styles from './TableLagGraph.module.scss';
 

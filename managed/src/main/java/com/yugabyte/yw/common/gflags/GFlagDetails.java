@@ -1,10 +1,12 @@
 package com.yugabyte.yw.common.gflags;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /*
  * This class will be used to capture gflag details from metadata
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class GFlagDetails {
   @JsonProperty(value = "file")
   public String file;

@@ -1,0 +1,153 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import '../../_style/colors.scss';
+
+.parentPerfAdvisor {
+  margin: 20px 20px 20px 20px;
+}
+
+.perfAdvisor {
+  padding-top: 50px;
+  padding-bottom: 50px;
+  background-color: white;
+
+  &__containerTitleGrid {
+    display: grid;
+    // justify-content: center;
+    align-items: center;
+  }
+
+  &__containerTitleFlex {
+    display: flex;
+    align-items: center;
+  }
+
+  &__containerRecommendationFlex {
+    display: flex;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+
+  .secondaryDescription,
+  .primaryDescription {
+    line-height: 1.25;
+    font-family: "Inter", sans-serif;
+  }
+
+  .primaryDescription {
+    margin: 12px 0 16px 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .secondaryDescription {
+    color: #4E5F6D;
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .scanBtn,
+  .rescanBtn {
+    margin-top: 24px;
+    margin-bottom: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    height: 32px;
+    padding: 0px 11px;
+  }
+
+  .scanBtn {
+    box-shadow: none;
+    width: 78px;
+  }
+
+  .rescanBtn {
+    width: 98px;
+  }
+
+  .rescanBtnRecPage {
+    height: 32px;
+    margin-top: -9px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px 11px;
+  }
+
+  .contentContainer {
+    text-align: center;
+  }
+
+  .dbImage {
+    height: '51px';
+    width: '51px';
+    margin-top: 16px;
+  }
+
+  .learnMoreLink {
+    width: fit-content;
+    margin: 0px auto 24px;
+
+    &:hover {
+      text-decoration: underline;
+      color: #2B59C3;
+    }
+  }
+
+  .ticketLink {
+    color: #4E5F6D;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+      color: #2B59C3;
+    }
+  }
+
+  .ticketContent {
+    width: fit-content;
+    margin: 0px auto;
+    font-size: 11px;
+  }
+
+  .learnMoreContent {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .learnMoreImage {
+    width: 16px;
+    height: 16px;
+    margin-top: 4px;
+    margin-right: 8px;
+  }
+}
+
+// Applies to React Bootstap button
+.button-wrapper {
+  display: inline-block;
+}
+
+.numRecommendations {
+  font-size: 15px;
+  font-family: "Inter", sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.scanTime {
+  font-size: 13px;
+  font-family: "Inter", sans-serif;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #4E5F6D;
+  padding: 0px 20px;
+  margin-left: auto;
+}
+
+.filterDropdowns {
+  max-width: 280px;
+  margin: 0px 16px 4px 0px;
+  flex: 1 0 20%;
+}

@@ -82,7 +82,13 @@ public class UniverseDefinitionTaskBaseTest {
 
   private String getTestNodeName(String tag) {
     return getNodeName(
-        myCluster, tag, "oldPrefix", myNode.nodeIdx, myNode.cloudInfo.region, myNode.cloudInfo.az);
+        myCluster,
+        tag,
+        "oldPrefix",
+        myNode.nodeIdx,
+        myNode.cloudInfo.region,
+        myNode.cloudInfo.az,
+        null);
   }
 
   @Test
@@ -128,7 +134,8 @@ public class UniverseDefinitionTaskBaseTest {
             "oldPrefix",
             myNode.nodeIdx,
             myNode.cloudInfo.region,
-            myNode.cloudInfo.az);
+            myNode.cloudInfo.az,
+            null);
     assertEquals("oldPrefix-readonly0-n1", name);
 
     name =
@@ -138,8 +145,20 @@ public class UniverseDefinitionTaskBaseTest {
             "oldPrefix",
             myNode.nodeIdx,
             myNode.cloudInfo.region,
-            myNode.cloudInfo.az);
+            myNode.cloudInfo.az,
+            null);
     assertEquals("TagsTestUniverse-1-readonly0", name);
+    // checking node name for dedicated node.
+    name =
+        getNodeName(
+            tempCluster,
+            "${universe}-${instance-id}",
+            "oldPrefix",
+            myNode.nodeIdx,
+            myNode.cloudInfo.region,
+            myNode.cloudInfo.az,
+            UniverseDefinitionTaskBase.ServerType.TSERVER);
+    assertEquals("TagsTestUniverse-1-readonly0-tserver", name);
   }
 
   @Test

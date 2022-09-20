@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -16,6 +17,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -24,6 +26,7 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,8 +38,10 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -51,7 +56,9 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -182,6 +189,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result r = createBackupYb(bodyJson, null);
     JsonNode resultJson = Json.parse(contentAsString(r));
@@ -198,6 +206,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
     bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
   }
@@ -211,6 +220,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("schedulingFrequency", 10000000L);
     bodyJson.put("scheduleName", "schedule-1");
     bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
   }
@@ -222,6 +232,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(result, "Provide a name for the schedule");
   }
@@ -233,6 +244,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("scheduleName", "schedule-1");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(r, "Please provide time unit for scheduler frequency");
@@ -245,6 +257,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("scheduleName", "schedule-1");
     Result r = createBackupSchedule(bodyJson, null);
     assertEquals(OK, r.status());
@@ -261,6 +274,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
@@ -279,6 +293,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "error");
@@ -295,6 +310,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("timeBeforeDelete", 100000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = assertPlatformException(() -> createBackupYb(bodyJson, null));
     assertBadRequest(r, "Please provide time unit for backup expiry");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -1216,5 +1232,149 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.refresh();
     assertEquals(invalidConfigUUID, backup.storageConfigUUID);
     assertEquals(invalidConfigUUID, backup.getBackupInfo().storageConfigUUID);
+  }
+
+  private Result setThrottleParams(ObjectNode bodyJson, UUID universeUUID) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "POST";
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universeUUID.toString()
+            + "/ybc_throttle_params";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result getThrottleParams(UUID universeUUID) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "GET";
+    String url =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universeUUID.toString()
+            + "/ybc_throttle_params";
+    return FakeApiHelper.doRequestWithAuthToken(method, url, authToken);
+  }
+
+  @Test
+  public void testSetThrottleParamsSuccess() {
+    Universe universe = ModelFactory.createUniverse("TEST1", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    ObjectNode bodyJson = Json.newObject();
+    details.ybcInstalled = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    doNothing().when(mockYbcManager).setThrottleParams(any(), any());
+    Result result = setThrottleParams(bodyJson, universe.universeUUID);
+    assertOk(result);
+  }
+
+  @Test
+  public void testSetThrottleParamsFailedUniverseLocked() {
+    Universe universe = ModelFactory.createUniverse("TEST2", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    ObjectNode bodyJson = Json.newObject();
+    details.ybcInstalled = true;
+    details.updateInProgress = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    Result result =
+        assertPlatformException(() -> setThrottleParams(bodyJson, universe.universeUUID));
+    assertBadRequest(result, "Cannot set throttle params, universe task in progress.");
+  }
+
+  @Test
+  public void testSetThrottleParamsFailedUniversePaused() {
+    Universe universe = ModelFactory.createUniverse("TEST3", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    ObjectNode bodyJson = Json.newObject();
+    details.ybcInstalled = true;
+    details.universePaused = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    Result result =
+        assertPlatformException(() -> setThrottleParams(bodyJson, universe.universeUUID));
+    assertBadRequest(result, "Cannot set throttle params, universe is paused.");
+  }
+
+  @Test
+  public void testSetThrottleParamsFailedBackupInProgress() {
+    Universe universe = ModelFactory.createUniverse("TEST4", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.ybcInstalled = true;
+    ObjectNode bodyJson = Json.newObject();
+    details.backupInProgress = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    Result result =
+        assertPlatformException(() -> setThrottleParams(bodyJson, universe.universeUUID));
+    assertBadRequest(result, "Cannot set throttle params, universe task in progress.");
+  }
+
+  @Test
+  public void testSetThrottleParamsTaskFailed() {
+    Universe universe = ModelFactory.createUniverse("TEST5", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.ybcInstalled = true;
+    ObjectNode bodyJson = Json.newObject();
+    universe.setUniverseDetails(details);
+    universe.save();
+    doThrow(new RuntimeException("some failure"))
+        .when(mockYbcManager)
+        .setThrottleParams(any(), any());
+    Result result =
+        assertPlatformException(() -> setThrottleParams(bodyJson, universe.universeUUID));
+    assertInternalServerError(
+        result,
+        String.format(
+            "Got error setting throttle params for universe {}, error: {}",
+            universe.universeUUID.toString(),
+            "some failure"));
+  }
+
+  @Test
+  public void testGetThrottleParamsSuccess() {
+    Universe universe = ModelFactory.createUniverse("TEST6", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.ybcInstalled = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    Map<String, String> tP = new HashMap<>();
+    tP.put("foo", "bar");
+    when(mockYbcManager.getThrottleParams(any())).thenReturn(tP);
+    Result result = getThrottleParams(universe.universeUUID);
+    assertOk(result);
+    assertValues(Json.toJson(contentAsString(result)), "foo", ImmutableList.of("bar"));
+  }
+
+  @Test
+  public void testGetThrottleParamsFailedUniversePaused() {
+    Universe universe = ModelFactory.createUniverse("TEST7", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.ybcInstalled = true;
+    details.universePaused = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    Result result = assertPlatformException(() -> getThrottleParams(universe.universeUUID));
+    assertBadRequest(result, "Cannot get throttle params, universe is paused.");
+  }
+
+  @Test
+  public void testGetThrottleParamsTaskFailed() {
+    Universe universe = ModelFactory.createUniverse("TEST8", defaultCustomer.uuid);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.ybcInstalled = true;
+    universe.setUniverseDetails(details);
+    universe.save();
+    doThrow(new RuntimeException("some failure")).when(mockYbcManager).getThrottleParams(any());
+    Result result = assertPlatformException(() -> getThrottleParams(universe.universeUUID));
+    assertInternalServerError(
+        result,
+        String.format(
+            "Got error getting throttle params for universe {}, error: {}",
+            universe.universeUUID.toString(),
+            "some failure"));
   }
 }

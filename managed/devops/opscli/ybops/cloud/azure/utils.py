@@ -584,6 +584,7 @@ class AzureCloudAdmin():
         private_key = validated_key_file(private_key_file)
 
         shared_gallery_image_match = GALLERY_IMAGE_ID_REGEX.match(image)
+        plan = None
         if shared_gallery_image_match:
             image_reference = {
                 "id": image
@@ -597,6 +598,8 @@ class AzureCloudAdmin():
                 "sku": sku,
                 "version": version
             }
+            plan = self.compute_client.virtual_machine_images \
+                .get(region, pub, offer, sku, version).as_dict().get('plan')
 
         vm_parameters = {
             "location": region,
@@ -631,6 +634,9 @@ class AzureCloudAdmin():
                 }]
             }
         }
+        if plan is not None:
+            vm_parameters["plan"] = plan
+
         if zone is not None:
             vm_parameters["zones"] = [zone]
 
@@ -641,7 +647,6 @@ class AzureCloudAdmin():
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
         for k in tags:
             self.add_tag_resource(vm_parameters, k, tags[k])
-
         creation_result = self.compute_client.virtual_machines.create_or_update(
             RESOURCE_GROUP,
             vm_name,

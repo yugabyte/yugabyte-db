@@ -85,4 +85,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.ServerSetup).build());
     }
   }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
 }

@@ -53,7 +53,9 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
           universe.getNodes().stream().collect(toList()), null, SubTaskGroupType.UpgradingSoftware);
 
       // Start yb-controller process and wait for it to get responsive.
-      createStartYbcProcessTasks(new HashSet<>(universe.getNodes()));
+      createStartYbcProcessTasks(
+          new HashSet<>(universe.getNodes()),
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
 
       //  Update Universe detail to enable yb-controller.
       createUpdateYbcTask(taskParams().ybcSoftwareVersion)

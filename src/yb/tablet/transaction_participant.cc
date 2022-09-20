@@ -484,6 +484,22 @@ class TransactionParticipant::Impl
     }
   }
 
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
+    // TODO(pessimistic) optimize locking
+    std::vector<boost::optional<TabletId>> status_tablet_opts;
+    for (auto& blocker : *inout) {
+      blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");
+    }
+  }
+
+  boost::optional<TabletId> GetStatusTablet(const TransactionId& id) {
+    auto lock_and_iterator = LockAndFind(id, "get status tablet"s, TransactionLoadFlags{});
+    if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
+      return boost::none;
+    }
+    return lock_and_iterator.transaction().status_tablet();
+  }
+
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
     auto txn_status = operation->request()->status();
     if (txn_status == TransactionStatus::APPLYING) {
@@ -1269,7 +1285,6 @@ class TransactionParticipant::Impl
 
     std::unique_lock<std::mutex> lock;
     Transactions::const_iterator iterator = UninitializedIterator();
-    bool recently_removed = false;
 
     bool found() const {
       return lock.owns_lock();
@@ -1301,9 +1316,7 @@ class TransactionParticipant::Impl
     if (recently_removed) {
       VLOG_WITH_PREFIX(1)
           << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
-      LockAndFindResult result;
-      result.recently_removed = true;
-      return result;
+      return LockAndFindResult{};
     }
     metric_transaction_not_found_->Increment();
     if (flags.Test(TransactionLoadFlag::kMustExist)) {
@@ -1756,6 +1769,15 @@ Status TransactionParticipant::CheckAborted(const TransactionId& id) {
 void TransactionParticipant::FillPriorities(
     boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
   return impl_->FillPriorities(inout);
+}
+
+void TransactionParticipant::FillStatusTablets(
+      std::vector<BlockingTransactionData>* inout) {
+  return impl_->FillStatusTablets(inout);
+}
+
+boost::optional<TabletId> TransactionParticipant::FindStatusTablet(const TransactionId& id) {
+  return impl_->GetStatusTablet(id);
 }
 
 void TransactionParticipant::SetDB(

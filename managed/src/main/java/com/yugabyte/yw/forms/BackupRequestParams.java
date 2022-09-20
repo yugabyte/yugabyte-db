@@ -28,6 +28,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Universe UUID", required = true)
   public UUID universeUUID = null;
 
+  @Constraints.Required
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -48,6 +49,9 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
 
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;

@@ -27,6 +27,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
@@ -388,7 +389,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
         << "Producer universe already exists: " << producer_id;
 
     // Setup the universe replication info.
-    UniverseReplicationInfo* const ri = new UniverseReplicationInfo(producer_id);
+    scoped_refptr<UniverseReplicationInfo> const ri = new UniverseReplicationInfo(producer_id);
     {
       auto l = ri->LockForWrite();
       l.mutable_data()->pb.CopyFrom(metadata);
@@ -1214,6 +1215,7 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
       case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -3126,11 +3128,17 @@ Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& c
     resp->set_xcluster_enabled_on_producer(true);
   }
   resp->set_cluster_config_version(cluster_config.version());
-  if (!cluster_config.has_consumer_registry() ||
-      req->cluster_config_version() >= cluster_config.version()) {
-    return Status::OK();
+  if (cluster_config.has_consumer_registry()) {
+    {
+      auto l = xcluster_safe_time_info_.LockForRead();
+      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
+    }
+
+    if (req->cluster_config_version() < cluster_config.version()) {
+      *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
+    }
   }
-  *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
+
   return Status::OK();
 }
 
@@ -3481,6 +3489,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     LOG(INFO) << "Created CDC stream " << stream->ToString();
 
     RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+    TRACE("Created CDC state table");
+
     if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
         (!req->has_initial_state() ||
          (req->initial_state() == master::SysCDCStreamEntryPB::ACTIVE)) &&
@@ -3520,6 +3530,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
       }
       // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
       RETURN_NOT_OK(session->TEST_Flush());
+      TRACE("Created CDC state entries");
     }
   } else {
     // Update and add table_id.
@@ -3545,6 +3556,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     // Also need to persist changes in sys catalog.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
     stream_lock.Commit();
+
+    TRACE("Updated CDC stream in sys-catalog");
   }
 
   // Now that the stream is set up, mark the entire cluster as a cdc enabled.
@@ -5312,6 +5325,8 @@ Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
                             "Updating cluster config in sys-catalog"));
   l.Commit();
 
+  CreateXClusterSafeTimeTableAndStartService();
+
   return Status::OK();
 }
 
@@ -5406,6 +5421,9 @@ Status CatalogManager::InitCDCConsumer(
       sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
       "updating cluster config in sys-catalog"));
   l.Commit();
+
+  CreateXClusterSafeTimeTableAndStartService();
+
   return Status::OK();
 }
 
@@ -5489,6 +5507,8 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
   }
 
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
+
+  CreateXClusterSafeTimeTableAndStartService();
 }
 
 Status ReturnErrorOrAddWarning(const Status& s,
@@ -5605,6 +5625,10 @@ Status CatalogManager::DeleteUniverseReplication(const std::string& producer_id,
       DeleteUniverseReplicationUnlocked(ri), ignore_errors, resp));
   l.Commit();
   LOG(INFO) << "Processed delete universe replication of " << ri->ToString();
+
+  // Run the safe time task as it may need to perform cleanups of it own
+  CreateXClusterSafeTimeTableAndStartService();
+
   return Status::OK();
 }
 
@@ -5735,6 +5759,8 @@ Status CatalogManager::SetUniverseReplicationEnabled(
         "updating cluster config in sys-catalog"));
     l.Commit();
   }
+
+  CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -6062,6 +6088,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     }
   }
 
+  CreateXClusterSafeTimeTableAndStartService();
+
   return Status::OK();
 }
 
@@ -6121,6 +6149,8 @@ Status CatalogManager::RenameUniverseReplication(
     universe_replication_map_[new_producer_universe_id] = new_ri;
     universe_replication_map_.erase(old_universe_replication_id);
   }
+
+  CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -6314,6 +6344,8 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
   RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
                             "Updating cluster config in sys-catalog"));
   l.Commit();
+
+  CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -6871,6 +6903,7 @@ Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
 }
 
 void CatalogManager::Started() {
+  super::Started();
   snapshot_coordinator_.Start();
 }
 
@@ -6892,7 +6925,8 @@ bool CatalogManager::IsPitrActive() {
 }
 
 void CatalogManager::SysCatalogLoaded(int64_t term) {
-  return snapshot_coordinator_.SysCatalogLoaded(term);
+  super::SysCatalogLoaded(term);
+  snapshot_coordinator_.SysCatalogLoaded(term);
 }
 
 Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {

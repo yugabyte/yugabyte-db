@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -28,14 +29,15 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Before;
 import org.yb.client.YBClient;
+import play.libs.Json;
 
 public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected static final String AZ_CODE = "az-1";
@@ -67,6 +69,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     dummyShellResponse.message = "true";
     preflightResponse = new ShellResponse();
     preflightResponse.message = "{\"test\": true}";
+    AtomicInteger masterIpCnt = new AtomicInteger();
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {
@@ -78,17 +81,18 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
-                if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
-                } else {
-                  listResponse.message =
-                      "{\"universe_uuid\":\""
-                          + params.universeUUID
-                          + "\", "
-                          + "\"node_uuid\": \""
-                          + params.nodeUuid
-                          + "\"}";
+                ObjectNode respJson =
+                    (ObjectNode) Json.parse("{\"universe_uuid\":\"" + params.universeUUID + "\"}");
+                Universe universe = Universe.getOrBadRequest(params.universeUUID);
+                NodeDetails nodeDetails = universe.getNode(params.nodeName);
+                if (nodeDetails != null
+                    && nodeDetails.dedicatedTo == UniverseDefinitionTaskBase.ServerType.MASTER) {
+                  respJson.put("private_ip", "10.0.0." + masterIpCnt.incrementAndGet());
                 }
+                if (params.nodeUuid != null) {
+                  respJson.put("node_uuid", params.nodeUuid.toString());
+                }
+                listResponse.message = respJson.toString();
                 return listResponse;
               }
               return dummyShellResponse;

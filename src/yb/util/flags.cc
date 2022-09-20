@@ -179,6 +179,7 @@ TAG_FLAG(v, runtime);
 
 DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
+TAG_FLAG(vmodule, runtime);
 TAG_FLAG(vmodule, advanced);
 
 DECLARE_bool(symbolize_stacktrace);
@@ -285,15 +286,7 @@ static string DescribeOneFlagInXML(
     AppendXMLTag("initial", auto_flag_desc->initial_val, &r);
     AppendXMLTag("target", auto_flag_desc->target_val, &r);
   } else {
-    if (only_display_default_values) {
-      // gFlags have one hard-coded static default value in all programs that include the file
-      // where it was defined. Programs that need custom defaults set the flag at runtime before the
-      // call to ParseCommandLineFlags. So the current value is technically the default value used
-      // by this program.
-      AppendXMLTag("default", flag.current_value, &r);
-    } else {
-      AppendXMLTag("default", flag.default_value, &r);
-    }
+    AppendXMLTag("default", flag.default_value, &r);
   }
 
   if (!only_display_default_values) {
@@ -351,9 +344,32 @@ void ShowVersionAndExit() {
   exit(0);
 }
 
-} // anonymous namespace
+void SetFlagDefaultsToCurrent() {
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  for (const auto& flag_info : flag_infos) {
+    if (!flag_info.is_default) {
+      // This is not expected to fail as we are setting default to the already validated current
+      // value.
+      CHECK(!gflags::SetCommandLineOptionWithMode(
+                 flag_info.name.c_str(),
+                 flag_info.current_value.c_str(),
+                 gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+                 .empty());
+    }
+  }
+}
+
+}  // anonymous namespace
 
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+  // gFlags have one hard-coded static default value in all programs that include the file
+  // where it was defined. Programs that need custom defaults set the flag at runtime before the
+  // call to ParseCommandLineFlags. So the current value is technically the default value used
+  // by this program.
+  SetFlagDefaultsToCurrent();
+
   int ret = google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
 
   if (FLAGS_TEST_promote_all_auto_flags) {
@@ -380,8 +396,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    FLAGS_heap_profile_path = strings::Substitute(
-        "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path =
+        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    CHECK_OK(SetFlagDefaultAndCurrent("heap_profile_path", path));
   }
 
 #ifdef TCMALLOC_ENABLED
@@ -407,6 +424,22 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   return true;
+}
+
+Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value) {
+  // SetCommandLineOptionWithMode returns non-empty string on success
+  if (!gflags::SetCommandLineOptionWithMode(
+           flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+           .empty()) {
+    // This is not expected to fail
+    CHECK(!gflags::SetCommandLineOptionWithMode(
+               flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_VALUE)
+               .empty());
+
+    return Status::OK();
+  }
+
+  return STATUS_FORMAT(InvalidArgument, "Failed to set flag $0 to value $1", flag_name, value);
 }
 
 } // namespace yb

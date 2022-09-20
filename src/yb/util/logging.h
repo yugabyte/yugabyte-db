@@ -229,9 +229,6 @@ void GetFullLogFilename(google::LogSeverity severity, std::string* filename);
 // flushed.
 void ShutdownLoggingSafe();
 
-// Writes all command-line flags to the log at level INFO.
-void LogCommandLineFlags();
-
 // Internal function. Used by tooling for integrating with PostgreSQL C codebase.
 void InitializeGoogleLogging(const char *arg);
 

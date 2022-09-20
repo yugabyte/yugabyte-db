@@ -97,6 +97,7 @@ static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus **backendStatusArrayPointer = NULL;
+extern int too_many_conn;
 
 static long last_cache_misses_val = 0;
 
@@ -363,7 +364,7 @@ webserver_worker_main(Datum unused)
   callbacks.getTimestampTzDiffMs = getElapsedMs;
   callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz);
+  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &too_many_conn);
 
   HandleYBStatus(StartWebserver(webserver));
 

@@ -41,6 +41,7 @@ import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty
 import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { BackupThrottleParameters } from './BackupThrottleParameters';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -131,6 +132,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
   const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
+  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
@@ -200,6 +202,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showDetails, setShowDetails] = useState<IBackup | null>(null);
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+
+  const featureFlags = useSelector((reduxState: any) => reduxState.featureFlags);
+
+  const YBCEnabled = featureFlags.test.enableYbc || featureFlags.released.enableYbc;
 
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
   const [cancelBackupDetails, setCancelBackupDetails] = useState<IBackup | null>(null);
@@ -445,6 +451,16 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                 >
                   Advanced Restore
                 </MenuItem>
+                {YBCEnabled && (
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowThrottleParametersModal(true);
+                    }}
+                  >
+                    Configure Throttle Parameters
+                  </MenuItem>
+                )}
               </DropdownButton>
             </>
           )}
@@ -624,6 +640,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           }}
           visible={showAdvancedRestore}
           currentUniverseUUID={universeUUID}
+        />
+      )}
+      {allowTakingBackup && YBCEnabled && (
+        <BackupThrottleParameters
+          visible={showThrottleParametersModal}
+          onHide={() => setShowThrottleParametersModal(false)}
+          currentUniverseUUID={universeUUID!}
         />
       )}
     </Row>

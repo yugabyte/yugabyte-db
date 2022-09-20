@@ -23,6 +23,7 @@ from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, remote_exec_command)
 from ybops.utils.remote_shell import RemoteShell
+from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port
 
 
@@ -221,7 +222,7 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "[app] Could not run bootscript {} {}".format(stdout, stderr))
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
@@ -240,7 +241,7 @@ class AbstractCloud(AbstractCommandParser):
             extra_vars["ssh_user"], args.private_key_file, cmd,
             ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "Could not configure second nic {} {}".format(stdout, stderr))
         # Since this is on start, wait for ssh on default port
         # Reboot instance
@@ -254,7 +255,7 @@ class AbstractCloud(AbstractCommandParser):
                         ssh2_enabled=args.ssh2_enabled):
             pass
         else:
-            raise YBOpsRuntimeError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
+            raise YBOpsRecoverableError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
 
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
@@ -262,7 +263,7 @@ class AbstractCloud(AbstractCommandParser):
                                                  'ls /tmp/dhclient-script-*',
                                                  ssh2_enabled=args.ssh2_enabled)
         if rc:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "Second nic not configured at start up")
 
     # Compare certificate content and return
@@ -734,7 +735,7 @@ class AbstractCloud(AbstractCommandParser):
             ssh2_enabled=args.ssh2_enabled
         )
         if rc != 0:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
                     args.search_pattern, stdout, stderr))
         if len(stdout) > 0:
@@ -745,3 +746,6 @@ class AbstractCloud(AbstractCommandParser):
 
     def get_console_output(self, args):
         return ''
+
+    def reboot_instance(self, args, ssh_ports):
+        pass

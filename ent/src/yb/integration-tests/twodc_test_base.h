@@ -82,14 +82,33 @@ class TwoDCTestBase : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
+    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
+  Status InitClusters(const MiniClusterOptions& opts);
+
   void TearDown() override;
+
+  Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
+  Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
+
+  static Result<client::YBTableName> CreateTable(
+      YBClient* client, const std::string& namespace_name, const std::string& table_name,
+      uint32_t num_tablets, const client::YBSchema* schema);
+
+  Status SetupUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
+
+  Status SetupUniverseReplication(
+      const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      bool leader_only = true);
+
+  Status SetupReverseUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables);
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -101,6 +120,11 @@ class TwoDCTestBase : public YBTest {
       const std::string& universe_id, const std::string& producer_ns_name,
       const YQLDatabase& producer_ns_type,
       bool leader_only = true);
+
+  Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
+
+  Status VerifyUniverseReplication(
+      const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
 
   Status VerifyUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -130,7 +154,7 @@ class TwoDCTestBase : public YBTest {
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
-  Status DeleteUniverseReplication(const std::string& universe_id);
+  Status DeleteUniverseReplication(const std::string& universe_id = kUniverseId);
 
   Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);

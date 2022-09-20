@@ -472,8 +472,6 @@ Status ClusterConfigLoader::Visit(
   }
   // Debug confirm that there is no cluster_config_ set. This also ensures that this does not
   // visit multiple rows. Should update this, if we decide to have multiple IDs set as well.
-  std::lock_guard<decltype(catalog_manager_->config_mutex_)> config_lock(
-      catalog_manager_->config_mutex_);
   DCHECK(!catalog_manager_->cluster_config_) << "Already have config data!";
 
   // Prepare the config object.
@@ -555,6 +553,24 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   }
 
   LOG(INFO) << "Loaded sys config type " << config_type;
+  return Status::OK();
+}
+
+////////////////////////////////////////////////////////////
+// XClusterSafeTime Loader
+////////////////////////////////////////////////////////////
+
+Status XClusterSafeTimeLoader::Visit(
+    const std::string& unused_id, const XClusterSafeTimePB& metadata) {
+  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
+  // not visit multiple rows.
+  auto l = catalog_manager_->xcluster_safe_time_info_.LockForWrite();
+  DCHECK(l->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
+
+  VLOG_WITH_FUNC(2) << "Loading XCluster Safe Time data: " << metadata.DebugString();
+  l.mutable_data()->pb.CopyFrom(metadata);
+  l.Commit();
+
   return Status::OK();
 }
 

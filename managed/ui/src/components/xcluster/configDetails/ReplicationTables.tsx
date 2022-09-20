@@ -21,7 +21,7 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { Replication, ReplicationTable } from '../XClusterReplicationTypes';
+import { Replication, ReplicationTable } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
 

@@ -24,6 +24,8 @@
 
 #include "yb/consensus/log_fwd.h"
 
+#include "yb/docdb/local_waiting_txn_registry.h"
+
 #include "yb/server/server_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -77,6 +79,7 @@ struct TabletInitData {
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
+  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
 };
 
 } // namespace tablet

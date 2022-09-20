@@ -1,0 +1,3 @@
+test: yb-pessimistic-locking-single-shard-waiter-unlocks
+# TODO(pessimistic): Enable this test when this problem is fixed.
+# test: yb-pessimistic-locking-single-shard-waiters-same-tablet

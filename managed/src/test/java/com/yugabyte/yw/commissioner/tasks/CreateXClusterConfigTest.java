@@ -14,6 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -42,10 +44,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes;
+import org.yb.Schema;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
@@ -135,6 +139,40 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     //    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
+    GetTableSchemaResponse mockTableSchemaResponseTable1 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID1",
+            exampleTableID1,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    GetTableSchemaResponse mockTableSchemaResponseTable2 =
+        new GetTableSchemaResponse(
+            0,
+            "",
+            new Schema(Collections.emptyList()),
+            namespace1Name,
+            "exampleTableID2",
+            exampleTableID2,
+            null,
+            true,
+            CommonTypes.TableType.YQL_TABLE_TYPE,
+            Collections.emptyList());
+    try {
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+          .thenReturn(mockTableSchemaResponseTable1);
+      lenient()
+          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+          .thenReturn(mockTableSchemaResponseTable2);
+    } catch (Exception ignored) {
+    }
   }
 
   private TaskInfo submitTask(XClusterConfig xClusterConfig) {
@@ -228,7 +266,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreate() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -261,7 +299,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreateHAEnabled() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -293,34 +331,9 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testCreateXClusterStateNotInit() {
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Updating);
-
-    TaskInfo taskInfo = submitTask(xClusterConfig);
-    assertNotNull(taskInfo);
-    assertEquals(Failure, taskInfo.getTaskState());
-
-    String taskErrMsg = taskInfo.getTaskDetails().get("errorString").asText();
-    String expectedErrMsg =
-        String.format(
-            "XClusterConfig(%s) must be in `Init` state to create replication for",
-            xClusterConfig.uuid);
-    assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
-
-    targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertFalse("universe unlocked", targetUniverse.universeIsLocked());
-    assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
-    assertFalse("update failed", targetUniverse.getUniverseDetails().updateSucceeded);
-
-    xClusterConfig.delete();
-  }
-
-  @Test
   public void testCreateXClusterSetupFailure() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();
@@ -360,7 +373,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   @Test
   public void testCreateXClusterIsSetupDoneFailure() {
     XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Initialized);
 
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 2);
     initClientGetTablesList();

@@ -502,6 +502,7 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
     // Lower SST block size to have multiple entries in index and be able to detect a split key.
     tserver_flags.push_back(Format(
         "--db_block_size_bytes=$0", std::min(FLAGS_db_block_size_bytes, kSplitThreshold / 8)));
+    tserver_flags.push_back("--cleanup_split_tablets_interval_sec=5");
 
     for (auto& flag : common_flags) {
       master_flags.push_back(flag);

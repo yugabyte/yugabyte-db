@@ -77,7 +77,8 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     thread_pool_(thread_pool),
     rpcs_(rpcs),
     poll_handle_(rpcs_->InvalidHandle()),
-    cdc_consumer_(cdc_consumer) {}
+    cdc_consumer_(cdc_consumer),
+    producer_safe_time_(HybridTime::kInvalid) {}
 
 CDCPoller::~CDCPoller() {
   rpcs_->Abort({&poll_handle_});
@@ -186,6 +187,21 @@ void CDCPoller::DoPoll() {
   (**poll_handle_).SendRpc();
 }
 
+HybridTime CDCPoller::GetSafeTime() const {
+  SharedLock lock(safe_time_lock_);
+  return producer_safe_time_;
+}
+
+void CDCPoller::UpdateSafeTime(int64 new_time) {
+  HybridTime new_hybrid_time(new_time);
+  if (!new_hybrid_time.is_special()) {
+    std::lock_guard l(safe_time_lock_);
+    if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
+      producer_safe_time_ = new_hybrid_time;
+    }
+  }
+}
+
 void CDCPoller::HandlePoll(yb::Status status,
                            std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   RETURN_WHEN_OFFLINE();
@@ -256,10 +272,14 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
 
   idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
+
   if (validated_schema_version_ < response.wait_for_version) {
     is_polling_ = false;
     validated_schema_version_ = response.wait_for_version - 1;
   } else {
+    // Once all changes have been successfully applied we can update the safe time
+    UpdateSafeTime(resp_->safe_hybrid_time());
+
     Poll();
   }
 }

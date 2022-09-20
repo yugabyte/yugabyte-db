@@ -25,9 +25,9 @@
 #     newTab = true
 
 [[top_nav]]
-  name = "Get Started"
+  name = "Start Now"
   weight = 3
-  url = "https://download.yugabyte.com"
+  url = "https://cloud.yugabyte.com/signup"
   [top_nav.params]
     newTab = true
 
@@ -92,14 +92,6 @@
   parent = "documentation"
 
 [[main]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/apache-kafka/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
-
-[[main]]
   name = "Reference"
   weight = 12
   url = "/architecture/"
@@ -143,11 +135,19 @@
     excludeVersion = true
 
 [[main]]
-  name = "Release Notes"
+  name = "Integrations"
   weight = 4
+  url = "/preview/integrations/apache-kafka/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Release Notes"
+  weight = 5
   url = "/preview/releases/"
   [main.params]
     excludeVersion = true
+
 
 ########## Bottom menu for left navigation
 

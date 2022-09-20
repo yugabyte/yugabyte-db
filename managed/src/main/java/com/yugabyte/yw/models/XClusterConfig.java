@@ -68,11 +68,11 @@ public class XClusterConfig extends Model {
   public XClusterConfigStatusType status;
 
   public enum XClusterConfigStatusType {
-    Init("Init"),
+    Initialized("Initialized"),
     Running("Running"),
     Updating("Updating"),
     DeletedUniverse("DeletedUniverse"),
-    Deleted("Deleted"),
+    DeletionFailed("DeletionFailed"),
     Failed("Failed");
 
     private final String status;
@@ -216,6 +216,32 @@ public class XClusterConfig extends Model {
           addTableConfig(tableConfig);
         });
     update();
+  }
+
+  @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
+    Set<String> nonExistingTableIds =
+        tableIds
+            .stream()
+            .filter(tableId -> !this.getTables().contains(tableId))
+            .collect(Collectors.toSet());
+    Set<String> nonExistingTableIdsNeedBootstrap = null;
+    if (tableIdsNeedBootstrap != null) {
+      nonExistingTableIdsNeedBootstrap =
+          tableIdsNeedBootstrap
+              .stream()
+              .filter(nonExistingTableIds::contains)
+              .collect(Collectors.toSet());
+    }
+    addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+  }
+
+  @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds, null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
@@ -388,6 +414,13 @@ public class XClusterConfig extends Model {
     }
   }
 
+  public void reset() {
+    this.status = XClusterConfigStatusType.Initialized;
+    this.paused = false;
+    this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
+    this.update();
+  }
+
   @Transactional
   public static XClusterConfig create(
       String name,
@@ -411,7 +444,8 @@ public class XClusterConfig extends Model {
   @Transactional
   public static XClusterConfig create(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    return create(name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Init);
+    return create(
+        name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Initialized);
   }
 
   @Transactional
@@ -541,6 +575,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Set<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdsInXClusterConfig = getTables();
     tableIds.forEach(
         tableId -> {
@@ -554,6 +591,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Collection<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdSet = new HashSet<>(tableIds);
     // Ensure there is no duplicate in the tableIds collection.
     if (tableIds.size() != tableIdSet.size()) {

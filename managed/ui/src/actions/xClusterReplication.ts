@@ -1,8 +1,10 @@
-import { Replication, ReplicationStatus, TableReplicationMetric } from '../components/xcluster';
 import axios from 'axios';
-import { ROOT_URL } from '../config';
 import moment from 'moment';
+
+import { ROOT_URL } from '../config';
+import { Replication, TableReplicationMetric } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
+import { XClusterConfigState } from '../components/xcluster/constants';
 
 export function getUniverseInfo(universeUUID: string) {
   const cUUID = localStorage.getItem('customerId');
@@ -37,14 +39,14 @@ export function createXClusterReplication(
 export function getXclusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
-    .get(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
+    .get<Replication>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
     .then((resp) => resp.data);
 }
 
-export function changeXClusterStatus(replication: Replication, status: ReplicationStatus) {
+export function editXClusterState(replication: Replication, state: XClusterConfigState) {
   const customerId = localStorage.getItem('customerId');
   return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
-    status
+    status: state
   });
 }
 

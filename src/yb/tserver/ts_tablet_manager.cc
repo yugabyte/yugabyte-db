@@ -203,6 +203,10 @@ DEFINE_int32(cleanup_metrics_interval_sec, 60,
              "The tick interval time for the metrics cleanup background task. "
              "If set to 0, it disables the background task.");
 
+DEFINE_int32(send_wait_for_report_interval_ms, 60000,
+             "The tick interval time to trigger updating all transaction coordinators with wait-for"
+             " relationships.");
+
 DEFINE_bool(skip_tablet_data_verification, false,
             "Skip checking tablet data for corruption.");
 
@@ -230,6 +234,11 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
+
+DEFINE_bool(enable_pessimistic_locking, false,
+            "If true, use pessimistic locking behavior in conflict resolution.");
+TAG_FLAG(enable_pessimistic_locking, evolving);
+TAG_FLAG(enable_pessimistic_locking, hidden);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -343,6 +352,10 @@ void TSTabletManager::VerifyTabletData() {
 void TSTabletManager::CleanupOldMetrics() {
   VLOG(2) << "Cleaning up old metrics";
   metric_registry_->RetireOldMetrics();
+}
+
+void TSTabletManager::PollWaitingTxnRegistry() {
+  DCHECK_NOTNULL(waiting_txn_registry_)->SendWaitForGraph();
 }
 
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
@@ -474,6 +487,11 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
+  if (FLAGS_enable_pessimistic_locking) {
+    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+        client_future(), scoped_refptr<server::Clock>(server_->clock()));
+  }
+
   deque<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
@@ -534,6 +552,9 @@ Status TSTabletManager::Init() {
   metrics_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupOldMetrics, this));
 
+  waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
+      LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
+
   return Status::OK();
 }
 
@@ -591,6 +612,11 @@ Status TSTabletManager::Start() {
   } else {
     LOG(INFO)
         << "Old metrics cleanup is disabled by cleanup_metrics_interval_sec flag set to 0";
+  }
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_poller_->Start(
+        &server_->messenger()->scheduler(), FLAGS_send_wait_for_report_interval_ms * 1ms);
   }
 
   return Status::OK();
@@ -1452,7 +1478,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           &TSTabletManager::AllowedHistoryCutoff, this, _1),
       .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
         return server->TransactionManager();
-      }
+      },
+      .waiting_txn_registry = waiting_txn_registry_.get(),
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1580,6 +1607,8 @@ void TSTabletManager::StartShutdown() {
 
   metrics_cleaner_->Shutdown();
 
+  waiting_txn_registry_poller_->Shutdown();
+
   mem_manager_->Shutdown();
 
   // Wait for all RBS operations to finish.
@@ -1628,6 +1657,10 @@ void TSTabletManager::StartShutdown() {
   }
 
   multi_raft_manager_->StartShutdown();
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_->StartShutdown();
+  }
 }
 
 void TSTabletManager::CompleteShutdown() {
@@ -1670,6 +1703,10 @@ void TSTabletManager::CompleteShutdown() {
   }
 
   multi_raft_manager_->CompleteShutdown();
+
+  if (waiting_txn_registry_) {
+    waiting_txn_registry_->CompleteShutdown();
+  }
 }
 
 std::string TSTabletManager::LogPrefix() const {

@@ -159,4 +159,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
       }
     }
   }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
 }

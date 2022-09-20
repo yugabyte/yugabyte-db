@@ -294,6 +294,36 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean tserverChanged,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
+    upgradePodsTask(
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        waitTime,
+        universeOverridesStr,
+        azOverridesStr,
+        masterChanged,
+        tserverChanged,
+        newNamingStyle,
+        isReadOnlyCluster,
+        CommandType.HELM_UPGRADE);
+  }
+
+  public void upgradePodsTask(
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      int waitTime,
+      String universeOverridesStr,
+      String azOverridesStr,
+      boolean masterChanged,
+      boolean tserverChanged,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -341,7 +371,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
 
     Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
-    Map<String, Object> azsOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
+    Map<String, Object> azsOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -415,8 +445,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
+        String podName =
+            getPodName(
+                partition,
+                azCode,
+                serverType,
+                nodePrefix,
+                isMultiAz,
+                newNamingStyle,
+                isReadOnlyCluster);
         createSingleKubernetesExecutorTaskForServerType(
-            CommandType.HELM_UPGRADE,
+            commandType,
             tempPI,
             azCode,
             masterAddresses,
@@ -427,16 +466,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             tserverPartition,
             universeOverrides,
             azOverrides,
-            isReadOnlyCluster);
-        String podName =
-            getPodName(
-                partition,
-                azCode,
-                serverType,
-                nodePrefix,
-                isMultiAz,
-                newNamingStyle,
-                isReadOnlyCluster);
+            isReadOnlyCluster,
+            podName);
+
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
             podName,
@@ -809,7 +841,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         0 /* tserver partition */,
         null, /* universeOverrides */
         null, /* azOverrides */
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        null);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
@@ -825,7 +858,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int tserverPartition,
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      String podName) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
@@ -874,6 +908,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
+    params.podName = podName;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

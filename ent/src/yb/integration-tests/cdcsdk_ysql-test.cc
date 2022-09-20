@@ -2338,7 +2338,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestHighIntentCountPersistencyAll
   ASSERT_EQ(num_intents_after_restart, initial_num_intents);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyRemoteBootstrap)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstrap)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_update_metrics_interval_ms = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
@@ -2356,27 +2356,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyRemoteB
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
-  for (int i = 0; i < 2; ++i) {
-    ASSERT_OK(test_cluster()->AddTabletServer());
-    ASSERT_OK(test_cluster()->WaitForAllTabletServers());
-    LOG(INFO) << "Added new TServer to test cluster";
-  }
-
-  size_t leader_index_pre_shutdown = 0;
-  for (auto replica : tablets[0].replicas()) {
-    if (replica.role() == PeerRole::LEADER) {
-      for (size_t i = 0; i < test_cluster()->num_tablet_servers(); i++) {
-        if (test_cluster()->mini_tablet_server(i)->server()->permanent_uuid() ==
-            replica.ts_info().permanent_uuid()) {
-          leader_index_pre_shutdown = i;
-          LOG(INFO) << "Found leader index: " << i;
-          break;
-        }
-      }
-      break;
-    }
-  }
-
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
@@ -2386,22 +2365,38 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyRemoteB
   change_resp_1 =
     ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
+  size_t first_leader_index = -1;
+  size_t first_follower_index = -1;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  if (first_leader_index == 0) {
+    // We want to avoid the scenario where the first TServer is the leader, since we want to shut
+    // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy based
+    // on the first TServer's address and we want to avoid the network issues.
+    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    std::swap(first_leader_index, first_follower_index);
+  }
+
   ASSERT_OK(WriteRowsHelper(100 /* start */, 200 /* end */, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  SleepFor(MonoDelta::FromSeconds(10));
 
-  // Shutdown tserver hosting tablet leader.
-  test_cluster()->mini_tablet_server(leader_index_pre_shutdown)->Shutdown();
+  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  // Shutdown tserver hosting tablet initial leader, now it is a follower.
+  test_cluster()->mini_tablet_server(first_leader_index)->Shutdown();
   LOG(INFO) << "TServer hosting tablet leader shutdown";
-  SleepFor(MonoDelta::FromSeconds(90));
+
+  change_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  // Restart the tserver hosting the initial leader.
+  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(first_leader_index)->WaitStarted());
+  SleepFor(MonoDelta::FromSeconds(1));
 
   OpId last_seen_checkpoint_op_id = OpId::Invalid();
   int64 last_seen_num_intents = -1;
   for (uint32_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
-    if (i == leader_index_pre_shutdown) continue;
-
     auto tablet_peer_result = test_cluster()->GetTabletManager(i)->GetServingTablet(
         tablets[0].tablet_id());
     if (!tablet_peer_result.ok()) {

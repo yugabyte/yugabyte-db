@@ -34,7 +34,7 @@
 
 namespace yb {
 
-YB_STRONGLY_TYPED_UUID(ClientId);
+YB_STRONGLY_TYPED_UUID_DECL(ClientId);
 typedef int64_t RetryableRequestId;
 
 // Special value which is used to initialize starting RetryableRequestId for the client and tablet

@@ -11,29 +11,29 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList } from '../../../actions/universe';
 import {
   getXclusterConfig,
-  changeXClusterStatus,
   deleteXclusterConfig,
-  fetchTaskUntilItCompletes
+  fetchTaskUntilItCompletes,
+  editXClusterState
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
-import { Replication } from '../XClusterReplicationTypes';
-import { ReplicationStatus, TRANSITORY_STATES } from '../constants';
+import { Replication } from '../XClusterTypes';
+import { ReplicationAction, TRANSITORY_STATES, XClusterConfigState } from '../constants';
 import {
   findUniverseName,
   GetConfiguredThreshold,
   GetCurrentLag,
-  getReplicationStatus,
-  isChangeDisabled
+  getEnabledConfigActions
 } from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
 import { ReplicationOverview } from './ReplicationOverview';
+import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 
 import './ReplicationDetails.scss';
 
@@ -73,11 +73,11 @@ export function ReplicationDetails({ params }: Props) {
     }
   }, 20_000);
 
-  const switchReplicationStatus = useMutation(
+  const toggleConfigPausedState = useMutation(
     (replication: Replication) => {
-      return changeXClusterStatus(
+      return editXClusterState(
         replication,
-        replication.paused ? ReplicationStatus.RUNNING : ReplicationStatus.PAUSED
+        replication.paused ? XClusterConfigState.RUNNING : XClusterConfigState.PAUSED
       );
     },
     {
@@ -143,10 +143,15 @@ export function ReplicationDetails({ params }: Props) {
                 <YBButton
                   btnText={`${replication.paused ? 'Enable' : 'Pause'} Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
-                  disabled={isChangeDisabled(replication?.status)}
+                  disabled={
+                    !_.includes(
+                      getEnabledConfigActions(replication),
+                      replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE
+                    )
+                  }
                   onClick={() => {
                     toast.success('Please wait...');
-                    switchReplicationStatus.mutateAsync(replication);
+                    toggleConfigPausedState.mutateAsync(replication);
                   }}
                 />
                 <ButtonGroup className="more-actions-button">
@@ -154,19 +159,30 @@ export function ReplicationDetails({ params }: Props) {
                     <MenuItem
                       eventKey="1"
                       onClick={(e) => {
-                        if (!isChangeDisabled(replication?.status)) {
+                        if (
+                          _.includes(getEnabledConfigActions(replication), ReplicationAction.EDIT)
+                        ) {
                           dispatch(openDialog('editReplicationConfiguration'));
                         }
                       }}
-                      disabled={isChangeDisabled(replication?.status)}
+                      disabled={
+                        !_.includes(getEnabledConfigActions(replication), ReplicationAction.EDIT)
+                      }
                     >
                       Edit replication configurations
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
                       onClick={() => {
-                        dispatch(openDialog('deleteReplicationModal'));
+                        if (
+                          _.includes(getEnabledConfigActions(replication), ReplicationAction.DELETE)
+                        ) {
+                          dispatch(openDialog('deleteReplicationModal'));
+                        }
                       }}
+                      disabled={
+                        !_.includes(getEnabledConfigActions(replication), ReplicationAction.DELETE)
+                      }
                     >
                       Delete replication
                     </MenuItem>
@@ -176,7 +192,9 @@ export function ReplicationDetails({ params }: Props) {
             </Col>
           </Row>
           <Row className="replication-status">
-            <Col lg={4}>Replication Status {getReplicationStatus(replication)}</Col>
+            <Col lg={4}>
+              Replication Status <XClusterConfigStatusLabel xClusterConfig={replication} />
+            </Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
                 <Row>

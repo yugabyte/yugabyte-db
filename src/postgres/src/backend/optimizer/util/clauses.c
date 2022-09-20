@@ -1591,6 +1591,12 @@ contain_leaked_vars_walker(Node *node, void *context)
 			 */
 			break;
 
+		case T_YbBatchedExpr:
+			{
+				contain_leaked_vars_walker(
+					(Node *) ((YbBatchedExpr*) node)->orig_expr, context);
+				break;
+			}
 		case T_FuncExpr:
 		case T_OpExpr:
 		case T_DistinctExpr:

@@ -45,7 +45,7 @@ public class RebootUniverse extends UpgradeTaskBase {
                 Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");
           }
 
-          LinkedHashSet<NodeDetails> nodes = toOrderedSet(fetchNodes(taskParams().upgradeOption));
+          LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->
                   createRebootTasks(nodez).setSubTaskGroupType(getTaskSubGroupType()),

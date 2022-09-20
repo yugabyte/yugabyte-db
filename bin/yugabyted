@@ -17,6 +17,7 @@ import time
 import traceback
 import uuid
 import tempfile
+import socket
 import tarfile
 import operator
 import string
@@ -841,7 +842,7 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
             [
-                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
@@ -1825,7 +1826,9 @@ class ControlScript(object):
         status += div_line
         for k, v in status_info:
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k, v)
+            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k,
+                                                                              v if v is not None
+                                                                              else "None")
         status += div_line
         return status
 
@@ -1929,6 +1932,25 @@ class ControlScript(object):
         except (OSError, subprocess.CalledProcessError) as e:
             Output.log("Failed to find java: {}".format(e), logging.ERROR)
             return False
+
+    def find_ip_address_of_node(self):
+
+        host_name = self.find_hostname_of_node()
+        host_ip = socket.gethostbyname(host_name)
+
+        return host_ip
+
+    def find_hostname_of_node(self):
+        fqdn = socket.getfqdn()
+
+        if "localhost" in fqdn:
+            fqdn = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET,
+                                  socket.SOCK_DGRAM, socket.IPPROTO_IP,
+                                  socket.AI_CANONNAME)[0][3]
+            if "localhost" in fqdn:
+                fqdn = socket.gethostname()
+
+        return fqdn
 
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
@@ -2045,7 +2067,10 @@ class ControlScript(object):
                         ": --listen and --advertise_address flags " +
                         "are same. --listen is depricated. Can't have different values for them.")
                     has_errors = True
-                self.configs.saved_data["advertise_address"] = args.listen
+                args.advertise_address = args.listen
+
+            if args.advertise_address is None and OS_NAME == "Linux":
+                args.advertise_address = self.find_ip_address_of_node()
 
             if args.daemon is not None:
                 if args.background is not None and \
@@ -2059,15 +2084,21 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
-            if not args.secure and not args.insecure:
-                args.insecure = True
+            if args.secure and args.insecure:
+                has_errors = True
+                Output.print_out(Output.make_red("ERROR") +
+                    ": --secure flag can't be used together with --insecure flag")
 
-            if args.secure:
-                if args.insecure:
+            if args.certs_dir is not None:
+                if not args.secure:
                     has_errors = True
                     Output.print_out(Output.make_red("ERROR") +
-                        ": --secure flag can't be used together with --insecure flag")
-                elif args.certs_dir is None:
+                        ": --certs_dir flag needs to be accompanied with the --secure flag.")
+
+            if args.insecure:
+                args.secure=False
+            elif args.secure:
+                if args.certs_dir is None:
                     has_errors = True
                     Output.print_out(Output.make_red("ERROR") +
                         ": --secure flag needs to be accompanied with the path " +
@@ -2077,16 +2108,12 @@ class ControlScript(object):
                     Output.print_out(Output.make_red("ERROR") +
                         ": certs directory provided does not exist.")
 
+                args.insecure=False
                 args.ysql_enable_auth="true"
                 args.use_cassandra_authentication="true"
-                self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
+                if args.certs_dir:
+                    self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                         "ca.crt")
-
-            if args.certs_dir is not None:
-                if not args.secure:
-                    has_errors = True
-                    Output.print_out(Output.make_red("ERROR") +
-                        ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
@@ -2276,9 +2303,11 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--secure", help="Start the cluster in a secure manner", action="store_true")
+                "--secure", help="Start the cluster in a secure manner", action="store_true",
+                    default=None)
             cur_parser.add_argument(
-                "--insecure", help="Start the cluster in an insecure manner", action="store_true")
+                "--insecure", help="Start the cluster in an insecure manner", action="store_true",
+                    default=None)
             cur_parser.add_argument(
                 "--certs_dir", help="Path to the certificates to be used for secure deployment.",
                 metavar="")

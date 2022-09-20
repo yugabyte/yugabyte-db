@@ -1,12 +1,15 @@
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
+import clsx from 'clsx';
+
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
 import { ConfigureMaxLagTimeModal } from './ConfigureMaxLagTimeModal';
 import { ConfigureReplicationModal } from './ConfigureReplicationModal';
+import { XClusterConfigList } from './XClusterConfigList';
 
-import { ReplicationList } from './ReplicationList';
+import styles from './Replication.module.scss';
 
 export default function Replication({ currentUniverseUUID }: { currentUniverseUUID: string }) {
   const dispatch = useDispatch();
@@ -29,11 +32,11 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
           <h3>Replication</h3>
         </Col>
         <Col lg={6}>
-          <Row className="cluster_action">
+          <Row className={styles.configActionsContainer}>
             <Row>
               <YBButton
                 btnText="Max acceptable lag time"
-                btnClass={'btn configure-max-lag'}
+                btnClass={clsx('btn', styles.setMaxAcceptableLagBtn)}
                 btnIcon="fa fa-bell-o"
                 onClick={showConfigureMaxLagTimeModal}
               />
@@ -43,8 +46,8 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
                 onClick={showAddClusterReplicationModal}
               />
             </Row>
-            <Row className="cluster_support_text">
-              <i className="fa fa-exclamation-circle"></i> For replicating a source universe with
+            <Row className={styles.configSupportText}>
+              <i className="fa fa-exclamation-circle" /> For replicating a source universe with
               existing data, please{' '}
               <a
                 href="https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/#bootstrapping-a-sink-cluster"
@@ -57,9 +60,9 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
           </Row>
         </Col>
       </Row>
-      <Row className="replication-list">
+      <Row>
         <Col lg={12}>
-          <ReplicationList currentUniverseUUID={currentUniverseUUID} />
+          <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
           <ConfigureReplicationModal
             currentUniverseUUID={currentUniverseUUID}
             onHide={hideModal}

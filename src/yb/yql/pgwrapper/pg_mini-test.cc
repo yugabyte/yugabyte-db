@@ -189,6 +189,12 @@ class PgMiniTest : public PgMiniTestBase {
     LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
   }
 
+  void CreateDBWithTablegroupAndTables(
+      const std::string database_name, const std::string tablegroup_name, const int num_tables,
+      const int keys, PGConn* conn);
+
+  void VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables);
+
   void RunManyConcurrentReadersTest();
 };
 
@@ -200,6 +206,9 @@ class PgMiniSingleTServerTest : public PgMiniTest {
 };
 
 class PgMiniMasterFailoverTest : public PgMiniTest {
+ protected:
+  void ElectNewLeaderAfterShutdown();
+
  public:
   size_t NumMasters() override {
     return 3;
@@ -1691,6 +1700,18 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
 
+void PgMiniMasterFailoverTest::ElectNewLeaderAfterShutdown() {
+  // Failover to a new master.
+  LOG(INFO) << "Failover to new Master";
+  auto old_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  auto new_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_NE(nullptr, new_master);
+  ASSERT_NE(old_master, new_master);
+  // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
+}
+
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
           PgMiniMasterFailoverTest) {
   const std::string kDatabaseName = "testdb";
@@ -1704,15 +1725,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
       ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
     }
   }
-  // Failover to a new master.
-  LOG(INFO) << "Failover to new Master";
-  auto old_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
-  auto new_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  ASSERT_NE(nullptr, new_master);
-  ASSERT_NE(old_master, new_master);
-  // Wait for all the TabletServers to report in, so we can run CREATE TABLE with working replicas.
-  ASSERT_OK(cluster_->WaitForAllTabletServers());
+  ElectNewLeaderAfterShutdown();
   // Ensure we can still access the colocated DB on restart.
   {
     PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1720,6 +1733,29 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInColocatedDB),
   }
 }
 
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInTablegroup),
+    PgMiniMasterFailoverTest) {
+  const std::string database_name = "testdb";
+  const std::string tablegroup_name = "testtg";
+  // Create a DB, create some tables, delete all of them.
+  {
+    PGConn conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", database_name));
+    {
+      PGConn conn_new = ASSERT_RESULT(ConnectToDB(database_name));
+      ASSERT_OK(conn_new.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
+      ASSERT_OK(conn_new.ExecuteFormat("CREATE TABLE foo (i int) TABLEGROUP $0", tablegroup_name));
+      ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
+    }
+  }
+  ElectNewLeaderAfterShutdown();
+  // Ensure we can still access the tablegroup on restart.
+  {
+    PGConn conn_new = ASSERT_RESULT(ConnectToDB(database_name));
+    ASSERT_OK(conn_new.ExecuteFormat("CREATE TABLE foo (i int) TABLEGROUP $0", tablegroup_name));
+  }
+}
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   auto conn = ASSERT_RESULT(Connect());
@@ -2684,6 +2720,28 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
       << "Update status: " << update_status << ".\n";
 }
 
+void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables) {
+  ASSERT_OK(cluster_->FlushTablets());
+  uint64_t files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", num_tables - 1));
+  ASSERT_OK(conn->ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  uint64_t new_files_size = 0;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  }
+
+  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
+  ASSERT_LE(new_files_size * 2, files_size);
+  ASSERT_GE(new_files_size * 3, files_size);
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
@@ -2710,26 +2768,69 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
           RandomHumanReadableString(128_KB)));
     }
   }
+  VerifyFileSizeAfterCompaction(&conn, kNumTables);
+}
 
+void PgMiniTest::CreateDBWithTablegroupAndTables(
+    const std::string database_name, const std::string tablegroup_name, const int num_tables,
+    const int keys, PGConn* conn) {
+  ASSERT_OK(conn->ExecuteFormat("CREATE DATABASE $0", database_name));
+  *conn = ASSERT_RESULT(ConnectToDB(database_name));
+  ASSERT_OK(conn->ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_OK(conn->ExecuteFormat(R"#(
+        CREATE TABLE test$0 (
+          key INTEGER NOT NULL PRIMARY KEY,
+          value INTEGER,
+          string VARCHAR
+        ) tablegroup $1
+      )#", i, tablegroup_name));
+    for (int j = 0; j < keys; ++j) {
+      ASSERT_OK(conn->ExecuteFormat(
+          "INSERT INTO test$0(key, value, string) VALUES($1, -$1, '$2')", i, j,
+          RandomHumanReadableString(128_KB)));
+    }
+  }
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompaction)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  CreateDBWithTablegroupAndTables(
+      "testdb" /* database_name */,
+      "testtg" /* tablegroup_name */,
+      3 /* num_tables */,
+      100 /* keys */,
+      &conn);
+  VerifyFileSizeAfterCompaction(&conn, 3 /* num_tables */);
+}
+
+// TODO: enable this test when issue #12898 is resolved.
+// Ensure that after restart, there is no data loss in compaction.
+TEST_F(PgMiniTest, YB_DISABLE_TEST(TablegroupCompactionWithRestart)) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  const auto num_tables = 3;
+  constexpr int keys = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  CreateDBWithTablegroupAndTables(
+      "testdb" /* database_name */,
+      "testtg" /* tablegroup_name */,
+      num_tables,
+      keys,
+      &conn);
   ASSERT_OK(cluster_->FlushTablets());
-  uint64_t files_size = 0;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
-  }
-
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", kNumTables - 1));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test$0 DROP COLUMN string;", 0));
-
+  ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(cluster_->CompactTablets());
-
-  uint64_t new_files_size = 0;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    new_files_size += peer->tablet()->GetCurrentVersionSstFilesUncompressedSize();
+  conn = ASSERT_RESULT(ConnectToDB("testdb" /* database_name */));
+  for (int i = 0; i < num_tables; ++i) {
+    auto res =
+        ASSERT_RESULT(conn.template FetchValue<int64_t>(Format("SELECT COUNT(*) FROM test$0", i)));
+    ASSERT_EQ(res, keys);
   }
-
-  LOG(INFO) << "Old files size: " << files_size << ", new files size: " << new_files_size;
-  ASSERT_LE(new_files_size * 2, files_size);
-  ASSERT_GE(new_files_size * 3, files_size);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
@@ -2831,7 +2932,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
   const auto termination_duration =
       (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
   ASSERT_GT(termination_duration, 0);
-  ASSERT_LT(termination_duration, 2000);
+  ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
 } // namespace pgwrapper

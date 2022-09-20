@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -36,6 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,13 +47,16 @@ public class GFlagsUtil {
 
   public static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
 
+  private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+
+  public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
+      "default_memory_limit_to_ram_ratio";
   public static final String ENABLE_YSQL = "enable_ysql";
   public static final String YSQL_ENABLE_AUTH = "ysql_enable_auth";
   public static final String START_CQL_PROXY = "start_cql_proxy";
   public static final String USE_CASSANDRA_AUTHENTICATION = "use_cassandra_authentication";
   public static final String USE_NODE_TO_NODE_ENCRYPTION = "use_node_to_node_encryption";
   public static final String USE_CLIENT_TO_SERVER_ENCRYPTION = "use_client_to_server_encryption";
-  public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String START_REDIS_PROXY = "start_redis_proxy";
 
   public static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
@@ -86,6 +92,12 @@ public class GFlagsUtil {
   public static final String CERT_NODE_FILENAME = "cert_node_filename";
   public static final String CERTS_DIR = "certs_dir";
   public static final String CERTS_FOR_CLIENT_DIR = "certs_for_client_dir";
+
+  public static final String YBC_LOG_SUBDIR = "/controller/logs";
+  public static final String YBC_MAX_CONCURRENT_UPLOADS = "max_concurrent_uploads";
+  public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
+  public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
+  public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -171,6 +183,12 @@ public class GFlagsUtil {
             && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean useSecondaryIp = isDualNet && !legacyNet;
 
+    if (node.dedicatedTo != null) {
+      extra_gflags.put(
+          DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
+          String.valueOf(DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED));
+    }
+
     String processType = taskParam.getProperty("processType");
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
@@ -226,15 +244,21 @@ public class GFlagsUtil {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    String providerUUID = universeDetails.getClusterByUuid(node.placementUuid).userIntent.provider;
+    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
+    String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
     if (node.isMaster) {
       ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+      ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
+    }
+    if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
+      ybcFlags.putAll(userIntent.ybcFlags);
     }
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);

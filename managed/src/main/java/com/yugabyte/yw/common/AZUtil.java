@@ -190,7 +190,7 @@ public class AZUtil implements CloudUtil {
     String[] splitValues = getSplitLocationValue(backupLocation);
     String azureUrl = "https://" + splitValues[0];
     String container = splitValues.length > 1 ? splitValues[1] : "";
-    String cloudDir = commonDir + "/";
+    String cloudDir = commonDir.endsWith("/") ? commonDir : commonDir + "/";
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     String containerEndpoint = String.format("%s/%s", azureUrl, container);
     String azureSasToken = containerTokenMap.get(containerEndpoint);

@@ -27,6 +27,10 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
 #include "yb/util/metrics.h"
@@ -34,6 +38,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -72,6 +77,27 @@ class PgLibPqTest : public LibPqTestBase {
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
   void TestCacheRefreshRetry(const bool is_retry_disabled);
+
+  void CreateDatabaseWithTablegroup(
+      const string database_name, const string tablegroup_name, yb::pgwrapper::PGConn* conn);
+
+  void PerformSimultaneousTxnsAndVerifyConflicts(
+      const string database_name, bool colocated, const string tablegroup_name = "");
+
+  void FlushTablesAndPerformBootstrap(
+      const string database_name,
+      const int timeout_secs,
+      bool colocated,
+      const string tablegroup_name = "");
+
+  void AddTSToLoadBalanceSingleInstance(
+      const auto timeout, const std::map<std::string, int>& ts_loads,
+      const std::unique_ptr<yb::client::YBClient>& client);
+
+  void AddTSToLoadBalanceMultipleInstances(
+      const auto timeout, const std::unique_ptr<yb::client::YBClient>& client);
+
+  void VerifyLoadBalance(const std::map<std::string, int>& ts_loads);
 
   const std::vector<std::string> names{
     "uppercase:P",
@@ -1121,6 +1147,13 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
 
 } // namespace
 
+void PgLibPqTest::CreateDatabaseWithTablegroup(
+    const string database_name, const string tablegroup_name, yb::pgwrapper::PGConn* conn) {
+  ASSERT_OK(conn->ExecuteFormat("CREATE DATABASE $0", database_name));
+  *conn = ASSERT_RESULT(ConnectToDB(database_name));
+  ASSERT_OK(conn->ExecuteFormat("CREATE TABLEGROUP $0", tablegroup_name));
+}
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string kDatabaseName = "test_db";
@@ -1262,16 +1295,18 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
       30s, "Drop colocated database (wait for RPCs to finish)"));
 }
 
-// Test for ensuring that transaction conflicts work as expected for colocated tables.
-// Related to https://github.com/yugabyte/yugabyte-db/issues/3251.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE DATABASE test_db WITH colocated = true"));
+void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
+    const string database_name, bool colocated, const string tablegroup_name) {
+  auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
+  auto conn2 = ASSERT_RESULT(ConnectToDB(database_name));
 
-  auto conn1 = ASSERT_RESULT(ConnectToDB("test_db"));
-  auto conn2 = ASSERT_RESULT(ConnectToDB("test_db"));
+  if (colocated) {
+    ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t (a INT, PRIMARY KEY (a ASC))"));
+  } else {
+    ASSERT_OK(conn1.ExecuteFormat(
+        "CREATE TABLE t (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0", tablegroup_name));
+  }
 
-  ASSERT_OK(conn1.Execute("CREATE TABLE t (a INT, PRIMARY KEY (a ASC))"));
   ASSERT_OK(conn1.Execute("INSERT INTO t(a) VALUES(1)"));
 
   // From conn1, select the row in UPDATE row lock mode. From conn2, delete the row.
@@ -1287,8 +1322,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
 
   ASSERT_OK(conn1.CommitTransaction());
 
-  // Ensure that reads to separate tables in a colocated database do not conflict.
-  ASSERT_OK(conn1.Execute("CREATE TABLE t2 (a INT, PRIMARY KEY (a ASC))"));
+  // Ensure that reads to separate tables in a colocated database/tablegroup do not conflict.
+  if (colocated) {
+    ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t2 (a INT, PRIMARY KEY (a ASC))"));
+  } else {
+    ASSERT_OK(conn1.ExecuteFormat(
+        "CREATE TABLE t2 (a INT, PRIMARY KEY (a ASC)) TABLEGROUP $0", tablegroup_name));
+  }
+
   ASSERT_OK(conn1.Execute("INSERT INTO t2(a) VALUES(1)"));
 
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -1303,27 +1344,45 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
   ASSERT_OK(conn2.CommitTransaction());
 }
 
-// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
-// for a deleted colocated table. This is a regression test for #6096.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
-  const std::string kDatabaseName = "testdb";
-  constexpr int kTimeoutSecs = 30;
+// Test for ensuring that transaction conflicts work as expected for colocated tables.
+// Related to https://github.com/yugabyte/yugabyte-db/issues/3251.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
+  auto conn = ASSERT_RESULT(Connect());
+  const string database_name = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  PerformSimultaneousTxnsAndVerifyConflicts("test_db" /* database_name */, true /* colocated */);
+}
+
+// Test for ensuring that transaction conflicts work as expected for Tablegroups.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForTablegroups)) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */,
+      true, /* colocated */
+      "test_tgroup" /* tablegroup_name */);
+}
+
+void PgLibPqTest::FlushTablesAndPerformBootstrap(
+    const string database_name,
+    const int timeout_secs,
+    bool colocated,
+    const string tablegroup_name) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  PGConn conn_new = ASSERT_RESULT(ConnectToDB(database_name));
+  if (colocated) {
+    ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+  } else {
+    ASSERT_OK(conn_new.ExecuteFormat("CREATE TABLE foo (i int) tablegroup $0", tablegroup_name));
+  }
 
-  PGConn conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
-
-  PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-  ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
   ASSERT_OK(conn_new.Execute("INSERT INTO foo VALUES (10)"));
 
   // Flush tablets; requests from here on will be replayed from the WAL during bootstrap.
-  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), database_name, "foo"));
   ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      kTimeoutSecs,
-      false /* is_compaction */));
+      {table_id}, false /* add_indexes */, timeout_secs, false /* is_compaction */));
 
   // ALTER requires foo's table id to be in the TS raft metadata
   ASSERT_OK(conn_new.Execute("ALTER TABLE foo ADD c char"));
@@ -1342,9 +1401,32 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
       MonoDelta::FromSeconds(60)));
 
   // Ensure the rest of the WAL replayed successfully.
-  PGConn conn_after = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  PGConn conn_after = ASSERT_RESULT(ConnectToDB(database_name));
   auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
   ASSERT_EQ(res, 0);
+}
+
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted colocated table. This is a regression test for #6096.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  const string database_name = "test_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+  FlushTablesAndPerformBootstrap(
+      "test_db" /* database_name */, 30 /* timeout_secs */, true /* colocated */);
+}
+
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted tabelgroup.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInTablegroups)) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  FlushTablesAndPerformBootstrap(
+      "test_db" /* database_name */,
+      30 /* timeout_secs */,
+      true /* colocated */,
+      "test_tgroup" /* tablegroup_name */);
 }
 
 class PgLibPqTablegroupTest : public PgLibPqTest {
@@ -1394,16 +1476,14 @@ Result<TableGroupInfo> SelectTablegroup(
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           PgLibPqTablegroupTest) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  const string kDatabaseName ="tgroup_test_db";
+  const string kDatabaseName = "test_db";
   const string kTablegroupName ="test_tgroup";
-  const string kTablegroupAltName ="test_alt_tgroup";
+  const string kTablegroupAltName = "test_alt_tgroup";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
 
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
-  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
+  CreateDatabaseWithTablegroup(kDatabaseName, kTablegroupName, &conn);
 
   // A parent table with one tablet should be created when the tablegroup is created.
   const auto tablegroup = ASSERT_RESULT(SelectTablegroup(
@@ -1681,35 +1761,14 @@ class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
   }
 };
 
-// Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
-// configuration off the old tserver and onto the new tserver.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
-          PgLibPqTestSmallTSTimeout) {
-  const std::string kDatabaseName = "co";
-  const auto kTimeout = 60s;
+void PgLibPqTest::AddTSToLoadBalanceSingleInstance(
+    const auto timeout, const std::map<std::string, int>& ts_loads,
+    const std::unique_ptr<yb::client::YBClient>& client) {
   const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
   ExternalMiniClusterOptions opts;
-  std::map<std::string, int> ts_loads;
   static const int tserver_unresponsive_timeout_ms = 8000;
 
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
-
-  // Collect colocation tablet replica locations.
-  {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
-        client.get(),
-        kDatabaseName,
-        kTimeout));
-    for (const auto& replica : tablet_locations.replicas()) {
-      ts_loads[replica.ts_info().permanent_uuid()]++;
-    }
-  }
-
-  // Ensure each tserver has exactly one colocation tablet replica.
+  // Ensure each tserver has exactly one colocation/tablegroup tablet replica.
   ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
   for (const auto& entry : ts_loads) {
     ASSERT_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
@@ -1720,8 +1779,8 @@ TEST_F_EX(PgLibPqTest,
   // Add a tablet server.
   UpdateMiniClusterOptions(&opts);
   ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                                      opts.extra_tserver_flags));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
+                          opts.extra_tserver_flags));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, timeout));
 
   // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablet,
   // system.transactions tablets) to the new tserver.
@@ -1730,13 +1789,11 @@ TEST_F_EX(PgLibPqTest,
         bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
         return !is_idle;
       },
-      kTimeout,
+      timeout,
       "wait for load balancer to be active"));
   ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      kTimeout,
+      [&]() -> Result<bool> { return client->IsLoadBalancerIdle(); },
+      timeout,
       "wait for load balancer to be idle"));
 
   // Remove a tablet server.
@@ -1749,20 +1806,48 @@ TEST_F_EX(PgLibPqTest,
   MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
   "Is TS dead",
   MonoDelta::FromSeconds(1)));
+}
+
+// Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
+// configuration off the old tserver and onto the new tserver.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleColocatedDB),
+          PgLibPqTestSmallTSTimeout) {
+  const std::string database_name = "test_db";
+  const auto timeout = 60s;
+  const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
+  std::map<std::string, int> ts_loads;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database_name));
+
+  // Collect colocation tablet replica locations.
+  {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+      client.get(),
+      database_name,
+      timeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  AddTSToLoadBalanceSingleInstance(timeout, ts_loads, client);
 
   // Collect colocation tablet replica locations and verify that load has been moved off
   // from the dead TS.
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
         client.get(),
-        kDatabaseName,
-        kTimeout));
+        database_name,
+        timeout));
     ts_loads.clear();
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
-    // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
-    // which is shut down.
+    // Ensure each colocation tablet replica is on the three tablet servers excluding the first
+    // one, which is shut down.
     if (ts_loads.size() != starting_num_tablet_servers) {
       return false;
     }
@@ -1774,28 +1859,75 @@ TEST_F_EX(PgLibPqTest,
     }
     return true;
   },
-  kTimeout,
+  timeout,
   "Wait for load to be moved off from tserver 0"));
 }
 
-// Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
-  constexpr int kNumDatabases = 3;
-  const auto kTimeout = 60s;
-  const size_t starting_num_tablet_servers = cluster_->num_tablet_servers();
-  const std::string kDatabasePrefix = "co";
+// Test that adding a tserver and removing a tserver causes the tablegroup tablet to adjust raft
+// configuration off the old tserver and onto the new tserver.
+TEST_F_EX(
+    PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceSingleTablegroup), PgLibPqTestSmallTSTimeout) {
+  const std::string database_name = "test_db";
+  const string tablegroup_name = "test_tgroup";
+  const auto timeout = 60s;
+  const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
   std::map<std::string, int> ts_loads;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
 
-  for (int i = 0; i < kNumDatabases; ++i) {
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1 WITH colocated = true", kDatabasePrefix, i));
+  CreateDatabaseWithTablegroup(database_name, tablegroup_name, &conn);
+  const auto tablegroup =
+      ASSERT_RESULT(SelectTablegroup(client.get(), &conn, database_name, tablegroup_name));
+
+  // Collect tablegroup tablet replica locations.
+  {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetTablegroupTabletLocations(
+        client.get(),
+        database_name,
+        tablegroup.id,
+        timeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
   }
 
+  AddTSToLoadBalanceSingleInstance(timeout, ts_loads, client);
+
+  // Collect tablegroup tablet replica locations and verify that load has been moved off
+  // from the dead TS.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        master::TabletLocationsPB tablet_locations = VERIFY_RESULT(
+            GetTablegroupTabletLocations(client.get(), database_name, tablegroup.id, timeout));
+        ts_loads.clear();
+        for (const auto& replica : tablet_locations.replicas()) {
+          ts_loads[replica.ts_info().permanent_uuid()]++;
+        }
+        // Ensure each tablegroup tablet replica is on the three tablet servers excluding the first
+        // one, which is shut down.
+        if (ts_loads.size() != starting_num_tablet_servers) {
+          return false;
+        }
+        for (const auto& entry : ts_loads) {
+          ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+          if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+            return false;
+          }
+        }
+        return true;
+      },
+      timeout,
+      "Wait for load to be moved off from tserver 0"));
+}
+
+void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
+    const auto timeout,
+    const std::unique_ptr<yb::client::YBClient>& client) {
+  const size_t starting_num_tablet_servers = cluster_->num_tablet_servers();
   // Add a tablet server.
   ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, timeout));
 
   // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablets,
   // system.transactions tablets) to the new tserver.
@@ -1804,26 +1936,18 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
         bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
         return !is_idle;
       },
-      kTimeout,
+      timeout,
       "wait for load balancer to be active"));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         return client->IsLoadBalancerIdle();
       },
-      kTimeout,
+      timeout,
       "wait for load balancer to be idle"));
+}
 
-  // Collect colocation tablets' replica locations.
-  for (int i = 0; i < kNumDatabases; ++i) {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
-        client.get(),
-        Format("$0$1", kDatabasePrefix, i),
-        kTimeout));
-    for (const auto& replica : tablet_locations.replicas()) {
-      ts_loads[replica.ts_info().permanent_uuid()]++;
-    }
-  }
-
+void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) {
+  constexpr int kNumDatabases = 3;
   // Ensure that the load is properly distributed.
   int min_load = kNumDatabases;
   int max_load = 0;
@@ -1837,6 +1961,71 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   LOG(INFO) << "Found max_load on a TS = " << max_load << ", and min_load on a ts = " << min_load;
   ASSERT_LT(max_load - min_load, 2);
   ASSERT_EQ(ts_loads.size(), kNumDatabases + 1);
+}
+
+// Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
+  constexpr int num_databases = 3;
+  const auto timeout = 60s;
+  const std::string database_prefix = "co";
+  std::map<std::string, int> ts_loads;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (int i = 0; i < num_databases; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1 WITH colocated = true", database_prefix, i));
+  }
+
+  AddTSToLoadBalanceMultipleInstances(timeout, client);
+
+  // Collect colocation tablets' replica locations.
+  for (int i = 0; i < num_databases; ++i) {
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+        client.get(),
+        Format("$0$1", database_prefix, i),
+        timeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  VerifyLoadBalance(ts_loads);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleTablegroups)) {
+  constexpr int num_databases = 3;
+  const auto timeout = 60s;
+  const std::string database_prefix = "test_db";
+  const std::string tablegroup_prefix = "tg";
+  std::map<std::string, int> ts_loads;
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+
+  for (int i = 0; i < num_databases; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1", database_prefix, i));
+    conn = ASSERT_RESULT(ConnectToDB(Format("$0$1", database_prefix, i)));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0$1", tablegroup_prefix, i));
+  }
+
+  AddTSToLoadBalanceMultipleInstances(timeout, client);
+
+  // Collect tablegroup tablets' replica locations.
+  for (int i = 0; i < num_databases; ++i) {
+    conn = ASSERT_RESULT(ConnectToDB(Format("$0$1", database_prefix, i)));
+    const auto tablegroup = ASSERT_RESULT(SelectTablegroup(
+        client.get(), &conn, Format("$0$1", database_prefix, i),
+        Format("$0$1", tablegroup_prefix, i)));
+
+    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetTablegroupTabletLocations(
+        client.get(), Format("$0$1", database_prefix, i), tablegroup.id, timeout));
+    for (const auto& replica : tablet_locations.replicas()) {
+      ts_loads[replica.ts_info().permanent_uuid()]++;
+    }
+  }
+
+  VerifyLoadBalance(ts_loads);
 }
 
 // Override the base test to start a cluster with transparent retries on cache version mismatch
@@ -2513,11 +2702,12 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
       return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
     }
   };
-  typedef std::unordered_map<uint32, YsqlCatalogVersion> CatalogVersionMap;
+  typedef std::unordered_map<uint32, YsqlCatalogVersion> MasterCatalogVersionMap;
+  typedef std::unordered_map<uint32, uint64> ShmCatalogVersionMap;
 
-  // Return a CatalogVersionMap by making a query of the pg_yb_catalog_version table.
-  CatalogVersionMap GetCatalogVersionMap(PGConn* conn) {
-    CatalogVersionMap catalog_version_map;
+  // Return a MasterCatalogVersionMap by making a query of the pg_yb_catalog_version table.
+  MasterCatalogVersionMap GetMasterCatalogVersionMap(PGConn* conn) {
+    MasterCatalogVersionMap catalog_version_map;
     auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
     auto lines = PQntuples(res.get());
     CHECK_GT(lines, 0);
@@ -2568,6 +2758,87 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
     std::this_thread::sleep_for(kSleepSeconds * 1s);
   }
+
+  // Verify that all the tservers have identical shared memory db catalog version array by
+  // making RPCs to the tservers. Unallocated array slots should have value 0. Return a
+  // ShmCatalogVersionMap which represents the contents of allocated slots in the shared
+  // memory db catalog version array.
+  ShmCatalogVersionMap VerifyAndGetShmCatalogVersionMap() {
+    ShmCatalogVersionMap shm_catalog_version_map0;
+    for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
+      // Get the shared memory object from tserver at 'tablet_index'.
+      tserver::TServerSharedObject tserver_shared_object(
+          CHECK_RESULT(tserver::TServerSharedObject::Create()));
+      auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+          cluster_->tablet_server(tablet_index));
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      tserver::GetSharedDataRequestPB req;
+      tserver::GetSharedDataResponsePB resp;
+      CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
+      CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object));
+      memcpy(pointer_cast<char*>(&*tserver_shared_object),
+             resp.data().c_str(),
+             resp.data().size());
+
+      // Get the tserver catalog version info from tserver at 'tablet_index'.
+      tserver::GetTserverCatalogVersionInfoRequestPB req2;
+      tserver::GetTserverCatalogVersionInfoResponsePB resp2;
+      controller.Reset();
+      controller.set_timeout(30s);
+      CHECK_OK(proxy.GetTserverCatalogVersionInfo(req2, &resp2, &controller));
+      CHECK(!resp2.has_error()) << "Response had an error: " << resp2.error().ShortDebugString();
+      ShmCatalogVersionMap shm_catalog_version_map;
+      std::unordered_set<int> allocated_slots;
+      for (int i = 0; i < resp2.entries_size(); i++) {
+        const auto& entry = resp2.entries(i);
+        CHECK(entry.has_db_oid());
+        CHECK(entry.has_shm_index());
+        auto db_oid = entry.db_oid();
+        auto shm_index = entry.shm_index();
+        allocated_slots.insert(shm_index);
+        uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(shm_index);
+        shm_catalog_version_map.insert(make_pair(db_oid, current_version));
+      }
+      // Log the shared memory catalog version map we just composed.
+      std::string output;
+      for (const auto& it : shm_catalog_version_map) {
+        if (!output.empty()) {
+          output += ", ";
+        }
+        output += Format("($0, $1)", it.first, it.second);
+      }
+      LOG(INFO) << "Shm catalog version map at tserver " << tablet_index << ": " << output;
+      if (tablet_index == 0) {
+        shm_catalog_version_map0.swap(shm_catalog_version_map);
+      } else {
+        // In stable state, all tservers should have the same catalog version map.
+        CHECK(shm_catalog_version_map0 == shm_catalog_version_map);
+      }
+      // Verify that all free slots have version 0.
+      for (int i = 0; i < tserver::TServerSharedData::kMaxNumDbCatalogVersions; ++i) {
+        if (!allocated_slots.count(i)) {
+          uint64 current_version = tserver_shared_object.get()->ysql_db_catalog_version(i);
+          CHECK_EQ(current_version, 0);
+        }
+      }
+    }
+    return shm_catalog_version_map0;
+  }
+
+  // In stable state, catalog version map read from the master should be in sync
+  // with the catalog version map read from the tserver shared memory.
+  void AssertCatalogVersionMapsInSync(
+    const MasterCatalogVersionMap& map1, const ShmCatalogVersionMap& map2) {
+    ASSERT_EQ(map1.size(), map2.size());
+    for (const auto& it1 : map1) {
+      auto db_oid = it1.first;
+      auto current_version = it1.second.current_version;
+      auto it2 = map2.find(db_oid);
+      ASSERT_NE(it2, map2.end());
+      ASSERT_EQ(it2->second, current_version);
+    }
+  }
 };
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
@@ -2604,7 +2875,12 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
 
   // Get the initial catalog version map.
-  auto map = GetCatalogVersionMap(&conn_yugabyte);
+  auto map = GetMasterCatalogVersionMap(&conn_yugabyte);
+
+  // Get the initial shared memory and catalog version info from tserver.
+  auto shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
+
   int initial_row_count = static_cast<int>(map.size());
   ASSERT_GT(initial_row_count, 0);
 
@@ -2625,8 +2901,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // propagation from the test logs. Same is true for all the following calls to do this wait.
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // There should be a new row in pg_yb_catalog_version for the newly created database.
   const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
@@ -2649,8 +2927,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // Should still have the same number of rows in pg_yb_catalog_version.
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // The above create table statement does not cause catalog version to change.
   for (const auto& it : map) {
@@ -2666,8 +2946,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   for (const auto& it : map) {
@@ -2685,8 +2967,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   for (const auto& it : map) {
@@ -2709,8 +2993,10 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // The row for 'new_db_oid' should be deleted.
-  map = GetCatalogVersionMap(&conn_yugabyte);
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
 
   // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
   // was performed from 'conn_yugabyte'.
@@ -2728,7 +3014,48 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
-  ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
+  auto result = conn_test.Fetch("SELECT * FROM t");
+  auto status = ResultToStatus(result);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_STR_CONTAINS(status.ToString(), "Could not reconnect to database");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+
+  // Recreate the same database and table.
+  LOG(INFO) << "Re-create the same database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Use a new connection to re-create the table.
+  auto new_conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  LOG(INFO) << "Re-create the table";
+  ASSERT_OK(new_conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
+
+  WaitForCatalogVersionToPropagate();
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetMasterCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+  shm_catalog_version_map = VerifyAndGetShmCatalogVersionMap();
+  AssertCatalogVersionMapsInSync(map, shm_catalog_version_map);
+
+  // Although we recreate the database using the same name, a new db OID is allocated.
+  const uint32 recreated_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
+  it = map.find(recreated_db_oid);
+  ASSERT_NE(it, map.end());
+  CHECK_GT(recreated_db_oid, new_db_oid);
+
+  // The old connection will not become valid simply because we have recreated the
+  // same database and table.
+  LOG(INFO) << "Read the table from 'conn_test'";
+  result = conn_test.Fetch("SELECT * FROM t");
+  status = ResultToStatus(result);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_STR_CONTAINS(status.ToString(), "pgsql error XX000");
+
+  // We need to make a new connection to the recreated database in order to have a
+  // successful query of the re-created table.
+  conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
@@ -2746,10 +3073,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   std::this_thread::sleep_for(2s);
   // REVOKE is a breaking catalog change, the running transaction on conn1 is aborted.
   auto result = conn1.Fetch("SELECT * FROM t1");
-  ASSERT_NOK(result);
   auto status = ResultToStatus(result);
+  ASSERT_TRUE(status.IsNetworkError()) << status;
   const string msg = "catalog snapshot used for this transaction has been invalidated";
-  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
 
   // Let's start over, but this time use yb_make_next_ddl_statement_nonbreaking to suppress the
@@ -2774,9 +3101,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   // Wait for the new catalog version to propagate to TServers.
   std::this_thread::sleep_for(2s);
   result = conn1.Fetch("SELECT * FROM t1");
-  ASSERT_NOK(result);
   status = ResultToStatus(result);
-  ASSERT_TRUE(status.ToString().find(msg) != std::string::npos);
+  LOG(INFO) << "status: " << status;
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 

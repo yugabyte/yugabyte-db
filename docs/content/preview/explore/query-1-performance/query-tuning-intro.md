@@ -1,9 +1,9 @@
 ---
-title: Tuning queries in YugabyteDB
+title: Tune queries in YugabyteDB
 linkTitle: Introduction
-description: Tuning queries in YugabyteDB
+description: Tune queries in YugabyteDB
 aliases:
-headerTitle: Tuning queries in YugabyteDB
+headerTitle: Tune queries in YugabyteDB
 image: /images/section_icons/index/develop.png
 menu:
   preview:
@@ -184,4 +184,3 @@ To use `pg_hint_plan` effectively, you need a thorough knowledge of how your app
 {{< /note >}}
 
 For more information, refer to [Optimizing YSQL queries using pg_hint_plan](../pg-hint-plan).
-

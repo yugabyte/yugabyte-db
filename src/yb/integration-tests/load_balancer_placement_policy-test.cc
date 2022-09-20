@@ -106,15 +106,23 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     opts->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=5000");
   }
 
-  void WaitForLoadBalancer() {
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
-      return !is_idle;
-    },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
+  void WaitForLoadBalancerToBeActive() {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+          return !is_idle;
+        },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
+  }
 
+  void WaitForLoadBalancerToBeIdle() {
     ASSERT_OK(WaitFor([&]() -> Result<bool> {
       return client_->IsLoadBalancerIdle();
-    },  kDefaultTimeout * 4, "IsLoadBalancerIdle"));
+      },  kDefaultTimeout * 4, "IsLoadBalancerIdle"));
+  }
+
+  void WaitForLoadBalancer() {
+    WaitForLoadBalancerToBeActive();
+    WaitForLoadBalancerToBeIdle();
   }
 
   void AddNewTserverToZone(
@@ -239,7 +247,8 @@ TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {
 
   ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
 
-  WaitForLoadBalancer();
+  // New table creation may already leave the cluster balanced with no work for LB to do.
+  WaitForLoadBalancerToBeIdle();
 
   // Modify the placement info for the table.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(placement_table, "c.r.z1,c.r.z2", 3, ""));

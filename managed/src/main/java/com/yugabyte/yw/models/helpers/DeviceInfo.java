@@ -63,6 +63,18 @@ public class DeviceInfo {
     checkThroughput();
   }
 
+  public DeviceInfo clone() {
+    DeviceInfo result = new DeviceInfo();
+    result.storageType = storageType;
+    result.numVolumes = numVolumes;
+    result.mountPoints = mountPoints;
+    result.volumeSize = volumeSize;
+    result.diskIops = diskIops;
+    result.storageClass = storageClass;
+    result.throughput = throughput;
+    return result;
+  }
+
   private void checkVolumeBaseInfo() {
     if (volumeSize == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Volume size field is mandatory");

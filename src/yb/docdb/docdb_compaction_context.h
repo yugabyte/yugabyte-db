@@ -69,6 +69,9 @@ struct CompactionSchemaInfo {
 
   bool enabled() const;
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
+
+  // Whether we should keep original write time when combining columns updates into packed row.
+  bool keep_write_time() const;
 };
 
 // Used to query latest possible schema version.

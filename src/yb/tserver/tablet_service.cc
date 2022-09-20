@@ -1273,6 +1273,38 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
   return Status::OK();
 }
 
+void TabletServiceImpl::UpdateTransactionWaitingForStatus(
+    const UpdateTransactionWaitingForStatusRequestPB* req,
+    UpdateTransactionWaitingForStatusResponsePB* resp,
+    rpc::RpcContext context) {
+  UpdateClock(*req, server_->Clock());
+
+  auto tablet = LookupLeaderTabletOrRespond(
+    server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  tablet.peer->tablet()->transaction_coordinator()->ProcessWaitForReport(
+      *req, resp, MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+}
+
+void TabletServiceImpl::ProbeTransactionDeadlock(
+    const ProbeTransactionDeadlockRequestPB* req,
+    ProbeTransactionDeadlockResponsePB* resp,
+    rpc::RpcContext context) {
+  UpdateClock(*req, server_->Clock());
+
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+
+  tablet.peer->tablet()->transaction_coordinator()->ProcessProbe(
+      *req, resp, MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+}
+
 void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
                                  TruncateResponsePB* resp,
                                  rpc::RpcContext context) {
@@ -2390,6 +2422,18 @@ void TabletServiceImpl::GetSharedData(const GetSharedDataRequestPB* req,
                                       rpc::RpcContext context) {
   auto& data = server_->SharedObject();
   resp->mutable_data()->assign(pointer_cast<const char*>(&data), sizeof(data));
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetTserverCatalogVersionInfo(
+    const GetTserverCatalogVersionInfoRequestPB* req,
+    GetTserverCatalogVersionInfoResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = server_->get_ysql_db_oid_to_cat_version_info_map(resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
   context.RespondSuccess();
 }
 

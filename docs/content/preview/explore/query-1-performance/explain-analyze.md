@@ -1,6 +1,6 @@
 ---
 title: Analyze queries with EXPLAIN
-linkTitle: Analyze queries with EXPLAIN
+linkTitle: Analyze queries
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 aliases:
 headerTitle: Analyze queries with EXPLAIN

@@ -484,11 +484,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
 }
 
 std::vector<string> AlterTableTest::ScanToStrings() {
-  client::TableHandle table;
-  EXPECT_OK(table.Open(kTableName, client_.get()));
-  auto result = ScanTableToStrings(table);
-  std::sort(result.begin(), result.end());
-  return result;
+  return ScanTableToStrings(kTableName, client_.get());
 }
 
 // Verify that the 'num_rows' starting with 'start_row' fit the given pattern.

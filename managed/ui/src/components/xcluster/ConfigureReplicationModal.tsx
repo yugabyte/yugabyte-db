@@ -21,7 +21,7 @@ import { getUniverseStatus, universeState } from '../universes/helpers/universeH
 import { formatSchemaName } from '../../utils/Formatters';
 
 import { TableType, TABLE_TYPE_MAP } from '../../redesign/helpers/dtos';
-import { ReplicationTable } from './XClusterReplicationTypes';
+import { ReplicationTable } from './XClusterTypes';
 
 import './ConfigureReplicationModal.scss';
 
@@ -92,7 +92,10 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
         });
       },
       onError: (err: any) => {
-        toast.error(err.response.data.error);
+        toast.error(
+          err.response.data.error instanceof String
+              ? err.response.data.error
+              : JSON.stringify(err.response.data.error));
       }
     }
   );

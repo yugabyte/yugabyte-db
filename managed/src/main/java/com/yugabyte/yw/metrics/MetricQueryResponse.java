@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
-import static com.yugabyte.yw.metrics.MetricQueryExecutor.EXPORTED_INSTANCE;
+import static com.yugabyte.yw.metrics.MetricQueryHelper.EXPORTED_INSTANCE;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;

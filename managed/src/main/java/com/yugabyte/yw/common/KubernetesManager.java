@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.helm.HelmUtils;
-
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -12,6 +11,7 @@ import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.events.v1.Event;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,9 +19,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -133,11 +133,34 @@ public abstract class KubernetesManager {
     execCommand(config, commandList);
   }
 
+  public String helmShowValues(String ybSoftwareVersion, Map<String, String> config) {
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    List<String> commandList = ImmutableList.of("helm", "show", "values", helmPackagePath);
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    if (response != null) {
+      if (response.getCode() != ShellResponse.ERROR_CODE_SUCCESS) {
+        throw new RuntimeException(response.getMessage());
+      }
+      return response.getMessage();
+    }
+    return null;
+  }
+
   /* helm helpers */
 
   private void processHelmResponse(
       Map<String, String> config, String universePrefix, String namespace, ShellResponse response) {
-    if (response != null && response.code != ShellResponse.ERROR_CODE_SUCCESS) {
+
+    if (response != null && !response.isSuccess()) {
+
+      try {
+        List<Event> events = getEvents(config, namespace);
+
+        LOG.info("Events in namespace {} : \n {} ", namespace, toReadableString(events));
+      } catch (Exception ex) {
+        LOG.warn("Ignoring error listing events in namespace {}: {}", namespace, ex);
+      }
       String message;
       List<Pod> pods = getPodInfos(config, universePrefix, namespace);
       for (Pod pod : pods) {
@@ -229,6 +252,20 @@ public abstract class KubernetesManager {
     return null;
   }
 
+  private String toReadableString(Event event) {
+    return event.getAdditionalProperties().getOrDefault("firstTimestamp", "null first ts")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("lastTimestamp", "null last ts")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("message", "null msg")
+        + " , "
+        + event.getAdditionalProperties().getOrDefault("involvedObject", "null obj");
+  }
+
+  private String toReadableString(List<Event> events) {
+    return events.stream().map(x -> toReadableString(x)).collect(Collectors.joining("\n"));
+  }
+
   /* kubernetes interface */
 
   public abstract void createNamespace(Map<String, String> config, String universePrefix);
@@ -268,4 +305,8 @@ public abstract class KubernetesManager {
       Map<String, String> config, String universePrefix, String namespace);
 
   public abstract void deleteNamespace(Map<String, String> config, String namespace);
+
+  public abstract void deletePod(Map<String, String> config, String namespace, String podName);
+
+  public abstract List<Event> getEvents(Map<String, String> config, String namespace);
 }

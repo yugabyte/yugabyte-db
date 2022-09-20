@@ -19,6 +19,7 @@ from ybops.cloud.onprem.cloud import OnPremCloud
 from ybops.cloud.azure.cloud import AzureCloud
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import init_env, init_logging
+from ybops.common.exceptions import YBOpsExitCodeException
 
 
 class YbCloud(AbstractCommandParser):
@@ -68,6 +69,9 @@ class YbCloud(AbstractCommandParser):
             logging.error("Error processing exception. Error: ".format(str(e)))
         # Propagate the exception.
         sys.__excepthook__(except_type, except_value, tb)
+
+        if isinstance(except_value, YBOpsExitCodeException):
+            sys.exit(except_value.exitcode())
 
     def run(self):
         sys.excepthook = self.exception_hook

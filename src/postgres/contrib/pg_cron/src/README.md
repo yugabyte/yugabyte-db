@@ -35,7 +35,7 @@ the execution and the status of the job run.
 
 ### Postgres version
 
-To reduce work for porting pg_cron to Yugabyte on the postgres side, most of the existing pg_cron
+To reduce work for porting pg_cron to YugabyteDB on the postgres side, most of the existing pg_cron
 code and scripts will be reused. To better understand the changes made, it may help to first
 understand how the pg_cron extension operated on Postgres.
 
@@ -68,7 +68,7 @@ taken. Job runs can be configured to be executed with a background worker or a p
 If the cron process crashes, any queued runs are forgotten and any jobs that weren't completed or
 failed in the job run table are marked as failed.
 
-### Yugabyte version
+### YugabyteDB version
 We want to reuse the message invalidation system so we need to give cron workers invalidation
 messages when the job table changes. Since we are already logging job runs in the job run table,
 we can also use that table to show which worker is assigned a job run and use the message

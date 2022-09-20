@@ -8,6 +8,7 @@
  */
 
 import { TableType } from '../../../redesign/helpers/dtos';
+import { OptionTypeBase } from 'react-select';
 
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
@@ -93,7 +94,7 @@ export interface IStorageConfig {
   name: string;
   data: {
     BACKUP_LOCATION: string;
-    REGION_LOCATIONS: any [];
+    REGION_LOCATIONS: any[];
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;
@@ -112,3 +113,16 @@ export enum Backup_Options_Type {
   ALL = 'all',
   CUSTOM = 'custom'
 }
+
+export interface ThrottleParameters {
+  max_concurrent_uploads: number;
+  per_upload_num_objects: number;
+  max_concurrent_downloads: number;
+  per_download_num_objects: number;
+}
+
+interface IOptionType extends OptionTypeBase {
+  value: string;
+  label: string;
+}
+export type SELECT_VALUE_TYPE = IOptionType;
