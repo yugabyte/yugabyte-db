@@ -55,7 +55,7 @@ type: indexpage
     <a class="section-link icon-offset" href="pg-stat-progress-copy/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View COPY progress with pg_stat_progress_copy</div>
+        <div class="title">View COPY status with pg_stat_progress_copy</div>
       </div>
       <div class="body">
         Get the COPY command status, number of tuples processed, and other COPY progress reports with this view.
