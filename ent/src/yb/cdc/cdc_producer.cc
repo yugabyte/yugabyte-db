@@ -424,7 +424,7 @@ Status GetChanges(const std::string& stream_id,
   if (!replicate_intents) {
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
     if (txn_participant) {
-      request_scope = RequestScope(txn_participant);
+      request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));

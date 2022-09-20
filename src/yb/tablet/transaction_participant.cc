@@ -65,6 +65,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -167,8 +168,12 @@ class TransactionParticipant::Impl
 
     decltype(status_resolvers_) status_resolvers;
     {
+      UNIQUE_LOCK(lock, mutex_);
+      WaitOnConditionVariable(
+          &requests_completed_cond_, &lock,
+          [this] { return running_requests_.empty(); });
+
       MinRunningNotifier min_running_notifier(nullptr /* applier */);
-      std::lock_guard<std::mutex> lock(mutex_);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
       status_resolvers.swap(status_resolvers_);
@@ -344,7 +349,12 @@ class TransactionParticipant::Impl
   }
 
   // Registers a request, giving it a newly allocated id and returning this id.
-  int64_t RegisterRequest() {
+  Result<int64_t> RegisterRequest() {
+    if (Closing()) {
+      LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
     auto result = NextRequestIdUnlocked();
     running_requests_.push_back(result);
@@ -354,6 +364,7 @@ class TransactionParticipant::Impl
   // Unregisters a previously registered request.
   void UnregisterRequest(int64_t request) {
     MinRunningNotifier min_running_notifier(&applier_);
+    bool notify_completed;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       DCHECK(!running_requests_.empty());
@@ -367,7 +378,13 @@ class TransactionParticipant::Impl
         running_requests_.pop_front();
       }
 
+      notify_completed = running_requests_.empty() && Closing();
+
       CleanTransactionsUnlocked(&min_running_notifier);
+    }
+
+    if (notify_completed) {
+      requests_completed_cond_.notify_all();
     }
   }
 
@@ -1561,6 +1578,8 @@ class TransactionParticipant::Impl
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
   rpc::Poller poller_;
+
+  std::condition_variable requests_completed_cond_;
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1614,7 +1633,7 @@ void TransactionParticipant::RequestStatusAt(const StatusRequest& request) {
   return impl_->RequestStatusAt(request);
 }
 
-int64_t TransactionParticipant::RegisterRequest() {
+Result<int64_t> TransactionParticipant::RegisterRequest() {
   return impl_->RegisterRequest();
 }
 

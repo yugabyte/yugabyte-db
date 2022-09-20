@@ -1243,7 +1243,7 @@ Status Tablet::ApplyKeyValueRowOperations(
 
   if (put_batch.has_transaction()) {
     rocksdb::WriteBatch write_batch;
-    RequestScope request_scope(transaction_participant_.get());
+    auto request_scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
     RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
@@ -3520,7 +3520,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
 
     auto* transaction_participant = tablet_.transaction_participant();
     if (transaction_participant) {
-      request_scope_ = RequestScope(transaction_participant);
+      request_scope_ = VERIFY_RESULT(RequestScope::Create(transaction_participant));
     }
 
     read_time_ = operation_->read_time();
@@ -3532,7 +3532,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
 
     if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
       auto now = tablet_.clock()->Now();
-      docdb::ResolveOperationConflicts(
+      return docdb::ResolveOperationConflicts(
           operation_->doc_ops(), now, tablet_.doc_db(), partial_range_key_intents,
           transaction_participant, tablet_.metrics()->transaction_conflicts.get(),
           [self = shared_from_this(), now](const Result<HybridTime>& result) {
@@ -3544,7 +3544,6 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
             self->NonTransactionalConflictsResolved(now, *result);
             TRACE("self->NonTransactionalConflictsResolved");
           });
-      return Status::OK();
     }
 
     if (isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
@@ -3566,7 +3565,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
       }
     }
 
-    docdb::ResolveTransactionConflicts(
+    return docdb::ResolveTransactionConflicts(
         operation_->doc_ops(), *write_batch, tablet_.clock()->Now(),
         read_time_ ? read_time_.read : HybridTime::kMax,
         tablet_.doc_db(), partial_range_key_intents,
@@ -3580,8 +3579,6 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           self->TransactionalConflictsResolved();
           TRACE("self->TransactionalConflictsResolved");
         });
-
-    return Status::OK();
   }
 
   void NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
