@@ -197,6 +197,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
   const [isPanelExpanded, setPanelExpanded] = useState(false);
   return (
     <YBPanelItem
+      id="perfRecommendationBox"
       className="perfAdvisorPanel"
       body={
         <Panel
