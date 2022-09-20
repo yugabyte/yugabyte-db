@@ -290,9 +290,16 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet.tablet_status().tablet_id();
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(0)->uuid()].get(),
+                                            tablet_id, timeout));
     argv.push_back(tablet_id);
     ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();
+
+    for (size_t i = 1; i < cluster_->num_tablet_servers(); ++i) {
+      ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
+                                              tablet_id, timeout));
+    }
   }
 
   auto wait_until_rows = workload.rows_inserted() + 1000;
@@ -327,6 +334,8 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet.tablet_status().tablet_id();
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(0)->uuid()].get(),
+                                            tablet_id, timeout));
     argv.push_back(tablet_id);
     ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();
