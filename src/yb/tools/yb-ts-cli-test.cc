@@ -125,9 +125,9 @@ TEST_F(YBTsCliTest, TestVModuleUpdate) {
   }
 
   {
-    // Should NOT be able to update for any module unspecified at start-up.
+    // Should be able to update for any module unspecified at start-up.
     argv.push_back("foo=1,baz=2");
-    ASSERT_NOK(Subprocess::Call(argv));
+    ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();
   }
 
