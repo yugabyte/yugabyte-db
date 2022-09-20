@@ -287,6 +287,8 @@ public class NodeDetails {
         .append(placementUuid)
         .append(", dedicatedTo: ")
         .append(dedicatedTo)
+        .append(", masterState: ")
+        .append(masterState)
         .append("}");
     return sb.toString();
   }

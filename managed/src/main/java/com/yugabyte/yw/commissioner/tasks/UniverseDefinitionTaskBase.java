@@ -66,7 +66,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -322,17 +321,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodeIdx index to be used in node name.
    * @param region region in which this node is present.
    * @param az zone in which this node is present.
-   * @param dedicatedTo process type that node is reserved for.
    * @return a string which can be used as the node name.
    */
   public static String getNodeName(
-      Cluster cluster,
-      String tagValue,
-      String prefix,
-      int nodeIdx,
-      String region,
-      String az,
-      @Nullable ServerType dedicatedTo) {
+      Cluster cluster, String tagValue, String prefix, int nodeIdx, String region, String az) {
     if (!tagValue.isEmpty()) {
       checkTagPattern(tagValue);
     }
@@ -353,9 +345,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       } else {
         newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az);
       }
-    }
-    if (dedicatedTo != null) {
-      newName += "-" + dedicatedTo.name().toLowerCase();
     }
 
     log.info("Node name " + newName + " at index " + nodeIdx);
@@ -412,8 +401,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   taskParams().nodePrefix,
                   node.nodeIdx,
                   node.cloudInfo.region,
-                  node.cloudInfo.az,
-                  node.dedicatedTo);
+                  node.cloudInfo.az);
           iter++;
         }
         node.isYsqlServer = isYSQL;
@@ -1164,7 +1152,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException(getName() + ": nodePrefix not set");
     }
     if (opType == UniverseOpType.CREATE
-        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
+        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0
+        && !taskParams().clusters.get(0).userIntent.dedicatedNodes) {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 

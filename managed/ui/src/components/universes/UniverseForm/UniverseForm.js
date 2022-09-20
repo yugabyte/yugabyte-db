@@ -208,7 +208,8 @@ class UniverseForm extends Component {
         enableExposingService: formValues[clusterType].enableExposingService,
         enableYEDIS: formValues[clusterType].enableYEDIS,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
-        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
+        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        dedicatedNodes: formValues[clusterType].dedicatedNodes,
       };
       if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
         intent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
@@ -494,6 +495,7 @@ class UniverseForm extends Component {
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
         useSystemd: formValues[clusterType].useSystemd,
+        dedicatedNodes: formValues[clusterType].dedicatedNodes,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -1203,7 +1205,8 @@ class PrimaryClusterFields extends Component {
           'primary.enableNodeToNodeEncrypt',
           'primary.enableClientToNodeEncrypt',
           'primary.enableEncryptionAtRest',
-          'primary.selectEncryptionAtRestConfig'
+          'primary.selectEncryptionAtRestConfig',
+          'primary.dedicatedNodes'
         ]}
         component={ClusterFields}
         {...this.props}
@@ -1242,7 +1245,8 @@ class ReadOnlyClusterFields extends Component {
           'async.enableExposingService',
           'async.enableYEDIS',
           'async.enableNodeToNodeEncrypt',
-          'async.enableClientToNodeEncrypt'
+          'async.enableClientToNodeEncrypt',
+          'async.dedicatedNodes'
         ]}
         component={ClusterFields}
         {...this.props}
