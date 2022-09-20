@@ -69,6 +69,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
@@ -745,8 +746,8 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
   election_state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   election_state->proxy->RunLeaderElectionAsync(
       &election_state->req, &election_state->resp, &election_state->rpc,
-      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
-          election_state));
+      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, shared_from(this),
+                election_state));
 
   LOG_WITH_PREFIX(INFO) << "Transferring leadership to " << peer.permanent_uuid();
 
