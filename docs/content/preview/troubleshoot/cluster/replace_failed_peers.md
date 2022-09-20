@@ -11,8 +11,7 @@ type: docs
 
 When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.
 
-If a majority of Raft peers fail for a given tablet, you need to manually execute the equivalent of a remote bootstrap. A list of tablets is available via the `yb-master-ip:7000/tablet-replication` yb-admin UI.
-
+If a majority of Raft peers fail for a given tablet, you need to manually execute a remote bootstrap. A list of tablets is available via the `yb-master-ip:7000/tablet-replication` yb-admin UI.
 
 Assume you have a cluster where the following applies:
 
@@ -22,6 +21,23 @@ Assume you have a cluster where the following applies:
 - Some of the tablet-related data is to be copied from the good peer to each of the bad peers until the majority of them are restored.
 
 These are the steps to follow:
+
+- Delete the tablet from tablet data from the broken peers if necessary, by running:
+
+```
+yb-ts-cli --server_address=NODE_BAD1 delete_tablet TABLET1
+yb-ts-cli --server_address=NODE_BAD2 delete_tablet TABLET1
+```
+
+- Trigger a remote bootstrap of `TABLET1` from `NODE_GOOD` to `NODE_BAD`.
+
+```
+yb-ts-cli --server_address=NODE_BAD1 remote_bootstrap NODE_GOOD TABLET1
+```
+
+Once the remote bootstrap finishes, `NODE_BAD2` should be automatically fixed and removed from its quorum, as it has gotten a majority of healthy peers.
+
+In case you are unable to follow the above steps, the following steps can be followed instead to manually execute the equivalent of a remote bootstrap:
 
 - On `NODE_GOOD`, create an archive of the WALS (Raft data), RocksDB (regular) directories, intents (transactions data), and snapshots directories for `TABLET1`.
 
