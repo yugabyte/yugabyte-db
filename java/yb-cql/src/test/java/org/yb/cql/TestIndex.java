@@ -13,6 +13,7 @@
 package org.yb.cql;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -29,6 +30,7 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
@@ -1484,12 +1486,25 @@ public class TestIndex extends BaseCQLTest {
       final PreparedStatement statement = session.prepare(String.format(
           "insert into %s (h, c) values (?, ?);", tableName));
 
+      AtomicBoolean dropStarted = new AtomicBoolean(false);
+
       List<Thread> threads = new ArrayList<Thread>();
       while (threads.size() != numThreads) {
         Thread thread = new Thread(() -> {
           int key = 0;
           while (!Thread.interrupted()) {
-            session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            try {
+              session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            } catch (NoHostAvailableException e) {
+              // It's possible that we attempt to execute after the table is dropped but before
+              // we're interrupted.
+              if (e.getMessage().contains(
+                  "Error preparing query, got ERROR INVALID: Object Not Found")
+                  && dropStarted.get()) {
+                break;
+              }
+              throw e;
+            }
             ++key;
           }
         });
@@ -1498,6 +1513,7 @@ public class TestIndex extends BaseCQLTest {
       }
       try {
         Thread.sleep(5000);
+        dropStarted.set(true);
         session.execute(String.format("drop table %s;", tableName));
       } finally {
         for (Thread thread : threads) {

@@ -153,10 +153,11 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
  public:
   ConflictResolver(const DocDB& doc_db,
                    TransactionStatusManager* status_manager,
+                   RequestScope request_scope,
                    PartialRangeKeyIntents partial_range_key_intents,
                    std::unique_ptr<ConflictResolverContext> context,
                    ResolutionCallback callback)
-      : doc_db_(doc_db), status_manager_(*status_manager), request_scope_(status_manager),
+      : doc_db_(doc_db), status_manager_(*status_manager), request_scope_(std::move(request_scope)),
         partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
         callback_(std::move(callback)) {}
 
@@ -1086,41 +1087,47 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
 } // namespace
 
-void ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                 const KeyValueWriteBatchPB& write_batch,
-                                 HybridTime hybrid_time,
-                                 HybridTime read_time,
+Status ResolveTransactionConflicts(const DocOperations& doc_ops,
+                                   const KeyValueWriteBatchPB& write_batch,
+                                   HybridTime hybrid_time,
+                                   HybridTime read_time,
+                                   const DocDB& doc_db,
+                                   PartialRangeKeyIntents partial_range_key_intents,
+                                   TransactionStatusManager* status_manager,
+                                   Counter* conflicts_metric,
+                                   ResolutionCallback callback) {
+  DCHECK(hybrid_time.is_valid());
+  TRACE("ResolveTransactionConflicts");
+  auto context = std::make_unique<TransactionConflictResolverContext>(
+      doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
+  auto request_scope = VERIFY_RESULT(RequestScope::Create(status_manager));
+  auto resolver = std::make_shared<ConflictResolver>(
+      doc_db, status_manager, std::move(request_scope), partial_range_key_intents,
+      std::move(context), std::move(callback));
+  // Resolve takes a self reference to extend lifetime.
+  resolver->Resolve();
+  TRACE("resolver->Resolve done");
+  return Status::OK();
+}
+
+Status ResolveOperationConflicts(const DocOperations& doc_ops,
+                                 HybridTime resolution_ht,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  Counter* conflicts_metric,
                                  ResolutionCallback callback) {
-  DCHECK(hybrid_time.is_valid());
-  TRACE("ResolveTransactionConflicts");
-  auto context = std::make_unique<TransactionConflictResolverContext>(
-      doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
-  auto resolver = std::make_shared<ConflictResolver>(
-      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
-  // Resolve takes a self reference to extend lifetime.
-  resolver->Resolve();
-  TRACE("resolver->Resolve done");
-}
-
-void ResolveOperationConflicts(const DocOperations& doc_ops,
-                               HybridTime resolution_ht,
-                               const DocDB& doc_db,
-                               PartialRangeKeyIntents partial_range_key_intents,
-                               TransactionStatusManager* status_manager,
-                               Counter* conflicts_metric,
-                               ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
   auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
                                                                     conflicts_metric);
+  auto request_scope = VERIFY_RESULT(RequestScope::Create(status_manager));
   auto resolver = std::make_shared<ConflictResolver>(
-      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+      doc_db, status_manager, std::move(request_scope), partial_range_key_intents,
+      std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.
   resolver->Resolve();
   TRACE("resolver->Resolve done");
+  return Status::OK();
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
