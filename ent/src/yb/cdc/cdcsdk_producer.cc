@@ -733,7 +733,7 @@ Status GetChangesForCDCSDK(
 
       auto txn_participant = tablet_peer->tablet()->transaction_participant();
       if (txn_participant) {
-        request_scope = RequestScope(txn_participant);
+        request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
       }
 
       Schema current_schema;

@@ -2274,8 +2274,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   if (transactional) {
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    read_context->request_scope = RequestScope(
+    auto request_scope = RequestScope::Create(
         down_cast<Tablet*>(read_context->tablet.get())->transaction_participant());
+    if (!request_scope.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), request_scope.status(), &read_context->context);
+      return;
+    }
+    read_context->request_scope = std::move(*request_scope);
     read_time.serial_no = read_context->request_scope.request_id();
   }
 

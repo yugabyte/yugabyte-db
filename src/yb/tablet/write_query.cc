@@ -419,7 +419,7 @@ CHECKED_STATUS WriteQuery::DoExecute() {
 
   auto* transaction_participant = tablet().transaction_participant();
   if (transaction_participant) {
-    request_scope_ = RequestScope(transaction_participant);
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(transaction_participant));
   }
 
   if (!tablet().txns_enabled() || !transactional_table) {
@@ -429,7 +429,7 @@ CHECKED_STATUS WriteQuery::DoExecute() {
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet().clock()->Now();
-    docdb::ResolveOperationConflicts(
+    return docdb::ResolveOperationConflicts(
         doc_ops_, now, tablet().doc_db(), partial_range_key_intents,
         transaction_participant, tablet().metrics()->transaction_conflicts.get(),
         [this, now](const Result<HybridTime>& result) {
@@ -441,7 +441,6 @@ CHECKED_STATUS WriteQuery::DoExecute() {
           NonTransactionalConflictsResolved(now, *result);
           TRACE("NonTransactionalConflictsResolved");
         });
-    return Status::OK();
   }
 
   if (isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
@@ -464,7 +463,7 @@ CHECKED_STATUS WriteQuery::DoExecute() {
     }
   }
 
-  docdb::ResolveTransactionConflicts(
+  return docdb::ResolveTransactionConflicts(
       doc_ops_, write_batch, tablet().clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet().doc_db(), partial_range_key_intents,
@@ -478,8 +477,6 @@ CHECKED_STATUS WriteQuery::DoExecute() {
         TransactionalConflictsResolved();
         TRACE("TransactionalConflictsResolved");
       });
-
-  return Status::OK();
 }
 
 void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {

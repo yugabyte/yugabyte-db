@@ -1226,7 +1226,7 @@ Status Tablet::ApplyKeyValueRowOperations(
 
   if (put_batch.has_transaction()) {
     rocksdb::WriteBatch write_batch;
-    RequestScope request_scope(transaction_participant_.get());
+    auto request_scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
     RETURN_NOT_OK(PrepareTransactionWriteBatch(batch_idx, put_batch, hybrid_time, &write_batch));
     WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
   } else {
