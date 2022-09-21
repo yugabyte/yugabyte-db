@@ -134,10 +134,7 @@ public class Audit extends Model {
     HookScope,
 
     @EnumValue("NodeAgent")
-    NodeAgent,
-
-    @EnumValue("CustomerLicense")
-    CustomerLicense
+    NodeAgent
   }
 
   public enum ActionType {
