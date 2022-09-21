@@ -2925,8 +2925,13 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   auto result = conn->Fetch(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned "
-                 << result.status() << ": " << libpq_error_msg;
+    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
+                 << libpq_error_msg;
+    // The 2 spaces after ERROR: is necessary to match the error message.
+    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+      return STATUS(TryAgain, libpq_error_msg);
+    }
     return STATUS(IllegalState, libpq_error_msg);
   }
   auto& res = result.get();

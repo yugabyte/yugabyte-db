@@ -872,16 +872,8 @@ void TabletServiceAdminImpl::BackfillIndex(
 
       IndexInfoPB idx_info_pb;
       index_info->ToPB(&idx_info_pb);
-      if (!is_pg_table) {
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
-      } else {
-        // YSQL tables don't use all the docdb permissions, so use this approximation.
-        // TODO(jason): change this back to being like YCQL once we bring the docdb permission
-        // DO_BACKFILL back (issue #6218).
-        all_at_backfill &=
-            idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_WRITE_AND_DELETE;
-      }
+      all_at_backfill &=
+          idx_info_pb.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL;
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
@@ -981,7 +973,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   }
   DVLOG(1) << "Tablet " << tablet.peer->tablet_id() << " backfilled indexes "
            << yb::ToString(index_ids) << " and got " << backfill_status
-           << " backfilled until : " << backfilled_until;
+           << " backfilled until : " << b2a_hex(backfilled_until);
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
