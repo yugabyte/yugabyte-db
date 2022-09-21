@@ -19,13 +19,13 @@ YugabyteDB Anywhere supports deploying YugabyteDB on both x86 and ARM (aarch64) 
 
 YugabyteDB Anywhere supports deploying YugabyteDB on the following operating systems:
 
-* CentOS (default)
-* AlmaLinux OS 8 (tested)
-* Oracle Linux 7 (tested)
-* Oracle Linux 8 (tested)
-* Ubuntu 18 (tested)
-* Ubuntu 20 (tested)
-* Red Hat Enterprise Linux 8 (tested on 8.5)
+* AlmaLinux OS 8 (default)
+* CentOS
+* Oracle Linux 7
+* Oracle Linux 8
+* Ubuntu 18
+* Ubuntu 20
+* Red Hat Enterprise Linux 8
 
 ### Requirements for all OSes
 
