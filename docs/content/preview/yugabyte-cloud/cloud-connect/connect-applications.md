@@ -33,7 +33,7 @@ To enable inbound network access from your application environment to a cluster,
 
 For best performance and security, use a [VPC network](../../cloud-basics/cloud-vpcs/) and deploy your application in a VPC that is peered with your cluster's VPC.
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC.
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
 
 In addition, multi-region clusters, which must be deployed in a VPC, do not expose any publicly-accessible IP addresses. As a result, you can _only_ connect to multi-region clusters from applications that reside on a peered network, and the [peering connection](../../cloud-basics/cloud-vpcs/cloud-add-peering/) must be Active.
 
