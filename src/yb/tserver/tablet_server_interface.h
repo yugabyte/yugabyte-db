@@ -70,8 +70,6 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual void RegisterCertificateReloader(CertificateReloader reloader) = 0;
 
-  virtual void RegisterPgConfigReloader(PgConfigReloader reloader) = 0;
-
   client::YBClient* client() const {
     return client_future().get();
   }

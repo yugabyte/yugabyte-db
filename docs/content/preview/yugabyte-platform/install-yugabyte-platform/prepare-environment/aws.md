@@ -146,6 +146,8 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
                 "ec2:DisassociateRouteTable",
                 "ec2:ModifyVpcAttribute",
                 "ec2:GetConsoleOutput",
+                "ec2:CreateSnapshot",
+                "ec2:DeleteSnapshot",
                 "ec2:DescribeInstanceTypes"
             ],
             "Resource": "*"

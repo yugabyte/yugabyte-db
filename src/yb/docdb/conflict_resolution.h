@@ -58,17 +58,17 @@ using ResolutionCallback = boost::function<void(const Result<HybridTime>&)>;
 // wait_queue - a pointer to the tablet's wait queue. If null, we proceed with optimistic locking.
 //              Else, we proceed with pessimistic locking and use the wait_queue to block and
 //              unblock transactions with conflicts.
-void ResolveTransactionConflicts(const DocOperations& doc_ops,
-                                 const KeyValueWriteBatchPB& write_batch,
-                                 HybridTime resolution_ht,
-                                 HybridTime read_time,
-                                 const DocDB& doc_db,
-                                 PartialRangeKeyIntents partial_range_key_intents,
-                                 TransactionStatusManager* status_manager,
-                                 Counter* conflicts_metric,
-                                 LockBatch* lock_batch,
-                                 WaitQueue* wait_queue,
-                                 ResolutionCallback callback);
+Status ResolveTransactionConflicts(const DocOperations& doc_ops,
+                                   const KeyValueWriteBatchPB& write_batch,
+                                   HybridTime resolution_ht,
+                                   HybridTime read_time,
+                                   const DocDB& doc_db,
+                                   PartialRangeKeyIntents partial_range_key_intents,
+                                   TransactionStatusManager* status_manager,
+                                   Counter* conflicts_metric,
+                                   LockBatch* lock_batch,
+                                   WaitQueue* wait_queue,
+                                   ResolutionCallback callback);
 
 // Resolves conflicts for doc operations.
 // Read all intents that could conflict with provided doc_ops.
@@ -82,15 +82,15 @@ void ResolveTransactionConflicts(const DocOperations& doc_ops,
 // resolution_ht - current hybrid time. Used to request status of conflicting transactions.
 // db - db that contains tablet data.
 // status_manager - status manager that should be used during this conflict resolution.
-void ResolveOperationConflicts(const DocOperations& doc_ops,
-                               HybridTime resolution_ht,
-                               const DocDB& doc_db,
-                               PartialRangeKeyIntents partial_range_key_intents,
-                               TransactionStatusManager* status_manager,
-                               Counter* conflicts_metric,
-                               LockBatch* lock_batch,
-                               WaitQueue* wait_queue,
-                               ResolutionCallback callback);
+Status ResolveOperationConflicts(const DocOperations& doc_ops,
+                                 HybridTime resolution_ht,
+                                 const DocDB& doc_db,
+                                 PartialRangeKeyIntents partial_range_key_intents,
+                                 TransactionStatusManager* status_manager,
+                                 Counter* conflicts_metric,
+                                 LockBatch* lock_batch,
+                                 WaitQueue* wait_queue,
+                                 ResolutionCallback callback);
 
 struct ParsedIntent {
   // Intent DocPath.

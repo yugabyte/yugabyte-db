@@ -38,6 +38,8 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -165,6 +167,10 @@ public class Backup extends Model {
   @Column(nullable = false)
   public UUID storageConfigUUID;
 
+  @ApiModelProperty(value = "Base backup UUID", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  public UUID baseBackupUUID;
+
   @ApiModelProperty(value = "Universe name that created this backup", accessMode = READ_WRITE)
   @Column
   public String universeName;
@@ -253,7 +259,7 @@ public class Backup extends Model {
     return updateTime;
   }
 
-  @ApiModelProperty(value = "Backup completion time", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Backup completion time", accessMode = READ_ONLY)
   @Column
   private Date completionTime;
 
@@ -279,6 +285,8 @@ public class Backup extends Model {
       UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
     backup.backupUUID = UUID.randomUUID();
+    backup.baseBackupUUID =
+        params.baseBackupUUID == null ? backup.backupUUID : params.baseBackupUUID;
     backup.customerUUID = customerUUID;
     backup.universeUUID = params.universeUUID;
     backup.storageConfigUUID = params.storageConfigUUID;
@@ -344,6 +352,27 @@ public class Backup extends Model {
   public void updateBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
     save();
+  }
+
+  public void onCompletion(long totalTimeTaken, long totalSizeInBytes, boolean unsetExpiry) {
+    this.completionTime = new Date(this.createTime.getTime() + totalTimeTaken);
+    this.backupInfo.backupSizeInBytes = totalSizeInBytes;
+    // Full chain size is same as total size for single backup.
+    this.backupInfo.fullChainSizeInBytes = totalSizeInBytes;
+    if (unsetExpiry) {
+      this.expiry = null;
+    }
+    this.state = BackupState.Completed;
+    this.save();
+  }
+
+  public void onIncrementCompletion(Date incrementExpiryDate, long incrementSizeInBytes) {
+    if (incrementExpiryDate == null
+        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
+      this.expiry = incrementExpiryDate;
+    }
+    this.backupInfo.fullChainSizeInBytes += incrementSizeInBytes;
+    this.save();
   }
 
   public static List<Backup> fetchByUniverseUUID(UUID customerUUID, UUID universeUUID) {
@@ -613,6 +642,35 @@ public class Backup extends Model {
       }
     }
     return universes;
+  }
+
+  public static List<Backup> fetchAllBackupsByBaseBackupUUID(
+      UUID customerUUID, UUID baseBackupUUID) {
+    List<Backup> backupChain =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("base_backup_uuid", baseBackupUUID)
+            .orderBy()
+            .desc("create_time")
+            .findList();
+    return backupChain;
+  }
+
+  /**
+   * Get last backup in chain with state = 'Completed'.
+   *
+   * @param customerUUID
+   * @param backupUUID
+   */
+  public static Backup getLastSuccessfulBackupInChain(UUID customerUUID, UUID baseBackupUUID) {
+    List<Backup> backupChain = fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
+    Optional<Backup> backup =
+        backupChain.stream().filter(b -> b.state.equals(BackupState.Completed)).findFirst();
+    if (backup.isPresent()) {
+      return backup.get();
+    }
+    return null;
   }
 
   public static List<Backup> fetchAllBackupsByScheduleUUID(UUID customerUUID, UUID scheduleUUID) {

@@ -1243,7 +1243,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope(transaction_participant_.get());
+  RequestScope request_scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
