@@ -83,7 +83,7 @@ create table test (k int primary key, v int);
 insert into test values (2, 5);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -99,7 +99,7 @@ insert into test values (2, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -112,7 +112,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -220,7 +220,7 @@ As seen above, the UPDATE from transaction 2 first picks the latest snapshot of 
 
 The other degenerate scenario that can occur differs in the output of the `UPDATE` in transaction 2:
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -234,15 +234,9 @@ The other degenerate scenario that can occur differs in the output of the `UPDAT
   <tbody>
   <tr>
    <td>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
 
 ```sql
-update test set v=10 where k=2;    
+update test set v=10 where k=2;
 ```
 
 ```output
@@ -359,7 +353,7 @@ insert into test values (1, 5);
 insert into test values (2, 5);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -375,7 +369,7 @@ insert into test values (2, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -388,7 +382,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -507,7 +501,7 @@ truncate table test;
 insert into test values (1, 5);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -523,7 +517,7 @@ insert into test values (1, 5);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -536,7 +530,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -678,7 +672,7 @@ truncate table test;
 insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -694,7 +688,7 @@ insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -707,7 +701,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -875,7 +869,7 @@ truncate table test;
 insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -891,7 +885,7 @@ insert into test values (0, 5), (1, 5), (2, 5), (3, 5), (4, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -904,7 +898,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1065,7 +1059,7 @@ truncate table test;
 insert into test values (1, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -1081,7 +1075,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1094,7 +1088,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1172,7 +1166,7 @@ truncate table test;
 insert into test values (1, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -1188,7 +1182,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1201,7 +1195,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1225,7 +1219,7 @@ UPDATE 1
    <td>
 
 ```sql
-insert into test values (2, 1) on conflict (k) do update set v=100;    
+insert into test values (2, 1) on conflict (k) do update set v=100;
 ```
 
 ```output
@@ -1297,7 +1291,7 @@ truncate table test;
 insert into test values (1, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
   <thead>
     <tr>
     <th>
@@ -1313,7 +1307,7 @@ insert into test values (1, 1);
     <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
   </td>
@@ -1326,7 +1320,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1423,7 +1417,7 @@ truncate table test;
 insert into test values (1, 1);
 ```
 
-<table>
+<table class="no-alter-colors">
 <thead>
   <tr>
    <th>
@@ -1439,7 +1433,7 @@ insert into test values (1, 1);
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1452,7 +1446,7 @@ begin transaction isolation level read committed;
    <td>
 
 ```sql
-begin transaction isolation level read committed;    
+begin transaction isolation level read committed;
 ```
 
    </td>
@@ -1476,7 +1470,7 @@ UPDATE 1
    <td>
 
 ```sql
-insert into test values (1, 1) on conflict (k) do update set v=100;    
+insert into test values (1, 1) on conflict (k) do update set v=100;
 ```
 
 ```output
