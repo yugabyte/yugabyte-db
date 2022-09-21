@@ -684,22 +684,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
-		/*
-		 * In YugaByte mode initialize the catalog cache version to the latest
-		 * version from the master.
-		*/
 		YBCPgResetCatalogReadTime();
-		yb_catalog_cache_version = YbGetMasterCatalogVersion();
-
-		/*
-		 * Prefetch all sys tables which will be used during further
-		 * initialization procedure.
-		 * Note: Potentially it is possible to perform the catalog version read
-		 * within this prefetching. This will save 1 RPC. But in future this
-		 * approach will block the ability to cache sys tables read request on a
-		 * local t-server (#10821) because catalog version is a part of
-		 * key in such cache.
-		 */
 		YBCStartSysTablePrefetching();
 		*yb_sys_table_prefetching_started = true;
 		YbRegisterSysTableForPrefetching(
@@ -710,6 +695,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 				DbRoleSettingRelationId); // pg_db_role_setting
 		YbRegisterSysTableForPrefetching(
 				AuthMemRelationId);       // pg_auth_members
+		YbTryRegisterCatalogVersionTableForPrefetching();
+		yb_catalog_cache_version = YbGetMasterCatalogVersion();
 	}
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
