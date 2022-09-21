@@ -85,6 +85,9 @@ public class Backup extends Model {
     @EnumValue("FailedToDelete")
     FailedToDelete,
 
+    @EnumValue("Stopping")
+    Stopping,
+
     @EnumValue("Stopped")
     Stopped,
 
@@ -477,7 +480,8 @@ public class Backup extends Model {
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.Completed && newState == BackupState.Stopped)
-        || (this.state == BackupState.Failed && newState == BackupState.Stopped)) {
+        || (this.state == BackupState.Failed && newState == BackupState.Stopped)
+        || (this.state == BackupState.Stopping && newState == BackupState.Stopped)) {
       LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();

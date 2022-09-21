@@ -2,45 +2,49 @@
 
 package com.yugabyte.yw.common;
 
+import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static java.lang.Math.abs;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Backup.BackupCategory;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
-import java.io.IOException;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -53,13 +57,6 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
-
-import static com.cronutils.model.CronType.UNIX;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static java.lang.Math.abs;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 public class BackupUtil {
@@ -92,6 +89,8 @@ public class BackupUtil {
       "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
       Pattern.compile(YBC_BACKUP_LOCATION_IDENTIFIER_STRING);
+  public static final List<TaskType> BACKUP_TASK_TYPES =
+      ImmutableList.of(TaskType.CreateBackup, TaskType.BackupUniverse, TaskType.MultiTableBackup);
 
   public static Map<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
 
