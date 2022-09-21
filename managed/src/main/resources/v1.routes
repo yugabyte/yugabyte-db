@@ -486,3 +486,7 @@ PUT /customers/:cUUID/universes/:uniUUID/ybc/install                           c
 # YB-Controller throttle parameters
 GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                     com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                     com.yugabyte.yw.controllers.BackupsController.setThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+
+# Customer Licenses Upload API
+POST    /customers/:cUUID/licenses                                             com.yugabyte.yw.controllers.CustomerLicenseController.upload(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/licenses/:lUUID                                      com.yugabyte.yw.controllers.CustomerLicenseController.delete(cUUID: java.util.UUID, lUUID: java.util.UUID)
