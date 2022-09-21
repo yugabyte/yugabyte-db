@@ -48,7 +48,6 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
   public AccessManager mockAccessManager = mock(AccessManager.class);
-  public CustomerLicenseManager mockCustomerLicenseManager = mock(CustomerLicenseManager.class);
   public TemplateManager mockTemplateManager = mock(TemplateManager.class);
   public MetricQueryHelper mockMetricQueryHelper = spy(MetricQueryHelper.class);
   public CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
@@ -104,8 +103,6 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
-                .overrides(
-                    bind(CustomerLicenseManager.class).toInstance(mockCustomerLicenseManager))
                 .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
                 .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
