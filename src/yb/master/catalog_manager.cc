@@ -5925,6 +5925,7 @@ Status CatalogManager::BackfillIndex(
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   const TableIdentifierPB& index_table_identifier = req->index_identifier();
+  VLOG(1) << __func__ << " for " << yb::ToString(index_table_identifier);
 
   scoped_refptr<TableInfo> index_table = VERIFY_RESULT(FindTable(index_table_identifier));
 
@@ -5950,10 +5951,13 @@ Status CatalogManager::BackfillIndex(
                   index_table_identifier.ShortDebugString());
   }
 
-  // TODO(jason): when ready to use INDEX_PERM_DO_BACKFILL for resuming backfill across master
-  // leader changes, replace the following (issue #6218).
+  uint32_t current_version;
+  {
+    auto l = indexed_table->LockForRead();
+    current_version = l->pb.version();
+  }
 
-  // Collect index_info_pb.
+  // Validate that the index is at the correct permission.
   IndexInfoPB index_info_pb;
   indexed_table->GetIndexInfo(index_table->id()).ToPB(&index_info_pb);
   if (index_info_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE) {
@@ -5966,8 +5970,9 @@ Status CatalogManager::BackfillIndex(
             IndexPermissions_Name(index_info_pb.index_permissions())));
   }
 
-  return MultiStageAlterTable::StartBackfillingData(
-      this, indexed_table, {index_info_pb}, boost::none, epoch);
+  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+      this, indexed_table, current_version, epoch, /* respect deferrals for backfill */ false,
+      /* update ysql to backfill */ true);
 }
 
 Status CatalogManager::GetBackfillJobs(

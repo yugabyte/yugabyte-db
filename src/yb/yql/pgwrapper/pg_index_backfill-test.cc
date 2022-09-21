@@ -826,9 +826,9 @@ TEST_F(PgIndexBackfillTest, Nonconcurrent) {
       kIndexName,
       kTableName));
 
-  // If the index used backfill, it would have incremented the table schema version by two or three:
+  // If the index used backfill, it would have incremented the table schema version by three:
   // - add index info with INDEX_PERM_DELETE_ONLY
-  // - update to INDEX_PERM_DO_BACKFILL (as part of issue #6218)
+  // - update to INDEX_PERM_DO_BACKFILL
   // - update to INDEX_PERM_READ_WRITE_AND_DELETE
   // If the index did not use backfill, it would have incremented the table schema version by one:
   // - add index info with no DocDB permission (default INDEX_PERM_READ_WRITE_AND_DELETE)
@@ -892,12 +892,11 @@ TEST_F_EX(PgIndexBackfillTest,
     if (status.ok()) {
       num_ok++;
       LOG(INFO) << "got ok status";
-      // Success index creations do two schema changes:
+      // Success index creations do three schema changes:
       // - add index with INDEX_PERM_WRITE_AND_DELETE
+      // - transition to INDEX_PERM_DO_BACKFILL, then
       // - transition to success INDEX_PERM_READ_WRITE_AND_DELETE
-      // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
-      // schema version.
-      expected_schema_version += 2;
+      expected_schema_version += 3;
     } else {
       ASSERT_TRUE(status.IsNetworkError()) << status;
       const std::string msg = status.message().ToBuffer();
@@ -1875,7 +1874,7 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
   int GetNumMasters() const override { return 3; }
 };
 
-// Make sure that master leader change during backfill causes the index to not become public and
+// Make sure that master leader change during backfill causes the index backfill to continue and
 // doesn't cause any weird hangups or other issues.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ----------------------
@@ -1885,7 +1884,6 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 //   - backfill
 //     - get safe time for read
 //                                                master leader stepdown
-// TODO(jason): update this test when handling master leader changes during backfill (issue #6218).
 TEST_F_EX(PgIndexBackfillTest,
           MasterLeaderStepdown,
           PgIndexBackfillMultiMaster) {
@@ -1895,12 +1893,13 @@ TEST_F_EX(PgIndexBackfillTest,
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create thread";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    // The CREATE INDEX should get master leader change during backfill so that its
-    // WaitUntilIndexPermissionsAtLeast call starts querying the new leader.  Since the new leader
-    // will be inactive at the WRITE_AND_DELETE docdb permission, it will wait until the deadline,
-    // which is set to 30s.
-    Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    ASSERT_TRUE(HasClientTimedOut(status)) << status;
+    // The CREATE INDEX should get master leader change during backfill. We expect
+    // that the new master will continue the backfill, and it should succeed.
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName));
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
+        kIndexName, IndexStateFlags{
+                        IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady,
+                        IndexStateFlag::kIndIsValid})));
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin master leader stepdown thread";
