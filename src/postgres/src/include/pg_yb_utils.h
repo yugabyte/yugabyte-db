@@ -641,6 +641,7 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
  * Register system table for prefetching.
  */
 void YbRegisterSysTableForPrefetching(int sys_table_id);
+void YbTryRegisterCatalogVersionTableForPrefetching();
 
 /*
  * Returns true if the relation is a non-system relation in the same region.
