@@ -89,7 +89,7 @@ DEFINE_UNKNOWN_bool(ysql_beta_features, false,
 
 // Per-feature flags -- only relevant if ysql_beta_features is false.
 
-DEFINE_UNKNOWN_bool(ysql_beta_feature_tablegroup, true,
+DEFINE_UNKNOWN_bool(ysql_beta_feature_tablegroup, false,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
