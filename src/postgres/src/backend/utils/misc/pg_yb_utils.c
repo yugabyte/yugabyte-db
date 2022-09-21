@@ -61,6 +61,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
@@ -2725,6 +2726,10 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
 
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			db_id = YbMasterCatalogVersionTableDBOid();
+			break;
+
 		default:
 		{
 			ereport(FATAL,
@@ -2734,6 +2739,12 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		}
 	}
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+}
+
+void YbTryRegisterCatalogVersionTableForPrefetching()
+{
+	if (YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
+		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
 }
 
 bool YBCIsRegionLocal(Relation rel) {

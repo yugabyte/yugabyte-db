@@ -701,9 +701,8 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
         IllegalState,
         "Read time manipulation can't be specified for kDdl/ kCatalog transactions");
     ProcessReadTimeManipulation(options.read_time_manipulation());
-    if (options.has_read_time() &&
-        (options.read_time().has_read_ht() || options.use_catalog_session())) {
-      const auto read_time = options.read_time().has_read_ht()
+    if (options.has_read_time() || options.use_catalog_session()) {
+      const auto read_time = options.has_read_time() && options.read_time().has_read_ht()
           ? ReadHybridTime::FromPB(options.read_time()) : ReadHybridTime();
       session->SetReadPoint(read_time);
       if (read_time) {
