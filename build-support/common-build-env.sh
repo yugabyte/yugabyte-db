@@ -498,10 +498,14 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(debug|fastdebug|release|prof_(gen|use))$ &&
-            ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        YB_COMPILER_TYPE=clang13
+      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
+        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
+          YB_COMPILER_TYPE=clang14
+        else
+          YB_COMPILER_TYPE=clang13
+        fi
       else
+        # https://github.com/yugabyte/yugabyte-db/issues/12603
         YB_COMPILER_TYPE=clang12
       fi
     else
