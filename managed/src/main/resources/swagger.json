@@ -1181,7 +1181,7 @@
         },
         "state" : {
           "description" : "State of the backup",
-          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "example" : "DELETED",
           "readOnly" : true,
           "type" : "string"
@@ -1252,7 +1252,7 @@
         },
         "states" : {
           "items" : {
-            "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+            "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
             "type" : "string"
           },
           "type" : "array",
@@ -1620,7 +1620,7 @@
           "type" : "boolean"
         },
         "state" : {
-          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
         },
         "storageConfigType" : {
