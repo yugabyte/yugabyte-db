@@ -20,7 +20,6 @@ type: docs
       AWS KMS
     </a>
   </li>
-
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
@@ -44,7 +43,7 @@ Conceptually, Azure KMS consists of a key vault containing one or more keys, wit
 Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 
 - Set the vault permission model as Vault access policy.
-- Add the application to the key vault access policies with the minimum key management operations permissions of Get, List, Create, and cryptographic operations permissions of Unwrap Key, Wrap Key. 
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get and Create (unless you are pre-creating the key), as well as cryptographic operations permissions of Unwrap Key and Wrap Key. 
 
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
