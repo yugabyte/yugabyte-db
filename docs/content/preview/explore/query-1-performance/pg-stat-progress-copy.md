@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Yugabyte uses the PostgreSQL `pg_stat_progress_copy` view to report the progress of the COPY command execution. Whenever COPY is running, the `pg_stat_progress_copy` view will contain one row for each backend that is currently running a COPY command.
+Yugabyte supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the COPY command execution. Whenever COPY is running, the `pg_stat_progress_copy` view will contain one row for each backend that is currently running a COPY command.
 
 The following table includes the columns and their description:
 
@@ -32,28 +32,23 @@ The following table includes the columns and their description:
 
 ## YugabyteDB specific changes
 
-The `pg_stat_progress_copy` view includes the following changes which are YugabyteDB specific:
+The `pg_stat_progress_copy` view includes the following YugabyteDB specific changes:
 
 ### Definition of `tuples_processed`
 
 The definition of `tuples_processed` column is different in YugabyteDB in comparison to PostgreSQL.
 
-For the `COPY` command in YugabyteDB, an option `ROWS_PER_TRANSACTION` is added which defines the transaction size to be used by the `COPY` command. For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
-
-- 1 to 1000 →  Transaction_1
-- 1001 to 2000 → Transaction_2
-- 2001 to 3000 → Transaction_3
-- 3001 to 3500 → Error
-
-First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
+For the `COPY` command in YugabyteDB, an option `ROWS_PER_TRANSACTION` is added which defines the transaction size to be used by the `COPY` command. For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction.
 
 Because the `copy` command is divided into multiple transactions, `tuples_processed` tracks the rows for which the transaction has already completed.
+
+For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
 
 ### New column `yb_status`
 
 The `pg_stat_progress_copy` view includes a status column `yb_status` to indicate the status of the copy command.
 
-If a `COPY` command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the `COPY` command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. However, for YugabyteDB, without this column, you can't determine if the copy successfully completed or not.
+If a `COPY` command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the `COPY` command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. For YugabyteDB, `yb_status` column helps finding if the copy successfully completed or not.
 
 Following are the possible values for this column:
 
@@ -168,6 +163,8 @@ You should see output similar to the following:
      74390 | 13288 | yugabyte | 16399 | COPY FROM | PIPE | ERROR     |          766682 |           0 |            40000 |               0
     (1 row)
     ```
+
+    The default for `ROWS_PER_TRANSACTION` is 20000 and the interruption occurred on row 55184 in the example. So the last 15184 rows were not persisted and the first 40000 rows were persisted.
 
 ## Learn more
 
