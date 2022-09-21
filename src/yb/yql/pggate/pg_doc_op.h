@@ -21,6 +21,8 @@
 #include <variant>
 #include <vector>
 
+#include "yb/gutil/macros.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -244,12 +246,7 @@ class PgDocResponse {
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgDocOp> SharedPtr;
-  typedef std::shared_ptr<const PgDocOp> SharedPtrConst;
-
-  typedef std::unique_ptr<PgDocOp> UniPtr;
-  typedef std::unique_ptr<const PgDocOp> UniPtrConst;
+  using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
       PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
@@ -264,7 +261,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   using OperationRowOrders = std::vector<OperationRowOrder>;
 
-  virtual ~PgDocOp();
+  virtual ~PgDocOp() = default;
 
   // Initialize doc operator.
   virtual Status ExecuteInit(const PgExecParameters *exec_params);
@@ -455,19 +452,14 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status exec_status_ = Status::OK();
 
   Sender sender_;
+
+  DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };
 
 //--------------------------------------------------------------------------------------------------
 
 class PgDocReadOp : public PgDocOp {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgDocReadOp> SharedPtr;
-  typedef std::shared_ptr<const PgDocReadOp> SharedPtrConst;
-
-  typedef std::unique_ptr<PgDocReadOp> UniPtr;
-  typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
-
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
   PgDocReadOp(
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
@@ -597,14 +589,6 @@ class PgDocReadOp : public PgDocOp {
 
 class PgDocWriteOp : public PgDocOp {
  public:
-  // Public types.
-  typedef std::shared_ptr<PgDocWriteOp> SharedPtr;
-  typedef std::shared_ptr<const PgDocWriteOp> SharedPtrConst;
-
-  typedef std::unique_ptr<PgDocWriteOp> UniPtr;
-  typedef std::unique_ptr<const PgDocWriteOp> UniPtrConst;
-
-  // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
                PgTable* table,
                PgsqlWriteOpPtr write_op);

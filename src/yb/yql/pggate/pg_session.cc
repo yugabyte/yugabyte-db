@@ -25,7 +25,6 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -638,17 +637,6 @@ void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
 
 void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
-}
-
-Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {
-  if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
-    auto op_index = OpIndex::ValueFromStatus(status);
-    if (op_index && *op_index < relations.size()) {
-      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
-    }
-  }
-  return status;
 }
 
 Result<int> PgSession::TabletServerCount(bool primary_only) {
