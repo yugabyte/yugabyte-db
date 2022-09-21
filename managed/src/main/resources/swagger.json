@@ -3748,10 +3748,13 @@
           "$ref" : "#/definitions/InstanceTypeKey"
         },
         "instanceTypeCode" : {
+          "description" : "Instance type code",
+          "readOnly" : true,
           "type" : "string"
         },
         "instanceTypeDetails" : {
-          "$ref" : "#/definitions/InstanceTypeDetails"
+          "$ref" : "#/definitions/InstanceTypeDetails",
+          "description" : "Extra details about the instance (as a JSON object)"
         },
         "memSizeGB" : {
           "description" : "The instance's memory size, in gigabytes",
@@ -3762,19 +3765,9 @@
           "description" : "The instance's number of CPU cores",
           "format" : "double",
           "type" : "number"
-        },
-        "provider" : {
-          "$ref" : "#/definitions/Provider"
-        },
-        "providerCode" : {
-          "type" : "string"
-        },
-        "providerUuid" : {
-          "format" : "uuid",
-          "type" : "string"
         }
       },
-      "required" : [ "idKey", "instanceTypeCode", "instanceTypeDetails", "provider", "providerCode", "providerUuid" ],
+      "required" : [ "idKey" ],
       "type" : "object"
     },
     "InstanceTypeDetails" : {
@@ -3804,6 +3797,51 @@
         }
       },
       "required" : [ "instanceTypeCode", "providerUuid" ],
+      "type" : "object"
+    },
+    "InstanceTypeResp" : {
+      "description" : "Details of a cloud instance type",
+      "properties" : {
+        "active" : {
+          "description" : "True if the instance is active",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "idKey" : {
+          "$ref" : "#/definitions/InstanceTypeKey"
+        },
+        "instanceTypeCode" : {
+          "description" : "Instance type code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "instanceTypeDetails" : {
+          "$ref" : "#/definitions/InstanceTypeDetails",
+          "description" : "Extra details about the instance (as a JSON object)"
+        },
+        "memSizeGB" : {
+          "description" : "The instance's memory size, in gigabytes",
+          "format" : "double",
+          "type" : "number"
+        },
+        "numCores" : {
+          "description" : "The instance's number of CPU cores",
+          "format" : "double",
+          "type" : "number"
+        },
+        "providerCode" : {
+          "description" : "Cloud provider code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "providerUuid" : {
+          "description" : "Provider UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "idKey" ],
       "type" : "object"
     },
     "KeyInfo" : {
@@ -12690,7 +12728,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/InstanceType"
+                "$ref" : "#/definitions/InstanceTypeResp"
               },
               "type" : "array"
             }
@@ -12736,7 +12774,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/InstanceType"
+              "$ref" : "#/definitions/InstanceTypeResp"
             }
           }
         },
@@ -12808,7 +12846,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/InstanceType"
+              "$ref" : "#/definitions/InstanceTypeResp"
             }
           }
         },
