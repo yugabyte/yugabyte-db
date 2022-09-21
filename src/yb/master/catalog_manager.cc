@@ -3544,6 +3544,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
+  // Check if index is colocated and has a Tablespace specified.
+  SCHECK(
+      !colocated || !IsIndex(req) || !req.has_tablespace_id(),
+      InvalidArgument,
+      "TABLESPACE is not supported for indexes on colocated tables.");
+
   // TODO: If this is a colocated index table, convert any hash partition columns into
   // range partition columns.
   // This is because postgres does not know that this index table is in a colocated database.
