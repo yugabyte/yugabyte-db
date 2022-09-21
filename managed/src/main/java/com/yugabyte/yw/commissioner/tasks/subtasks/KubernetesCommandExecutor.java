@@ -608,7 +608,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!tserverDiskSpecs.isEmpty()) {
       storageOverrides.put("tserver", tserverDiskSpecs);
     }
-    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+    String instanceTypeCode = instanceType.getInstanceTypeCode();
+    if (instanceTypeCode.equals("cloud")) {
       masterDiskSpecs.put("size", String.format("%dGi", 3));
     }
     if (!masterDiskSpecs.isEmpty()) {
@@ -627,15 +628,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
-    if (!instanceType.getInstanceTypeCode().equals("xsmall")
-        && !instanceType.getInstanceTypeCode().equals("dev")) {
+    if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
       masterResource.put("cpu", 2);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");
     }
     // For testing with multiple deployments locally.
-    if (instanceType.getInstanceTypeCode().equals("dev")) {
+    if (instanceTypeCode.equals("dev")) {
       masterResource.put("cpu", 0.5);
       masterResource.put("memory", "0.5Gi");
       masterLimit.put("cpu", 0.5);
@@ -644,7 +644,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // For cloud deployments, we want bigger bursts in CPU if available for better performance.
     // Memory should not be burstable as memory consumption above requests can lead to pods being
     // killed if the nodes is running out of resources.
-    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+    if (instanceTypeCode.equals("cloud")) {
       tserverLimit.put("cpu", instanceType.numCores * 2);
       masterResource.put("cpu", 0.3);
       masterResource.put("memory", "1Gi");

@@ -957,7 +957,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     String updateQuery =
         "INSERT INTO instance_type ("
             + "provider_uuid, instance_type_code, active, num_cores, mem_size_gb,"
-            + "instance_type_details_json )"
+            + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
