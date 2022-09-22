@@ -40,6 +40,7 @@ For installation overview, select one of the following installation types:
 
 Click elements of the following chart to access detailed steps:
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-k8s.png" usemap="#image-map">
 
 <map name="image-map">
@@ -47,3 +48,4 @@ Click elements of the following chart to access detailed steps:
     <area target="_blank" alt="K8s pre-reqs" title="K8s pre-reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes/" coords="323,257,576,496" shape="rect">
     <area target="_blank" alt="Install K8s" title="Install K8s" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#install-yugabyte-platform-on-a-kubernetes-cluster" coords="346,1032,551,1166" shape="rect">
 </map>
+</div>

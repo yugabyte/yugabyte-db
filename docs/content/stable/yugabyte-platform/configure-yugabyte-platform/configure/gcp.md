@@ -58,6 +58,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 Click elements of the following chart to access detailed steps:
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-gcp.png" usemap="#image-map">
 
 <map name="image-map">
@@ -67,3 +68,4 @@ Click elements of the following chart to access detailed steps:
     <area target="_blank" alt="GCP provider pre reqs" title="GCP provider pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#prerequisites" coords="223,476,675,653" shape="rect">
     <area target="_blank" alt="configure GCP" title="configure GCP" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/#configure-gcp" coords="305,703,601,791" shape="rect">
 </map>
+</div>

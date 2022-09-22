@@ -38,6 +38,7 @@ Select your installation type to see the installation flow. Click on the element
   </li>
 </ul>
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-private-cloud.png" usemap="#image-map">
 
 <map name="image-map">
@@ -49,3 +50,4 @@ Select your installation type to see the installation flow. Click on the element
     <area target="_blank" alt="Airgapped installation - pre reqs" title="Airgapped installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="482,1008,688,1141" shape="rect">
     <area target="_blank" alt="Online installation - pre reqs" title="Online installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="" shape="rect">
 </map>
+</div>

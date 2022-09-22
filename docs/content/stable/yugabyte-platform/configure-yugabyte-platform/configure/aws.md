@@ -56,6 +56,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 <br>Click elements of the following chart to access detailed steps:
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-aws.png" usemap="#image-map">
 
 <map name="image-map">
@@ -65,3 +66,4 @@ For overview of how to configure database nodes, select one of the following clo
     <area target="_blank" alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect">
     <area target="_blank" alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect">
 </map>
+</div>

@@ -42,6 +42,7 @@ For installation overview, select one of the following installation types:
 
 Click elements of the following chart to access detailed steps:
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-install-private-cloud.png" usemap="#image-map">
 
 <map name="image-map">
@@ -53,3 +54,4 @@ Click elements of the following chart to access detailed steps:
     <area target="_blank" alt="Airgapped installation - pre reqs" title="Airgapped installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="482,1008,688,1141" shape="rect">
     <area target="_blank" alt="Online installation - pre reqs" title="Online installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="" shape="rect">
 </map>
+</div>

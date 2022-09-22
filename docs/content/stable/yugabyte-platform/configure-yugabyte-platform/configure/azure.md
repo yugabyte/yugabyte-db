@@ -58,6 +58,7 @@ For overview of how to configure database nodes, select one of the following clo
 
 Click elements of the following chart to access detailed steps:
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">
 
 <map name="image-map">
@@ -65,3 +66,4 @@ Click elements of the following chart to access detailed steps:
     <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect">
     <area target="_blank" alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect">
 </map>
+</div>
