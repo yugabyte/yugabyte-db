@@ -33,14 +33,26 @@ type: docs
 
 With YugabyteDB, you can use follower reads to lower read latencies as the database would have less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order is possible).
 
-You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency) under reference section.
+## Considerations
+
+The following factors need to be considered to use follower reads in YCQL.
+
+### Consistency level
+
+You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no affect on write operations, but only read operations. Writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
+
+To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency) under reference section.
 From your YCQL shell [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the command `CONSISTENCY` with no arguments, and set the consistency level to one using `CONSISTENCY ONE`.
 
-In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.
+### Maximum staleness
 
 YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (by default), the read request is forwarded to the leader. When there is a long distance between the tablet follower and the tablet leader, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value (default is 10 seconds). For details on how to add this flag when using `yb-ctl`, see [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
 
-## 1. Create universe
+## Try it out
+
+In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.
+
+### Create universe
 
 If you have a previously running local universe, destroy it by executing the following command:
 
@@ -60,7 +72,7 @@ Add one more node, as follows:
 $ ./bin/yb-ctl add_node
 ```
 
-## 2. Write some data
+### Write some data
 
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
 
@@ -108,13 +120,13 @@ ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 (1 rows)
 ```
 
-## 3. Strongly consistent reads from tablet leaders
+### Strongly consistent reads from tablet leaders
 
 When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, you will see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
-## 4. Follower reads from tablet replicas
+### Follower reads from tablet replicas
 
 Stop the workload application above, and then run the following variant of that workload application. This command will perform updates to the same key `key:0` which will go through the tablet leader, but it will read from the replicas, as follows:
 
@@ -133,7 +145,7 @@ This can be seen by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
 
-## 5. Clean up (optional)
+### Clean up (optional)
 
 Optionally, you can execute the following command to shut down the local cluster created in Step 1:
 
