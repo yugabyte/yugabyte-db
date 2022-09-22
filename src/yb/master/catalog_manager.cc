@@ -2999,6 +2999,7 @@ Status CatalogManager::ValidateSplitCandidate(
 Status CatalogManager::DeleteNotServingTablet(
     const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
     rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteNotServingTablet request " << req->ShortDebugString();
   const auto& tablet_id = req->tablet_id();
   const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
@@ -3011,6 +3012,13 @@ Status CatalogManager::DeleteNotServingTablet(
   const auto& table_info = tablet_info->table();
 
   RETURN_NOT_OK(CheckIfForbiddenToDeleteTabletOf(table_info));
+
+  if (VERIFY_RESULT(IsTableUndergoingPitrRestore(*table_info))) {
+    LOG(INFO) << "Rejecting delete request for tablet " << tablet_id << " since PITR restore"
+              << " is ongoing for it";
+    return STATUS(
+        InvalidArgument, "Rejecting because the table is still undergoing a PITR restore");
+  }
 
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
