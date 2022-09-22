@@ -4,11 +4,7 @@ linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent: New features, cloud provider regions, and known issues
 image: /images/section_icons/index/quick_start.png
-menu:
-  preview_yugabyte-cloud:
-    identifier: cloud-release
-    parent: yugabytedb-managed
-    weight: 950
+layout: single
 type: docs
 ---
 
