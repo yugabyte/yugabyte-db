@@ -1332,9 +1332,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void checkAndCreateReadWriteTestTableTask(Cluster primaryCluster) {
+    boolean isWriteReadTableRelease =
+        CommonUtils.isReleaseEqualOrAfter(
+            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion);
+    boolean isWriteReadTableEnabled =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
     if (primaryCluster.userIntent.enableYSQL
-        && CommonUtils.isReleaseEqualOrAfter(
-            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
+        && isWriteReadTableRelease
+        && isWriteReadTableEnabled) {
       // Create read-write test table
       List<NodeDetails> tserverLiveNodes =
           getUniverse()
@@ -1911,7 +1918,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             Backup.BackupVersion.V2);
     backup.setTaskUUID(userTaskUUID);
     backupTableParams.backupUuid = backup.backupUUID;
-
+    backupTableParams.baseBackupUUID = backup.baseBackupUUID;
     for (BackupTableParams backupParams : backupTableParams.backupList) {
       createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
     }

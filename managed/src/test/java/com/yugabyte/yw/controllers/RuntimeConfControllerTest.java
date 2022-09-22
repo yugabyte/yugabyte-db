@@ -373,12 +373,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void configResolution() {
+  @Parameters({"yb.upgrade.vmImage", "yb.health.trigger_api.enabled"})
+  public void configResolution(String key) {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
-    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
     setCloudEnabled(defaultUniverse.universeUUID);
-    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
   private void setCloudEnabled(UUID scopeUUID) {

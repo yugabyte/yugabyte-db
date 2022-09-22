@@ -1556,12 +1556,12 @@ TEST_F(RemoteBootstrapITest, TestLongRemoteBootstrapsAcrossServers) {
   vector<string> ts_flags, master_flags;
 
   // Make everything happen ~50 faster:
-  //  - follower_unavailable_considered_failed_sec from 300 to 10 secs
-  //    (setting it to 6 secs causes faulty removal of alive followers)
+  //  - follower_unavailable_considered_failed_sec from 300 to 20 secs
+  //    (setting it to 10 secs causes faulty removal of alive followers)
   //  - raft_heartbeat_interval_ms from 500 to 10 ms
   //  - consensus_rpc_timeout_ms from 3000 to 60 ms
 
-  ts_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=20");
   ts_flags.push_back("--raft_heartbeat_interval_ms=10");
   ts_flags.push_back("--consensus_rpc_timeout_ms=60");
 

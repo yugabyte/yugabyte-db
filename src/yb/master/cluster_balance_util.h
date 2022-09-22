@@ -338,8 +338,6 @@ class PerTableLoadState {
 
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
-  std::shared_ptr<const TabletReplicaMap> GetReplicaLocations(TabletInfo* tablet);
-
   Status AddRunningTablet(const TabletId& tablet_id,
                                   const TabletServerId& ts_uuid,
                                   const std::string& path);
@@ -452,6 +450,8 @@ class PerTableLoadState {
   vector<AffinitizedZonesSet> affinitized_zones_;
 
  private:
+  bool ShouldSkipReplica(const TabletReplica& replica);
+  size_t GetReplicaSize(std::shared_ptr<const TabletReplicaMap> replica_map);
   const std::string uninitialized_ts_meta_format_msg =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 

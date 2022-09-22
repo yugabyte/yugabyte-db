@@ -51,6 +51,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <queue>
 #include <random>
 #include <set>
@@ -58,6 +59,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -65,6 +67,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -86,6 +89,7 @@
 #include <boost/mpl/if.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/optional.hpp>
@@ -109,6 +113,7 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/utility.hpp>
 #include <boost/version.hpp>
@@ -180,6 +185,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
@@ -191,6 +197,7 @@
 #include "yb/util/file_system.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
@@ -236,6 +243,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
@@ -251,4 +259,5 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/ulimit.h"
+#include "yb/util/unique_lock.h"
 #include "yb/util/user.h"

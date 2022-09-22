@@ -5,6 +5,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -16,6 +17,7 @@ import io.ebean.Finder;
 import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
+import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -31,8 +33,12 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import javax.persistence.FetchType;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
+
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,70 +67,24 @@ public class InstanceType extends Model {
     NVME
   }
 
-  @EmbeddedId @Constraints.Required public InstanceTypeKey idKey;
+  @Getter @Setter @EmbeddedId @Constraints.Required private InstanceTypeKey idKey;
 
   // ManyToOne for provider is kept outside of InstanceTypeKey
   // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
   // insertable and updatable are set to false as actual updates
   // are taken care by providerUuid parameter in InstanceTypeKey
-  @ManyToOne(optional = false)
+  // This is currently not used directly, but in order for ebean to be able
+  // to save instances of this model, this association has to be bidirectional
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
   @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
   private Provider provider;
-
-  public InstanceTypeKey getIdKey() {
-    return idKey;
-  }
-
-  public Provider getProvider() {
-    if (this.provider == null) {
-      setProviderUuid(this.idKey.getProviderUuid());
-    }
-    return this.provider;
-  }
-
-  public void setProvider(Provider aProvider) {
-    provider = aProvider;
-    idKey.setProviderUuid(aProvider.uuid);
-  }
-
-  public UUID getProviderUuid() {
-    return this.idKey.getProviderUuid();
-  }
-
-  public void setProviderUuid(UUID providerUuid) {
-    Provider provider = Provider.get(providerUuid);
-    if (provider != null) {
-      setProvider(provider);
-    } else {
-      LOG.error("No provider found for the given UUID: {}", providerUuid);
-    }
-  }
-
-  public String getProviderCode() {
-    Provider provider = getProvider();
-    return provider != null ? provider.code : null;
-  }
-
-  public String getInstanceTypeCode() {
-    return this.idKey.getInstanceTypeCode();
-  }
-
-  public void setInstanceTypeCode(String code) {
-    idKey.setInstanceTypeCode(code);
-  }
 
   @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
-  private Boolean active = true;
-
-  public Boolean isActive() {
-    return active;
-  }
-
-  public void setActive(Boolean active) {
-    this.active = active;
-  }
+  @Getter
+  @Setter
+  private boolean active = true;
 
   @ApiModelProperty(value = "The instance's number of CPU cores", accessMode = READ_WRITE)
   @Constraints.Required
@@ -139,36 +99,19 @@ public class InstanceType extends Model {
   @ApiModelProperty(
       value = "Extra details about the instance (as a JSON object)",
       accessMode = READ_WRITE)
-  @Column(columnDefinition = "TEXT")
-  private String instanceTypeDetailsJson;
+  @DbJson
+  public InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
 
-  public InstanceTypeDetails instanceTypeDetails;
+  @ApiModelProperty(value = "Instance type code", accessMode = READ_ONLY)
+  public String getInstanceTypeCode() {
+    return this.idKey.getInstanceTypeCode();
+  }
 
   private static final Finder<InstanceTypeKey, InstanceType> find =
       new Finder<InstanceTypeKey, InstanceType>(InstanceType.class) {};
 
   public static InstanceType get(UUID providerUuid, String instanceTypeCode) {
-    InstanceType instanceType = find.byId(InstanceTypeKey.create(instanceTypeCode, providerUuid));
-    if (instanceType == null) {
-      return instanceType;
-    }
-    return populateDetails(instanceType);
-  }
-
-  private static InstanceType populateDetails(InstanceType instanceType) {
-    // Since 'instanceTypeDetailsJson' can be null (populated externally), we need to populate these
-    // fields explicitly.
-    if (instanceType.instanceTypeDetailsJson == null
-        || instanceType.instanceTypeDetailsJson.isEmpty()) {
-      instanceType.instanceTypeDetails = new InstanceTypeDetails();
-      instanceType.instanceTypeDetailsJson =
-          Json.stringify(Json.toJson(instanceType.instanceTypeDetails));
-    } else {
-      instanceType.instanceTypeDetails =
-          Json.fromJson(
-              Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
-    }
-    return instanceType;
+    return find.byId(InstanceTypeKey.create(instanceTypeCode, providerUuid));
   }
 
   public static List<InstanceType> findByKeys(Collection<InstanceTypeKey> keys) {
@@ -184,12 +127,7 @@ public class InstanceType extends Model {
       andExpr.eq("instance_type_code", key.getInstanceTypeCode());
       orExpr.endAnd();
     }
-    return query
-        .endOr()
-        .findList()
-        .stream()
-        .map(InstanceType::populateDetails)
-        .collect(Collectors.toList());
+    return query.endOr().findList();
   }
 
   public static InstanceType getOrBadRequest(UUID providerUuid, String instanceTypeCode) {
@@ -224,27 +162,9 @@ public class InstanceType extends Model {
     instanceType.memSizeGB = memSize;
     instanceType.numCores = numCores;
     instanceType.instanceTypeDetails = instanceTypeDetails;
-    instanceType.instanceTypeDetailsJson = Json.stringify(Json.toJson(instanceTypeDetails));
     // Update the in-memory fields.
     instanceType.save();
-    // Update the JSON field - this does not seem to be updated by the save above.
-    String updateQuery =
-        "UPDATE instance_type "
-            + "SET instance_type_details_json = :instanceTypeDetails "
-            + "WHERE provider_uuid = :providerUuid AND instance_type_code = :instanceTypeCode";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
-    update.setParameter("instanceTypeDetails", instanceType.instanceTypeDetailsJson);
-    update.setParameter("providerUuid", providerUuid);
-    update.setParameter("instanceTypeCode", instanceTypeCode);
-    int modifiedCount = Ebean.execute(update);
-    // Check if the save was not successful.
-    if (modifiedCount == 0) {
-      // Throw an exception as the save was not successful.
-      LOG.error("Failed to update SQL row");
-    } else if (modifiedCount > 1) {
-      // Exactly one row should have been modified.
-      LOG.error("Running query [" + updateQuery + "] updated " + modifiedCount + " rows");
-    }
+
     return instanceType;
   }
 
@@ -306,11 +226,8 @@ public class InstanceType extends Model {
                     configHelper.getAWSInstancePrefixesSupported(), allowUnsupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
-      JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
-      if (parsedJson == null || parsedJson.isNull()) {
+      if (instanceType.instanceTypeDetails == null) {
         instanceType.instanceTypeDetails = new InstanceTypeDetails();
-      } else {
-        instanceType.instanceTypeDetails = Json.fromJson(parsedJson, InstanceTypeDetails.class);
       }
       if (instanceType.instanceTypeDetails.volumeDetailsList.isEmpty()) {
         instanceType.instanceTypeDetails.setVolumeDetailsList(
@@ -341,10 +258,7 @@ public class InstanceType extends Model {
     if (provider.code.equals("aws")) {
       return populateDefaultsIfEmpty(entries, config, configHelper, allowUnsupported);
     } else {
-      return entries
-          .stream()
-          .map(entry -> InstanceType.get(entry.getProviderUuid(), entry.getInstanceTypeCode()))
-          .collect(Collectors.toList());
+      return entries;
     }
   }
 
@@ -370,12 +284,8 @@ public class InstanceType extends Model {
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
     public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
 
-    public List<VolumeDetails> volumeDetailsList;
+    public List<VolumeDetails> volumeDetailsList = new LinkedList<>();
     public PublicCloudConstants.Tenancy tenancy;
-
-    public InstanceTypeDetails() {
-      volumeDetailsList = new LinkedList<>();
-    }
 
     public void setVolumeDetailsList(int volumeCount, int volumeSizeGB, VolumeType volumeType) {
       for (int i = 0; i < volumeCount; i++) {

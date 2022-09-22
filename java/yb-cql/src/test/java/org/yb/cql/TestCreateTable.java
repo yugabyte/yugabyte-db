@@ -170,6 +170,10 @@ public class TestCreateTable extends BaseCQLTest {
                     keyword + " double, c2 varchar, primary key (c1)) " +
                     "WITH transactions = { 'enabled' : true };");
     session.execute("CREATE INDEX ON test_create_keyword_reg(" + keyword + ");");
+
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
+
     session.execute("SELECT c1, " + keyword + ", c2 FROM test_create_keyword_reg;");
     session.execute("UPDATE test_create_keyword_reg SET " + keyword + " = 3 WHERE c1 = 2;");
     session.execute("DROP TABLE test_create_keyword_reg;");
@@ -225,6 +229,10 @@ public class TestCreateTable extends BaseCQLTest {
     assertTrue(miniCluster.getClient().tableExists("system", "transactions"));
     // Test index table with tablets table property set.
     session.execute("CREATE INDEX on test_num_tablets_3 (id) WITH tablets = 5;");
+
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
+
     ids =
       miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_3_id_idx");
     assertEquals(ids.size(), 5);

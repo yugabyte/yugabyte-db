@@ -500,7 +500,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean instanceTypeChanged,
       boolean isMultiAz,
       Provider provider,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -613,7 +614,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         // If the namespace is configured at the AZ, we don't delete
         // it, as it is not created by us.
-        if (config.get("KUBENAMESPACE") == null) {
+        // In case of new naming style other AZs also run in the same namespace so skip deleting
+        // namespace.
+        if (config.get("KUBENAMESPACE") == null && !newNamingStyle) {
           // Delete the namespaces of the deployments.
           namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(

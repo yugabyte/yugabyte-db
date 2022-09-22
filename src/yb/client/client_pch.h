@@ -49,6 +49,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <optional>
 #include <ostream>
 #include <random>
 #include <regex>
@@ -57,6 +59,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -70,6 +73,7 @@
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/atomic.hpp>
+#include <boost/bimap.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/container/stable_vector.hpp>
@@ -83,6 +87,7 @@
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
@@ -111,6 +116,7 @@
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/variant.hpp>
 #include <boost/version.hpp>
@@ -135,6 +141,7 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <gtest/internal/gtest-internal.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
@@ -175,8 +182,11 @@
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/algorithm_util.h"
+#include "yb/util/async_task_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/auto_flags.h"
+#include "yb/util/auto_flags_util.h"
 #include "yb/util/background_task.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/bitmap.h"
@@ -194,6 +204,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/cross_thread_mutex.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -207,6 +218,8 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"
+#include "yb/util/io.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/lockfree.h"
@@ -217,6 +230,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metric_entity.h"
@@ -231,6 +246,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
@@ -243,6 +259,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
@@ -262,6 +279,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"

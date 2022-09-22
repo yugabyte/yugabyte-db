@@ -44,8 +44,14 @@ import play.mvc.Result;
 @Slf4j
 public class PitrController extends AuthenticatedController {
 
-  @Inject Commissioner commissioner;
-  @Inject YBClientService ybClientService;
+  Commissioner commissioner;
+  YBClientService ybClientService;
+
+  @Inject
+  public PitrController(Commissioner commissioner, YBClientService ybClientService) {
+    this.commissioner = commissioner;
+    this.ybClientService = ybClientService;
+  }
 
   @ApiOperation(
       value = "Create pitr config for a keyspace in a universe",
@@ -72,7 +78,7 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "PITR Config retention period can't be less than 1 second");
     }
 
-    if (taskParams.intervalInSeconds <= taskParams.retentionPeriodInSeconds) {
+    if (taskParams.retentionPeriodInSeconds <= taskParams.intervalInSeconds) {
       throw new PlatformServiceException(
           BAD_REQUEST, "PITR Config interval can't be less than retention period");
     }
@@ -132,7 +138,7 @@ public class PitrController extends AuthenticatedController {
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
     } catch (Exception ex) {
       log.error(ex.getMessage());
-      throw new RuntimeException(ex);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
     } finally {
       ybClientService.closeClient(client, masterHostPorts);
     }
@@ -186,15 +192,15 @@ public class PitrController extends AuthenticatedController {
       client = ybClientService.getClient(masterHostPorts, certificate);
       scheduleResp = client.listSnapshotSchedules(taskParams.pitrConfigUUID);
       scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-
-      if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
-        throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
-      }
     } catch (Exception ex) {
       log.error(ex.getMessage());
-      throw new RuntimeException(ex);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
     } finally {
       ybClientService.closeClient(client, masterHostPorts);
+    }
+
+    if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
     }
 
     taskParams.universeUUID = universeUUID;
@@ -248,7 +254,7 @@ public class PitrController extends AuthenticatedController {
 
     } catch (Exception e) {
       log.error("Hit exception : {}", e.getMessage());
-      throw new RuntimeException(e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybClientService.closeClient(client, masterHostPorts);
     }

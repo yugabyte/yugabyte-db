@@ -73,8 +73,6 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  void RegisterPgConfigReloader(tserver::PgConfigReloader reloader) override {}
-
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

@@ -60,7 +60,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Cleanup(TransactionIdSet&& set) override {
   }
 
-  int64_t RegisterRequest() override {
+  Result<int64_t> RegisterRequest() override {
     return 0;
   }
 
