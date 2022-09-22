@@ -27,7 +27,7 @@
 [[top_nav]]
   name = "Start Now"
   weight = 3
-  url = "https://cloud.yugabyte.com/signup"
+  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [top_nav.params]
     newTab = true
 
@@ -142,12 +142,29 @@
     excludeVersion = true
 
 [[main]]
-  name = "Release Notes"
+  name = "Releases"
   weight = 5
+  identifier = "releases"
   url = "/preview/releases/"
   [main.params]
     excludeVersion = true
 
+[[main]]
+  name = "YugabyteDB"
+  weight = 1
+  parent = "releases"
+  url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "YugabyteDB Managed"
+  weight = 2
+  parent = "releases"
+  identifier = "ybmanaged-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
+  [main.params]
+    excludeVersion = true
 
 ########## Bottom menu for left navigation
 
@@ -435,6 +452,15 @@
     classes = "other-links"
     showSection = true
     newTab = true
+
+[[preview_yugabyte-cloud]]
+  name = "What's New"
+  weight = 4
+  identifier = "yugabytedb-managed-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
+  [preview_yugabyte-cloud.params]
+    classes = "other-links"
+    showSection = true
 
 ########## Menus for stable
 
