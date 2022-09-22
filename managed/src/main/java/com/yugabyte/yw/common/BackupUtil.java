@@ -22,9 +22,12 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.BackupResp;
+import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
@@ -176,42 +179,63 @@ public class BackupUtil {
     Boolean isStorageConfigPresent = true;
     Boolean isUniversePresent = true;
     try {
-      CustomerConfig config =
-          customerConfigService.getOrBadRequest(
-              backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
+      customerConfigService.getOrBadRequest(
+          backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
     } catch (PlatformServiceException e) {
       isStorageConfigPresent = false;
     }
     try {
-      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
+      Universe.getOrBadRequest(backup.universeUUID);
     } catch (PlatformServiceException e) {
       isUniversePresent = false;
+    }
+    List<Backup> backupChain =
+        Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
+    Date lastIncrementDate = null;
+    boolean hasIncrements = false;
+    BackupState lastBackupState = BackupState.Completed;
+    if (CollectionUtils.isNotEmpty(backupChain)) {
+      lastIncrementDate = backupChain.get(0).getCreateTime();
+      lastBackupState = backupChain.get(0).state;
+      hasIncrements = backupChain.size() > 1;
     }
     Boolean onDemand = (backup.getScheduleUUID() == null);
     BackupRespBuilder builder =
         BackupResp.builder()
-            .createTime(backup.getCreateTime())
-            .updateTime(backup.getUpdateTime())
             .expiryTime(backup.getExpiry())
-            .completionTime(backup.getCompletionTime())
             .onDemand(onDemand)
-            .sse(backup.getBackupInfo().sse)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
-            .backupUUID(backup.backupUUID)
-            .taskUUID(backup.taskUUID)
             .scheduleUUID(backup.getScheduleUUID())
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
             .category(backup.category)
-            .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
-            .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
-            .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
             .storageConfigType(backup.getBackupInfo().storageConfigType)
-            .state(backup.state);
+            .fullChainSizeInBytes(backup.getBackupInfo().fullChainSizeInBytes)
+            .commonBackupInfo(getCommonBackupInfo(backup))
+            .hasIncrementalBackups(hasIncrements)
+            .lastIncrementalBackupTime(lastIncrementDate)
+            .lastBackupState(lastBackupState);
+    return builder.build();
+  }
+
+  public static CommonBackupInfo getCommonBackupInfo(Backup backup) {
+    CommonBackupInfoBuilder builder = CommonBackupInfo.builder();
+    builder
+        .createTime(backup.getCreateTime())
+        .updateTime(backup.getUpdateTime())
+        .completionTime(backup.getCompletionTime())
+        .backupUUID(backup.backupUUID)
+        .baseBackupUUID(backup.baseBackupUUID)
+        .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
+        .state(backup.state)
+        .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
+        .storageConfigUUID(backup.storageConfigUUID)
+        .taskUUID(backup.taskUUID)
+        .sse(backup.getBackupInfo().sse);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
           KeyspaceTablesList.builder()
@@ -242,6 +266,14 @@ public class BackupUtil {
       builder.responseList(kTLists);
     }
     return builder.build();
+  }
+
+  public List<CommonBackupInfo> getIncrementalBackupList(UUID baseBackupUUID, UUID customerUUID) {
+    List<Backup> backupChain = Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
+    if (CollectionUtils.isEmpty(backupChain)) {
+      return new ArrayList<>();
+    }
+    return backupChain.stream().map(BackupUtil::getCommonBackupInfo).collect(Collectors.toList());
   }
 
   // For creating new backup we would set the storage location based on
