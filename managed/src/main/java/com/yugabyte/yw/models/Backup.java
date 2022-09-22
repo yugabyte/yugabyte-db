@@ -693,6 +693,8 @@ public class Backup extends Model {
         find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
 
     query.eq("customer_uuid", filter.getCustomerUUID());
+    // Only non-incremental backups.
+    query.raw("backup_uuid = base_backup_uuid");
     appendActionTypeClause(query);
     if (!CollectionUtils.isEmpty(filter.getScheduleUUIDList())) {
       appendInClause(query, "schedule_uuid", filter.getScheduleUUIDList());
@@ -760,18 +762,7 @@ public class Backup extends Model {
             .parallelStream()
             .map(b -> BackupUtil.toBackupResp(b, customerConfigService))
             .collect(Collectors.toList());
-    BackupPagedApiResponse responseMin;
-    try {
-      responseMin = BackupPagedApiResponse.class.newInstance();
-    } catch (Exception e) {
-      throw new IllegalStateException(
-          "Failed to create " + BackupPagedApiResponse.class.getSimpleName() + " instance", e);
-    }
-    responseMin.setEntities(backupList);
-    responseMin.setHasPrev(response.isHasPrev());
-    responseMin.setHasNext(response.isHasNext());
-    responseMin.setTotalCount(response.getTotalCount());
-    return responseMin;
+    return response.setData(backupList, new BackupPagedApiResponse());
   }
 
   public boolean isIncrementalBackup() {
