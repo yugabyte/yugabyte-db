@@ -22,7 +22,7 @@ type: docs
   </li>
 
   <li >
-    <a href="../hibernate" class="nav-link active">
+    <a href="../hibernate/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Hibernate ORM
     </a>

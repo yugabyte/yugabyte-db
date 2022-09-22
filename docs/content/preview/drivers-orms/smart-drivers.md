@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB smart drivers for YSQL
 linkTitle: Smart drivers
-description: Yugabyte smart drivers for YSQL
+description: Use YugabyteDB smart drivers to improve performance with connection load balancing for YSQL
 headcontent: Manage connection load balancing automatically using smart drivers
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -40,7 +40,7 @@ However this approach results in complex configurations and increases management
 
 Smart client drivers allow applications to get better performance and fault tolerance by connecting to any node in a distributed SQL database cluster without the need for an external load balancer.
 
-Smart Drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware; the driver keeps track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
+Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware; the driver keeps track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
 
 Smart drivers offer the following advantages over a PostgreSQL driver:
 
@@ -48,7 +48,7 @@ Smart drivers offer the following advantages over a PostgreSQL driver:
 - Improve performance by connecting to nearby nodes. Client applications can identify and connect to the database cluster nodes closest to them to achieve lower latency.
 - Improve availability with better failure handling. If a database node becomes unreachable due to a network issue or server failure, clients can connect to a different node in the cluster. Retry logic on the client-side can make failures transparent to the end-user.
 
-## Using Yugabyte smart drivers
+## Using YugabyteDB smart drivers
 
 Yugabyte has developed the following smart drivers, available as open source software under the Apache 2.0 license.
 
@@ -163,6 +163,6 @@ No.
 
 Apart from directing connections to healthy nodes, smart driver connections are no different. Smart drivers require no special optimizations or modifications to your application's connection handling.
 
-## Further reading
+## Learn more
 
-To learn more about the driver, refer to the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
+Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

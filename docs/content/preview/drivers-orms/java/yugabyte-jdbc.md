@@ -33,9 +33,15 @@ type: docs
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 
-## Step 1: Set up the client dependencies
+## CRUD operations
 
-### Maven dependency
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/java/ysql-yb-jdbc/).
+
+The following sections break down the example to demonstrate how to perform common tasks required for Java application development using the YugabyteDB JDBC smart driver.
+
+### Step 1: Set up the client dependencies
+
+#### Maven dependency
 
 If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
 
@@ -54,7 +60,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
-### Gradle dependency
+#### Gradle dependency
 
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
@@ -63,7 +69,7 @@ implementation 'com.yugabyte:jdbc-yugabytedb:42.3.0'
 implementation 'com.zaxxer:HikariCP:4.0.3'
 ```
 
-## Step 2: Set up the database connection
+### Step 2: Set up the database connection
 
 After setting up the dependencies, implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
 
@@ -90,7 +96,7 @@ string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&passwor
 DriverManager.getConnection(yburl);
 ```
 
-### Use SSL
+#### Use SSL
 
 The following table describes the connection parameters required to connect using SSL.
 
@@ -109,7 +115,7 @@ Connection conn = DriverManager.getConnection(yburl);
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-## Step 3: Write your application
+### Step 3: Write your application
 
 Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
 

@@ -15,13 +15,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../yugabyte-psycopg2-reference" class="nav-link active">
+    <a href="../yugabyte-psycopg2-reference/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
   <li >
-    <a href="../postgres-psycopg2-reference" class="nav-link">
+    <a href="../postgres-psycopg2-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Psycopg2 Driver
     </a>

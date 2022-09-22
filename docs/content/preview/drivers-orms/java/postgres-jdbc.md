@@ -31,11 +31,17 @@ type: docs
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YSQL has full compatibility with the PostgreSQL JDBC Driver, and allows Java programmers to connect to YugabyteDB databases to execute DMLs and DDLs using the standard JDBC APIs.
 
-## Step 1: Add the PostgreSQL JDBC driver dependency
+## CRUD operations
+
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/java/ysql-jdbc/).
+
+The following sections break down the example to demonstrate how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
+
+### Step 1: Add the PostgreSQL JDBC driver dependency
 
 PostgreSQL JDBC Drivers are available as a maven dependency, and you can download the driver by adding the following dependency to the Java project.
 
-### Maven dependency
+#### Maven dependency
 
 If you are using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your `pom.xml` of your project.
 
@@ -48,7 +54,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 </dependency>
 ```
 
-### Gradle dependency
+#### Gradle dependency
 
 If you are using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
@@ -57,7 +63,7 @@ If you are using [Gradle](https://docs.gradle.org/current/samples/sample_buildin
 implementation 'org.postgresql:postgresql:42.2.14'
 ```
 
-## Step 2: Connect to your cluster
+### Step 2: Connect to your cluster
 
 After setting up the dependencies, implement a Java client application that uses the PostgreSQL JDBC driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
@@ -85,7 +91,7 @@ Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/
 | user | Username for connecting to the database | yugabyte |
 | password | Password for connecting to the database | yugabyte |
 
-### Use SSL
+#### Use SSL
 
 The following table describes the connection parameters required to connect using SSL.
 
@@ -104,7 +110,7 @@ Connection conn = DriverManager.getConnection(yburl);
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-## Step 3: Write your application
+### Step 3: Write your application
 
 Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following sample code to set up a YugabyteDB table and query the table contents from the Java client. Replace the connection string `yburl` with your cluster credentials and SSL certificate if required.
 

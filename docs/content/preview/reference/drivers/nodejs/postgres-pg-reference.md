@@ -67,7 +67,7 @@ var connectionString = "postgresql://yugabyte:yugabyte@127.0.0.1:5433/yugabyte";
 var client = new Client(connectionString);
 ```
 
-### Create table
+### Create tables
 
 Tables can be created in YugabyteDB by passing the CREATE TABLE DDL statement as a parameter to the `client.query(<SQL_Statement>)` function.
 
@@ -89,9 +89,9 @@ client
 
 Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Read and Write Data
+### Read and write data
 
-#### Insert Data
+#### Insert data
 
 To write data to YugabyteDB, execute the `INSERT` statement using the `client.query()` function.
 
@@ -166,7 +166,7 @@ var client = new Client({
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported |
 
-### Transaction and Isolation Levels
+### Transaction and isolation levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 

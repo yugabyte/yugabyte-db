@@ -31,7 +31,7 @@ type: docs
 
 </ul>
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
 
 ## Quick start
 
@@ -39,7 +39,7 @@ Learn how to establish a connection to YugabyteDB database and begin basic CRUD 
 
 ## Download the driver dependency
 
-PostgreSQL JDBC Drivers are available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
+PostgreSQL JDBC Driver is available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
 
 ### Maven dependency
 

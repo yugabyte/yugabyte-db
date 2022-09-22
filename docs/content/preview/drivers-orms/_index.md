@@ -52,9 +52,9 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [YugabyteDB PGX](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
-| [PGX](go/pgx/) | Full | [CRUD Example](go/pgx/) |
-| [PQ](go/pq/) | Full | [CRUD Example](go/pq/) |
+| [YugabyteDB PGX Smart Driver](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
+| [PGX Driver](go/pgx/) | Full | [CRUD Example](go/pgx/) |
+| [PQ Driver](go/pq/) | Full | [CRUD Example](go/pq/) |
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
 | [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
 
@@ -62,7 +62,7 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [PostgreSQL](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
+| [PostgreSQL Driver](nodejs/postgres-node-driver/) | Full | [CRUD Example](nodejs/postgres-node-driver/) |
 | [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
 | [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/)
 <!-- | TypeORM | Full |   | -->
@@ -78,15 +78,15 @@ The following libraries are officially supported by YugabyteDB.
 
 | Name | Type | Support | Example |
 | :--- | :--- | :-------| :------ |
-| [Npgsql](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
+| [Npgsql Driver](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
 | [EntityFramework](csharp/entityframework/) | ORM | Full | [CRUD Example](csharp/entityframework/) |
 
 ### [Python](python/)
 
 | Driver/ORM | Support Level | Example apps |
 | :------------------------- | :------------ | :----------- |
-| [Yugabyte Psycopg2](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
-| [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
+| [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
 | aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |

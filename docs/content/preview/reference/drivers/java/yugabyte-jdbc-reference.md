@@ -57,7 +57,7 @@ The YugabyteDB JDBC driver can be configured with popular pooling solutions such
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/java/ysql-yb-jdbc) in the Quick Start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/java/ysql-yb-jdbc).
 
 ## Download the driver dependency
 
