@@ -582,14 +582,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
   }
 
-  protected LinkedHashSet<NodeDetails> toOrderedSet(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
-    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
-    nodeSet.addAll(nodes.getLeft());
-    nodeSet.addAll(nodes.getRight());
-    return nodeSet;
-  }
-
   public LinkedHashSet fetchAllNodes(UpgradeOption upgradeOption) {
     return toOrderedSet(fetchNodes(upgradeOption));
   }
