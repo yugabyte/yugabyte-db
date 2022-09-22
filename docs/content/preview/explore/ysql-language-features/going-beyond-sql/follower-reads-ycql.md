@@ -141,7 +141,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --local_reads
 ```
 
-This can be seen by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
+You can see this by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0`, while multiple YB-TServer replicas serve the reads.
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
 
