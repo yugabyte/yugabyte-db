@@ -9620,12 +9620,19 @@
         },
         "status" : {
           "description" : "Status",
-          "enum" : [ "Init", "Bootstrapping", "Running", "Updating", "Paused", "Failed" ],
+          "enum" : [ "Initialized", "Running", "Updating", "DeletedUniverse", "DeletionFailed", "Failed" ],
           "type" : "string"
         },
         "tableDetails" : {
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "tableIdsWithReplicationSetup" : {
+          "items" : {
+            "type" : "string"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -9648,7 +9655,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "tableDetails" ],
+      "required" : [ "tableDetails", "tableIdsWithReplicationSetup" ],
       "type" : "object"
     },
     "XClusterConfigCreateFormData" : {
@@ -9689,6 +9696,10 @@
     "XClusterConfigEditFormData" : {
       "description" : "xcluster edit form",
       "properties" : {
+        "bootstrapParams" : {
+          "$ref" : "#/definitions/BootstrapParams",
+          "description" : "Parameters needed for the bootstrap flow including backup/restore"
+        },
         "name" : {
           "description" : "Name",
           "example" : "Repl-config1",
@@ -9749,12 +9760,19 @@
         },
         "status" : {
           "description" : "Status",
-          "enum" : [ "Init", "Bootstrapping", "Running", "Updating", "Paused", "Failed" ],
+          "enum" : [ "Initialized", "Running", "Updating", "DeletedUniverse", "DeletionFailed", "Failed" ],
           "type" : "string"
         },
         "tableDetails" : {
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "tableIdsWithReplicationSetup" : {
+          "items" : {
+            "type" : "string"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -9777,7 +9795,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "lag", "tableDetails" ],
+      "required" : [ "lag", "tableDetails", "tableIdsWithReplicationSetup" ],
       "type" : "object"
     },
     "XClusterConfigNeedBootstrapFormData" : {
@@ -9836,6 +9854,9 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "indexTable" : {
+          "type" : "boolean"
+        },
         "needBootstrap" : {
           "description" : "Whether this table needs bootstrap process for replication setup",
           "type" : "boolean"
@@ -9861,6 +9882,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "indexTable" ],
       "type" : "object"
     },
     "YBPError" : {
