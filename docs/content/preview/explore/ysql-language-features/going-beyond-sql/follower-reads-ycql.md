@@ -31,7 +31,7 @@ type: docs
 
 </ul>
 
-With YugabyteDB, you can use follower reads to lower read latencies as the database would have less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order is possible).
+Use follower reads to lower read latencies. With follower reads, the database has less work to do at read time, including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order data is possible).
 
 ## Considerations
 
@@ -41,8 +41,7 @@ Consider the following factors when using follower reads in YCQL.
 
 You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no effect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
 
-To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency) under reference section.
-From your YCQL shell [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the command `CONSISTENCY` with no arguments, and set the consistency level to one using `CONSISTENCY ONE`.
+Using [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency).
 
 ### Maximum staleness
 

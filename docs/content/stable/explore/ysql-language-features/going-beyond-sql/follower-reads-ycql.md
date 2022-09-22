@@ -25,26 +25,25 @@ type: docs
 
 </ul>
 
-With YugabyteDB, you can use follower reads to lower read latencies as the database would have less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order is possible).
+Use follower reads to lower read latencies. With follower reads, the database has less work to do at read time, including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order data is possible).
 
 ## Considerations
 
-The following factors need to be considered to use follower reads in YCQL.
+Consider the following factors when using follower reads in YCQL.
 
 ### Consistency level
 
-You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no affect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
+You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no effect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
 
-To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency) under reference section.
-From your YCQL shell [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the command `CONSISTENCY` with no arguments, and set the consistency level to one using `CONSISTENCY ONE`.
+Using [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the `CONSISTENCY` command with no arguments, and set the consistency level to one using `CONSISTENCY ONE`. To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency).
 
 ### Maximum staleness
 
-YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (by default), the read request is forwarded to the leader. When there is a long distance between the tablet follower and the tablet leader, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value (default is 10 seconds). For details on how to add this flag when using `yb-ctl`, see [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
+You can specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (the default), the read request is forwarded to the leader. If the tablet follower and the tablet leader are far from each other, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value. For information on adding this flag when creating a cluster using `yb-ctl`, refer to [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
 
 ## Try it out
 
-In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.
+In this tutorial, you update a single key-value over and over, and read it from the tablet leader. While that workload is running, you start another workload to read from a follower and verify that you are able to read from a tablet follower.
 
 ### Create universe
 
