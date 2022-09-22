@@ -35,7 +35,7 @@ With YugabyteDB, you can use follower reads to lower read latencies as the datab
 
 ## Considerations
 
-The following factors need to be considered to use follower reads in YCQL.
+Consider the following factors when using follower reads in YCQL.
 
 ### Consistency level
 
