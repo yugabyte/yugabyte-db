@@ -960,6 +960,10 @@ class CatalogManager :
   Status CheckIfPitrActive(
     const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
 
+  // Get the parent table id for a colocated table. The table parameter must be colocated and
+  // not satisfy IsColocationParentTableId.
+  Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
+
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
@@ -1771,7 +1775,7 @@ class CatalogManager :
       const TableDescription& table_description,
       CollectFlags flags,
       std::vector<TableDescription>* all_tables,
-      std::unordered_set<NamespaceId>* parent_colocated_table_ids);
+      std::unordered_set<TableId>* parent_colocated_table_ids);
 
   Status SplitTablet(const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split);
 
