@@ -1274,6 +1274,9 @@ Status CatalogManager::RunLoaders(int64_t term) {
   // Clear transaction tables config.
   transaction_tables_config_.reset();
 
+  // Clear tablegroup mappings.
+  tablegroup_manager_.reset(new YsqlTablegroupManager());
+
   // Clear recent jobs/tasks.
   ResetTasksTrackers();
 
@@ -5576,10 +5579,12 @@ Status CatalogManager::DeleteTableInternal(
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
     auto colocated_tablet = table.info->GetColocatedUserTablet();
     if (colocated_tablet) {
+      // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+      // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+      RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (table.retained_by_snapshot_schedules.empty()) {
-        RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
         LOG(INFO) << "Notifying tablet with id "
                   << colocated_tablet->tablet_id()
                   << " to remove this colocated table " << table.info->name()
@@ -7552,10 +7557,6 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
 Status CatalogManager::CreateTablegroup(const CreateTablegroupRequestPB* req,
                                         CreateTablegroupResponsePB* resp,
                                         rpc::RpcContext* rpc) {
-  if (IsPitrActive()) {
-    return STATUS(NotSupported, "Cannot create tablegroup when there are "
-                                "one or more snapshot schedules in the cluster");
-  }
   CreateTableRequestPB ctreq;
   CreateTableResponsePB ctresp;
 
@@ -7609,10 +7610,7 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
                                         rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing DeleteTablegroup request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
-  if (IsPitrActive()) {
-    return STATUS(NotSupported, "Cannot delete tablegroup when there are "
-                                "one or more snapshot schedules in the cluster");
-  }
+
   DeleteTableRequestPB dtreq;
   DeleteTableResponsePB dtresp;
 
@@ -11368,7 +11366,7 @@ Status CatalogManager::CollectTable(
     const TableDescription& table_description,
     CollectFlags flags,
     std::vector<TableDescription>* all_tables,
-    std::unordered_set<NamespaceId>* parent_colocated_table_ids) {
+    std::unordered_set<TableId>* parent_colocated_table_ids) {
   auto lock = table_description.table_info->LockForRead();
   if (lock->started_hiding()) {
     VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -11381,17 +11379,20 @@ Status CatalogManager::CollectTable(
     return Status::OK();
   }
   if (flags.Test(CollectFlag::kIncludeParentColocatedTable) && lock->pb.colocated()) {
-    // If a table is colocated, add its parent colocated table as well.
-    const auto parent_table_id =
-        GetColocatedDbParentTableId(table_description.namespace_info->id());
-    auto result = parent_colocated_table_ids->insert(parent_table_id);
-    if (result.second) {
-      // We have not processed this parent table id yet, so do that now.
-      TableIdentifierPB parent_table_pb;
-      parent_table_pb.set_table_id(parent_table_id);
-      parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
-      all_tables->push_back(VERIFY_RESULT(DescribeTable(
-          parent_table_pb, flags.Test(CollectFlag::kSucceedIfCreateInProgress))));
+    if (!IsColocationParentTableId(table_description.table_info->id())) {
+      // If a table is colocated, add its parent colocated table as well.
+      TableId parent_table_id = VERIFY_RESULT(
+          GetParentTableIdForColocatedTable(table_description.table_info));
+
+      auto result = parent_colocated_table_ids->insert(parent_table_id);
+      if (result.second) {
+        // We have not processed this parent table id yet, so do that now.
+        TableIdentifierPB parent_table_pb;
+        parent_table_pb.set_table_id(parent_table_id);
+        parent_table_pb.mutable_namespace_()->set_id(table_description.namespace_info->id());
+        all_tables->push_back(VERIFY_RESULT(DescribeTable(
+            parent_table_pb, flags.Test(CollectFlag::kSucceedIfCreateInProgress))));
+      }
     }
   }
   all_tables->push_back(table_description);
@@ -11487,7 +11488,7 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
     return p1.first->id() < p2.first->id();
   });
   std::vector<TableDescription> all_tables;
-  std::unordered_set<NamespaceId> parent_colocated_table_ids;
+  std::unordered_set<TableId> parent_colocated_table_ids;
   const TableId* table_id = nullptr;
   for (auto& table_and_flags : table_with_flags) {
     if (table_id && *table_id == table_and_flags.first->id()) {
@@ -11738,7 +11739,7 @@ std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
 
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   LockGuard lock(mutex_);
-  auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  auto tablegroup = tablegroup_manager_->FindByTable(table_id);
   if (tablegroup) {
     RETURN_NOT_OK(tablegroup->RemoveChildTable(table_id));
   }
@@ -11750,6 +11751,29 @@ Status CatalogManager::CheckIfPitrActive(
   LOG(INFO) << "Servicing CheckIfPitrActive request";
   resp->set_is_pitr_active(IsPitrActive());
   return Status::OK();
+}
+
+Result<TableId> CatalogManager::GetParentTableIdForColocatedTable(
+    const scoped_refptr<TableInfo>& table) {
+  DCHECK(table->colocated());
+  DCHECK(!IsColocationParentTableId(table->id()));
+
+  auto ns_info = VERIFY_RESULT(FindNamespaceById(table->namespace_id()));
+  TableId parent_table_id;
+
+  if (ns_info->colocated()) {
+    parent_table_id = GetColocatedDbParentTableId(table->namespace_id());
+  } else {
+    SharedLock lock(mutex_);
+    auto tablegroup = tablegroup_manager_->FindByTable(table->id());
+    RSTATUS_DCHECK(tablegroup != nullptr,
+                   Corruption,
+                   Format("Not able to find the tablegroup for a colocated table $0 whose database "
+                          "is not colocated.", table->id()));
+    parent_table_id = GetTablegroupParentTableId(tablegroup->id());
+  }
+
+  return parent_table_id;
 }
 
 Result<std::optional<cdc::ConsumerRegistryPB>> CatalogManager::GetConsumerRegistry() {
