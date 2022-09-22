@@ -39,7 +39,7 @@ The following factors need to be considered to use follower reads in YCQL.
 
 ### Consistency level
 
-You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no affect on write operations, but only read operations. Writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
+You need to set the consistency level to `ONE` in your application to work with follower reads or observer reads. Changing the consistency level to `ONE` has no affect on write operations, only read operations. This is because writes in YCQL are always strongly consistent. Note that the default consistency level is `QUORUM`.
 
 To learn about the consistency levels in YCQL, refer to [CONSISTENCY](../../../../admin/ycqlsh/#consistency) under reference section.
 From your YCQL shell [ycqlsh](../../../../admin/ycqlsh), you can check the consistency level using the command `CONSISTENCY` with no arguments, and set the consistency level to one using `CONSISTENCY ONE`.
@@ -152,3 +152,9 @@ Optionally, you can execute the following command to shut down the local cluster
 ```sh
 $ ./bin/yb-ctl destroy
 ```
+
+## Read more
+
+- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/).
+
+- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/) in YCQL.
