@@ -1,5 +1,5 @@
 ---
-title: What's new
+title: What's new in YugabyteDB Managed
 linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent: New features, cloud provider regions, and known issues
