@@ -274,7 +274,7 @@ Result<PGConn> YsqlUpgradeHelper::Connect(const std::string& database_name) {
   // Note that the plain password in the connection string will be sent over the wire, but since it
   // only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
   auto pgconn = VERIFY_RESULT(PGConnBuilder({
-    .host = PgDeriveSocketDir(ysql_proxy_addr_.host()),
+    .host = PgDeriveSocketDir(ysql_proxy_addr_),
     .port = ysql_proxy_addr_.port(),
     .dbname = database_name,
     .user = "postgres",
