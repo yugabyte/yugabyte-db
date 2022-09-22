@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -15,9 +16,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
-public class EditXClusterConfig extends XClusterConfigTaskBase {
+public class EditXClusterConfig extends CreateXClusterConfig {
 
   @Inject
   protected EditXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
@@ -66,40 +68,43 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.tables != null) {
           Set<String> currentTableIds = xClusterConfig.getTables();
-          Set<String> tableIdsToAdd =
-              taskParams()
-                  .editFormData
-                  .tables
-                  .stream()
-                  .filter(tableId -> !currentTableIds.contains(tableId))
-                  .collect(Collectors.toSet());
-          // Add index tables.
-          tableIdsToAdd.addAll(
-              getMainTableIndexTablesMap(sourceUniverse, tableIdsToAdd)
-                  .values()
-                  .stream()
-                  .flatMap(List::stream)
-                  .filter(tableId -> !currentTableIds.contains(tableId))
-                  .collect(Collectors.toSet()));
-          // Save the to-be-added tables in the DB.
-          xClusterConfig.addTablesIfNotExist(tableIdsToAdd);
+          Pair<Set<String>, Set<String>> tableIdsToAddTableIdsToRemovePair =
+              getTableIdsDiff(currentTableIds, editFormData.tables);
+          Set<String> tableIdsToAdd = tableIdsToAddTableIdsToRemovePair.getFirst();
+          Set<String> tableIdsToRemove = tableIdsToAddTableIdsToRemovePair.getSecond();
 
-          Set<String> tableIdsToRemove =
-              currentTableIds
-                  .stream()
-                  .filter(tableId -> !taskParams().editFormData.tables.contains(tableId))
-                  .collect(Collectors.toSet());
-          // Remove index tables.
-          tableIdsToRemove.addAll(
-              getMainTableIndexTablesMap(sourceUniverse, tableIdsToRemove)
-                  .values()
-                  .stream()
-                  .flatMap(List::stream)
-                  .filter(currentTableIds::contains)
-                  .collect(Collectors.toSet()));
+          if (!tableIdsToAdd.isEmpty()) {
+            // Todo: After having states for tables, do the following statement in the controller.
+            // Save the to-be-added tables in the DB.
+            if (editFormData.bootstrapParams != null) {
+              xClusterConfig.addTables(tableIdsToAdd, editFormData.bootstrapParams.tables);
+            } else {
+              xClusterConfig.addTables(tableIdsToAdd);
+            }
 
-          createXClusterConfigModifyTablesTask(tableIdsToAdd, tableIdsToRemove)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+            Map<String, List<String>> mainTableIndexTablesMap =
+                getMainTableIndexTablesMap(sourceUniverse, tableIdsToAdd);
+            addIndexTables(tableIdsToAdd, mainTableIndexTablesMap);
+
+            List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+                getRequestedTableInfoList(tableIdsToAdd, sourceUniverse, targetUniverse);
+
+            addSubtasksToAddTablesToXClusterConfig(
+                sourceUniverse, targetUniverse, requestedTableInfoList, mainTableIndexTablesMap);
+          }
+
+          if (!tableIdsToRemove.isEmpty()) {
+            // Remove index tables as well.
+            tableIdsToRemove.addAll(
+                getMainTableIndexTablesMap(sourceUniverse, tableIdsToRemove)
+                    .values()
+                    .stream()
+                    .flatMap(List::stream)
+                    .filter(currentTableIds::contains)
+                    .collect(Collectors.toSet()));
+            createXClusterConfigModifyTablesTask(null /* tableIdsToAdd */, tableIdsToRemove)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -120,7 +125,7 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+      setXClusterConfigStatus(XClusterConfigStatusType.Running);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
@@ -128,5 +133,37 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
     }
 
     log.info("Completed {}", getName());
+  }
+
+  protected void addSubtasksToAddTablesToXClusterConfig(
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      Map<String, List<String>> mainTableIndexTablesMap) {
+
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+        requestedNamespaceNameTablesInfoMapNeedBootstrap =
+            getRequestedNamespaceNameTablesInfoMapNeedBootstrap(
+                requestedTableInfoList, mainTableIndexTablesMap);
+
+    // Replication for tables that do NOT need bootstrapping.
+    Set<String> tableIdsNotNeedBootstrap =
+        getTableIdsNotNeedBootstrap(getTableIds(requestedTableInfoList));
+    if (!tableIdsNotNeedBootstrap.isEmpty()) {
+      log.info(
+          "Creating a subtask to modify replication to add tables without bootstrap for "
+              + "tables {}",
+          tableIdsNotNeedBootstrap);
+      createXClusterConfigModifyTablesTask(tableIdsNotNeedBootstrap, null /* tableIdsToRemove */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Add the subtasks to set up replication for tables that need bootstrapping.
+    addSubtasksForTablesNeedBootstrap(
+        sourceUniverse,
+        targetUniverse,
+        taskParams().editFormData.bootstrapParams,
+        requestedNamespaceNameTablesInfoMapNeedBootstrap,
+        true /* isReplicationConfigCreated */);
   }
 }
