@@ -34,6 +34,8 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
+#include "pg_yb_utils.h"
+
 
 /* txid will be signed int8 in database, so must limit to 63 bits */
 #define MAX_TXID   ((uint64) PG_INT64_MAX)
@@ -430,6 +432,11 @@ txid_current(PG_FUNCTION_ARGS)
 	txid		val;
 	TxidEpoch	state;
 
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 (errmsg("Yugabyte does not support xid"))));
+
 	/*
 	 * Must prevent during recovery because if an xid is not assigned we try
 	 * to assign one, which would fail. Programs already rely on this function
@@ -454,6 +461,12 @@ txid_current_if_assigned(PG_FUNCTION_ARGS)
 {
 	txid		val;
 	TxidEpoch	state;
+
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 (errmsg("Yugabyte does not support xid"))));
+
 	TransactionId topxid = GetTopTransactionIdIfAny();
 
 	if (topxid == InvalidTransactionId)
