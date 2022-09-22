@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX util)
-set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+set(YB_PCH_DEP_LIBS cds gmock gtest gutil icui18n icuuc libev protoc)
 
 #######################################
 # protoc-gen-insertions
@@ -313,7 +313,7 @@ ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
        multi_drive_test_env.cc
-  DEPS gflags glog gmock yb_util)
+  DEPS gflags glog gmock gtest yb_util)
 
 #######################################
 # yb_test_main
@@ -321,7 +321,7 @@ ADD_YB_TEST_LIBRARY(
 
 ADD_YB_TEST_LIBRARY(yb_test_main
                     SRCS test_main.cc
-                    DEPS gflags glog gmock yb_util yb_test_util)
+                    DEPS gflags glog gmock gtest yb_util yb_test_util)
 
 if(NOT APPLE)
   target_link_libraries(yb_test_main rt)
@@ -331,7 +331,8 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest ${YB_TEST_LINK_LIBS_EXTENSIONS}
+    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(auto_flags-test)
 ADD_YB_TEST(background_task-test)

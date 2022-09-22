@@ -16,7 +16,7 @@
 # under the License.
 
 set(YB_PCH_PREFIX fs)
-set(YB_PCH_DEP_LIBS gmock gutil yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil yb_test_util yb_util)
 
 PROTOBUF_GENERATE_CPP(
   FS_PROTO_SRCS FS_PROTO_HDRS FS_PROTO_TGTS
