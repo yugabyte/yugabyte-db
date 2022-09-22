@@ -223,20 +223,15 @@ NOTICE:  relation "__onek_unique1" does not exist, skipping
 ALTER INDEX IF EXISTS __attmp_onek_unique1 RENAME TO onek_unique1;
 NOTICE:  relation "__attmp_onek_unique1" does not exist, skipping
 ALTER INDEX onek_unique1 RENAME TO attmp_onek_unique1;
-ERROR:  relation "onek_unique1" does not exist
 ALTER INDEX attmp_onek_unique1 RENAME TO onek_unique1;
-ERROR:  relation "attmp_onek_unique1" does not exist
 SET ROLE regress_alter_table_user1;
 ALTER INDEX onek_unique1 RENAME TO fail;  -- permission denied
-ERROR:  relation "onek_unique1" does not exist
+ERROR:  must be owner of index onek_unique1
 RESET ROLE;
 -- renaming index should rename constraint as well
 ALTER TABLE onek ADD CONSTRAINT onek_unique1_constraint UNIQUE (unique1);
-ERROR:  relation "onek" does not exist
 ALTER INDEX onek_unique1_constraint RENAME TO onek_unique1_constraint_foo;
-ERROR:  relation "onek_unique1_constraint" does not exist
 ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
-ERROR:  relation "onek" does not exist
 --
 -- lock levels
 --
@@ -260,8 +255,7 @@ select case when c.relname like 'pg_toast%' then 'pg_toast' else c.relname end, 
 from pg_locks l join pg_class c on l.relation = c.oid
 where virtualtransaction = (
         select virtualtransaction
-        from pg_locks
-        where transactionid = txid_current()::integer)
+        from pg_locks)
 and locktype = 'relation'
 and relnamespace != (select oid from pg_namespace where nspname = 'pg_catalog')
 and c.relname != 'my_locks'
@@ -272,7 +266,7 @@ create table alterlock2 (f3 int primary key, f1 int);
 insert into alterlock2 values (1, 1);
 begin; alter table alterlock alter column f2 set statistics 150;
 select * from my_locks order by 1;
- relname | max_lockmode
+ relname | max_lockmode 
 ---------+--------------
 (0 rows)
 
