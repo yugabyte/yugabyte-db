@@ -1,5 +1,5 @@
 ---
-title: Connect an app
+title: Connect an application
 linkTitle: Connect an app
 description: JDBC drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -11,19 +11,17 @@ menu:
 type: docs
 ---
 
-For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform. YugabyteDB supports the cluster- and topology-aware YugabyteDB Smart JDBC Driver, which is recommended for building Java applications with YugabyteDB. Yugabyte also provides full support for the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/).
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/yugabyte-jdbc/" class="nav-link active">
+    <a href="../yugabyte-jdbc/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      YugabyteDB JDBC Driver
+      YugabyteDB JDBC Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/postgres-jdbc/" class="nav-link">
+    <a href="../postgres-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
     </a>
@@ -31,7 +29,9 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 </ul>
 
-[YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers. This page provides details for getting started with `YugabyteDB JDBC Driver` for connecting to YugabyteDB YSQL API.
+[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
+
+For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 
 ## Step 1: Set up the client dependencies
 
@@ -71,12 +71,7 @@ Set up the driver properties to configure the credentials and SSL Certificates f
 
 Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB database, which can be used for performing DDLs and DMLs against the database.
 
-The following is an example JDBC URL for connecting to YugabyteDB.
-
-```java
-string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
-DriverManager.getConnection(yburl);
-```
+The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
 
 | JDBC Parameter | Description | Default |
 | :---------- | :---------- | :------ |
@@ -86,6 +81,24 @@ DriverManager.getConnection(yburl);
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | load-balance | Enables uniform load balancing | true
+| topology_keys | enables topology-aware load balancing | true
+
+The following is an example JDBC URL for connecting to YugabyteDB.
+
+```java
+string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
+DriverManager.getConnection(yburl);
+```
+
+### Use SSL
+
+The following table describes the connection parameters required to connect using SSL.
+
+| JDBC Parameter | Description | Default |
+| :---------- | :---------- | :------ |
+| ssl  | Enable SSL client connection | false
+| sslmode | SSL mode | require
+| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
@@ -94,17 +107,11 @@ string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&passwor
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-| JDBC Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| ssl  | Enable SSL client connection | false
-| sslmode | SSL mode | require
-| sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
-
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 ## Step 3: Write your application
 
-Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the sample code below to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
+Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
 
 ```java
 import com.zaxxer.hikari.HikariConfig;
@@ -158,11 +165,9 @@ Query returned: name=John, age=35, language: Java
 
 If you receive no output or an error, check the parameters in the connection string.
 
-## Further reading
+## Learn more
 
-To learn more about the driver, refer to the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
-
-## Next steps
-
-- Learn how to build Java applications using [Hibernate ORM](../hibernate/).
-- Learn more about configuring YugabyteDB JDBC Driver load balancing options in [YugabyteDB JDBC reference section](/preview/reference/drivers/java/yugabyte-jdbc-reference/#load-balancing).
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/#load-balancing)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [Smart Driver Architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)

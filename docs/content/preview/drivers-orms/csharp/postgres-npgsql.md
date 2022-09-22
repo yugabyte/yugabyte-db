@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/csharp/postgres-npgsql/" class="nav-link active">
+    <a href="../postgres-npgsql/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>

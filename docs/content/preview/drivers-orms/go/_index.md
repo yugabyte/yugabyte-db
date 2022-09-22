@@ -47,8 +47,3 @@ To develop Golang applications for YugabyteDB, you need the following:
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
-
-## Next steps
-
-- Learn how to build Go applications using [GORM](gorm).
-- Learn how to run Go applications with YugabyteDB using [GORM](../../integrations/gorm/).

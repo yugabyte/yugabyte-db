@@ -15,7 +15,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/reference/drivers/nodejs/postgres-pg-reference/" class="nav-link active">
+    <a href="../postgres-pg-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL node-postgres Driver
     </a>
@@ -26,7 +26,7 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Node.js Application](../../../../develop/build-apps/nodejs/ysql-pg) in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build a Node.js Application](../../../../develop/build-apps/nodejs/ysql-pg).
 
 ## Install the driver dependency and async utility
 

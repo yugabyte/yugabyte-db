@@ -78,7 +78,7 @@ For example, using the Go driver, you would set the parameter as follows:
 "postgres://username:password@localhost:5433/database_name?load_balance=true"
 ```
 
-With this parameter specified in the URL, the driver will fetch and maintain a list of YB-TServers from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distribute the connections equally across them.
+With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distributes the connections equally across them.
 
 This list is refreshed every 5 minutes, when a new connection request is received.
 
@@ -86,11 +86,11 @@ The application must use the same connection URL to create every connection it n
 
 ### Topology-aware connection load balancing
 
-With topology-aware connection load balancing, you can target YB-TServers in specific geo-locations by specifying these locations as topology keys, with values in the format cloud.region.zone. Multiple zones can be specified as comma separated values.
+With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. If no servers are available, the request may return with a failure.
 
-Connections are distributed uniformly among the YB-TServers in the specified locations. If no servers are available, the request may return with a failure.
+You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
-You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as true to enable the topology-aware connection load balancing.
+You still need to specify load balance as true to enable the topology-aware connection load balancing.
 
 For example, using the Go driver, you would set the parameters as follows:
 
@@ -100,15 +100,17 @@ For example, using the Go driver, you would set the parameters as follows:
 
 ## Using smart drivers with in YugabyteDB Managed
 
-YugabyteDB Managed clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
+YugabyteDB Managed clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. 
 
-Because smart drivers are topology aware, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
-Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+Using a smart driver (which is topology aware) however, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+
+Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
 
-YugabyteDB Managed requires TLS/SSL. For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/)
+YugabyteDB Managed requires TLS/SSL. For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## FAQ
 
@@ -153,10 +155,14 @@ Note that active connections on a particular server/endpoint are not repaired au
 
 The driver is not directly aware of region or zone failures. However, it is aware of which nodes are healthy. If an entire region or zone is unavailable, no new connections are made to the zone or region until the nodes reappear in the list of healthy nodes.
 
-### Does the driver provide additional metrics that we can monitor via JMX?
+### Does the driver provide metrics that can be monitored via JMX?
 
 No.
 
 ### Are there recommended settings for the maximum lifetime of a connection?
 
 Apart from directing connections to healthy nodes, smart driver connections are no different. Smart drivers require no special optimizations or modifications to your application's connection handling.
+
+## Further reading
+
+To learn more about the driver, refer to the [architecture documentation of Smart Drivers](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).
