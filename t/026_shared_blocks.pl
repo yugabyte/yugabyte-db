@@ -4,65 +4,23 @@ use strict;
 use warnings;
 use File::Basename;
 use File::Compare;
-use PostgresNode;
+use File::Copy;
 use String::Util qw(trim);
 use Test::More;
+use lib 't';
+use pgsm;
 
-# Expected folder where expected output will be present
-my $expected_folder = "t/expected";
-
-# Results/out folder where generated results files will be placed
-my $results_folder = "t/results";
-
-# Check if results folder exists or not, create if it doesn't
-unless (-d $results_folder)
-{
-   mkdir $results_folder or die "Can't create folder $results_folder: $!\n";;
-}
-
-# Check if expected folder exists or not, bail out if it doesn't
-unless (-d $expected_folder)
-{
-   BAIL_OUT "Expected files folder $expected_folder doesn't exist: \n";;
-}
-
-# Get filename of the this perl file
-my $perlfilename = basename($0);
-
-#Remove .pl from filename and store in a variable
-$perlfilename =~ s/\.[^.]+$//;
-my $filename_without_extension = $perlfilename;
-
-# Create expected filename with path
-my $expected_filename = "${filename_without_extension}.out";
-my $expected_filename_with_path = "${expected_folder}/${expected_filename}" ;
-
-# Create results filename with path
-my $out_filename = "${filename_without_extension}.out";
-my $out_filename_with_path = "${results_folder}/${out_filename}" ;
-my $dynamic_out_filename_with_path = "${results_folder}/${out_filename}.dynamic" ;
-
-# Delete already existing result out file, if it exists.
-if ( -f $out_filename_with_path)
-{
-   unlink($out_filename_with_path) or die "Can't delete already existing $out_filename_with_path: $!\n";
-}
+# Get filename and create out file name and dirs where requried
+PGSM::setup_files_dir(basename($0));
+                                                                                
+if ($PGSM::PG_MAJOR_VERSION <= 12)
+{                                                                               
+    plan skip_all => "pg_stat_monitor test cases for versions 12 and below.";
+}                                                                               
 
 # Create new PostgreSQL node and do initdb
-my $node = PostgresNode->get_new_node('test');
+my $node = PGSM->pgsm_init_pg();
 my $pgdata = $node->data_dir;
-$node->dump_info;
-$node->init;
-                                                                                
-# PG's major server version                                                     
-open my $FH_PG_VERSION, '<', "${pgdata}/PG_VERSION";                            
-my $major_version = trim(<$FH_PG_VERSION>);                                     
-close $FH_PG_VERSION;                                                           
-                                                                                
-if ($major_version <= 12)                                                       
-{                                                                               
-    plan skip_all => "pg_stat_statements test cases for versions 12 and below.";
-}                                                                               
 
 # Update postgresql.conf to include/load pg_stat_monitor library   
 $node->append_conf('postgresql.conf', "shared_preload_libraries = 'pg_stat_statements,pg_stat_monitor'");
@@ -80,36 +38,32 @@ ok($rt_value == 1, "Start Server");
 # Create extension and change out file permissions
 my ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE EXTENSION pg_stat_statements;', extra_params => ['-a']);
 ok($cmdret == 0, "Create PGSS Extension");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
-chmod(0640 , $out_filename_with_path)
-    or die("unable to set permissions for $out_filename_with_path");
+PGSM::append_to_file($stdout);
 
 # Create extension and change out file permissions
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE EXTENSION pg_stat_monitor;', extra_params => ['-a']);
 ok($cmdret == 0, "Create PGSM Extension");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
-chmod(0640 , $out_filename_with_path)
-    or die("unable to set permissions for $out_filename_with_path");
+PGSM::append_to_file($stdout);
 
 # Run required commands/queries and dump output to out file.
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT pg_stat_monitor_reset();', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Reset PGSM Extension");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+PGSM::append_to_file($stdout);
 
 # Run required commands/queries and dump output to out file.
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT pg_stat_statements_reset();', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Reset PGSS Extension");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+PGSM::append_to_file($stdout);
 
 # Run 'SELECT * from pg_stat_monitor_settings;' two times and dump output to out file 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+PGSM::append_to_file($stdout);
 
 # Create example database and run pgbench init
 # ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE database example;', extra_params => ['-a']);
 # ok($cmdret == 0, "Create Database example");
-# TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+# PGSM::append_to_file($stdout);
 
 my $port = $node->port;
 
@@ -126,11 +80,11 @@ ok($cmdret == 0, "Run pgbench");
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', "Delete from pgbench_accounts where aid % 2 = 1;", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'Select substr(query,0,130) as query, calls, rows, total_exec_time,min_exec_time,max_exec_time,mean_exec_time,stddev_exec_time from pg_stat_statements where query Like \'%bench%\' order by query,calls desc;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-TestLib::append_to_file($dynamic_out_filename_with_path, $stdout . "\n");
+PGSM::append_to_debug_file($stdout);
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'Select substr(query,0,130) as query, calls, rows_retrieved, total_exec_time, min_exec_time, max_exec_time, mean_exec_time,stddev_exec_time, cpu_user_time, cpu_sys_time from pg_stat_monitor where query Like \'%bench%\' order by query,calls desc;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
-TestLib::append_to_file($dynamic_out_filename_with_path, $stdout . "\n");
-TestLib::append_to_file($dynamic_out_filename_with_path, "\n\n");
+PGSM::append_to_debug_file($stdout);
+PGSM::append_to_debug_file("--------");
 
 # Compare values for query 'Delete from pgbench_accounts where $1 = $2' 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'Select PGSM.shared_blks_hit != 0 from pg_stat_monitor as PGSM where PGSM.query Like \'%Delete from pgbench_accounts%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
@@ -210,7 +164,7 @@ is($stdout,'t',"Check: blk_write_time should not be 0.");
 # Drop extension
 $stdout = $node->safe_psql('postgres', 'Drop extension pg_stat_monitor;',  extra_params => ['-a']);
 ok($cmdret == 0, "Drop PGSM  Extension");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+PGSM::append_to_file($stdout);
 
 # Stop the server
 $node->stop;
