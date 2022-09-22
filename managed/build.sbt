@@ -413,6 +413,7 @@ libraryDependencies ++= Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
   "com.typesafe.akka" %% "akka-actor" % "2.5.16"
