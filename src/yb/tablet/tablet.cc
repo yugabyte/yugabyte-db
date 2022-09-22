@@ -2012,7 +2012,7 @@ Result<pgwrapper::PGConn> ConnectToPostgres(
   // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
   // it to at least 2 in the first place. See connectDBComplete.
   auto conn_res = pgwrapper::PGConnBuilder({
-    .host = PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
+    .host = PgDeriveSocketDir(pgsql_proxy_bind_address),
     .port = pgsql_proxy_bind_address.port(),
     .dbname = database_name,
     .user = "postgres",
