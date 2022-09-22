@@ -98,7 +98,7 @@ class PgClient {
 
   Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options);
-  Status RollbackToSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
   Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
