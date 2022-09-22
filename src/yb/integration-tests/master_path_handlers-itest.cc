@@ -111,6 +111,7 @@ TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
   TestUrl("/dump-entities", &result);
   TestUrl("/cluster-config", &result);
   TestUrl("/tablet-replication", &result);
+  TestUrl("/load-distribution", &result);
 }
 
 TEST_F(MasterPathHandlersItest, TestDeadTServers) {
