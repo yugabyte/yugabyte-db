@@ -161,6 +161,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "releases"
+  identifier = "ybmanaged-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
   [main.params]
     excludeVersion = true
