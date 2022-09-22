@@ -164,7 +164,7 @@ You should see output similar to the following:
     (1 row)
     ```
 
-    The default for `ROWS_PER_TRANSACTION` is 20000 and the interruption occurred on row 55184 in the example. So the last 15184 rows were not persisted and the first 40000 rows were persisted.
+    The default for `ROWS_PER_TRANSACTION` is 20K and the interruption occurred on row 55184 in the example. As a result, the first two transactions of 20K rows were persisted resulting in 40K rows reported by `tuples_processed`. The next _in-progress_ transaction was interrupted, and due to this reason the remaining 15184 rows were not persisted.
 
 ## Learn more
 
