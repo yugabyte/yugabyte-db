@@ -35,6 +35,7 @@ import org.mockito.Spy;
 public class BackupUtilTest extends FakeDBApplication {
 
   private Customer testCustomer;
+  private final String DEFAULT_UNIVERSE_UUID = "univ-00000000-0000-0000-0000-000000000000";
   private static final Map<String, String> REGION_LOCATIONS =
       new HashMap<String, String>() {
         {
@@ -127,22 +128,22 @@ public class BackupUtilTest extends FakeDBApplication {
   @Test
   @Parameters(
       value = {
-        "/tmp/nfs/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "s3://backup/test/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "/tmp/nfs/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "/yugabyte_backup/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo"
-            + "/bar",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "gs://backup/test/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "https://test.blob.windows.net/backup/univ-00000000-0000-0000-0000-000000000000"
-            + "/backup-foo/bar",
-        "https://test.blob.windows.net/backup/univ-00000000-0000-0000-0000-000000000000"
-            + "/ybc_backup-foo/bar"
+        "/tmp/nfs/yugabyte_backup/, /ybc_backup-foo/bar",
+        "/yugabyte_backup/, /ybc_backup-foo/bar",
+        "s3://backup/, /ybc_backup-foo/bar",
+        "s3://backup/test/, /ybc_backup-foo/bar",
+        "/tmp/nfs/yugabyte_backup/, /backup-foo/bar",
+        "/yugabyte_backup/, /backup-foo/bar",
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo" + "/bar",
+        "s3://backup/, /backup-foo/bar",
+        "gs://backup/test/, /backup-foo/bar",
+        "https://test.blob.windows.net/backup/, " + "/backup-foo/bar",
+        "https://test.blob.windows.net/backup/, " + "/ybc_backup-foo/bar"
       })
-  public void testGetBackupIdentifierWithNfsCheck(String defaultBackupLocation) {
+  public void testGetBackupIdentifierWithNfsCheck(
+      String defaultBackupLocationPrefix, String defaultBackupLocationSuffix) {
+    String defaultBackupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, true);
     assertTrue(actualIdentifier.startsWith("univ-00000000-0000-0000-0000-000000000000/"));
   }
@@ -150,27 +151,24 @@ public class BackupUtilTest extends FakeDBApplication {
   @Test
   @Parameters(
       value = {
-        "/tmp/nfs/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar"
-            + ", true",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, true",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, false",
-        "s3://backup/test/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, false",
-        "/tmp/nfs/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, false",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, false",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, true",
-        "/yugabyte_backup/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
-            + ", false",
-        "/yugabyte_backup/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo"
-            + "/bar, true",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, false",
-        "gs://backup/test/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, false",
-        "https://test.blob.windows.net/backup/univ-00000000-0000-0000-0000-000000000000/backup-foo"
-            + "/bar, false",
-        "https://test.blob.windows.net/backup/univ-00000000-0000-0000-0000-000000000000"
-            + "/ybc_backup-foo/bar, false"
+        "/tmp/nfs/yugabyte_backup/, /ybc_backup-foo/bar" + ", true",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, true",
+        "s3://backup/, /ybc_backup-foo/bar, false",
+        "s3://backup/test/, /ybc_backup-foo/bar, false",
+        "/tmp/nfs/yugabyte_backup/, /backup-foo/bar, false",
+        "/yugabyte_backup/, /backup-foo/bar, false",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, true",
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo/bar" + ", false",
+        "/yugabyte_backup/yugabyte_backup/, /ybc_backup-foo" + "/bar, true",
+        "s3://backup/, /backup-foo/bar, false",
+        "gs://backup/test/, /backup-foo/bar, false",
+        "https://test.blob.windows.net/backup/, /backup-foo" + "/bar, false",
+        "https://test.blob.windows.net/backup/, " + "/ybc_backup-foo/bar, false"
       })
   public void testGetBackupIdentifierWithoutNfsCheck(
-      String defaultBackupLocation, boolean expectedNfs) {
+      String defaultBackupLocationPrefix, String defaultBackupLocationSuffix, boolean expectedNfs) {
+    String defaultBackupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, false);
     if (expectedNfs) {
       assertTrue(
@@ -184,34 +182,36 @@ public class BackupUtilTest extends FakeDBApplication {
   @Test
   @Parameters(
       value = {
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, s3://region,"
-            + " s3://region/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, s3://region,"
-            + " s3://region/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "s3://backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, s3://region/,"
-            + " s3://region/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "s3://yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar,"
-            + " s3://region/, s3://region/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo"
+        "s3://backup/, /ybc_backup-foo/bar, s3://region," + " s3://region/, /ybc_backup-foo/bar",
+        "s3://backup/, /backup-foo/bar, s3://region," + " s3://region/, /backup-foo/bar",
+        "s3://backup/, /ybc_backup-foo/bar, s3://region/," + " s3://region/, /ybc_backup-foo/bar",
+        "s3://yugabyte_backup/, /ybc_backup-foo/bar,"
+            + " s3://region/, s3://region/, /ybc_backup-foo"
             + "/bar",
-        "s3://yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, "
-            + "s3://region/, s3://region/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "/backup/univ-00000000-0000-0000-0000-000000000001/ybc_backup-foo/bar, /region/, "
-            + "/region/univ-00000000-0000-0000-0000-000000000001/ybc_backup-foo/bar",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar, /region/, "
-            + "/region/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo"
+        "s3://yugabyte_backup/, /backup-foo/bar, " + "s3://region/, s3://region/, /backup-foo/bar",
+        "/backup/, /ybc_backup-foo/bar, /region/, " + "/region/, /ybc_backup-foo/bar",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, /region/, "
+            + "/region/yugabyte_backup/, /ybc_backup-foo"
             + "/bar",
-        "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar, /region/, "
-            + "/region/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "/yugabyte_backup/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo"
-            + "/bar, /region/, /region/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000"
+        "/yugabyte_backup/, /backup-foo/bar, /region/, " + "/region/, /backup-foo/bar",
+        "/yugabyte_backup/yugabyte_backup/, /ybc_backup-foo"
+            + "/bar, /region/, /region/yugabyte_backup/, "
             + "/ybc_backup-foo/bar",
-        "/yugabyte_backup/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
-            + ", /region/, /region/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar"
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo/bar"
+            + ", /region/, /region/, /backup-foo/bar"
       })
   public void testGetExactRegionLocation(
-      String backupLocation, String configRegionLocation, String expectedRegionLocation) {
+      String defaultBackupLocationPrefix,
+      String defaultBackupLocationSuffix,
+      String configRegionLocation,
+      String expectedRegionLocationPrefix,
+      String expectedRegionLocationSuffix) {
+    String backupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualRegionLocation =
         BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation);
+    String expectedRegionLocation =
+        expectedRegionLocationPrefix + DEFAULT_UNIVERSE_UUID + expectedRegionLocationSuffix;
     assertEquals(expectedRegionLocation, actualRegionLocation);
   }
 
