@@ -46,7 +46,7 @@ From your YCQL shell [ycqlsh](../../../../admin/ycqlsh), you can check the consi
 
 ### Maximum staleness
 
-YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (by default), the read request is forwarded to the leader. When there is a long distance between the tablet follower and the tablet leader, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value (default is 10 seconds). For details on how to add this flag when using `yb-ctl`, see [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
+You can specify the maximum staleness of data when reading from tablet followers. If the follower hasn't heard from the leader for 10 seconds (the default), the read request is forwarded to the leader. If the tablet follower and the tablet leader are far from each other, you might need to increase the duration. To change the duration for maximum staleness, add the [`yb-tserver` `--max_stale_read_bound_time_ms`](../../../../reference/configuration/yb-tserver/#max-stale-read-bound-time-ms) flag and increase the value. For information on adding this flag when creating a cluster using `yb-ctl`, refer to [Creating a local cluster with custom flags](../../../../admin/yb-ctl/#create-a-local-cluster-with-custom-flags).
 
 ## Try it out
 
