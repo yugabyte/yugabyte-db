@@ -255,7 +255,7 @@ class AbstractInstancesMethod(AbstractMethod):
         host_info = None
 
         while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
-            if not host_info or not host_info.is_running:
+            if not host_info or not host_info.get("is_running"):
                 host_info = self.cloud.get_host_info(args)
 
             if host_info:
@@ -585,11 +585,17 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.update_open_ssh_port(args)
         self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
         # Port is already open. Wait for ssh to succeed.
-        wait_for_ssh(self.extra_vars["ssh_host"],
-                     self.extra_vars["ssh_port"],
-                     self.extra_vars["ssh_user"],
-                     args.private_key_file,
-                     ssh2_enabled=args.ssh2_enabled)
+        connected = wait_for_ssh(self.extra_vars["ssh_host"],
+                                 self.extra_vars["ssh_port"],
+                                 self.extra_vars["ssh_user"],
+                                 args.private_key_file,
+                                 ssh2_enabled=args.ssh2_enabled)
+        if not connected:
+            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
+                                    .format(self.extra_vars["ssh_host"],
+                                            self.extra_vars["ssh_user"],
+                                            self.extra_vars["ssh_port"]))
+
         if args.boot_script:
             logging.info(
                 'Waiting for the startup script to finish on {}'.format(args.search_pattern))
@@ -1771,7 +1777,7 @@ class WaitForSSHConnection(AbstractInstancesMethod):
                                  args.private_key_file,
                                  ssh2_enabled=args.ssh2_enabled)
         if not connected:
-            raise YBOpsRuntimeError("SSH connection to {} at {}:{} failed"
+            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
                                     .format(self.extra_vars["ssh_host"],
                                             self.extra_vars["ssh_user"],
                                             self.extra_vars["ssh_port"]))
