@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
+Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
 To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#connect-an-application) to your application code. How you update the application depends on the driver you are using.
 
@@ -88,7 +88,7 @@ postgresql://admin:qwerty@us-west1.fa1b1ca1-b1c1-11a1-111b-ca111b1c1a11.aws.ybdb
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-The connection string includes parameters for TLS settings (`ssl`, `sslmode` and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
+The connection string includes parameters for TLS settings (`ssl`, `sslmode`, and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default.
 
 For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 

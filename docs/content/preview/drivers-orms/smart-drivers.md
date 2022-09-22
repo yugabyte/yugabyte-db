@@ -98,9 +98,9 @@ For example, using the Go driver, you would set the parameters as follows:
 "postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
 
-## Using smart drivers with in YugabyteDB Managed
+## Using smart drivers with YugabyteDB Managed
 
-YugabyteDB Managed clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. 
+[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
 For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
