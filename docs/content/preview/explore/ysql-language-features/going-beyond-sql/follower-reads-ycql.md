@@ -147,7 +147,7 @@ This can be seen by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet
 
 ### Clean up (optional)
 
-Optionally, you can execute the following command to shut down the local cluster created in Step 1:
+Optionally, you can execute the following command to shut down the local cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
