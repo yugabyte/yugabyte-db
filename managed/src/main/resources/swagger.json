@@ -981,7 +981,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -1181,7 +1181,7 @@
         },
         "state" : {
           "description" : "State of the backup",
-          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "example" : "DELETED",
           "readOnly" : true,
           "type" : "string"
@@ -1252,7 +1252,7 @@
         },
         "states" : {
           "items" : {
-            "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+            "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
             "type" : "string"
           },
           "type" : "array",
@@ -1620,7 +1620,7 @@
           "type" : "boolean"
         },
         "state" : {
-          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
         },
         "storageConfigType" : {
@@ -3175,6 +3175,38 @@
       "required" : [ "code", "name" ],
       "type" : "object"
     },
+    "CustomerLicense" : {
+      "description" : "Customer Licenses. This helps customer to upload licenses for the thirdparrty softwares if required.",
+      "properties" : {
+        "creationDate" : {
+          "description" : "Creation date of license",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID that owns this license",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "license" : {
+          "description" : "License File Path",
+          "type" : "string"
+        },
+        "licenseType" : {
+          "description" : "Type of the license",
+          "type" : "string"
+        },
+        "licenseUUID" : {
+          "description" : "License UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "license", "licenseType" ],
+      "type" : "object"
+    },
     "CustomerRegisterFormData" : {
       "properties" : {
         "code" : {
@@ -3748,10 +3780,13 @@
           "$ref" : "#/definitions/InstanceTypeKey"
         },
         "instanceTypeCode" : {
+          "description" : "Instance type code",
+          "readOnly" : true,
           "type" : "string"
         },
         "instanceTypeDetails" : {
-          "$ref" : "#/definitions/InstanceTypeDetails"
+          "$ref" : "#/definitions/InstanceTypeDetails",
+          "description" : "Extra details about the instance (as a JSON object)"
         },
         "memSizeGB" : {
           "description" : "The instance's memory size, in gigabytes",
@@ -3762,19 +3797,9 @@
           "description" : "The instance's number of CPU cores",
           "format" : "double",
           "type" : "number"
-        },
-        "provider" : {
-          "$ref" : "#/definitions/Provider"
-        },
-        "providerCode" : {
-          "type" : "string"
-        },
-        "providerUuid" : {
-          "format" : "uuid",
-          "type" : "string"
         }
       },
-      "required" : [ "idKey", "instanceTypeCode", "instanceTypeDetails", "provider", "providerCode", "providerUuid" ],
+      "required" : [ "idKey" ],
       "type" : "object"
     },
     "InstanceTypeDetails" : {
@@ -3804,6 +3829,51 @@
         }
       },
       "required" : [ "instanceTypeCode", "providerUuid" ],
+      "type" : "object"
+    },
+    "InstanceTypeResp" : {
+      "description" : "Details of a cloud instance type",
+      "properties" : {
+        "active" : {
+          "description" : "True if the instance is active",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "idKey" : {
+          "$ref" : "#/definitions/InstanceTypeKey"
+        },
+        "instanceTypeCode" : {
+          "description" : "Instance type code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "instanceTypeDetails" : {
+          "$ref" : "#/definitions/InstanceTypeDetails",
+          "description" : "Extra details about the instance (as a JSON object)"
+        },
+        "memSizeGB" : {
+          "description" : "The instance's memory size, in gigabytes",
+          "format" : "double",
+          "type" : "number"
+        },
+        "numCores" : {
+          "description" : "The instance's number of CPU cores",
+          "format" : "double",
+          "type" : "number"
+        },
+        "providerCode" : {
+          "description" : "Cloud provider code",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "providerUuid" : {
+          "description" : "Provider UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "idKey" ],
       "type" : "object"
     },
     "KeyInfo" : {
@@ -11958,6 +12028,64 @@
         "tags" : [ "Encryption at rest" ]
       }
     },
+    "/api/v1/customers/{cUUID}/licenses" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "upload_license",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerLicense"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Uploads the license",
+        "tags" : [ "License management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/licenses/{lUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteLicense",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "lUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a license",
+        "tags" : [ "License management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/maintenance_windows" : {
       "post" : {
         "description" : "",
@@ -12690,7 +12818,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/InstanceType"
+                "$ref" : "#/definitions/InstanceTypeResp"
               },
               "type" : "array"
             }
@@ -12736,7 +12864,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/InstanceType"
+              "$ref" : "#/definitions/InstanceTypeResp"
             }
           }
         },
@@ -12808,7 +12936,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/InstanceType"
+              "$ref" : "#/definitions/InstanceTypeResp"
             }
           }
         },
@@ -18202,6 +18330,8 @@
     "name" : "Grafana Dashboard"
   }, {
     "name" : "Instance types"
+  }, {
+    "name" : "License management"
   }, {
     "name" : "LoggingConfig"
   }, {

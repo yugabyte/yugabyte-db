@@ -164,7 +164,6 @@ test_set_cmake_build_type_and_compiler_type   asan       linux-gnu clang7     fa
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc8       N/A        gcc8    1
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu gcc9       N/A        gcc9    1
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang12 0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu clang7     fastdebug  clang7  0
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc        N/A        N/A     1
 test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu gcc8       N/A        gcc8    1
@@ -188,18 +187,21 @@ test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc8       release    gcc8    0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc9       release    gcc9    0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang12 0
 
 # Test cases where there is difference between architectures.
 if [[ $arch == "x86_64" ]]; then
-  clangN=clang13
+  clangN=clang14
+  clangA=clang13
 else
   clangN=clang12
+  clangA=clang12
 fi
 
 test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      $clangN 0
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  $clangN 0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    $clangN 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  $clangN 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  $clangA 0
 
 # -------------------------------------------------------------------------------------------------
 

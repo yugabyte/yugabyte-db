@@ -3675,12 +3675,17 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void YBPreloadRelCacheHelper()
+static uint64_t
+YbPreloadRelCacheHelper()
 {
+	uint64_t catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	YBCPgResetCatalogReadTime();
 	YBCStartSysTablePrefetching();
 	PG_TRY();
 	{
+		YbTryRegisterCatalogVersionTableForPrefetching();
 		YBPreloadRelCache();
+		catalog_version = YbGetMasterCatalogVersion();
 	}
 	PG_CATCH();
 	{
@@ -3689,6 +3694,7 @@ static void YBPreloadRelCacheHelper()
 	}
 	PG_END_TRY();
 	YBCStopSysTablePrefetching();
+	return catalog_version;
 }
 
 /*
@@ -3721,8 +3727,6 @@ static void YBRefreshCache()
 		ereport(LOG,(errmsg("Refreshing catalog cache.")));
 	}
 
-	YBCPgResetCatalogReadTime();
-
 	/*
 	 * Get the latest syscatalog version from the master.
 	 * Reset the cached version type if needed to force reading catalog version
@@ -3730,11 +3734,6 @@ static void YBRefreshCache()
 	 */
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
-	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: got master catalog version: %" PRIu64,
-						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3742,7 +3741,7 @@ static void YBRefreshCache()
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
-	YBPreloadRelCacheHelper();
+	const uint64_t catalog_master_version = YbPreloadRelCacheHelper();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());
