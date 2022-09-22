@@ -850,7 +850,6 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
-  const string kNotFoundErrorStr = "Not found or invalid relnamespace oid for table oid ";
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
@@ -884,7 +883,8 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
             // happen due to a bug with the async nature of drops in PG with docdb.
             // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
             if (res.status().IsNotFound() &&
-                res.status().message().ToBuffer().find(kNotFoundErrorStr) != string::npos) {
+                res.status().message().ToBuffer().find(kRelnamespaceNotFoundErrorStr)
+                    != string::npos) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
               snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets always

@@ -15,17 +15,19 @@ import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.Customer;
 import org.apache.commons.lang3.StringUtils;
 
 public abstract class AlertChannelBase implements AlertChannelInterface {
 
   @VisibleForTesting
-  static final String DEFAULT_ALERT_NOTIFICATION_TITLE = "YugabyteDB Anywhere Alert - <%s>";
+  static final String DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE =
+      "YugabyteDB Anywhere {{ $labels.severity }} alert {{ $labels.definition_name }} "
+          + "fired for {{ $labels.source_name }}";
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
-      "{{ $labels.definition_name }} Alert for {{ $labels.source_name }} "
+      "{{ $labels.definition_name }} alert with severity level '{{ $labels.severity }}' "
+          + "for {{ $labels.source_type }} '{{ $labels.source_name }}' "
           + "is {{ $labels.alert_state }}.";
 
   /**
@@ -40,8 +42,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
   String getNotificationTitle(Alert alert, AlertChannel channel) {
     String template = channel.getParams().getTitleTemplate();
     if (StringUtils.isEmpty(template)) {
-      Customer customer = Customer.getOrBadRequest(alert.getCustomerUUID());
-      return String.format(DEFAULT_ALERT_NOTIFICATION_TITLE, customer.getTag());
+      template = DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE;
     }
     return alertSubstitutions(alert, template);
   }

@@ -12,9 +12,11 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@EqualsAndHashCode(callSuper = false)
 public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
 
   @Inject

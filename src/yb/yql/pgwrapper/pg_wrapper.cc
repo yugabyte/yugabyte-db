@@ -24,10 +24,9 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
-#include "yb/util/auto_flags.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
@@ -689,7 +688,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf, tserver::TabletServerIf* tserver)
     : conf_(std::move(conf)) {
   if (tserver) {
     tserver->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
-    tserver->RegisterPgConfigReloader(std::bind(&PgSupervisor::UpdateAndReloadConfig, this));
+    RegisterPgConfigReloader(std::bind(&PgSupervisor::UpdateAndReloadConfig, this));
   }
 }
 

@@ -330,6 +330,12 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
+		
+		if (YBIsRefreshMatviewFailureInjected())
+		{
+			elog(ERROR, "Injecting error.");
+		}
+	
 		/*
 		 * In YB mode, we must also rename the relation in DocDB.
 		 *

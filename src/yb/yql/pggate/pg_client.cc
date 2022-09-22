@@ -501,7 +501,9 @@ class PgClient::Impl {
     table_oid.ToPB(req.mutable_table_id());
 
     RETURN_NOT_OK(proxy_->GetTableDiskSize(req, &resp, PrepareController()));
-    RETURN_NOT_OK(ResponseStatus(resp));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
 
     return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
   }

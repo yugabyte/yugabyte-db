@@ -235,10 +235,12 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
-DEFINE_bool(enable_pessimistic_locking, false,
+DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
             "If true, use pessimistic locking behavior in conflict resolution.");
-TAG_FLAG(enable_pessimistic_locking, evolving);
-TAG_FLAG(enable_pessimistic_locking, hidden);
+TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
+TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
+
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -487,9 +489,15 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
-  if (FLAGS_enable_pessimistic_locking) {
-    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
-        client_future(), scoped_refptr<server::Clock>(server_->clock()));
+  if (FLAGS_enable_wait_queue_based_pessimistic_locking) {
+    if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
+      LOG(WARNING) << "Ignoring enable_wait_queue_based_pessimistic_locking=true since "
+                   << "auto_promote_nonlocal_transactions_to_global is enabled. These two features "
+                   << "are not yet supported together.";
+    } else {
+      waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+          client_future(), scoped_refptr<server::Clock>(server_->clock()));
+    }
   }
 
   deque<RaftGroupMetadataPtr> metas;
@@ -1789,12 +1797,7 @@ TabletPeerPtr TSTabletManager::LookupTabletUnlocked(const Key& tablet_id) const 
 template <class Key>
 Result<TabletPeerPtr> TSTabletManager::DoGetServingTablet(const Key& tablet_id) const {
   auto tablet = VERIFY_RESULT(GetTablet(tablet_id));
-  TabletDataState data_state = tablet->tablet_metadata()->tablet_data_state();
-  if (!CanServeTabletData(data_state)) {
-    return STATUS_FORMAT(
-        IllegalState, "Tablet $0 data state not ready: $1", tablet_id,
-        TabletDataState_Name(data_state));
-  }
+  RETURN_NOT_OK(CheckCanServeTabletData(*tablet->tablet_metadata()));
   return tablet;
 }
 

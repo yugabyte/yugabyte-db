@@ -12,11 +12,14 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -148,7 +151,12 @@ public class Commissioner {
       latch.countDown();
     }
     Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
-    return optional.isPresent();
+    boolean success = optional.isPresent();
+    if (success && BackupUtil.BACKUP_TASK_TYPES.contains(taskInfo.getTaskType())) {
+      Backup.fetchAllBackupsByTaskUUID(taskUUID)
+          .forEach((backup) -> backup.transitionState(BackupState.Stopping));
+    }
+    return success;
   }
 
   /**

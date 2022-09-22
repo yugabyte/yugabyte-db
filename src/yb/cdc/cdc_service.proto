@@ -216,6 +216,7 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
+    COMMITTED = 6;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -230,7 +231,7 @@ message CDCRecordPB {
 
   optional tablet.TransactionStatePB transaction_state = 7;
 
-  // If transaction_state.status is APPLYING, then partitions will contain the partition for the
+  // If transaction_state.status is APPLYING, then partition will contain the partition for the
   // tablet being polled.
   optional PartitionPB partition = 9;
 

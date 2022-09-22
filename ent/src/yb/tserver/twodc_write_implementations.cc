@@ -12,6 +12,8 @@
 
 #include <deque>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb.h"
@@ -141,6 +143,17 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   ~BatchedWriteImplementation() = default;
 
   Status ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
+    // First handle, the case where we see a txn status COMMIT record.
+    if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
+      transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
+        .transaction_id = VERIFY_RESULT(
+            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+        .status_tablet = tablet_id,
+        .commit_ht = record.time(),
+      });
+      return Status::OK();
+    }
+
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
       it = records_.emplace(tablet_id, std::deque<std::unique_ptr<WriteRequestPB>>()).first;
@@ -181,8 +194,13 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     return next_req;
   }
 
+  std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() override {
+    return transaction_metadatas_;
+  }
+
  private:
   std::map<std::string, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
+  std::vector<client::ExternalTransactionMetadata> transaction_metadatas_;
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy) {

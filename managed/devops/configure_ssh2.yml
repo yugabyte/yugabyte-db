@@ -8,6 +8,7 @@
 
 - name: "Setting up symlinks for the tectia binaries"
   hosts: localhost
+  become: true
   tasks:
     - name: "Running Tectia symlink command"
       command: "/opt/tectia/libexec/ssh-create-4.x-compat-symlinks"

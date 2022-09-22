@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX rpc)
-set(YB_PCH_DEP_LIBS cds gmock gutil libev protoc snappy yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS cds gmock gtest gutil libev protoc snappy yb_test_util yb_util)
 
 ADD_YB_LIBRARY(
     yrpc_base

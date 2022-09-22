@@ -171,7 +171,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     EXPECT_EQ(server::SetFlagResponsePB::NO_SUCH_FLAG, resp.result());
-    EXPECT_TRUE(resp.msg().empty());
+    EXPECT_EQ(resp.msg(), "Flag does not exist");
   }
 
   // Set a valid flag to a valid value.

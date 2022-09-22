@@ -658,7 +658,7 @@ class AbstractCloud(AbstractCommandParser):
             ssh_port = int(ssh_port)
 
             while retry_count < self.SSH_RETRY_COUNT:
-                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
+                logging.info("[app] Waiting for ssh port: {}:{}".format(private_ip, str(ssh_port)))
                 time.sleep(self.SSH_WAIT_SECONDS)
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
@@ -682,11 +682,12 @@ class AbstractCloud(AbstractCommandParser):
         retry_count = 0
 
         while True:
-            logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_ports)))
+            logging.info("[app] Waiting for ssh ports: {}:{}".format(private_ip, str(ssh_ports)))
             # Try connecting with the given ssh ports in succession.
             for ssh_port in ssh_ports:
                 ssh_port = int(ssh_port)
-                logging.info("[app] Attempting ssh: {}:{}".format(private_ip, str(ssh_port)))
+                logging.info("[app] Attempting socket connection to ssh port: {}:{}".format(
+                             private_ip, str(ssh_port)))
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(self.SSH_TIMEOUT_SECONDS)

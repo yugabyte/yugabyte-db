@@ -31,8 +31,6 @@ import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.TableBackupSpec;
@@ -46,12 +44,11 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class YbcBackupUtilTest extends FakeDBApplication {
-
-  private static final Logger LOG = LoggerFactory.getLogger(YbcBackupUtilTest.class);
 
   @Mock UniverseInfoHandler universeInfoHandler;
   @Mock YbcClientService ybcService;
@@ -189,7 +186,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
       storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
     }
     String commonDir = "foo/keyspace-bar";
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
+        .thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
         .thenReturn("s3.us-east-1.amazonaws.com");
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("reg1_bucket"), eq("ap-south-1")))
@@ -200,9 +198,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getBucketRegion(eq("reg1_bucket"), any())).thenReturn("ap-south-1");
     when(mockAWSUtil.getBucketRegion(eq("reg2_bucket"), any())).thenReturn("eu-south-1");
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig =
-        ybcBackupUtil.createCloudStoreConfig(storageConfig, commonDir, false);
-    ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig);
+    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
+    ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
   }
 
   @Test
@@ -213,17 +210,17 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     CustomerConfig storageConfig =
         CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
     String commonDir = "foo/keyspace-bar";
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
+        .thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
         .thenReturn("s3.us-east-1.amazonaws.com");
     when(mockAWSUtil.getBucketRegion(eq("def_bucket"), any())).thenReturn("us-east-1");
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig =
-        ybcBackupUtil.createCloudStoreConfig(storageConfig, commonDir, false);
+    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
     assertThrows(
         PlatformServiceException.class,
         () -> {
-          ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig);
+          ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
         });
   }
 
@@ -235,17 +232,17 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     CustomerConfig storageConfig =
         CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData_noRegions);
     String commonDir = "wrong-foo/keyspace-bar";
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
+        .thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("def_bucket"), eq("us-east-1")))
         .thenReturn("s3.us-east-1.amazonaws.com");
     when(mockAWSUtil.getBucketRegion(eq("def_bucket"), any())).thenReturn("us-east-1");
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig =
-        ybcBackupUtil.createCloudStoreConfig(storageConfig, commonDir, false);
+    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
     assertThrows(
         PlatformServiceException.class,
         () -> {
-          ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig);
+          ybcBackupUtil.validateConfigWithSuccessMarker(ybcBackupResponse, csConfig, false);
         });
   }
 
@@ -293,13 +290,13 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.customerUuid = testCustomer.uuid;
     tableParams.storageConfigUUID = storageConfig.configUUID;
     tableParams.storageLocation =
-        "s3://foo/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+        "s3://foo/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
     BucketLocation bL1 = new BucketLocation();
     bL1.bucket = "region-1";
-    bL1.cloudDir = "univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+    bL1.cloudDir = "univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
     BucketLocation bL2 = new BucketLocation();
     bL2.bucket = "region-2";
-    bL2.cloudDir = "univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+    bL2.cloudDir = "univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
     Map<String, BucketLocation> regionMap =
         new HashMap<String, BucketLocation>() {
           {
@@ -311,9 +308,9 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     List<BackupUtil.RegionLocations> regionLocations =
         ybcBackupUtil.extractRegionLocationFromMetadata(regionMap, tableParams);
     String expectedLoc1 =
-        "s3://region-1/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+        "s3://region-1/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
     String expectedLoc2 =
-        "s3://region-2/univ-" + tableParams.universeUUID + "backup-timestamp/keyspace-bar";
+        "s3://region-2/univ-" + tableParams.universeUUID + "/ybc_backup-timestamp/keyspace-bar";
     Map<String, String> regionLocationMap = new HashMap<>();
     regionLocations.stream().forEach(rL -> regionLocationMap.put(rL.REGION, rL.LOCATION));
     assertEquals(regionLocationMap.get("us-west1"), expectedLoc1);
@@ -338,11 +335,12 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateCloudStoreConfig() {
+  public void testcreateBackupConfig() {
     CustomerConfig storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData);
     UUID uniUUID = UUID.randomUUID();
     String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
-    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), nullable(String.class), any()))
+        .thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("foo"), eq("us-east-1")))
         .thenReturn("s3.us-east-1.amazonaws.com");
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-1"), eq("ap-south-1")))
@@ -353,8 +351,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getBucketRegion(eq("region-1"), any())).thenReturn("ap-south-1");
     when(mockAWSUtil.getBucketRegion(eq("region-2"), any())).thenReturn("eu-south-1");
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
-    CloudStoreConfig csConfig =
-        ybcBackupUtil.createCloudStoreConfig(storageConfig, commonDir, false);
+    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
     Map<String, String> s3DefaultCredsMap =
         new HashMap<String, String>() {
           {

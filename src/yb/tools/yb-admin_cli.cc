@@ -895,6 +895,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "add_transaction_tablet", " <table_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_id = args[0];
+        RETURN_NOT_OK_PREPEND(client->AddTransactionStatusTablet(table_id),
+                              Format("Unable to add a tablet for transaction table $0", table_id));
+        return Status::OK();
+      });
+
+  Register(
       "ysql_catalog_version", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(),

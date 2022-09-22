@@ -58,6 +58,9 @@ DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed dead
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
+DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+            "Automatically promote transactions touching data outside of region to global.");
+
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
                  "only affect the current database and will only increment catalog version for "

@@ -32,6 +32,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <functional>
@@ -43,6 +44,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <optional>
 #include <ostream>
 #include <random>
 #include <set>
@@ -50,6 +53,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -57,7 +61,7 @@
 #include <utility>
 #include <vector>
 
-#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/address_v6.hpp>
@@ -74,9 +78,14 @@
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/optional/optional_fwd.hpp>
@@ -91,12 +100,15 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/iterator_range.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/variant.hpp>
 #include <gflags/gflags.h>
@@ -116,7 +128,10 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/wire_format_lite.h>
+#include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
+#include <rapidjson/document.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
@@ -162,22 +177,26 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/cast.h"
+#include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cross_thread_mutex.h"
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/lockfree.h"
@@ -188,6 +207,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
@@ -200,6 +221,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/opid.fwd.h"
 #include "yb/util/opid.h"
@@ -225,6 +247,9 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"

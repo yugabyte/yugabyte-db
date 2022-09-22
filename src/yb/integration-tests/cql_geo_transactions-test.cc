@@ -35,6 +35,7 @@ DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
+DECLARE_string(TEST_transaction_manager_preferred_tablet);
 
 namespace yb {
 
@@ -225,6 +226,46 @@ TEST_F(CqlGeoTransactionsTest, TestTransactionTabletSelection) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
   CheckInsert(kLocalRegion, ExpectedResult::kLocal);
   CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
+}
+
+TEST_F(CqlGeoTransactionsTest, AddTransactionTablet) {
+  SetupTables();
+
+  auto current_version = GetCurrentVersion();
+
+  auto original_status_tablets = ASSERT_RESULT(GetStatusTablets(kOtherRegion, true /* global */));
+  std::sort(original_status_tablets.begin(), original_status_tablets.end());
+  ASSERT_FALSE(original_status_tablets.empty());
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+  ASSERT_OK(client_->AddTransactionStatusTablet(global_txn_table_id));
+
+  WaitForStatusTabletsVersion(current_version + 1);
+
+  auto new_status_tablets = ASSERT_RESULT(GetStatusTablets(kOtherRegion, true /* global */));
+  std::sort(new_status_tablets.begin(), new_status_tablets.end());
+  std::vector<TabletId> new_tablets;
+  std::set_difference(
+      new_status_tablets.begin(), new_status_tablets.end(),
+      original_status_tablets.begin(), original_status_tablets.end(),
+      std::inserter(new_tablets, new_tablets.begin()));
+  ASSERT_EQ(1, new_tablets.size());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_manager_preferred_tablet) = new_tablets[0];
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(strings::Substitute(R"#(
+     BEGIN TRANSACTION
+     INSERT INTO $0$1 (value) VALUES ($2);
+     END TRANSACTION;
+  )#", kTablePrefix, kOtherRegion, UnusedRowValue())));
+
+  auto last_transaction = transaction_pool_->TEST_GetLastTransaction();
+  auto metadata = last_transaction->GetMetadata(TransactionRpcDeadline()).get();
+  ASSERT_OK(metadata);
+  ASSERT_EQ(new_tablets[0], metadata->status_tablet);
 }
 
 } // namespace client
