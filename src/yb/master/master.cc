@@ -303,7 +303,8 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Tasks.
   DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
-  DisplayIconTile(output, "fa-check", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
 }
 
 Status Master::StartAsync() {
