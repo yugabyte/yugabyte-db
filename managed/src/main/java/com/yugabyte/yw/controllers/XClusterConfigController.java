@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -46,6 +47,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +55,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonTypes;
+import org.yb.master.MasterDdlOuterClass;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -256,33 +260,83 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterConfigEditFormData editFormData = parseEditFormData();
+    XClusterConfigEditFormData editFormData = parseEditFormData(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
-    // If changing table set, ensure a table is not in replication between two universes in more
-    // than one xCluster config.
-    if (editFormData.tables != null) {
-      List<XClusterConfig> xClusterConfigs =
-          XClusterConfig.getBetweenUniverses(
-                  xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID)
-              .stream()
-              .filter(xClusterConfig1 -> !xClusterConfig1.uuid.equals(xClusterConfig.uuid))
-              .collect(Collectors.toList());
-      xClusterConfigs.forEach(
-          config -> {
-            Set<String> tablesInReplication = config.getTables();
-            tablesInReplication.retainAll(editFormData.tables);
-            if (!tablesInReplication.isEmpty()) {
-              throw new PlatformServiceException(
-                  BAD_REQUEST,
-                  String.format(
-                      "Table(s) with ID %s are already in replication between these universes in "
-                          + "the same direction",
-                      tablesInReplication));
-            }
-          });
-    }
     verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
+    // If changing table set, ensure a table is not in replication between two universes in more
+    // than one xCluster config. Also, tables to be added must have the same type as others.
+    if (editFormData.tables != null) {
+      Set<String> currentTableIds = xClusterConfig.getTables();
+      Pair<Set<String>, Set<String>> tableIdsToAddTableIdsToRemovePair =
+          XClusterConfigTaskBase.getTableIdsDiff(currentTableIds, editFormData.tables);
+      Set<String> tableIdsToAdd = tableIdsToAddTableIdsToRemovePair.getFirst();
+      Set<String> tableIdsToRemove = tableIdsToAddTableIdsToRemovePair.getSecond();
+      log.info("tableIdsToAdd are {}; tableIdsToRemove are {}", tableIdsToAdd, tableIdsToRemove);
+
+      if (!tableIdsToAdd.isEmpty()) {
+        List<XClusterConfig> xClusterConfigs =
+            XClusterConfig.getBetweenUniverses(
+                    xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID)
+                .stream()
+                .filter(xClusterConfig1 -> !xClusterConfig1.uuid.equals(xClusterConfig.uuid))
+                .collect(Collectors.toList());
+
+        xClusterConfigs.forEach(
+            config -> {
+              Set<String> tablesInReplication = config.getTables();
+              tablesInReplication.retainAll(tableIdsToAdd);
+              if (!tablesInReplication.isEmpty()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Table(s) with ID %s are already in replication between these universes"
+                            + " in the same direction",
+                        tablesInReplication));
+              }
+            });
+
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesToAddTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(
+                this.ybService,
+                Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer),
+                tableIdsToAdd);
+        if (tablesToAddTableInfoList.isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "No tables with tableIds %s found on the source universe", tableIdsToAdd));
+        }
+        CommonTypes.TableType tableType = tablesToAddTableInfoList.get(0).getTableType();
+        // All tables have the same type.
+        if (!tablesToAddTableInfoList
+            .stream()
+            .allMatch(tableInfo -> tableInfo.getTableType().equals(tableType))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "At least one table has a different type from others. "
+                  + "All tables in an xCluster config must have the same type. Please create "
+                  + "separate xCluster configs for different table types.");
+        }
+        if (!xClusterConfig.tableType.equals(XClusterConfig.TableType.UNKNOWN)) {
+          if (!xClusterConfig.getTableTypeAsCommonType().equals(tableType)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "The xCluster config has a type of %s, but the tables to be added have a "
+                        + "type of %s",
+                    xClusterConfig.tableType,
+                    XClusterConfig.XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse()
+                        .get(tableType)));
+          }
+        }
+      }
+
+      if (tableIdsToAdd.isEmpty() && tableIdsToRemove.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No change in the xCluster config table list is detected");
+      }
+    }
 
     // If renaming, verify xCluster replication with same name (between same source/target)
     // does not already exist.
@@ -346,6 +400,11 @@ public class XClusterConfigController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigRestartFormData.class);
 
+    // Todo: if tables list is empty, add all tables because the whole replication must be
+    // restarted.
+
+    // Todo: `per table` restart is not allowed if replication is in failed state.
+
     // Currently, only the whole xCluster config can restart.
     if (!restartFormData.tables.isEmpty()) {
       throw new PlatformServiceException(
@@ -354,6 +413,8 @@ public class XClusterConfigController extends AuthenticatedController {
               + "do not specify the `tables` field so the whole xCluster config restarts");
     }
 
+    restartFormData.tables =
+        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(restartFormData.tables);
     validateBackupRequestParamsForBootstrapping(
         restartFormData.bootstrapParams.backupRequestParams, customerUUID);
     XClusterConfig xClusterConfig =
@@ -516,6 +577,8 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Currently, only one table can be checked at one call to this API");
     }
+    needBootstrapFormData.tables =
+        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap =
@@ -566,6 +629,8 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Currently, only one table can be checked at one call to this API");
     }
+    needBootstrapFormData.tables =
+        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap =
@@ -594,9 +659,13 @@ public class XClusterConfigController extends AuthenticatedController {
               formData.sourceUniverseUUID));
     }
 
+    formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+
     // Validate bootstrap parameters if there is any.
     if (formData.bootstrapParams != null) {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
+      bootstrapParams.tables =
+          XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
       // Ensure tables in BootstrapParams is a subset of tables in the main body.
       if (!formData.tables.containsAll(bootstrapParams.tables)) {
         throw new IllegalArgumentException(
@@ -616,7 +685,7 @@ public class XClusterConfigController extends AuthenticatedController {
     return formData;
   }
 
-  private XClusterConfigEditFormData parseEditFormData() {
+  private XClusterConfigEditFormData parseEditFormData(UUID customerUUID) {
     XClusterConfigEditFormData formData =
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigEditFormData.class);
@@ -633,6 +702,30 @@ public class XClusterConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Exactly one edit request (either editName, editStatus, editTables) is allowed in "
               + "one call.");
+    }
+
+    if (formData.tables != null && !formData.tables.isEmpty()) {
+      formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+      // Validate bootstrap parameters if there is any.
+      if (formData.bootstrapParams != null) {
+        XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
+        bootstrapParams.tables =
+            XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
+        // Ensure tables in BootstrapParams is a subset of tables in the main body.
+        if (!formData.tables.containsAll(bootstrapParams.tables)) {
+          throw new IllegalArgumentException(
+              String.format(
+                  "The set of tables in bootstrapParams (%s) is not a subset of tables in the "
+                      + "main body (%s)",
+                  bootstrapParams.tables, formData.tables));
+        }
+
+        // Fail early if parameters are invalid for bootstrapping.
+        if (bootstrapParams.tables.size() > 0) {
+          validateBackupRequestParamsForBootstrapping(
+              bootstrapParams.backupRequestParams, customerUUID);
+        }
+      }
     }
 
     return formData;
@@ -697,9 +790,6 @@ public class XClusterConfigController extends AuthenticatedController {
               "backupRequestParams.customerUUID is set to a wrong customer UUID (%s). "
                   + "Please either set it to null, or use the right customer uuid (%s)",
               backupRequestParams.customerUUID, customerUUID));
-    }
-    if (backupRequestParams.customerUUID == null) {
-      backupRequestParams.customerUUID = customerUUID;
     }
     if (backupRequestParams.universeUUID != null) {
       throw new PlatformServiceException(

@@ -1784,6 +1784,8 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
   }
 };
 
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMinSpace, ::testing::Bool());
+
 TEST_P(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 

@@ -18,20 +18,23 @@
 
 #include "yb/master/master_fwd.h"
 
+#include "yb/util/metrics.h"
+
 namespace yb {
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 
-bool CheckLiveReplicasForSplit(
+Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
 
 class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
                      TabletSplitDriverIf* driver,
-                     XClusterSplitDriverIf* xcluster_split_driver);
+                     XClusterSplitDriverIf* xcluster_split_driver,
+                     const scoped_refptr<MetricEntity>& metric_entity);
 
   // Temporarily disable splitting for the specified amount of time.
   void DisableSplittingFor(const MonoDelta& disable_duration, const std::string& feature_name);
@@ -50,15 +53,14 @@ class TabletSplitManager {
   Status ProcessSplitTabletResult(
       const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
 
-  // Validate whether a candidate table is eligible for a split.
-  // Any temporarily disabled tablets are assumed ineligible by default.
+  // Table-level checks for splitting that are checked not only as a best-effort
+  // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
   Status ValidateSplitCandidateTable(
       const TableInfo& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 
-  // Validate whether a candidate tablet is eligible for a split.
-  // Any tablets with default TTL and a max file size for compaction limit are assumed
-  // ineligible by default.
+  // Tablet-level checks for splitting that are checked not only as a best-effort
+  // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
   Status ValidateSplitCandidateTablet(
       const TabletInfo& tablet,
       const TabletInfoPtr parent,
@@ -97,6 +99,9 @@ class TabletSplitManager {
   // automatic tablet splitting code.
   std::atomic<bool> is_running_;
   CoarseTimePoint last_run_time_;
+
+  // Metric to monitor how long a tablet split manager run takes.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> automatic_split_manager_time_ms_;
 
   template <typename IdType>
   using DisabledSet = std::unordered_map<IdType, CoarseTimePoint>;

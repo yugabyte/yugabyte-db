@@ -264,7 +264,7 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
     auto expected_set = ::yb::VectorToSet(expected_vector_computed); \
     auto actual_set = ::yb::VectorToSet(actual_vector_computed); \
     GTEST_ASSERT_( \
-        ::testing::internal::EqHelper<GTEST_IS_NULL_LITERAL_(expected_vector)>::Compare( \
+        ::testing::internal::EqHelper::Compare( \
             BOOST_PP_STRINGIZE(expected_vector), \
             BOOST_PP_STRINGIZE(actual_vector), \
             expected_vector_computed, \
