@@ -50,7 +50,7 @@ YugabyteDB also allows you to specify the maximum staleness of data when reading
 
 ## Try it out
 
-In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.
+In this tutorial, you update a single key-value over and over, and read it from the tablet leader. While that workload is running, you start another workload to read from a follower and verify that you are able to read from a tablet follower.
 
 ### Create universe
 
