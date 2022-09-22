@@ -122,7 +122,7 @@ ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 ### Strongly consistent reads from tablet leaders
 
-When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, you will see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
+When performing strongly consistent reads as a part of the above command, all reads are served by the tablet leader of the tablet that contains the key `key:0`. Browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
