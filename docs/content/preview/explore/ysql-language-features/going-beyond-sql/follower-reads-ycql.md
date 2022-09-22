@@ -128,7 +128,7 @@ When performing strongly consistent reads as a part of the above command, all re
 
 ### Follower reads from tablet replicas
 
-Stop the workload application above, and then run the following variant of that workload application. This command will perform updates to the same key `key:0` which will go through the tablet leader, but it will read from the replicas, as follows:
+Stop the workload application above, and then run the following variant of that workload application. This command performs updates to the same key `key:0` via the tablet leader, but it reads from the replicas, as follows:
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
