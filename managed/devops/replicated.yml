@@ -9,7 +9,7 @@
 replicated_api_version: "2.8.0"
 name: "yugaware"
 properties:
-  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
+  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
   console_title: YugaByte Platform Deployment Console
 backup:
@@ -480,7 +480,7 @@ components:
                 cors {
                   pathPrefixes = ["/"]
                   allowedOrigins = [
-                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}",
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}",
                     "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
@@ -508,7 +508,7 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
                 security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
                 security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
                 security.ssh2_enabled = false
@@ -575,11 +575,11 @@ components:
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             public_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             port_type: tcp
-            when: '{{repl or (ConfigOptionEquals "nginx_external_port" "80") (ConfigOptionEquals "nginx_external_port" "443")}}'
+            when: '{{repl or (ConfigOptionEquals "nginx_custom_port" "80") (ConfigOptionEquals "nginx_custom_port" "443")}}'
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            public_port: '{{repl ConfigOption "nginx_external_port" }}'
+            public_port: '{{repl ConfigOption "nginx_custom_port" }}'
             port_type: tcp
-            when: '{{repl and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}'
+            when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
 
 config:
   - name: database
@@ -692,16 +692,22 @@ config:
         value: ""
         default: "9000"
         when: '{{repl ConfigOptionEquals "expose_app_port" "1" }}'
-      - name: nginx_external_port
-        title: Yugaware UI Port
+      - name: enable_custom_port
+        title: Enable Yugaware UI Custom Port
+        type: bool
+        value: ""
+        default: "0"
+      - name: nginx_custom_port
+        title: Yugaware UI Custom Port
         type: text
         value: ""
-        default: "80"
+        default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
+        when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
       - name: https_enabled
         title: Enable HTTPS
         help_text: When enabled we will listen to https
         type: bool
-        default: "0"
+        default: "1"
       - name: upload_size
         title: Maximum Request Size
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
