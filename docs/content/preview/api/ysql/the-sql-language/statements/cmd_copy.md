@@ -160,4 +160,4 @@ The following copy options may help to speed up copying, or allow for faster rec
 - `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
 - `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.
 
-For COPY operation examples using `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).
+For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).
