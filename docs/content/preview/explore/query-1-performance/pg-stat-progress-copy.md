@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Yugabyte supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) command execution. Whenever COPY is running, the `pg_stat_progress_copy` view will contain one row for each backend that is currently running a COPY command.
+YugabyteDB supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the COPY command execution. Whenever [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) is running, the `pg_stat_progress_copy` view contains one row for each backend that is currently running a COPY command.
 
-The following table includes the columns and their description:
+The following table describes the view columns:
 
 | Column | Description |
 | :---- | :---------- |
@@ -25,32 +25,32 @@ The following table includes the columns and their description:
 | command | The command that is running COPY FROM, or COPY TO. |
 | type | The I/O type that the data is read from or written to: FILE, PROGRAM, PIPE (for COPY FROM STDIN and COPY TO STDOUT), or CALLBACK (used for example during the initial table synchronization in logical replication). |
 | yb_status | Tracking status of the copy command. |
-| bytes_processed | Number of bytes already processed by COPY command. |
-| bytes_total | Size of the source file for COPY FROM command in bytes. It is set to 0 if not available. |
-| tuples_processed | Number of tuples already processed by COPY command. |
+| bytes_processed | Number of bytes already processed by the COPY command. |
+| bytes_total | Size of the source file for the COPY FROM command in bytes. Set to 0 if not available. |
+| tuples_processed | Number of tuples already processed by the COPY command. |
 | tuples_excluded | Number of tuples not processed because they were excluded by the WHERE clause of the COPY command. |
 
-## YugabyteDB specific changes
+## YugabyteDB-specific changes
 
-The `pg_stat_progress_copy` view includes the following YugabyteDB specific changes:
+The `pg_stat_progress_copy` view includes the following YugabyteDB-specific changes:
 
 ### Definition of `tuples_processed`
 
 The definition of `tuples_processed` column is different in YugabyteDB in comparison to PostgreSQL.
 
-For the COPY command in YugabyteDB, an option `ROWS_PER_TRANSACTION` is added which defines the transaction size to be used by the COPY command. For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction.
+In YugabyteDB, the `ROWS_PER_TRANSACTION` option is added to the COPY command, defining the transaction size to be used. For example, if the total tuples to be copied is 5000 and `ROWS_PER_TRANSACTION` is set to 1000, the database creates 5 transactions and each transaction inserts 1000 rows. If there is an error during execution, then some tuples can be persisted based on the already completed transaction.
 
-Because the COPY command is divided into multiple transactions, `tuples_processed` tracks the rows for which the transaction has already completed.
+Because each COPY is divided into multiple transactions, `tuples_processed` tracks the rows that the transaction has already completed.
 
-For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
+For more information, refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
 
 ### New column `yb_status`
 
-The `pg_stat_progress_copy` view includes a status column `yb_status` to indicate the status of the copy command.
+In YugabyteDB, the `pg_stat_progress_copy` view includes the column `yb_status` to indicate the status of the COPY command.
 
-If a COPY command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the COPY command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. For YugabyteDB, `yb_status` column helps finding if the copy successfully completed or not.
+If a COPY command terminates due to any error, then it's possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In this case, `tuples_processed` shows a non-zero count and `yb_status` shows that the COPY command was terminated due to an error. This is helpful for discovering whether the copy completed or not. This is unnecessary in PostgreSQL, where copy is a single transaction.
 
-Following are the possible values for this column:
+`yb_status` can have the following values:
 
 - IN PROGRESS – Indicating that the COPY command is still running.
 - ERROR – COPY command was terminated due to an error.
@@ -60,13 +60,13 @@ Following are the possible values for this column:
 
 The `pg_stat_progress_copy` view retains copy command information after the copy operation has completed.
 
-In PostgreSQL, after the COPY command is finished then the row containing details of the copy command is _removed_ from the view. In YugabyteDB, information is _retained_ in the view after the copy has finished. Also, information is retained only for the last executed copy command on that connection.
+In PostgreSQL, when the COPY command finishes, the row containing details of the copy command is _removed_ from the view. In YugabyteDB, the information is _retained_ in the view after the copy has finished. The information is retained only for the last executed copy command on that connection.
 
 This is required for YugabyteDB, because if the COPY command finishes due to an error, then you would like to know how many rows were reliably persisted to the disk.
 
 ## Examples
 
-The following examples demonstrates the possible stages (IN PROGRESS, ERROR, SUCCESS) for the copy operation.
+The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCCESS) for the copy operation.
 
 ### Prerequisites
 
@@ -164,7 +164,7 @@ You should see output similar to the following:
     (1 row)
     ```
 
-    The default for `ROWS_PER_TRANSACTION` is 20K and the interruption occurred on row 55184 in the example. As a result, the first two transactions of 20K rows were persisted resulting in 40K rows reported by `tuples_processed`. The next _in-progress_ transaction was interrupted, and due to this reason the remaining 15184 rows were not persisted.
+    The default for `ROWS_PER_TRANSACTION` is 20K and the interruption occurred on row 55184 in the example. As a result, the first two transactions of 20K rows were persisted resulting in 40K rows reported by `tuples_processed`. The next _in-progress_ transaction was interrupted, and for this reason the remaining 15184 rows were not persisted.
 
 ## Learn more
 
