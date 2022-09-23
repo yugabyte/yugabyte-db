@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the COPY command execution. Whenever COPY is running, the `pg_stat_progress_copy` view contains one row for each backend that is currently running a COPY command.
 
-The following table includes the columns and their description:
+The following table describes the view columns:
 
 | Column | Description |
 | :---- | :---------- |
