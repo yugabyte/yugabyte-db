@@ -68,7 +68,7 @@ preflight_provision_check() {
   ulimit_filepath="/etc/security/limits.conf"
   check_filepath "pam_limits_writable" $ulimit_filepath true
 
-  # Check NTP synchronization
+  # Check NTP synchronization.
   if [[ "$skip_ntp_check" = false ]]; then
     ntp_status=$(timedatectl status)
     ntp_check=true

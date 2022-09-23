@@ -2,7 +2,8 @@
 # Copyright (c) YugaByte, Inc.
 
 import argparse
-import glob
+from distutils.command.build import build
+import json
 import logging
 import os
 import shutil
@@ -17,6 +18,24 @@ from ybops.common.exceptions import YBOpsRuntimeError
 # Supported platforms for node-agent.
 NODE_AGENT_PLATFORMS = set(["darwin/amd64", "linux/amd64", "linux/arm64"])
 
+
+def get_release_version(source_dir):
+    version_metadata = os.path.join(source_dir, "version_metadata.json")
+    with open(version_metadata, 'r') as file:
+        data = file.read()
+    obj = json.loads(data)
+    version = obj.get('version_number')
+    if version is None:
+        log_message(logging.WARN, "Version number is not found in version_metadata.json.")
+        return get_default_release_version()
+    build_num = obj.get('build_number')
+    if build_num is None:
+        log_message(logging.WARN, "Build number is not found in version_metadata.json.")
+        return get_default_release_version()
+    version_format = "{}-b{}" if build_num.isdigit() else "{}-{}"
+    return version_format.format(version, build_num)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--source_dir', help='Source code directory.', required=True)
 parser.add_argument('--destination', help='Copy release to Destination directory.', required=True)
@@ -26,7 +45,8 @@ try:
     init_env(logging.INFO)
     if not os.path.exists(args.destination):
         raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
-    version = get_default_release_version()
+
+    version = get_release_version(args.source_dir)
     build_script = os.path.join(args.source_dir, "build.sh")
     process_env = os.environ.copy()
     process_env["NODE_AGENT_PLATFORMS"] = ' '.join(NODE_AGENT_PLATFORMS)

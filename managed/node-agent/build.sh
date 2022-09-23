@@ -165,9 +165,11 @@ package_for_platform() {
     mkdir -p $bin_dir
     cp -rf $os_exec_name ${bin_dir}/$exec_name
     cp -rf ../version.txt ${version_dir}/version.txt
+    cp -rf ../version_metadata.json ${version_dir}/version_metadata.json
     pushd "$project_dir/resources"
     cp -rf preflight_check.sh ${script_dir}/preflight_check.sh
     cp -rf yb-node-agent.sh ${bin_dir}/yb-node-agent.sh
+    cp -rf node-agent-installer.sh ${bin_dir}/node-agent-installer.sh
     chmod 755 ${script_dir}/*.sh
     chmod 755 ${bin_dir}/*.sh
     popd
