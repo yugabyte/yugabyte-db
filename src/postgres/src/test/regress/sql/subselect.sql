@@ -451,6 +451,16 @@ where a.thousand = b.thousand
                                     where a.thousand = d.thousand ) );
 
 --
+-- Another test case for cross-type hashed subplans: comparison of
+-- inner-side values must be done with appropriate operator
+--
+
+explain (verbose, costs off)
+select 'foo'::text in (select 'bar'::name union all select 'bar'::name);
+
+select 'foo'::text in (select 'bar'::name union all select 'bar'::name);
+
+--
 -- Check that nested sub-selects are not pulled up if they contain volatiles
 --
 explain (verbose, costs off)
