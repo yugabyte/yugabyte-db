@@ -42,7 +42,7 @@ In YugabyteDB, the `ROWS_PER_TRANSACTION` option is added to the COPY command, d
 
 Because each COPY is divided into multiple transactions, `tuples_processed` tracks the rows that the transaction has already completed.
 
-For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
+For more information, refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
 
 ### New column `yb_status`
 
