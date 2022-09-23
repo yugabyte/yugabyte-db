@@ -19,15 +19,14 @@ You can install YugabyteDB Anywhere on the following Linux distributions:
 
 - CentOS (default)
 - Ubuntu 18 and 20, via Replicated
-- AlmaLinux OS 8, via Replicated
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
 
 <!--
 
-- Ubuntu 18 and 20 (tested on 16.04, 18.04, 20.04 LTS).
+- Ubuntu 18 and 20, via Replicated
 - Red Hat Enterprise Linux (RHEL) 8 (tested on 8.5). 
 - Oracle Linux 7 and 8 (tested).
-- AlmaLinux OS 8 (tested).
+- AlmaLinux OS 8, via Replicated
 - CentOS (default).
 - Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, or 2.0.
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
