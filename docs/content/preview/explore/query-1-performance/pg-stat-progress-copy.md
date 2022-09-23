@@ -60,7 +60,7 @@ If a `COPY` command terminates due to any error, then it's possible that some tu
 
 The `pg_stat_progress_copy` view retains copy command information after the copy operation has completed.
 
-In PostgreSQL, after the `COPY` command is finished then the row containing details of the copy command is _removed_ from the view. In YugabyteDB, information is _retained_ in the view after the copy has finished. Also, information is retained only for the last executed copy command on that connection.
+In PostgreSQL, when the `COPY` command finishes, the row containing details of the copy command is _removed_ from the view. In YugabyteDB, the information is _retained_ in the view after the copy has finished. The information is retained only for the last executed copy command on that connection.
 
 This is required for YugabyteDB, because if the `COPY` command finishes due to an error, then you would like to know how many rows were reliably persisted to the disk.
 
