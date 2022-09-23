@@ -8,62 +8,7 @@
 
     area {
       position: absolute;
-
-      &:hover {
-        backdrop-filter: saturate(0.4) brightness(1.01);
-      }
-
-      &:nth-child(1) {
-        width: 18.3%;
-        height: 8.7%;
-        top: 2.6%;
-        left: 41%;
-      }
-
-      &:nth-child(2) {
-        width: 16.5%;
-        height: 4.1%;
-        top: 21.2%;
-        left: 17.5%;
-      }
-
-      &:nth-child(3) {
-        width: 16.5%;
-        height: 4.1%;
-        top: 21.2%;
-        left: 17.5%;
-        left: 41.8%;
-      }
-
-      &:nth-child(4) {
-        width: 16.5%;
-        height: 4.1%;
-        top: 21.2%;
-        left: 17.5%;
-        left: 66%;
-      }
-
-      &:nth-child(5) {
-        width: 81%;
-        height: 3.2%;
-        top: 40.3%;
-        left: 9.5%;
-      }
-
-      &:nth-child(6) {
-        width: 19%;
-        height: 3.4%;
-        top: 55.4%;
-        left: 25.5%;
-      }
-
-      &:nth-child(7) {
-        width: 19%;
-        height: 3.4%;
-        top: 55.4%;
-        left: 25.5%;
-        left: 55.5%;
-      }
+      display: block;
     }
   }
 }

@@ -42,12 +42,12 @@ Select your installation type to see the installation flow. Click on the element
 <img src="/images/ee/flowchart/yb-install-private-cloud.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Install platform" title="Install platform" href="/preview/yugabyte-platform/install-yugabyte-platform/" coords="525,204,377,57" shape="rect">
-    <area target="_blank" alt="Pre reqs" title="Pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/" coords="323,255,572,412" shape="rect">
-    <area target="_blank" alt="Prepare on prem nodes" title="Prepare on prem nodes" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/" coords="307,1371,597,1429" shape="rect">
-    <area target="_blank" alt="Online installation" title="Online installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="239,907,396,970" shape="rect">
-    <area target="_blank" alt="Airgapped installation" title="Airgapped installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="512,909,663,967" shape="rect">
-    <area target="_blank" alt="Airgapped installation - pre reqs" title="Airgapped installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="482,1008,688,1141" shape="rect">
-    <area target="_blank" alt="Online installation - pre reqs" title="Online installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="" shape="rect">
+    <area target="_blank" alt="Install YugabyteDB Anywhere" title="Install YugabyteDB Anywhere" href="/preview/yugabyte-platform/install-yugabyte-platform/" coords="397,199,371,90,450,48,523,90,518,174,518,175,453,214,453,213" shape="poly" style="width: 18.3%;height: 8.7%;top: 2.6%;left: 41%;">
+    <area target="_blank" alt="AWS prep environment" title="AWS prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws/" coords="166,404,296,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 17.5%;">
+    <area target="_blank" alt="GCP prep environment" title="GCP prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp/" coords="378,404,521,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 41.8%;">
+    <area target="_blank" alt="Azure prep environment" title="Azure prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure/" coords="590,404,746,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 66%;">
+    <area target="_blank" alt="Pre reqs platform" title="Pre reqs platform" href="/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/" coords="324,558,574,711" shape="rect" style="width: 81%;height: 3.2%;top: 40.3%;left: 9.5%;">
+    <area target="_blank" alt="Online installation" title="Online installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="236,1054,394,1112" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 25.5%;">
+    <area target="_blank" alt="Airgapped installation" title="Airgapped installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="502,1053,666,1114" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 55.5%;">
 </map>
 </div>
