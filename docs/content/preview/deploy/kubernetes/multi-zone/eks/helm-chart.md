@@ -95,7 +95,7 @@ As stated in the Prerequisites section, the default configuration in the Yugabyt
 
 ### Create a storage class
 
-We need to make sure to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities. 
+We need to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities. 
 
 Copy the contents below to a file named `storage.yaml`.
 
