@@ -440,11 +440,11 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, tablet_metrics_entity_);
+        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_));
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock());
+        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_));
     }
   }
 
@@ -466,7 +466,8 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata_->fs_manager()->uuid(),
         data.transaction_coordinator_context,
-        metrics_->expired_transactions.get());
+        metrics_->expired_transactions.get(),
+         DCHECK_NOTNULL(tablet_metrics_entity_));
   }
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
