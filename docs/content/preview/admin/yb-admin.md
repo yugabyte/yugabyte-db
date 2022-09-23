@@ -547,8 +547,6 @@ Next, set the placement on the newly created transactions table:
 
 After the load balancer runs, all tablets of `system.transactions_us_east` should now be solely located in the AWS us-east region.
 
----
-
 {{< note title="Note" >}}
 
 The preferred way to create transaction status tables with YSQL is to create a tablespace with the appropriate placement. YugabyteDB automatically creates a transaction table using the tablespace's placement when you create the first table using the new tablespace.
@@ -581,7 +579,9 @@ yb-admin \
     system transactions
 ```
 
-To verify that the new status tablet has been created, run the [`yb-admin list_tablets`](#list_tablets) command.
+To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
+
+---
 
 ### Backup and snapshot commands
 
