@@ -9,8 +9,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcBackupUtil;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -55,6 +57,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -198,6 +201,15 @@ public class BackupsController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
     taskParams.customerUUID = customerUUID;
 
+    if (universe.getUniverseDetails().updateInProgress
+        || universe.getUniverseDetails().backupInProgress) {
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format(
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
+              taskParams.universeUUID.toString()));
+    }
+
     if (taskParams.keyspaceTableList != null) {
       for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
         if (keyspaceTable.tableUUIDList == null) {
@@ -224,16 +236,22 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupUtil.validateStorageConfig(customerConfig);
 
-    if (universe.getUniverseDetails().updateInProgress
-        || universe.getUniverseDetails().backupInProgress) {
-      throw new PlatformServiceException(
-          CONFLICT,
-          String.format(
-              "Cannot run Backup task since the universe %s is currently in a locked state.",
-              taskParams.universeUUID.toString()));
+    if (taskParams.baseBackupUUID != null) {
+      Backup previousBackup =
+          Backup.getLastSuccessfulBackupInChain(customerUUID, taskParams.baseBackupUUID);
+      if (!universe.isYbcEnabled()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Incremental backup not allowed for non-YBC universes");
+      } else if (previousBackup == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No previous successful backup found, please trigger a new base backup.");
+      }
+      backupUtil.validateStorageConfigOnBackup(customerConfig, previousBackup);
+    } else {
+      backupUtil.validateStorageConfig(customerConfig);
     }
+
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
     CustomerTask.create(
@@ -371,14 +389,20 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
-    List<String> storageLocations = new ArrayList<String>();
+    // Even though we check with default location below(line 393), this is needed to validate
+    // regional locations, because their validity is not known to us when we send restore
+    // request with a config.
+    backupUtil.validateStorageConfig(customerConfig);
+    CustomerConfigStorageData configData =
+        (CustomerConfigStorageData) customerConfig.getDataObject();
+
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(customerConfig.name);
+    Map<String, String> locationMap = new HashMap<>();
     for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
-      storageLocations.add(storageInfo.storageLocation);
+      locationMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, storageInfo.storageLocation);
+      storageUtil.validateStorageConfigOnLocations(configData, locationMap);
     }
-    backupUtil.validateStorageConfigOnLocations(customerConfig, storageLocations);
-    if (backupUtil.isYbcBackup(
-        ((CustomerConfigStorageData) customerConfig.getDataObject()).backupLocation,
-        taskParams.backupStorageInfoList.get(0).storageLocation)) {
+    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
       taskParams.category = BackupCategory.YB_CONTROLLER;
     }
     UUID taskUUID = commissioner.submit(TaskType.RestoreBackup, taskParams);
@@ -783,8 +807,7 @@ public class BackupsController extends AuthenticatedController {
               + " type config to the backup stored in "
               + backupConfigType);
     }
-    List<String> locations = backupUtil.getBackupLocations(backup);
-    backupUtil.validateStorageConfigOnLocations(newConfig, locations);
+    backupUtil.validateStorageConfigOnBackup(newConfig, backup);
     backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
   }
 

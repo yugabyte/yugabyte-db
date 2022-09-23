@@ -445,13 +445,16 @@ public class UniverseCRUDHandler {
         AccessKey accessKey = AccessKey.get(provider.uuid, c.userIntent.accessKeyCode);
         AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
         boolean installNodeExporter = keyInfo.installNodeExporter;
-        int nodeExporterPort = keyInfo.nodeExporterPort;
         String nodeExporterUser = keyInfo.nodeExporterUser;
         taskParams.extraDependencies.installNodeExporter = installNodeExporter;
-        taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
 
-        for (NodeDetails node : taskParams.nodeDetailsSet) {
-          node.nodeExporterPort = nodeExporterPort;
+        if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
+          int nodeExporterPort = keyInfo.nodeExporterPort;
+          taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+
+          for (NodeDetails node : taskParams.nodeDetailsSet) {
+            node.nodeExporterPort = nodeExporterPort;
+          }
         }
 
         if (installNodeExporter) {

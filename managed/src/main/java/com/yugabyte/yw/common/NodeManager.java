@@ -212,6 +212,8 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
+    Universe universe = Universe.getOrBadRequest(params.universeUUID);
+    NodeDetails node = universe.getNode(params.nodeName);
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
@@ -222,7 +224,12 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
+              params,
+              type,
+              keyInfo,
+              userIntent.providerType,
+              userIntent.accessKeyCode,
+              node.nodeExporterPort));
     }
 
     return subCommand;
@@ -233,7 +240,8 @@ public class NodeManager extends DevopsBase {
       NodeCommandType type,
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
-      String accessKeyCode) {
+      String accessKeyCode,
+      int nodeExporterPort) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -339,7 +347,7 @@ public class NodeManager extends DevopsBase {
       if (keyInfo.installNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
+        subCommand.add(Integer.toString(nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(keyInfo.nodeExporterUser);
       }
@@ -1226,7 +1234,12 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+            nodeTaskParam,
+            type,
+            keyInfo,
+            Common.CloudType.onprem,
+            accessKey.getKeyCode(),
+            keyInfo.nodeExporterPort));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));

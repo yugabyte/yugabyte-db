@@ -50,6 +50,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
     try {
       ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID);
     } catch (PlatformServiceException e) {
+      log.error("Could not generate YB-Controller client, error: %s", e.getMessage());
       Throwables.propagate(e);
     }
     String taskId = null;
@@ -60,42 +61,54 @@ public class RestoreBackupYbc extends YbcTaskBase {
       taskId =
           ybcBackupUtil.getYbcTaskID(
               userTaskUUID, backupStorageInfo.backupType.toString(), backupStorageInfo.keyspace);
-      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
-          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId, true);
-      String successMarkerString =
-          ybcManager.downloadSuccessMarker(
-              downloadSuccessMarkerRequest, taskParams().universeUUID, taskId);
-      if (StringUtils.isEmpty(successMarkerString)) {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
-      }
-      YbcBackupResponse successMarker = ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
-      BackupServiceTaskCreateRequest restoreTaskCreateRequest =
-          ybcBackupUtil.createYbcRestoreRequest(taskParams(), backupStorageInfo, taskId, false);
-      ybcBackupUtil.validateConfigWithSuccessMarker(
-          successMarker, restoreTaskCreateRequest.getCsConfig());
-      BackupServiceTaskCreateResponse response =
-          ybcClient.restoreNamespace(restoreTaskCreateRequest);
-      if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
-        log.info(String.format("Successfully submitted restore task to YB-controller"));
-      } else {
-        throw new PlatformServiceException(
-            response.getStatus().getCodeValue(),
-            String.format(
-                "YB-controller returned non-zero exit status %s",
-                response.getStatus().getErrorMessage()));
+      try {
+        BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
+            ybcBackupUtil.createDsmRequest(
+                taskParams().customerUUID,
+                taskParams().storageConfigUUID,
+                taskId,
+                backupStorageInfo);
+        String successMarkerString =
+            ybcManager.downloadSuccessMarker(
+                downloadSuccessMarkerRequest, taskParams().universeUUID, taskId);
+        if (StringUtils.isEmpty(successMarkerString)) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
+        }
+        YbcBackupResponse successMarker = ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
+        BackupServiceTaskCreateRequest restoreTaskCreateRequest =
+            ybcBackupUtil.createYbcRestoreRequest(
+                taskParams().customerUUID,
+                taskParams().storageConfigUUID,
+                backupStorageInfo,
+                taskId,
+                successMarker);
+        ybcBackupUtil.validateConfigWithSuccessMarker(
+            successMarker, restoreTaskCreateRequest.getCsConfig(), false);
+        BackupServiceTaskCreateResponse response =
+            ybcClient.restoreNamespace(restoreTaskCreateRequest);
+        if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
+          log.info(String.format("Successfully submitted restore task to YB-controller"));
+        } else {
+          throw new PlatformServiceException(
+              response.getStatus().getCodeValue(),
+              String.format(
+                  "YB-controller returned non-zero exit status %s",
+                  response.getStatus().getErrorMessage()));
+        }
+      } catch (Exception e) {
+        log.error("Sending restore request to YB-Controller failed with error {}", e.getMessage());
+        Throwables.propagate(e);
       }
 
       try {
         pollTaskProgress(ybcClient, taskId);
         handleBackupResult(taskId);
-      } catch (CancellationException ce) {
-        Throwables.propagate(ce);
-      } catch (PlatformServiceException e) {
-        log.error(String.format("Failed with error %s", e.getMessage()));
+      } catch (Exception e) {
+        log.error(
+            "Polling restore task progress on YB-Controller failed with error {}", e.getMessage());
         Throwables.propagate(e);
       }
-
     } catch (Throwable e) {
       log.error(String.format("Failed with error %s", e.getMessage()));
       if (StringUtils.isNotBlank(taskId)) {

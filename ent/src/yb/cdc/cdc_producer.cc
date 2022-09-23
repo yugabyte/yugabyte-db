@@ -479,7 +479,7 @@ Status GetChangesForXCluster(const std::string& stream_id,
   if (!replicate_intents) {
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
     if (txn_participant) {
-      request_scope = RequestScope(txn_participant);
+      request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
@@ -515,6 +515,12 @@ Status GetChangesForXCluster(const std::string& stream_id,
           txn_state->set_transaction_id(msg->transaction_state().transaction_id());
           txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
           tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+        } else if (msg->transaction_state().status() == TransactionStatus::COMMITTED) {
+          auto* record = resp->add_records();
+          record->set_operation(CDCRecordPB::COMMITTED);
+          record->set_time(msg->hybrid_time());
+          auto* txn_state = record->mutable_transaction_state();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
         }
         break;
       case consensus::OperationType::WRITE_OP:

@@ -119,7 +119,7 @@ For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES]
 
 ## Manual tablet splitting
 
-Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. 
+Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually.
 
 {{< note title="Note" >}}
 
@@ -244,8 +244,7 @@ In the event that performance suffers due to automatic tablet splitting, the fol
 * `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
 * `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
 
-
-### YCSB workload with automatic tablet splitting example
+### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database:
 

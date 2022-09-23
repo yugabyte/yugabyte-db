@@ -608,7 +608,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!tserverDiskSpecs.isEmpty()) {
       storageOverrides.put("tserver", tserverDiskSpecs);
     }
-    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+    String instanceTypeCode = instanceType.getInstanceTypeCode();
+    if (instanceTypeCode.equals("cloud")) {
       masterDiskSpecs.put("size", String.format("%dGi", 3));
     }
     if (!masterDiskSpecs.isEmpty()) {
@@ -627,15 +628,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
 
     // If the instance type is not xsmall or dev, we would bump the master resource.
-    if (!instanceType.getInstanceTypeCode().equals("xsmall")
-        && !instanceType.getInstanceTypeCode().equals("dev")) {
+    if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
       masterResource.put("cpu", 2);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");
     }
     // For testing with multiple deployments locally.
-    if (instanceType.getInstanceTypeCode().equals("dev")) {
+    if (instanceTypeCode.equals("dev")) {
       masterResource.put("cpu", 0.5);
       masterResource.put("memory", "0.5Gi");
       masterLimit.put("cpu", 0.5);
@@ -644,7 +644,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // For cloud deployments, we want bigger bursts in CPU if available for better performance.
     // Memory should not be burstable as memory consumption above requests can lead to pods being
     // killed if the nodes is running out of resources.
-    if (instanceType.getInstanceTypeCode().equals("cloud")) {
+    if (instanceTypeCode.equals("cloud")) {
       tserverLimit.put("cpu", instanceType.numCores * 2);
       masterResource.put("cpu", 0.3);
       masterResource.put("memory", "1Gi");
@@ -714,14 +714,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
 
-        if (certInfo.certType == CertConfigType.K8SCertManager) {
-          // User configuring a K8SCertManager type of certificate on a Universe enables
-          // the cert-manager integration for this Universe. The name of
-          // Issuer/ClusterIssuer will come from the Provider yaml override. Rest of the
-          // setup happens here.
+        if (certInfo.certType == CertConfigType.K8SCertManager
+            && (azConfig.containsKey("CERT-MANAGER-ISSUER")
+                || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
+          // User configuring a K8SCertManager type of certificate on a Universe and setting
+          // the corresponding azConfig enables the cert-manager integration for this
+          // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
           Map<String, Object> certManager = new HashMap<>();
           certManager.put("enabled", true);
           certManager.put("bootstrapSelfsigned", false);
+          boolean useClusterIssuer = azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER");
+          certManager.put("useClusterIssuer", useClusterIssuer);
+          if (useClusterIssuer) {
+            certManager.put("clusterIssuer", azConfig.get("CERT-MANAGER-CLUSTERISSUER"));
+          } else {
+            certManager.put("issuer", azConfig.get("CERT-MANAGER-ISSUER"));
+          }
           tlsInfo.put("certManager", certManager);
         } else {
           CertificateProviderInterface certProvider =

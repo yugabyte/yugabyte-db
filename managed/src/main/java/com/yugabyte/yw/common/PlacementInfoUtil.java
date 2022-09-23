@@ -56,7 +56,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -504,6 +503,12 @@ public class PlacementInfoUtil {
             ? taskParams.getPrimaryCluster().userIntent.universeName
             : universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
     UUID defaultRegionUUID = getDefaultRegion(taskParams);
+    boolean dedicatedModeChanged = isDedicatedModeChanged(cluster, taskParams.nodeDetailsSet);
+    if (dedicatedModeChanged) {
+      LOG.debug("Dedicated nodes mode changed to " + cluster.userIntent.dedicatedNodes);
+      applyDedicatedModeChanges(universe, cluster, taskParams);
+      return;
+    }
 
     // Reset the config and AZ configuration
     if (taskParams.resetAZConfig) {
@@ -690,12 +695,19 @@ public class PlacementInfoUtil {
         String newInstType = cluster.userIntent.instanceType;
         String existingInstType =
             taskParams.getNodesInCluster(cluster.uuid).iterator().next().cloudInfo.instance_type;
-        if (!newInstType.equals(existingInstType)) {
-          LOG.info(
-              "Performing full move with existing placement info for instance type change "
-                  + "from  {} to {}.",
-              existingInstType,
-              newInstType);
+        if (!newInstType.equals(existingInstType) || dedicatedModeChanged) {
+          if (!newInstType.equals(existingInstType)) {
+            LOG.info(
+                "Performing full move with existing placement info for instance type change "
+                    + "from  {} to {}.",
+                existingInstType,
+                newInstType);
+          } else {
+            LOG.info(
+                "Performing change of dedicated nodes mode " + "from {} to {}.",
+                !cluster.userIntent.dedicatedNodes,
+                cluster.userIntent.dedicatedNodes);
+          }
           clearPlacementAZCounts(cluster.placementInfo);
           changeNodeStates = true;
         }
@@ -711,6 +723,17 @@ public class PlacementInfoUtil {
 
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, universe, mode, cluster, allowGeoPartitioning);
+  }
+
+  private static boolean isDedicatedModeChanged(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
+    boolean dedicatedInNodes =
+        nodeDetailsSet
+            .stream()
+            .filter(node -> cluster.uuid.equals(node.placementUuid))
+            .filter(node -> node.dedicatedTo != null)
+            .findFirst()
+            .isPresent();
+    return dedicatedInNodes != cluster.userIntent.dedicatedNodes;
   }
 
   @VisibleForTesting
@@ -1257,8 +1280,6 @@ public class PlacementInfoUtil {
       Map<UUID, Integer> availableNodesPerZone,
       Map<UUID, PlacementIndexes> zoneToPlacementIndexes) {
     List<PlacementIndexes> result = new ArrayList<>();
-    CloudType cloudType = userIntent.providerType;
-    String instanceType = userIntent.instanceType;
 
     List<UUID> zoneUUIDsCopy = new ArrayList<>(zoneUUIDs);
     Iterator<UUID> zoneUUIDIterator = zoneUUIDsCopy.iterator();
@@ -1341,17 +1362,7 @@ public class PlacementInfoUtil {
 
   public static void dedicateNodes(Collection<NodeDetails> nodes) {
     nodes.forEach(
-        node -> {
-          if (node.isTserver) {
-            node.dedicatedTo = ServerType.TSERVER;
-            if (node.isMaster) {
-              node.isMaster = false;
-            }
-          }
-          if (node.isMaster) {
-            node.dedicatedTo = ServerType.MASTER;
-          }
-        });
+        node -> node.dedicatedTo = node.isTserver ? ServerType.TSERVER : ServerType.MASTER);
   }
 
   private static Map<UUID, Integer> getAzUuidToNumNodes(
@@ -1478,8 +1489,7 @@ public class PlacementInfoUtil {
   }
 
   public static Map<UUID, PlacementAZ> getPlacementAZMap(PlacementInfo placementInfo) {
-    return getPlacementAZStream(placementInfo)
-        .collect(Collectors.toMap(az -> az.uuid, Function.identity()));
+    return placementInfo.azStream().collect(Collectors.toMap(az -> az.uuid, Function.identity()));
   }
 
   public static Map<UUID, Map<UUID, PlacementAZ>> getPlacementAZMapPerCluster(Universe universe) {
@@ -1490,14 +1500,6 @@ public class PlacementInfoUtil {
         .collect(
             Collectors.toMap(
                 cluster -> cluster.uuid, cluster -> getPlacementAZMap(cluster.placementInfo)));
-  }
-
-  private static Stream<PlacementAZ> getPlacementAZStream(PlacementInfo placementInfo) {
-    return placementInfo
-        .cloudList
-        .stream()
-        .flatMap(cloud -> cloud.regionList.stream())
-        .flatMap(region -> region.azList.stream());
   }
 
   /**
@@ -1593,6 +1595,7 @@ public class PlacementInfoUtil {
               findNodeInAz(
                   node ->
                       node.state == NodeState.ToBeRemoved
+                          && node.isTserver
                           && Objects.equals(
                               node.cloudInfo.instance_type, cluster.userIntent.instanceType),
                   nodesInCluster,
@@ -1617,7 +1620,11 @@ public class PlacementInfoUtil {
         boolean removed = false;
         if (universe != null) {
           NodeDetails nodeDetails =
-              findNodeInAz(NodeDetails::isActive, nodesInCluster, placementAZ.uuid, false);
+              findNodeInAz(
+                  node -> node.isActive() && node.isTserver,
+                  nodesInCluster,
+                  placementAZ.uuid,
+                  false);
           if (nodeDetails == null || !nodeDetails.state.equals(NodeState.ToBeAdded)) {
             decommissionNodeInAZ(nodesInCluster, placementAZ.uuid);
             removed = true;
@@ -1640,7 +1647,7 @@ public class PlacementInfoUtil {
     // on this stage.
     if (universe != null) {
       List<UUID> existingAZs =
-          getPlacementAZStream(cluster.placementInfo).map(p -> p.uuid).collect(Collectors.toList());
+          cluster.placementInfo.azStream().map(p -> p.uuid).collect(Collectors.toList());
       for (NodeDetails node : nodesInCluster) {
         if (!existingAZs.contains(node.azUuid)) {
           if (node.isActive() && !node.isInTransit()) {
@@ -1842,7 +1849,7 @@ public class PlacementInfoUtil {
       case NEW_CONFIG_FROM_PLACEMENT_INFO:
         configureNodeEditUsingPlacementInfo(taskParams, allowGeoPartitioning);
     }
-
+    applyDedicatedModeChanges(universe, cluster, taskParams);
     removeUnusedPlacementAZs(cluster.placementInfo);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
@@ -1853,6 +1860,64 @@ public class PlacementInfoUtil {
         cluster,
         taskParams.getNodesInCluster(cluster.uuid),
         taskParams.resetAZConfig || taskParams.userAZSelected);
+  }
+
+  private static void applyDedicatedModeChanges(
+      Universe universe, Cluster cluster, UniverseDefinitionTaskParams taskParams) {
+    Set<NodeDetails> clusterNodes =
+        taskParams
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.placementUuid.equals(cluster.uuid))
+            .collect(Collectors.toSet());
+    if (cluster.userIntent.dedicatedNodes) {
+      if (universe != null && isDedicatedModeChanged(cluster, clusterNodes)) {
+        // Mark current masters to ToStop.
+        for (NodeDetails clusterNode : clusterNodes) {
+          if (clusterNode.isMaster) {
+            clusterNode.masterState = NodeDetails.MasterState.ToStop;
+          }
+        }
+      }
+      Set<NodeDetails> ephemeralDedicatedMasters =
+          clusterNodes
+              .stream()
+              .filter(node -> node.dedicatedTo == ServerType.MASTER)
+              .filter(node -> node.state == NodeState.ToBeAdded)
+              .collect(Collectors.toSet());
+
+      String masterLeader = universe == null ? "" : universe.getMasterLeaderHostText();
+      SelectMastersResult selectMastersResult =
+          selectMasters(
+              masterLeader,
+              clusterNodes,
+              getDefaultRegionCode(taskParams),
+              true,
+              cluster.userIntent);
+      AtomicInteger maxIdx = new AtomicInteger(clusterNodes.size());
+      for (NodeDetails removedMaster : selectMastersResult.removedMasters) {
+        if (ephemeralDedicatedMasters.contains(removedMaster)) {
+          taskParams.nodeDetailsSet.remove(removedMaster);
+          maxIdx.decrementAndGet();
+        }
+      }
+      for (NodeDetails addedMaster : selectMastersResult.addedMasters) {
+        taskParams.nodeDetailsSet.add(addedMaster);
+        addedMaster.nodeIdx = maxIdx.incrementAndGet();
+      }
+      dedicateNodes(taskParams.nodeDetailsSet);
+    } else if (isDedicatedModeChanged(cluster, clusterNodes)) { // from dedicated to co-located.
+      for (NodeDetails node : clusterNodes) {
+        if (node.dedicatedTo == ServerType.MASTER) {
+          if (node.state == NodeState.ToBeAdded) {
+            taskParams.nodeDetailsSet.remove(node);
+          } else {
+            node.state = NodeState.ToBeRemoved;
+          }
+        }
+        node.dedicatedTo = null;
+      }
+    }
   }
 
   /**
@@ -1971,7 +2036,10 @@ public class PlacementInfoUtil {
     result.dedicatedTo = ServerType.MASTER;
     result.isTserver = false;
     result.isMaster = true;
+    result.masterState = NodeDetails.MasterState.ToStart;
     result.state = NodeState.ToBeAdded;
+    result.nodeIdx = -1; // Erasing index.
+    result.nodeName = null;
     return result;
   }
 
@@ -2056,7 +2124,12 @@ public class PlacementInfoUtil {
     zones.sort(
         Comparator.comparing((RegionWithAz z) -> zoneToNodes.get(z).size())
             .thenComparing(
-                (RegionWithAz z) -> zoneToNodes.get(z).stream().filter(n -> n.isMaster).count())
+                (RegionWithAz z) ->
+                    zoneToNodes
+                        .get(z)
+                        .stream()
+                        .filter(n -> n.isMaster && n.masterState != NodeDetails.MasterState.ToStop)
+                        .count())
             .reversed()
             .thenComparing(RegionWithAz::getZone));
 
@@ -2098,7 +2171,11 @@ public class PlacementInfoUtil {
           node -> {
             result.removedMasters.add(node);
             if (dedicatedNodes) {
-              node.state = NodeState.ToBeRemoved;
+              if (node.dedicatedTo != null) {
+                node.state = NodeState.ToBeRemoved;
+              } else {
+                node.masterState = NodeDetails.MasterState.ToStop;
+              }
             } else if (applySelection) {
               node.isMaster = false;
             }
@@ -2190,8 +2267,8 @@ public class PlacementInfoUtil {
    * @param masterLeader
    * @param nodes
    * @param mastersCount
-   * @param mastersToAdd
-   * @param mastersToRemove
+   * @param addMasterCallback
+   * @param removeMasterCallback
    */
   private static void processMastersSelection(
       String masterLeader,
@@ -2199,12 +2276,14 @@ public class PlacementInfoUtil {
       int mastersCount,
       Consumer<NodeDetails> addMasterCallback,
       Consumer<NodeDetails> removeMasterCallback) {
-    long existingMastersCount = nodes.stream().filter(node -> node.isMaster).count();
+    Predicate<NodeDetails> isMaster =
+        (node) -> node.isMaster && node.masterState != NodeDetails.MasterState.ToStop;
+    long existingMastersCount = nodes.stream().filter(isMaster).count();
     for (NodeDetails node : nodes) {
       if (mastersCount == existingMastersCount) {
         break;
       }
-      if (existingMastersCount < mastersCount && !node.isMaster) {
+      if (existingMastersCount < mastersCount && !isMaster.test(node)) {
         existingMastersCount++;
         addMasterCallback.accept(node);
       } else
@@ -2212,7 +2291,7 @@ public class PlacementInfoUtil {
       // from the zone, we are going to save it. If (mastersCount == 0) - removing all
       // the masters in this zone.
       if (existingMastersCount > mastersCount
-          && node.isMaster
+          && isMaster.test(node)
           && (!Objects.equals(masterLeader, node.cloudInfo.private_ip) || (mastersCount == 0))) {
         existingMastersCount--;
         removeMasterCallback.accept(node);
@@ -2235,6 +2314,7 @@ public class PlacementInfoUtil {
                     n ->
                         (n.state == NodeState.Live || n.state == NodeState.ToBeAdded)
                             && n.isMaster
+                            && n.masterState != NodeDetails.MasterState.ToStop
                             && !selection.removedMasters.contains(n)
                             && !selection.addedMasters.contains(n))
                 .count();

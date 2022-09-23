@@ -14,7 +14,6 @@ import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -178,8 +177,8 @@ public class AllowedActionsHelper {
     if (!Util.areMastersUnderReplicated(node, universe)) {
       return errorMsg(START_MASTER, "There are already enough masters");
     }
-    if (node.dedicatedTo == UniverseDefinitionTaskBase.ServerType.TSERVER) {
-      return errorMsg(START_MASTER, "Node is dedicated to tserver");
+    if (node.dedicatedTo != null) {
+      return errorMsg(START_MASTER, "Node is dedicated, use START instead");
     }
     return null;
   }

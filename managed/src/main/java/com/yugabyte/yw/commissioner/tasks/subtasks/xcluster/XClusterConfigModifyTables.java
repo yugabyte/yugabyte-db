@@ -183,17 +183,28 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         log.debug(
             "Table IDs to remove with replication set up: {}", tableIdsToRemoveWithReplication);
 
+        // Removing all tables from a replication config is not allowed.
+        if (tableIdsToRemoveWithReplication.size()
+                + xClusterConfig.getTableIdsWithReplicationSetup(false /* done */).size()
+            == xClusterConfig.getTables().size()) {
+          throw new RuntimeException(
+              String.format(
+                  "The operation to remove tables from replication config will remove all the "
+                      + "tables in replication which is not allowed; if you want to delete "
+                      + "replication for all of them, please delete the replication config: %s",
+                  xClusterConfig));
+        }
+
         // Remove the tables from the replication group if there is any.
         if (!tableIdsToRemoveWithReplication.isEmpty()) {
           AlterUniverseReplicationResponse resp =
               client.alterUniverseReplicationRemoveTables(
                   xClusterConfig.getReplicationGroupName(), tableIdsToRemoveWithReplication);
           if (resp.hasError()) {
-            String errMsg =
+            throw new RuntimeException(
                 String.format(
                     "Failed to remove tables from XClusterConfig(%s): %s",
-                    xClusterConfig.uuid, resp.errorMessage());
-            throw new RuntimeException(errMsg);
+                    xClusterConfig.uuid, resp.errorMessage()));
           }
 
           if (HighAvailabilityConfig.get().isPresent()) {

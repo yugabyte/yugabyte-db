@@ -263,6 +263,12 @@ class PartitionSchema {
   // Decode the given partition_key to a 2-byte integer.
   static uint16_t DecodeMultiColumnHashValue(Slice partition_key);
 
+  // Decode the given partition inclusive left bound to a 2-byte inclusive left bound integer.
+  static uint16_t DecodeMultiColumnHashLeftBound(Slice partition_key);
+
+  // Decode the given partition exclusive right bound to a 2-byte inclusive right bound integer.
+  static uint16_t DecodeMultiColumnHashRightBound(Slice partition_key);
+
   // Does [partition_key_start, partition_key_end] form a valid range.
   static Status IsValidHashPartitionRange(const std::string& partition_key_start,
                                           const std::string& partition_key_end);
@@ -358,6 +364,13 @@ class PartitionSchema {
   // Return true if the partitioning scheme simply range-partitions on the full primary key,
   // with no bucketing components, etc.
   bool IsSimplePKRangePartitioning(const Schema& schema) const;
+
+  // Returns two hash-partitions covering the range of the passed in hash-partiion, or
+  // std::nullopt if the passed in partition covers only one value.
+  // This does not attempt to split partition evenly based on tablet data, and is only suitable
+  // for tablets of the transaction status table, which have no data.
+  static boost::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
+      const Partition& partition);
 
  private:
 

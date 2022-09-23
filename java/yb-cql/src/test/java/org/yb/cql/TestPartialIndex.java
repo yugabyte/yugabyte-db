@@ -553,6 +553,9 @@ public class TestPartialIndex extends BaseCQLTest {
         includeClause, predicate),
       strongConsistency);
 
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
+
     // Delete complete row.
     // --------------------
     //       ________________________________________________________________________
@@ -726,6 +729,9 @@ public class TestPartialIndex extends BaseCQLTest {
         isUnique ? "UNIQUE" : "", testTableName, String.join(", ", indexedCols),
         includeClause, predicate),
       strongConsistency);
+
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
 
     // Insert (No existing row with same pk)
     // --------------------------------------
@@ -1246,6 +1252,9 @@ public class TestPartialIndex extends BaseCQLTest {
           includeClause2, predicateStr2),
         strongConsistency);
     }
+
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
 
     String query = String.format("select %s from %s where %s",
       String.join(",", selectCols), testTableName, whereClause);
@@ -2643,6 +2652,8 @@ public class TestPartialIndex extends BaseCQLTest {
     session.execute("drop index idx");
     createIndex(String.format("CREATE INDEX idx ON %s(v1)", testTableName),
                 true /* strongConsistency */);
+    // Wait for the table alterations to complete.
+    Thread.sleep(5000);
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
     session.execute(String.format("alter table %s rename v1 to v11", testTableName));

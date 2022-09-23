@@ -34,6 +34,8 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/split.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/heap-profiler.h>
@@ -440,6 +442,151 @@ Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value) {
   }
 
   return STATUS_FORMAT(InvalidArgument, "Failed to set flag $0 to value $1", flag_name, value);
+}
+
+// Flag update related helpers
+namespace {
+// Validates that the requested updates to vmodule can be made, and calls
+// google::SetVLOGLevel accordingly.
+// modules not explicitly specified in the request are reset to 0.
+// Returns the updated string to be used for --vmodule or error status.
+Result<string> ValidateAndSetVLOG(const string& flag_name, const string& new_value) {
+  vector<string> existing_settings = strings::Split(FLAGS_vmodule, ",");
+  // Use a vector as order matters. For each file the first matching pattern is applied and it is
+  // not updated even if a better matching pattern is found later.
+  vector<std::pair<string, int>> module_values;
+
+  // Set everything to 0
+  for (const auto& module_value : existing_settings) {
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.empty() || kv[0].empty()) {
+      continue;
+    }
+    module_values.push_back({kv[0], 0});
+  }
+
+  // Validate and set new requested values
+  auto requested_settings = strings::Split(new_value, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
+      LOG(WARNING) << "Malformed request to set vmodule to " << new_value;
+      return STATUS(InvalidArgument, "Unable to set flag: bad value");
+    }
+
+    for (size_t i = 0; i < kv[1].size(); i++) {
+      if (!isdigit(kv[1][i])) {
+        LOG(WARNING) << "Cannot set vmodule for module " << kv[0] << " to " << kv[1];
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "$1 is not a valid number. Cannot update vmodule setting for module $0.", kv[1], kv[0]);
+      }
+    }
+
+    const int value = std::atoi(kv[1].c_str());
+    auto it = std::find_if(
+        module_values.begin(), module_values.end(),
+        [&](std::pair<string, int> const& elem) { return elem.first == kv[0]; });
+
+    if (it == module_values.end()) {
+      module_values.push_back({kv[0], value});
+    } else {
+      it->second = value;
+    }
+  }
+
+  std::stringstream set_vmodules;
+  bool is_first = true;
+  for (auto elem : module_values) {
+    google::SetVLOGLevel(elem.first.c_str(), elem.second);
+    set_vmodules << (is_first ? "" : ",") << elem.first << "=" << elem.second;
+    is_first = false;
+  }
+  return set_vmodules.str();
+}
+
+PgConfigReloader pg_config_reloader_;
+std::mutex pg_config_reloader_mutex_;
+
+Status ReloadPgConfig() {
+  std::lock_guard l(pg_config_reloader_mutex_);
+  if (pg_config_reloader_) {
+    return pg_config_reloader_();
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+void RegisterPgConfigReloader(const PgConfigReloader reloader) {
+  std::lock_guard l(pg_config_reloader_mutex_);
+  pg_config_reloader_ = reloader;
+}
+
+SetFlagResult SetFlag(
+    const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
+    string* output_msg) {
+  // Validate that the flag exists and get the current value.
+  string old_val;
+  if (!google::GetCommandLineOption(flag_name.c_str(), &old_val)) {
+    *output_msg = "Flag does not exist";
+    return SetFlagResult::NO_SUCH_FLAG;
+  }
+
+  // Validate that the flag is runtime-changeable.
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  if (!ContainsKey(tags, FlagTag::kRuntime)) {
+    if (force) {
+      LOG(WARNING) << "Forcing change of non-runtime-safe flag " << flag_name;
+    } else {
+      *output_msg = "Flag is not safe to change at runtime";
+      return SetFlagResult::NOT_SAFE;
+    }
+  }
+
+  string value_to_set = new_value;
+  // Special handling for vmodule
+  if (flag_name == "vmodule") {
+    auto res = ValidateAndSetVLOG(flag_name, new_value);
+    if (!res) {
+      *output_msg = res.status().ToString();
+      return SetFlagResult::BAD_VALUE;
+    }
+    value_to_set = *res;
+  }
+  // The gflags library sets new values of flags without synchronization.
+  // TODO: patch gflags to use proper synchronization.
+  ANNOTATE_IGNORE_WRITES_BEGIN();
+  // Try to set the new value.
+  string ret = google::SetCommandLineOption(flag_name.c_str(), value_to_set.c_str());
+  ANNOTATE_IGNORE_WRITES_END();
+
+  if (ret.empty()) {
+    *output_msg = "Unable to set flag: bad value";
+    return SetFlagResult::BAD_VALUE;
+  }
+
+  if (ContainsKey(tags, FlagTag::kPg)) {
+    auto status = ReloadPgConfig();
+    if (!status.ok()) {
+      LOG(WARNING) << "Reload of Postgres config failed: " << status.message();
+      *output_msg = Format("Unable to set Postgres flag: $0", status.message());
+      return SetFlagResult::PG_SET_FAILED;
+    }
+  }
+
+  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
+  LOG(INFO) << "Changed flag: " << flag_name << " from '" << (is_sensitive ? "***" : old_val)
+            << "' to '" << (is_sensitive ? "***" : value_to_set) << "'";
+
+  *output_msg = ret;
+  *old_value = old_val;
+
+  return SetFlagResult::SUCCESS;
 }
 
 } // namespace yb

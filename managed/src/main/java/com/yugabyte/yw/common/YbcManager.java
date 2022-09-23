@@ -62,6 +62,7 @@ public class YbcManager {
   private final NodeManager nodeManager;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
+  private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
   private static final int MAX_RETRIES = 10;
 
   private static final String YBC_STABLE_RELEASE_PATH = "ybc.releases.stable_version";
@@ -95,7 +96,7 @@ public class YbcManager {
                   .getDataObject();
       String nfsDir = configData.backupLocation;
       for (String location : backupUtil.getBackupLocations(backup)) {
-        String cloudDir = BackupUtil.getBackupIdentifier(configData.backupLocation, location, true);
+        String cloudDir = BackupUtil.getBackupIdentifier(location, true);
         BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
             BackupServiceNfsDirDeleteRequest.newBuilder()
                 .setNfsDir(nfsDir)
@@ -197,6 +198,7 @@ public class YbcManager {
     }
   }
 
+  /** Returns the success marker for a particular backup, returns null if not found. */
   public String downloadSuccessMarker(
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
       UUID universeUUID,
@@ -220,16 +222,19 @@ public class YbcManager {
       while (numRetries < MAX_RETRIES) {
         downloadSuccessMarkerResultResponse =
             ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
-        if (!downloadSuccessMarkerResultResponse
-            .getTaskStatus()
-            .equals(ControllerStatus.IN_PROGRESS)) {
+        if (!(downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.IN_PROGRESS)
+            || downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.NOT_STARTED))) {
           break;
         }
-        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
         numRetries++;
       }
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
-        throw new Exception(
+        throw new RuntimeException(
             String.format(
                 "Failed to download success marker, failure status: {}",
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
@@ -353,6 +358,9 @@ public class YbcManager {
                 YbcClient client = null;
                 try {
                   String nodeIp = n.cloudInfo.private_ip;
+                  if (nodeIp == null) {
+                    return;
+                  }
                   client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
                   BackupServiceTaskThrottleParametersSetResponse throttleParamsSetResponse =
                       client.backupServiceTaskThrottleParametersSet(throttleParametersSetRequest);

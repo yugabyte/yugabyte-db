@@ -1087,7 +1087,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   } else {
     auto* coordinator = tablet.tablet->transaction_coordinator();
     if (coordinator) {
-      coordinator->Handle(std::move(state), tablet.leader_term);
+      coordinator->Handle(std::move(state), tablet.leader_term, req->is_external());
     } else {
       state->CompleteWithStatus(STATUS_FORMAT(
           InvalidArgument, "Does not have transaction coordinator to process $0",

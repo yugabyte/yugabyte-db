@@ -15,6 +15,7 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.pb.h"
@@ -188,6 +189,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits) {
     if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
+      LOG(WARNING) << Format("Tablets size ($0) != expected_splits.size() + 1 ($1)", tablets.size(),
+          expected_splits.size() + 1);
       return false;
     }
 
@@ -1486,13 +1489,16 @@ TEST_F_EX(YBBackupTest,
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
+  constexpr int expected_num_tablets = 4;
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
-  // Override the master flag to enable automatic tablet splitting
+  // Enable automatic tablet splitting (overriden by YBBackupTestNumTablets).
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_limit_per_table",
+                                       IntToString(expected_num_tablets)));
 
   const string table_name = "mytbl";
 
-  // Create table
+  // Create table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
                                       " SPLIT AT VALUES (('4a'))", table_name)));
 
@@ -1506,43 +1512,35 @@ TEST_F_EX(YBBackupTest,
   // '!' indicates the end of the range group of a key.
   ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
 
-  // Insert data
+  // Insert data.
   ASSERT_NO_FATALS(InsertRows(
       Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
 
-  // Flush table
+  // Flush table so SST file size is accurate.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
 
   // Wait for automatic split to complete.
-  constexpr int num_tablets = 4;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
-        return res.size() == num_tablets;
-      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+        return res.size() == expected_num_tablets;
+      }, 30s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
 
-  // Verify that it has these four tablets:
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
-  LogTabletsInfo(tablets);
-  ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
-
-  // Backup
+  // Backup.
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
+  // Drop the table.
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
-  // Restore
+  // Restore.
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
-  // Validate
+  // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
-  ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_EQ(tablets.size(), expected_num_tablets);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -2068,6 +2066,70 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithPart
       )#"));
 }
 
+class YBBackupAfterFailedMatviewRefresh : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--enable_transactional_ddl_gc=false");
+    options->extra_tserver_flags.push_back(
+        "--TEST_yb_test_fail_matview_refresh_after_creation=true");
+  }
+};
+
+// Test that backup and restore succeed when an orphaned table is left behind
+// after a failed refresh on a materialized view.
+TEST_F_EX(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupAfterFailedMatviewRefresh),
+       YBBackupAfterFailedMatviewRefresh) {
+  const string kDatabaseName = "yugabyte";
+  const string kNewDatabaseName = "yugabyte_new";
+
+  const string base_table = "base";
+  const string materialized_view = "mv";
+
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (t int)", base_table)));
+  ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (t) VALUES (1)", base_table)));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1",
+                                        materialized_view,
+                                        base_table),
+                                  "SELECT 1"));
+  ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (t) VALUES (1)", base_table)));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("REFRESH MATERIALIZED VIEW $0", materialized_view), ""));
+  const auto matview_table_id = ASSERT_RESULT(GetTableId(materialized_view, "pre-backup"));
+  const auto matview_table_pg_oid = ASSERT_RESULT(GetPgsqlTableOid(TableId(matview_table_id)));
+  // Naming convention in PG for the relation created as part of the REFRESH is
+  // "pg_temp_<OID of matview>".
+  const auto orphaned_mv = "pg_temp_" + std::to_string(matview_table_pg_oid);
+  // Verify that the table created as a part of REFRESH still exists.
+  ASSERT_TRUE(ASSERT_RESULT(client_->TableExists(
+      client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, orphaned_mv))));
+
+  // Take a backup, ensure that this passes despite the state of the orphaned_mv.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + kDatabaseName, "create"}));
+
+  // Now try to restore the backup and ensure that only the original materialized view
+  // was restored.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql." + kNewDatabaseName, "restore"}));
+  SetDbName(kNewDatabaseName); // Connecting to the second DB.
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0", materialized_view),
+      R"#(
+         t
+        ---
+         1
+        (1 row)
+      )#"
+  ));
+
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(client::YBTableName(YQL_DATABASE_PGSQL,
+      kNewDatabaseName, orphaned_mv))));
+}
+
 class YBBackupPartitioningVersionTest : public YBBackupTest {
  protected:
   Result<uint32_t> GetTablePartitioningVersion(const client::YBTableName& yb_table_name) {
@@ -2388,6 +2450,35 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplicat
     ));
   }
 
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupChecksumsDisabled)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (101, 'bar')"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (102, 'cab')"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "--disable_checksums",
+       "create"}));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "--disable_checksums",
+       "restore"}));
+
+  SetDbName("yugabyte_new");  // Connecting to the second DB from the moment.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+         101 | bar
+         102 | cab
+        (3 rows)
+      )#"));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

@@ -111,7 +111,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto cdc_consumer = std::make_unique<CDCConsumer>(std::move(is_leader_for_tablet), proxy_cache,
-      tserver->permanent_uuid(), std::move(local_client));
+      tserver->permanent_uuid(), std::move(local_client), &tserver->TransactionManager());
 
   // TODO(NIC): Unify cdc_consumer thread_pool & remote_client_ threadpools
   RETURN_NOT_OK(yb::Thread::Create(
@@ -128,13 +128,15 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
                          rpc::ProxyCache* proxy_cache,
                          const string& ts_uuid,
-                         std::unique_ptr<CDCClient> local_client) :
+                         std::unique_ptr<CDCClient> local_client,
+                         client::TransactionManager* transaction_manager) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   rpcs_(new rpc::Rpcs),
   log_prefix_(Format("[TS $0]: ", ts_uuid)),
   local_client_(std::move(local_client)),
   last_safe_time_published_at_(MonoTime::Now()),
-  xcluster_safe_time_table_ready_(false) {}
+  xcluster_safe_time_table_ready_(false),
+  transaction_manager_(transaction_manager) {}
 
 CDCConsumer::~CDCConsumer() {
   Shutdown();
@@ -446,6 +448,10 @@ std::string CDCConsumer::LogPrefix() {
 
 int32_t CDCConsumer::cluster_config_version() const {
   return cluster_config_version_.load(std::memory_order_acquire);
+}
+
+client::TransactionManager* CDCConsumer::TransactionManager() {
+  return transaction_manager_;
 }
 
 Status CDCConsumer::ReloadCertificates() {

@@ -2143,6 +2143,10 @@ Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& tabl
   return yb_client_->CreateTransactionsStatusTable(table_name);
 }
 
+Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
+  return yb_client_->AddTransactionStatusTablet(table_id);
+}
+
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
