@@ -91,39 +91,23 @@ $ eksctl create cluster \
 
 As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest AWS instance type that meets this requirement is `m5.2xlarge` which has 8 CPU cores and 32 GB RAM.
 
-### Create a storage class per zone
+### Create a storage class
 
-We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
+We need to make sure to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities. 
 
 Copy the contents below to a file named `storage.yaml`.
 
 ```yaml
 kind: StorageClass
-apiVersion: storage.k8s.io/v1
 metadata:
-  name: standard-us-east-1a
+  name: yb-storage
+apiVersion: storage.k8s.io/v1
+allowVolumeExpansion: true
 provisioner: kubernetes.io/aws-ebs
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp2
-  zone: us-east-1a
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-east-1b
-provisioner: kubernetes.io/aws-ebs
-parameters:
-  type: gp2
-  zone: us-east-1b
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-east-1c
-provisioner: kubernetes.io/aws-ebs
-parameters:
-  type: gp2
-  zone: us-east-1c
+  fsType: xfs
 ```
 
 Apply the above configuration to your cluster.
@@ -172,9 +156,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1a"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1a"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -203,9 +187,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1b"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1b"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -234,9 +218,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1c"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1c"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
