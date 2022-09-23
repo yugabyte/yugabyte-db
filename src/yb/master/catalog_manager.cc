@@ -292,6 +292,9 @@ DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, fal
                  "persisted in syscatalog, but the tablet information is not yet persisted and "
                  "there is a failure.");
 
+DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
+                 "Inside StartElectionIfReady, pause before sending request for hinted election");
+
 DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
@@ -7086,8 +7089,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
     }
   }
 
-  if (FLAGS_use_create_table_leader_hint &&
-      !cstate.has_leader_uuid() && cstate.current_term() == kMinimumTerm) {
+  if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
     StartElectionIfReady(cstate, tablet.get());
   }
 
@@ -10390,6 +10392,7 @@ Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& table
 void CatalogManager::StartElectionIfReady(
     const consensus::ConsensusStatePB& cstate, TabletInfo* tablet) {
   auto replicas = tablet->GetReplicaLocations();
+  bool initial_election = cstate.current_term() == kMinimumTerm;
   int num_voters = 0;
   for (const auto& peer : cstate.config().peers()) {
     if (peer.member_type() == PeerMemberType::VOTER) {
@@ -10457,6 +10460,8 @@ void CatalogManager::StartElectionIfReady(
     return;
   }
 
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_send_hinted_election);
+
   if (!tablet->InitiateElection()) {
     VLOG_WITH_PREFIX(4) << __func__ << ": Already initiated";
     return;
@@ -10467,7 +10472,8 @@ void CatalogManager::StartElectionIfReady(
   LOG_WITH_PREFIX(INFO)
       << "Starting election at " << tablet->tablet_id() << " in favor of " << protege;
 
-  auto task = std::make_shared<AsyncStartElection>(master_, AsyncTaskPool(), protege, tablet);
+  auto task = std::make_shared<AsyncStartElection>(
+      master_, AsyncTaskPool(), protege, tablet, initial_election);
   tablet->table()->AddTask(task);
   WARN_NOT_OK(task->Run(), "Failed to send new tablet start election request");
 }
