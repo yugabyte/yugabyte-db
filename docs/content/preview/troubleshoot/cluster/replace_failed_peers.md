@@ -22,22 +22,22 @@ Assume you have a cluster where the following applies:
 
 These are the steps to follow:
 
-- Delete the tablet from tablet data from the broken peers if necessary, by running:
+- Delete the tablet from the broken peers if necessary, by running:
 
-```
-yb-ts-cli --server_address=NODE_BAD1 delete_tablet TABLET1
-yb-ts-cli --server_address=NODE_BAD2 delete_tablet TABLET1
-```
+    ```
+    yb-ts-cli --server_address=NODE_BAD1 delete_tablet TABLET1
+    yb-ts-cli --server_address=NODE_BAD2 delete_tablet TABLET1
+    ```
 
-- Trigger a remote bootstrap of `TABLET1` from `NODE_GOOD` to `NODE_BAD`.
+- Trigger a remote bootstrap of `TABLET1` from `NODE_GOOD` to `NODE_BAD1`.
 
-```
-yb-ts-cli --server_address=NODE_BAD1 remote_bootstrap NODE_GOOD TABLET1
-```
+    ```
+    yb-ts-cli --server_address=NODE_BAD1 remote_bootstrap NODE_GOOD TABLET1
+    ```
 
-Once the remote bootstrap finishes, `NODE_BAD2` should be automatically fixed and removed from its quorum, as it has gotten a majority of healthy peers.
+Once the remote bootstrap finishes, `NODE_BAD2` should be automatically removed from the quorum and `TABLET1` fixed, as it has gotten a majority of healthy peers.
 
-In case you are unable to follow the above steps, the following steps can be followed instead to manually execute the equivalent of a remote bootstrap:
+If you can't perform the preceding steps, you can do the following to manually execute the equivalent of a remote bootstrap:
 
 - On `NODE_GOOD`, create an archive of the WALS (Raft data), RocksDB (regular) directories, intents (transactions data), and snapshots directories for `TABLET1`.
 
@@ -53,7 +53,7 @@ In case you are unable to follow the above steps, the following steps can be fol
 
 - Restart `NODE_GOOD` so it can properly observe the changed state and data on `NODE_BAD1`.
 
-At this point, `NODE_BAD2` should be automatically fixed and removed from its quorum, as it has gotten a majority of healthy peers.
+At this point, `NODE_BAD2` should be automatically removed from the quorum and `TABLET1` fixed, as it has gotten a majority of healthy peers.
 
 Note that typically, when you try to find tablet data, you would use a `find` command across the `--fs_data_dir` paths.
 
