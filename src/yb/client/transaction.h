@@ -98,6 +98,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   ~YBTransaction();
 
   Trace *trace();
+  void EnsureTraceCreated();
   void SetPriority(uint64_t priority);
 
   uint64_t GetPriority() const;
