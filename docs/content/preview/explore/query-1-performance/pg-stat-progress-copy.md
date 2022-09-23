@@ -32,7 +32,7 @@ The following table describes the view columns:
 
 ## YugabyteDB specific changes
 
-The `pg_stat_progress_copy` view includes the following YugabyteDB specific changes:
+The `pg_stat_progress_copy` view includes the following YugabyteDB-specific changes:
 
 ### Definition of `tuples_processed`
 
