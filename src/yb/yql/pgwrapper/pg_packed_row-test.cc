@@ -129,7 +129,8 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
             LOG(INFO) << table_name << ", failed to add column " << column_idx << ": " << status;
             auto msg = status.ToString();
             ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
-                        msg.find("Snapshot too old") != std::string::npos) << msg;
+                        msg.find("Snapshot too old") != std::string::npos ||
+                        msg.find("Network error") != std::string::npos) << msg;
           }
           ++column_idx;
         } else {
