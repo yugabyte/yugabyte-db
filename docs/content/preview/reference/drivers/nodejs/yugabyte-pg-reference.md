@@ -62,7 +62,7 @@ Learn how to establish a connection to YugabyteDB database and begin basic CRUD 
 Download and install the YugabyteDB node-postgres driver using the following command (you need to have Node.js installed on your system):
 
 ```sh
-npm install pg-yugabytedb
+npm install @yugabytedb/pg
 ```
 
 You can start using the driver in your code.
@@ -155,7 +155,7 @@ To check uniform load balancing, do the following:
 
     ```js
 
-    const pg = require('pg-yugabytedb');
+    const pg = require('@yugabytedb/pg');
 
     async function createConnection(){
         const yburl = "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte?loadBalance=true"
@@ -210,7 +210,7 @@ To check uniform load balancing, do the following:
 For topology-aware load balancing, add  with the `topologyKeys` property set to `aws.us-west.us-west-2a`. Only two nodes will be used in this case.
 
 ```js
-const pg = require('pg-yugabytedb');
+const pg = require('@yugabytedb/pg');
 
 async function createConnection(){
     const yburl = "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte?loadBalance=true&&topologyKey=aws.us-west.us-west-2a"

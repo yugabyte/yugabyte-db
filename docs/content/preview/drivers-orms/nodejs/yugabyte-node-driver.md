@@ -38,17 +38,17 @@ The following sections break down the quick start example to demonstrate how to 
 Download and install the YugabyteDB node-postgres driver using the following command (you need to have Node.js installed on your system):
 
 ```sh
-npm install pg-yugabytedb
+npm install @yugabytedb/pg
 ```
 
 You can start using the driver in your code.
 
 ### Step 2: Connect to your cluster
 
-Before connecting to the YugabyteDB cluster, import the `pg-yugabytedb` package.
+Before connecting to the YugabyteDB cluster, import the `@yugabytedb/pg` package.
 
 ``` js
-  const pg = require('pg-yugabytedb');
+  const pg = require('@yugabytedb/pg');
 ```
 
 Create a client to connect to the cluster with uniform load balancing using a connection string.
@@ -92,7 +92,7 @@ If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/c
 Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following sample code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
 
 ```javascript
-const pg = require('pg-yugabytedb');
+const pg = require('@yugabytedb/pg');
 
 function createConnection(){
     const yburl = "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte?loadBalance=true";
