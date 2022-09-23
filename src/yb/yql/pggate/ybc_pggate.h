@@ -532,6 +532,7 @@ YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
+YBCStatus YBCPgSetEnableTracing(bool tracing);
 YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();

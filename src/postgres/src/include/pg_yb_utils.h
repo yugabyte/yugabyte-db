@@ -103,6 +103,7 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
 
@@ -553,6 +554,7 @@ extern void YBFlushBufferedOperations();
 extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
 												uint64_t *wait_time);
 
+bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
 

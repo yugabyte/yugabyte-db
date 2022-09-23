@@ -166,6 +166,7 @@ int ybc_disable_pg_locking = -1;
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
 
+bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
@@ -1665,6 +1666,10 @@ void YBFlushBufferedOperations() {
 
 void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
 	YBCPgGetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
+bool YBEnableTracing() {
+  return yb_enable_docdb_tracing;
 }
 
 bool YBReadFromFollowersEnabled() {

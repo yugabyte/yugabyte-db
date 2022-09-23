@@ -81,7 +81,7 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
-RpcCommand::RpcCommand() : trace_(Trace::NewTraceForParent(Trace::CurrentTrace())) {
+RpcCommand::RpcCommand() : trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())) {
 }
 
 RpcCommand::~RpcCommand() {}

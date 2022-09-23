@@ -1229,6 +1229,10 @@ YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness
   return ToYBCStatus(pgapi->EnableFollowerReads(enable_follower_reads, staleness_ms));
 }
 
+YBCStatus YBCPgSetEnableTracing(bool tracing) {
+  return ToYBCStatus(pgapi->SetEnableTracing(tracing));
+}
+
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }

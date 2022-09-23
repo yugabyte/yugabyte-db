@@ -48,6 +48,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -809,6 +810,20 @@ Status PgClientSession::Perform(
   VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
   auto session_info = VERIFY_RESULT(SetupSession(*req, context->GetClientDeadline(), in_txn_limit));
   auto* session = session_info.first.session.get();
+  auto transaction = session_info.first.transaction;
+
+  if (options.trace_requested()) {
+    context->EnsureTraceCreated();
+    if (transaction) {
+      transaction->EnsureTraceCreated();
+      context->trace()->AddChildTrace(transaction->trace());
+      transaction->trace()->set_must_print(true);
+    } else {
+      context->trace()->set_must_print(true);
+    }
+  }
+  ADOPT_TRACE(context->trace());
+
   auto ops = VERIFY_RESULT(PrepareOperations(req, session, &context->sidecars(), &table_cache_));
 
   auto transaction = session_info.first.transaction;
@@ -827,7 +842,6 @@ Status PgClientSession::Perform(
     .cache_setter = std::move(setter),
     .used_in_txn_limit = in_txn_limit
   });
-
 
   session->FlushAsync([this, data, transaction, ops_count](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
