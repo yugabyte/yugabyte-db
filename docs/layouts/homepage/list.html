@@ -1,9 +1,9 @@
 {{ define "main" }}
 <div class="td-content">
-  {{ if .Params.resources }}
+  {{ if and (.Params.resourcesIntro) (.Params.resources) }}
     <div class="resources">
       <ul>
-        <li>Explore resources based on your usecase</li>
+        <li>{{ .Params.resourcesIntro }}</li>
         {{ range $key, $properties := .Params.resources }}
           <li><a href="{{ $properties.url }}" class="{{- if not (modBool $key 2)}}grey-bg{{- else}}purple-bg{{- end }}" title="{{ $properties.title }}">{{ $properties.title }}</a></li>
         {{ end }}
