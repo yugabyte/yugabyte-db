@@ -96,7 +96,7 @@ struct SoftLimitExceededResult {
 // arranged into a tree structure such that the consumption tracked by a
 // MemTracker is also tracked by its ancestors.
 //
-// The MemTracker hierarchy is rooted in a single static MemTracker whose limi
+// The MemTracker hierarchy is rooted in a single static MemTracker whose limit
 // is set via gflag. The root MemTracker always exists, and it is the common
 // ancestor to all MemTrackers. All operations that discover MemTrackers begin
 // at the root and work their way down the tree, while operations that deal

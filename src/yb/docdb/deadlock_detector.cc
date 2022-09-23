@@ -32,8 +32,10 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -43,7 +45,23 @@
 using namespace std::placeholders;
 using namespace std::literals;
 
-DEFINE_int32(clear_active_probes_older_than_seconds, 60, "");
+DEFINE_int32(
+    clear_active_probes_older_than_seconds, 60,
+    "Interval with which to clear active probes tracked at a deadlock detector. This ensures that "
+    "the memory used to track both created and forwarded probes does not grow unbounded. If this "
+    "is too low, we may remove entries too aggressively and end up failing to report deadlocks.");
+TAG_FLAG(clear_active_probes_older_than_seconds, hidden);
+TAG_FLAG(clear_active_probes_older_than_seconds, advanced);
+
+METRIC_DEFINE_coarse_histogram(
+    tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
+    "The number of transactions involved in detected deadlocks");
+METRIC_DEFINE_coarse_histogram(
+    tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMilliseconds,
+    "The time it takes to complete the probe from a waiting transaction to all of its blockers.");
+METRIC_DEFINE_gauge_uint64(
+    tablet, deadlock_detector_waiters, "Num Waiting Txns", yb::MetricUnit::kTransactions,
+    "The total number of waiting transactions tracked by one deadlock detector.");
 
 namespace yb {
 namespace tablet {
@@ -177,10 +195,10 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   LocalProbeProcessor(
       const std::string& detector_log_prefix, const DetectorId& origin_detector_id,
       uint32_t probe_num, uint32_t min_probe_num, const TransactionId& waiter_id, rpc::Rpcs* rpcs,
-      client::YBClient* client)
+      client::YBClient* client, scoped_refptr<Histogram> probe_latency)
       : detector_log_prefix_(detector_log_prefix), origin_detector_id_(origin_detector_id),
         waiter_(waiter_id), probe_num_(probe_num), min_probe_num_(min_probe_num), rpcs_(rpcs),
-        client_(client) {}
+        client_(client), probe_latency_(std::move(probe_latency)) {}
 
   const std::string LogPrefix() const {
     return Format("$0- probe($1, $2) ", detector_log_prefix_, origin_detector_id_, probe_num_);
@@ -233,6 +251,9 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     VLOG_WITH_PREFIX(4) << "Sending " << handles_.size() << " probes";
 
     remaining_requests_ = handles_.size();
+    if (probe_latency_) {
+      sent_at_ = CoarseMonoClock::Now();
+    }
     for (auto& handle : handles_) {
       (**handle).SendRpc();
     }
@@ -257,7 +278,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
 
     if (resp.deadlocked_txn_ids_size() > 0) {
       if (CanTrySendResponse()) {
-        callback_(Status::OK(), resp);
+        InvokeCallback(Status::OK(), resp);
       }
       return;
     }
@@ -279,9 +300,19 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
           s = s_;
           resp = resp_;
         }
-        callback_(s, resp);
+        InvokeCallback(s, resp);
       }
     }
+  }
+
+  void InvokeCallback(const Status& s, const tserver::ProbeTransactionDeadlockResponsePB& resp) {
+    LOG_IF(DFATAL, !did_send_response_)
+        << "Invoking callback without checking that it was not already invoked.";
+    if (probe_latency_) {
+      probe_latency_->Increment(std::chrono::duration_cast<std::chrono::milliseconds>(
+          CoarseMonoClock::Now() - sent_at_).count());
+    }
+    callback_(s, resp);
   }
 
  private:
@@ -292,6 +323,9 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   uint32_t min_probe_num_;
   rpc::Rpcs* rpcs_;
   client::YBClient* client_;
+  scoped_refptr<Histogram> probe_latency_;
+
+  CoarseTimePoint sent_at_;
 
   std::vector<rpc::Rpcs::Handle> handles_;
 
@@ -315,10 +349,14 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
  public:
   explicit Impl(
       const std::shared_future<client::YBClient*>& client_future,
-      TransactionAbortController* controller, const TabletId& status_tablet_id)
+      TransactionAbortController* controller, const TabletId& status_tablet_id,
+      const MetricEntityPtr& metrics)
       : client_future_(client_future), controller_(controller),
         detector_id_(DetectorId::GenerateRandom()),
-        log_prefix_(Format("T $0 D $1 ", status_tablet_id, detector_id_)) {
+        log_prefix_(Format("T $0 D $1 ", status_tablet_id, detector_id_)),
+        deadlock_size_(METRIC_deadlock_size.Instantiate(metrics)),
+        probe_latency_(METRIC_deadlock_probe_latency.Instantiate(metrics)),
+        deadlock_detector_waiters_(METRIC_deadlock_detector_waiters.Instantiate(metrics, 0)) {
     VLOG_WITH_PREFIX(4) << "Deadlock detector started with instance id: " << detector_id_;
   }
 
@@ -473,6 +511,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
       controller_->RemoveInactiveTransactions(&waiters_);
+      deadlock_detector_waiters_->set_value(waiters_.size());
       if (is_probe_scan_active_) {
         return;
       }
@@ -514,7 +553,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       auto probe_num = seq_no_.fetch_add(1);
       auto processor = std::make_shared<LocalProbeProcessor>(
           log_prefix_, detector_id_, probe_num, created_probes_.GetSmallestProbeNo(),
-          waiter_txn_id, &rpcs_, &client());
+          waiter_txn_id, &rpcs_, &client(), probe_latency_);
       for (const auto& blocker : waiter_data->blockers) {
         DCHECK(!blocker.status_tablet.empty());
         processor->AddBlocker(blocker.id, blocker.status_tablet);
@@ -529,6 +568,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           detector->is_probe_scan_active_ = false;
         }
         if (resp.deadlocked_txn_ids_size() > 0) {
+          detector->deadlock_size_->Increment(resp.deadlocked_txn_ids_size());
           auto waiter_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(0));
           if (!waiter_or_status.ok()) {
             LOG(ERROR) << "Failed to decode transaction id in detected deadlock!";
@@ -639,7 +679,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
     auto local_processor = std::make_shared<LocalProbeProcessor>(
         log_prefix_, detector_id, probe_num, req.min_probe_num(), waiting_txn_id, &rpcs_,
-        &client());
+        &client(), nullptr /* probe_latency */);
 
     for (const auto& blocker : *blockers) {
       local_processor->AddBlocker(blocker.id, blocker.status_tablet);
@@ -673,6 +713,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   const DetectorId detector_id_;
   const std::string log_prefix_;
 
+  scoped_refptr<Histogram> deadlock_size_;
+  scoped_refptr<Histogram> probe_latency_;
+  scoped_refptr<AtomicGauge<uint64_t>> deadlock_detector_waiters_;
+
   mutable rw_spinlock mutex_;
 
   rpc::Rpcs rpcs_;
@@ -687,18 +731,15 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
   Waiters waiters_ GUARDED_BY(mutex_);
 
-
-
   std::atomic<uint32_t> seq_no_ = 0;
-
-
 };
 
 DeadlockDetector::DeadlockDetector(
     const std::shared_future<client::YBClient*>& client_future,
     TransactionAbortController* controller,
-    const TabletId& status_tablet_id):
-  impl_(new Impl(client_future, controller, status_tablet_id)) {}
+    const TabletId& status_tablet_id,
+    const MetricEntityPtr& metrics):
+  impl_(new Impl(client_future, controller, status_tablet_id, metrics)) {}
 
 DeadlockDetector::~DeadlockDetector() {}
 

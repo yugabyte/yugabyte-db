@@ -7528,7 +7528,7 @@
           "type" : "string"
         },
         "sizeBytes" : {
-          "description" : "Size in bytes",
+          "description" : "SST size in bytes",
           "format" : "double",
           "readOnly" : true,
           "type" : "number"
@@ -7551,6 +7551,12 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "walSizeBytes" : {
+          "description" : "WAL size in bytes",
+          "format" : "double",
+          "readOnly" : true,
+          "type" : "number"
         }
       },
       "type" : "object"
