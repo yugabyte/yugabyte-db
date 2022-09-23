@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Yugabyte supports the PostgreSQL `pg_stat_activity` view to analyze live queries. This view returns analytic and diagnostic information about active Yugabyte server processes and queries. The view returns one row per server process, and displays information related to the current status of the database connection.
+YugabyteDB supports the PostgreSQL `pg_stat_activity` view to analyze live queries. This view returns analytic and diagnostic information about active Yugabyte server processes and queries. The view returns one row per server process, and displays information related to the current status of the database connection.
 
 ## Supported fields
 
