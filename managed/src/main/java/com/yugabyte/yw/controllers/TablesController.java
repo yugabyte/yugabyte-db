@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -65,9 +64,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Builder;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
@@ -306,8 +307,11 @@ public class TablesController extends AuthenticatedController {
     @ApiModelProperty(value = "Relation type")
     public final RelationType relationType;
 
-    @ApiModelProperty(value = "Size in bytes", accessMode = READ_ONLY)
+    @ApiModelProperty(value = "SST size in bytes", accessMode = READ_ONLY)
     public final double sizeBytes;
+
+    @ApiModelProperty(value = "WAL size in bytes", accessMode = READ_ONLY)
+    public final double walSizeBytes;
 
     @ApiModelProperty(value = "UI_ONLY", hidden = true)
     public final boolean isIndexTable;
@@ -345,7 +349,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
-    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
+    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
     ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
@@ -373,7 +377,7 @@ public class TablesController extends AuthenticatedController {
   }
 
   // Query prometheus for table sizes.
-  private Map<String, Double> getTableSizesOrEmpty(Universe universe) {
+  private Map<String, TableSizes> getTableSizesOrEmpty(Universe universe) {
     try {
       return queryTableSizes(universe.getUniverseDetails().nodePrefix);
     } catch (RuntimeException e) {
@@ -820,16 +824,26 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  private Map<String, Double> queryTableSizes(String nodePrefix) {
-    // Execute query and check for errors.
-    ArrayList<MetricQueryResponse.Entry> values =
-        metricQueryHelper.queryDirect(
-            "sum by (table_id) (rocksdb_current_version_sst_files_size{node_prefix=\""
-                + nodePrefix
-                + "\"})");
+  private Map<String, TableSizes> queryTableSizes(String nodePrefix) {
+    HashMap<String, TableSizes> result = new HashMap<>();
+    queryAndAppendTableSizeMetric(
+        result, "rocksdb_current_version_sst_files_size", nodePrefix, TableSizes::setSstSizeBytes);
+    queryAndAppendTableSizeMetric(result, "log_wal_size", nodePrefix, TableSizes::setWalSizeBytes);
+    return result;
+  }
 
-    HashMap<String, Double> result = new HashMap<>();
-    for (final MetricQueryResponse.Entry entry : values) {
+  private void queryAndAppendTableSizeMetric(
+      Map<String, TableSizes> tableSizes,
+      String metricName,
+      String nodePrefix,
+      BiConsumer<TableSizes, Double> fieldSetter) {
+
+    // Execute query and check for errors.
+    ArrayList<MetricQueryResponse.Entry> metricValues =
+        metricQueryHelper.queryDirect(
+            "sum by (table_id) (" + metricName + "{node_prefix=\"" + nodePrefix + "\"})");
+
+    for (final MetricQueryResponse.Entry entry : metricValues) {
       String tableID = entry.labels.get("table_id");
       if (tableID == null
           || tableID.isEmpty()
@@ -837,9 +851,10 @@ public class TablesController extends AuthenticatedController {
           || entry.values.size() == 0) {
         continue;
       }
-      result.put(tableID, entry.values.get(0).getRight());
+      fieldSetter.accept(
+          tableSizes.computeIfAbsent(tableID, k -> new TableSizes()),
+          entry.values.get(0).getRight());
     }
-    return result;
   }
 
   @ApiOperation(
@@ -979,7 +994,7 @@ public class TablesController extends AuthenticatedController {
       return ok(errMsg);
     }
 
-    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
+    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
     ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
@@ -1030,7 +1045,7 @@ public class TablesController extends AuthenticatedController {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
-      Map<String, Double> tableSizes) {
+      Map<String, TableSizes> tableSizeMap) {
     String id = table.getId().toStringUtf8();
     String tableKeySpace = table.getNamespace().getName();
     TableInfoResp.TableInfoRespBuilder builder =
@@ -1041,9 +1056,10 @@ public class TablesController extends AuthenticatedController {
             .tableName(table.getName())
             .relationType(table.getRelationType())
             .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-    Double tableSize = tableSizes.get(id);
-    if (tableSize != null) {
-      builder.sizeBytes(tableSize);
+    TableSizes tableSizes = tableSizeMap.get(id);
+    if (tableSizes != null) {
+      builder.sizeBytes(tableSizes.getSstSizeBytes());
+      builder.walSizeBytes(tableSizes.getWalSizeBytes());
     }
     if (tablePartitionInfo != null) {
       builder.tableSpace(tablePartitionInfo.tablespace);
@@ -1138,5 +1154,11 @@ public class TablesController extends AuthenticatedController {
       this.tableName = tableName;
       this.keyspace = keyspace;
     }
+  }
+
+  @Data
+  private static class TableSizes {
+    private Double sstSizeBytes;
+    private Double walSizeBytes;
   }
 }
