@@ -9,11 +9,15 @@ ALTER INDEX temp_table_b_idx RENAME TO temp_table_b_idx_new;
 ---
 --- Verify yb_db_admin role can ALTER table
 ---
+CREATE TABLE foo(a INT UNIQUE);
+CREATE TABLE bar(b INT);
+ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
 CREATE TABLE table_other(a int, b int);
 CREATE INDEX index_table_other ON table_other(a);
 SET SESSION AUTHORIZATION yb_db_admin;
 ALTER TABLE table_other RENAME to table_new;
 ALTER TABLE table_new OWNER TO regress_alter_table_user1;
+ALTER TABLE bar DROP CONSTRAINT baz;
 ALTER TABLE pg_database RENAME TO test; -- should fail
 ALTER TABLE pg_tablespace OWNER TO regress_alter_table_user1; -- should fail
 ---
@@ -21,3 +25,32 @@ ALTER TABLE pg_tablespace OWNER TO regress_alter_table_user1; -- should fail
 ---
 ALTER INDEX index_table_other RENAME TO index_table_other_new;
 RESET SESSION AUTHORIZATION;
+DROP TABLE foo;
+DROP TABLE bar;
+DROP TABLE table_new;
+
+---
+--- Verify alter table which requires table rewrite
+---
+
+--- Table without primary key index
+--- Empty table case
+CREATE TABLE no_pk_tbl(k INT);
+ALTER TABLE no_pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE no_pk_tbl ADD COLUMN v1 SERIAL;
+--- Non-empty case
+INSERT INTO no_pk_tbl VALUES(1), (2), (3);
+ALTER TABLE no_pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE no_pk_tbl ADD COLUMN v2 SERIAL;
+DROP TABLE no_pk_tbl;
+
+--- Table with primary key index
+--- Empty table case
+CREATE TABLE pk_tbl(k INT PRIMARY KEY);
+ALTER TABLE pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE pk_tbl ADD COLUMN v1 SERIAL;
+--- Non-empty case
+INSERT INTO pk_tbl VALUES(1), (2), (3);
+ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
+ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
+DROP TABLE pk_tbl;
