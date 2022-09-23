@@ -306,7 +306,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
       if (activeRole) {
         for (ServerType processType : processTypes) {
-          createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          if (!context.skipStartingProcesses) {
+            createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          }
           if (processType == ServerType.CONTROLLER) {
             createWaitForYbcServerTask(new HashSet<NodeDetails>(singletonNodeList))
                 .setSubTaskGroupType(subGroupType);
@@ -681,6 +683,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean skipStartingProcesses = false;
     Consumer<NodeDetails> postAction;
   }
 }
