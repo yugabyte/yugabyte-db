@@ -148,7 +148,7 @@ components:
           - name: POSTGRES_DB
             static_val: 'yugaware'
           - name: POSTGRES_USER
-            static_val: 'postgres'
+            static_val: '{{repl ConfigOption "dbuser"}}'
           - name: POSTGRES_PASSWORD
             static_val: '{{repl ConfigOption "dbpass"}}'
           - name: PGDATA
@@ -176,10 +176,19 @@ components:
         config_files:
           - filename: /home/update_password.sql
             contents: |
-              ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+              ALTER USER {{repl ConfigOption "dbuser"}} WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
           - filename: /home/reload_pg_hba_conf.sql
             contents: |
               SELECT pg_reload_conf();
+          - filename: /home/create_user.sql
+            contents: |
+              CREATE USER {{repl ConfigOption "dbuser"}} WITH SUPERUSER CREATEDB CREATEROLE;
+          - filename: /home/create_user_if_missing.sh
+            contents: |
+              # Check for the existence of role before creating.
+              if ! ( psql -U postgres -t -c '\du' | cut -d \| -f 1 | grep -qw {{repl ConfigOption "dbuser"}} ) then
+                psql -U postgres -f /home/create_user.sql;
+              fi
           - filename: /home/enable_ldap.sh
             contents: |
               sleep 5;
@@ -196,6 +205,7 @@ components:
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/startup.sh
             contents: |
+                {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
                 {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
@@ -438,7 +448,7 @@ components:
               db {
                 default.host="{{repl ConfigOption "docker_gateway"}}"
                 default.port="{{repl ConfigOption "db_external_port"}}"
-                default.username="postgres"
+                default.username="{{repl ConfigOption "dbuser"}}"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
                 default.migration.initOnMigrate=true
@@ -583,6 +593,10 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+      - name: dbuser
+        title: DB User
+        type: text
+        default: "postgres"
       - name: expose_db_port
         title: Expose Postgres Database Port
         help_text: When enabled you can access postgres database on host ip
