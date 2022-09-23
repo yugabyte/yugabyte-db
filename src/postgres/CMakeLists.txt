@@ -58,13 +58,22 @@ if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
 endif()
 
+
+set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
+if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
+  string(CONCAT POSTGRES_EXTRA_PREPROCESSOR_FLAGS "${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
+         "-isystem ${MACOS_SDK_INCLUDE_DIR}")
+endif()
+
 list(APPEND build_postgres_args
      "${BUILD_SUPPORT_DIR}/build_postgres"
      --build_root            "${YB_BUILD_ROOT}"
      --cflags                "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
      --compiler_type         "${YB_COMPILER_TYPE}"
      --cxxflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-     --ldflags               " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
+     # We specify a leading space where we could otherwise get an empty argument.
+     --cppflags              " ${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
+     --ldflags               "${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
      --ldflags_ex            " ${CMAKE_EXE_LINKER_FLAGS}"
      --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
      --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
