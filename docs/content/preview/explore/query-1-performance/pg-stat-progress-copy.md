@@ -48,7 +48,7 @@ For more information, refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-
 
 In YugabyteDB, the `pg_stat_progress_copy` view includes the column `yb_status` to indicate the status of the COPY command.
 
-If a `COPY` command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the `COPY` command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. For YugabyteDB, `yb_status` column helps finding if the copy successfully completed or not.
+If a `COPY` command terminates due to any error, then it's possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In this case, `tuples_processed` shows a non-zero count and `yb_status` shows that the `COPY` command was terminated due to an error. This is helpful for discovering whether the copy completed or not. This is unnecessary in PostgreSQL, where copy is a single transaction.
 
 Following are the possible values for this column:
 
