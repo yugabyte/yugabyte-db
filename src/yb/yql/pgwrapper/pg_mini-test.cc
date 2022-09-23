@@ -67,6 +67,7 @@ DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_pg_savepoints);
+DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_use_logging_iterator);
 
@@ -484,6 +485,46 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
 
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Tracing)) {
+  FLAGS_enable_tracing = false;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
+  LOG(INFO) << "Setting yb_enable_docdb_tracing";
+  ASSERT_OK(conn.Execute("SET yb_enable_docdb_tracing = true"));
+
+  LOG(INFO) << "Doing Insert";
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (1, 'hello', 'world')"));
+  LOG(INFO) << "Done Insert";
+
+  LOG(INFO) << "Doing Select";
+  auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "hello");
+  LOG(INFO) << "Done Select";
+
+  LOG(INFO) << "Doing block transaction";
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (2, 'good', 'morning')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (3, 'good', 'morning')"));
+  value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_OK(conn.Execute("ABORT"));
+  LOG(INFO) << "Done block transaction";
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TracingSushant)) {
+  FLAGS_enable_tracing = false;
+  auto conn = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Setting yb_enable_docdb_tracing";
+  ASSERT_OK(conn.Execute("SET yb_enable_docdb_tracing = true"));
+  LOG(INFO) << "Doing Create";
+  ASSERT_OK(conn.Execute("create table t (h int, r int, v int, primary key (h, r));"));
+  LOG(INFO) << "Done Create";
+  LOG(INFO) << "Doing Insert";
+  ASSERT_OK(conn.Execute("insert into t  values (1,3,1), (1,4,1);"));
+  LOG(INFO) << "Done Insert";
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {

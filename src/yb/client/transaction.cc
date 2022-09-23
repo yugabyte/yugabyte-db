@@ -199,7 +199,7 @@ const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -214,7 +214,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         metadata_(metadata),
@@ -225,7 +225,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, ChildTransactionData data)
-      : trace_(Trace::NewTrace()),
+      : trace_(Trace::MaybeGetNewTrace()),
         manager_(manager),
         transaction_(transaction),
         read_point_(manager->clock()),
@@ -277,6 +277,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       priority = FLAGS_TEST_override_transaction_priority;
     }
     metadata_.priority = priority;
+  }
+
+  void EnsureTraceCreated() {
+    if (!trace_) {
+      trace_ = new Trace;
+      TRACE_TO(trace_, "Ensure Trace Created");
+    }
   }
 
   uint64_t GetPriority() const {
@@ -2276,6 +2283,10 @@ Result<TransactionMetadata> YBTransaction::Release() {
 
 Trace* YBTransaction::trace() {
   return impl_->trace();
+}
+
+void YBTransaction::EnsureTraceCreated() {
+  return impl_->EnsureTraceCreated();
 }
 
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
