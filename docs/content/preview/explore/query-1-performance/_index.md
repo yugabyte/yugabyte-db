@@ -43,10 +43,22 @@ type: indexpage
     <a class="section-link icon-offset" href="pg-stat-activity/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View live queries using pg_stat_activity</div>
+        <div class="title">View live queries with pg_stat_activity</div>
       </div>
       <div class="body">
         Troubleshoot problems and identify long-running queries with the activity view.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-progress-copy/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">View COPY status with pg_stat_progress_copy</div>
+      </div>
+      <div class="body">
+        Get the COPY command status, number of tuples processed, and other COPY progress reports with this view.
       </div>
     </a>
   </div>
@@ -67,7 +79,7 @@ type: indexpage
     <a class="section-link icon-offset" href="pg-hint-plan/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Use pg_hint_plan</div>
+        <div class="title">Optimize YSQL queries using pg_hint_plan</div>
       </div>
       <div class="body">
         Control query execution plans with hinting phrases.
