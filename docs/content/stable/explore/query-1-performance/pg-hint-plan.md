@@ -592,3 +592,10 @@ hints             | IndexScan(t1)
 ```
 
 This example inserts queries into the `hint_plan.hints` table, with placeholders for positional parameters using a question mark (?) and their required hint phrases respectively. During runtime, when these queries are executed, `pg_hint_plan` automatically executes these queries with their respective hinting phrases.
+
+## Learn more
+
+- Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
+- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.
