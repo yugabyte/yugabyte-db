@@ -42,7 +42,7 @@ Select your installation type to see the installation flow. Click on the element
 <img src="/images/ee/flowchart/yb-install-public-cloud.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Install YugabyteDB Anywhere" title="Install YugabyteDB Anywhere" href="/preview/yugabyte-platform/install-yugabyte-platform/" coords="397,199,371,90,450,48,523,90,518,174,518,175,453,214,453,213" shape="poly" style="width: 18.3%;height: 8.7%;top: 2.6%;left: 41%;">
+    <area target="_blank" alt="Install Yugabyte Platform" title="Install Yugabyte Platform" href="/preview/yugabyte-platform/install-yugabyte-platform/" coords="397,199,371,90,450,48,523,90,518,174,518,175,453,214,453,213" shape="poly" style="width: 18.3%;height: 8.7%;top: 2.6%;left: 41%;">
     <area target="_blank" alt="AWS prep environment" title="AWS prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws/" coords="166,404,296,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 17.5%;">
     <area target="_blank" alt="GCP prep environment" title="GCP prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp/" coords="378,404,521,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 41.8%;">
     <area target="_blank" alt="Azure prep environment" title="Azure prep environment" href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure/" coords="590,404,746,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 66%;">
