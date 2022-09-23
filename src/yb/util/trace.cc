@@ -278,7 +278,7 @@ ThreadSafeArena* Trace::GetAndInitArena() {
   return arena;
 }
 
-scoped_refptr<Trace> Trace::NewTrace() {
+scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
   if (GetAtomicFlag(&FLAGS_enable_tracing)) {
     return scoped_refptr<Trace>(new Trace());
   }
@@ -297,13 +297,13 @@ scoped_refptr<Trace> Trace::NewTrace() {
   return ret;
 }
 
-scoped_refptr<Trace>  Trace::NewTraceForParent(Trace* parent) {
+scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   if (parent) {
     scoped_refptr<Trace> trace(new Trace);
     parent->AddChildTrace(trace.get());
     return trace;
   }
-  return NewTrace();
+  return MaybeGetNewTrace();
 }
 
 void Trace::SubstituteAndTrace(

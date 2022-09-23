@@ -177,8 +177,13 @@ PgIsolationLevel PgTxnManager::GetPgIsolationLevel() {
 
 Status PgTxnManager::SetReadOnly(bool read_only) {
   read_only_ = read_only;
-  VLOG(2) << __func__ << " set to " << read_only_ << " from " << GetStackTrace();
+  VLOG(2) << __func__ << " set to " << read_only_;
   return UpdateReadTimeForFollowerReadsIfRequired();
+}
+
+Status PgTxnManager::SetEnableTracing(bool tracing) {
+  enable_tracing_ = tracing;
+  return Status::OK();
 }
 
 Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t session_staleness) {
@@ -363,6 +368,7 @@ void PgTxnManager::ResetTxnAndSession() {
 
   enable_follower_reads_ = false;
   read_only_ = false;
+  enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
 }
@@ -419,6 +425,7 @@ uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options)
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
+  options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(txn_serial_no_);
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 

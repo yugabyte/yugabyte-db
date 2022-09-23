@@ -63,6 +63,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
+  Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
@@ -72,6 +73,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
   bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
+  bool ShouldEnableTracing() const { return enable_tracing_; }
 
   uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
@@ -109,6 +111,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
+  bool enable_tracing_ = false;
   bool enable_follower_reads_ = false;
   uint64_t follower_read_staleness_ms_ = 0;
   HybridTime read_time_for_follower_reads_;

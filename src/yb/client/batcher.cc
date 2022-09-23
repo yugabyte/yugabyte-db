@@ -606,6 +606,7 @@ void Batcher::RequestsFinished() {
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
+  ADOPT_TRACE(transaction_ ? transaction_->trace() : Trace::CurrentTrace());
   VLOG_WITH_PREFIX_AND_FUNC(3) << "tablet: " << tablet->tablet_id();
 
   CHECK(group.begin != group.end);
