@@ -807,6 +807,17 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
   return Status::OK();
 }
 
+Status TabletSplitITest::WaitForTableNumActiveLeadersPeers(size_t expected_leaders) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+        LOG(INFO) << "Check number of leaders: " << peers.size();
+        return peers.size() == expected_leaders;
+      },
+      20s * kTimeMultiplier,
+      Format("Waiting table $0 to have $1 leaders ...", table_->id(), expected_leaders));
+}
+
 //
 // TabletSplitExternalMiniClusterITest
 //
