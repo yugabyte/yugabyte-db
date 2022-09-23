@@ -66,7 +66,7 @@ This is required for YugabyteDB, because if the `COPY` command finishes due to a
 
 ## Examples
 
-The following examples demonstrates the possible stages (IN PROGRESS, ERROR, SUCCESS) for the copy operation.
+The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCCESS) for the copy operation.
 
 ### Prerequisites
 
