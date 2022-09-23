@@ -858,15 +858,18 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 decoded_value.body,
             }};
 
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
+
             IntentKeyValueForCDC intent_metadata;
             intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
             intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
+            intent_metadata.intent_ht = doc_ht;
             (*key_value_intents).push_back(intent_metadata);
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
-                      << (*key_value_intents).size();
+                    << (*key_value_intents).size();
             ++write_id;
           }
         }
