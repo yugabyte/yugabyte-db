@@ -40,7 +40,7 @@ The definition of `tuples_processed` column is different in YugabyteDB in compar
 
 In YugabyteDB, the `ROWS_PER_TRANSACTION` option is added to the COPY command, defining the transaction size to be used. For example, if the total tuples to be copied is 5000 and `ROWS_PER_TRANSACTION` is set to 1000, the database creates 5 transactions and each transaction inserts 1000 rows. If there is an error during execution, then some tuples can be persisted based on the already completed transaction.
 
-Because the `copy` command is divided into multiple transactions, `tuples_processed` tracks the rows for which the transaction has already completed.
+Because each COPY is divided into multiple transactions, `tuples_processed` tracks the rows that the transaction has already completed.
 
 For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
 
