@@ -23,8 +23,10 @@ func TestShellTaskProcess(t *testing.T) {
 }
 
 func TestPreflightCheckTask(t *testing.T) {
+	providerData := util.GetTestProviderData()
+	accessKeyData := util.GetTestAccessKeyData()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	handler := NewPreflightCheckHandler(dummyInstanceType)
+	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
 	ctx := context.Background()
 	result, err := handler.Handle(ctx)
 	if err != nil {
@@ -42,8 +44,11 @@ func TestPreflightCheckTask(t *testing.T) {
 }
 
 func TestGetOptions(t *testing.T) {
+	providerData := util.GetTestProviderData()
+	accessKeyData := util.GetTestAccessKeyData()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	result := getOptions("./dummy.sh", dummyInstanceType)
+	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
+	result := handler.getOptions("./dummy.sh")
 	check := false
 	for i, v := range result {
 		if v == "--ports_to_check" && result[i+1] == "54422" {

@@ -27,20 +27,23 @@ var (
 
 func SetupRegisterCommand(parentCmd *cobra.Command) {
 	registerCmd.PersistentFlags().
-		StringP("api_token", "t", "", "API Token for registering the node.")
+		StringP("api_token", "t", "", "API token for registering the node.")
 	registerCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
 	registerCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	registerCmd.MarkPersistentFlagRequired("api_token")
+	unregisterCmd.PersistentFlags().
+		StringP("api_token", "t", "", "Optional API token for unregistering the node.")
 	parentCmd.AddCommand(registerCmd)
 	parentCmd.AddCommand(unregisterCmd)
 }
 
 func unregisterCmdHandler(cmd *cobra.Command, args []string) error {
-	// Run the unregister flow using JWT.
-	return unregisterHandler(true, "")
+	apiToken, _ := cmd.Flags().GetString("api_token")
+	// API token is optional.
+	return unregisterHandler(apiToken)
 }
 
-func unregisterHandler(useJWT bool, apiToken string) error {
+func unregisterHandler(apiToken string) error {
 	nodeAgentId := util.CurrentConfig().String(util.NodeAgentIdKey)
 	// Return error if there is no node agent id present in the config.
 	if nodeAgentId == "" {
@@ -52,7 +55,7 @@ func unregisterHandler(useJWT bool, apiToken string) error {
 	}
 
 	util.ConsoleLogger().Infof("Unregistering Node Agent - %s", nodeAgentId)
-	err := server.UnregisterNodeAgent(server.Context(), apiToken, useJWT)
+	err := server.UnregisterNodeAgent(server.Context(), apiToken)
 	if err != nil {
 		util.ConsoleLogger().Errorf("Node Agent Unregistration Failed - %s", err)
 		return err
