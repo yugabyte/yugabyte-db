@@ -284,5 +284,22 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(FKCheckWithNonTxnWrites)) {
   ASSERT_EQ(kInsertRowCount, table_row_count);
 }
 
+// The test checks that transaction will be rolled back after completion of all in-flight
+// operations.
+TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(TxnRollbackWithInFlightOperations)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k TEXT PRIMARY KEY)"));
+  constexpr size_t kMaxItems = 10000;
+  ASSERT_OK(conn.ExecuteFormat("SET ysql_max_in_flight_ops=$0", kMaxItems));
+  constexpr size_t kMaxBatchSize = 3072;
+  ASSERT_OK(SetMaxBatchSize(&conn, kMaxBatchSize));
+  // Next statement will fail due to 'division by zero' after performing some amount of write RPCs.
+  ASSERT_NOK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT CONCAT('k_', (s+($0-s)/($0-s))::text) FROM generate_series(1, $1) AS s",
+       kMaxBatchSize * 3 + 1,
+       kMaxItems));
+  ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

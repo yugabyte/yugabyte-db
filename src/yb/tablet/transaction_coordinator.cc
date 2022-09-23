@@ -948,11 +948,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
  public:
   Impl(const std::string& permanent_uuid,
        TransactionCoordinatorContext* context,
-       Counter* expired_metric)
+       Counter* expired_metric,
+       const MetricEntityPtr& metrics)
       : context_(*context),
         expired_metric_(*expired_metric),
         log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)),
-        deadlock_detector_(context->client_future(), this, context->tablet_id()),
+        deadlock_detector_(context->client_future(), this, context->tablet_id(), metrics),
         deadlock_detection_poller_(log_prefix_, std::bind(&Impl::PollDeadlockDetector, this)),
         poller_(log_prefix_, std::bind(&Impl::Poll, this)) {
   }
@@ -1623,8 +1624,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
 TransactionCoordinator::TransactionCoordinator(const std::string& permanent_uuid,
                                                TransactionCoordinatorContext* context,
-                                               Counter* expired_metric)
-    : impl_(new Impl(permanent_uuid, context, expired_metric)) {
+                                               Counter* expired_metric,
+                                               const MetricEntityPtr& metrics)
+    : impl_(new Impl(permanent_uuid, context, expired_metric, metrics)) {
 }
 
 TransactionCoordinator::~TransactionCoordinator() {
