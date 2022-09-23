@@ -30,7 +30,7 @@ The following table describes the view columns:
 | tuples_processed | Number of tuples already processed by the COPY command. |
 | tuples_excluded | Number of tuples not processed because they were excluded by the WHERE clause of the COPY command. |
 
-## YugabyteDB specific changes
+## YugabyteDB-specific changes
 
 The `pg_stat_progress_copy` view includes the following YugabyteDB-specific changes:
 
