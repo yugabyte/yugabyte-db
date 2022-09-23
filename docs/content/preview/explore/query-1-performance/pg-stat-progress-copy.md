@@ -146,7 +146,7 @@ You should see output similar to the following:
     ```
 
     ```output
-    Ctrl+C Cancel request sent
+    ^CCancel request sent
     ERROR:  canceling statement due to user request
     CONTEXT:  COPY test_copy, line 55184: "55184, 55184, 55184"
     ````
