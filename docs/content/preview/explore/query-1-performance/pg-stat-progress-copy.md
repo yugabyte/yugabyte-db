@@ -139,14 +139,14 @@ You should see output similar to the following:
 
 ### Verify an interrupted COPY operation
 
-1. Copy `test_data.csv` and interrupt it using the following commands:
+1. Copy `test_data.csv` using the following command, and then interrupt it using Ctrl+C:
 
     ```sql
     \copy test_copy from 'test_data.csv'  (DELIMITER ',');
     ```
 
     ```output
-    Ctrl+C Cancel request sent
+    ^CCancel request sent
     ERROR:  canceling statement due to user request
     CONTEXT:  COPY test_copy, line 55184: "55184, 55184, 55184"
     ````
