@@ -518,19 +518,31 @@ void CatalogManagerUtil::FillTableInfoPB(
   partition_schema.ToPB(pb->mutable_partition_schema());
 }
 
-bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {
-  if (per_ts_load_[ts1] != per_ts_load_[ts2]) {
-    return per_ts_load_[ts1] < per_ts_load_[ts2];
+Result<bool> CMPerTableLoadState::CompareReplicaLoads(
+    const TabletServerId &ts1, const TabletServerId &ts2) {
+  auto ts1_load = per_ts_replica_load_.find(ts1);
+  auto ts2_load = per_ts_replica_load_.find(ts2);
+  SCHECK(ts1_load != per_ts_replica_load_.end(), IllegalState,
+         Format("per_ts_replica_load_ does not contain $0", ts1));
+  SCHECK(ts2_load != per_ts_replica_load_.end(), IllegalState,
+         Format("per_ts_replica_load_ does not contain $0", ts2));
+
+  if (ts1_load->second != ts2_load->second) {
+    return ts1_load->second < ts2_load->second;
   }
-  if (global_load_state_->GetGlobalLoad(ts1) == global_load_state_->GetGlobalLoad(ts2)) {
+
+  auto ts1_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts1));
+  auto ts2_global_load = VERIFY_RESULT(global_load_state_->GetGlobalReplicaLoad(ts2));
+
+  if (ts1_global_load == ts2_global_load) {
     return ts1 < ts2;
   }
-  return global_load_state_->GetGlobalLoad(ts1) < global_load_state_->GetGlobalLoad(ts2);
+  return ts1_global_load < ts2_global_load;
 }
 
 void CMPerTableLoadState::SortLoad() {
   Comparator comp(this);
-  std::sort(sorted_load_.begin(), sorted_load_.end(), comp);
+  std::sort(sorted_replica_load_.begin(), sorted_replica_load_.end(), comp);
 }
 
 } // namespace master
