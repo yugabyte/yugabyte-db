@@ -27,7 +27,7 @@ The following table describes the view columns:
 | yb_status | Tracking status of the copy command. |
 | bytes_processed | Number of bytes already processed by the COPY command. |
 | bytes_total | Size of the source file for COPY FROM command in bytes. It is set to 0 if not available. |
-| tuples_processed | Number of tuples already processed by COPY command. |
+| tuples_processed | Number of tuples already processed by the COPY command. |
 | tuples_excluded | Number of tuples not processed because they were excluded by the WHERE clause of the COPY command. |
 
 ## YugabyteDB specific changes
