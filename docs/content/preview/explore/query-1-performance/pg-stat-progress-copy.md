@@ -12,16 +12,16 @@ menu:
 type: docs
 ---
 
-Yugabyte supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the COPY command execution. Whenever COPY is running, the `pg_stat_progress_copy` view will contain one row for each backend that is currently running a COPY command.
+Yugabyte supports the PostgreSQL `pg_stat_progress_copy` view to report the progress of the [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/) command execution. Whenever COPY is running, the `pg_stat_progress_copy` view will contain one row for each backend that is currently running a COPY command.
 
 The following table includes the columns and their description:
 
 | Column | Description |
 | :---- | :---------- |
 | pid | Process ID of backend. |
-| datid | OID of the database to which this backend is connected. |
+| datid | Object ID of the database to which this backend is connected. |
 | datname | Name of the database to which this backend is connected. |
-| relid | OID of the table on which the COPY command is executed. It is set to 0 if copying from a SELECT query.|
+| relid | Object ID of the table on which the COPY command is executed. It is set to 0 if copying from a SELECT query.|
 | command | The command that is running COPY FROM, or COPY TO. |
 | type | The I/O type that the data is read from or written to: FILE, PROGRAM, PIPE (for COPY FROM STDIN and COPY TO STDOUT), or CALLBACK (used for example during the initial table synchronization in logical replication). |
 | yb_status | Tracking status of the copy command. |
@@ -38,9 +38,9 @@ The `pg_stat_progress_copy` view includes the following YugabyteDB specific chan
 
 The definition of `tuples_processed` column is different in YugabyteDB in comparison to PostgreSQL.
 
-For the `COPY` command in YugabyteDB, an option `ROWS_PER_TRANSACTION` is added which defines the transaction size to be used by the `COPY` command. For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction.
+For the COPY command in YugabyteDB, an option `ROWS_PER_TRANSACTION` is added which defines the transaction size to be used by the COPY command. For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction.
 
-Because the `copy` command is divided into multiple transactions, `tuples_processed` tracks the rows for which the transaction has already completed.
+Because the COPY command is divided into multiple transactions, `tuples_processed` tracks the rows for which the transaction has already completed.
 
 For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction).
 
@@ -48,21 +48,21 @@ For more information refer to [ROWS_PER_TRANSACTION](../../../api/ysql/the-sql-l
 
 The `pg_stat_progress_copy` view includes a status column `yb_status` to indicate the status of the copy command.
 
-If a `COPY` command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the `COPY` command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. For YugabyteDB, `yb_status` column helps finding if the copy successfully completed or not.
+If a COPY command is terminated due to any error, then it is possible that some tuples are persisted as explained in the [`tuples_processed`](#definition-of-tuples-processed) section. In such scenarios, `tuples_processed` shows a non-zero count and `yb_status` will show that the COPY command was terminated due to an error. In PostgreSQL, it is not required as copy is one single transaction. For YugabyteDB, `yb_status` column helps finding if the copy successfully completed or not.
 
 Following are the possible values for this column:
 
-- IN PROGRESS – Indicating that the `COPY` command is still running.
-- ERROR – `COPY` command was terminated due to an error.
-- SUCCESS – `COPY` command successfully completed.
+- IN PROGRESS – Indicating that the COPY command is still running.
+- ERROR – COPY command was terminated due to an error.
+- SUCCESS – COPY command successfully completed.
 
-### `COPY` command information
+### COPY command information
 
 The `pg_stat_progress_copy` view retains copy command information after the copy operation has completed.
 
-In PostgreSQL, after the `COPY` command is finished then the row containing details of the copy command is _removed_ from the view. In YugabyteDB, information is _retained_ in the view after the copy has finished. Also, information is retained only for the last executed copy command on that connection.
+In PostgreSQL, after the COPY command is finished then the row containing details of the copy command is _removed_ from the view. In YugabyteDB, information is _retained_ in the view after the copy has finished. Also, information is retained only for the last executed copy command on that connection.
 
-This is required for YugabyteDB, because if the `COPY` command finishes due to an error, then you would like to know how many rows were reliably persisted to the disk.
+This is required for YugabyteDB, because if the COPY command finishes due to an error, then you would like to know how many rows were reliably persisted to the disk.
 
 ## Examples
 
@@ -83,7 +83,7 @@ The following examples demonstrates the possible stages (IN PROGRESS, ERROR, SUC
     done
     ```
 
-- From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell, and create a table using the following schema:
+- From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell, and create a table using the following schema:
 
     ```sql
     create table test_copy ( h1 int, r1 int, v1 int, primary key (h1, r1));
@@ -111,7 +111,7 @@ The following examples demonstrates the possible stages (IN PROGRESS, ERROR, SUC
 
     ```output
      pid  | datid | datname  | relid |  command  | type | yb_status | bytes_processed | bytes_total | tuples_processed | tuples_excluded
-    -------+-------+----------+-------+-----------+------+-----------+-----------------+-------------+------------------+-----------------
+     -----+-------+----------+-------+-----------+------+-----------+-----------------+-------------+------------------+-----------------
     74390 | 13288 | yugabyte | 16394 | COPY FROM | PIPE | SUCCESS   |         1966685 |           0 |           100000 |               0
     (1 row)
     ```
@@ -141,12 +141,12 @@ You should see output similar to the following:
 
 1. Copy `test_data.csv` and interrupt it using the following commands:
 
-    ```sh
+    ```sql
     \copy test_copy from 'test_data.csv'  (DELIMITER ',');
     ```
 
     ```output
-    ^CCancel request sent
+    Ctrl+C Cancel request sent
     ERROR:  canceling statement due to user request
     CONTEXT:  COPY test_copy, line 55184: "55184, 55184, 55184"
     ````

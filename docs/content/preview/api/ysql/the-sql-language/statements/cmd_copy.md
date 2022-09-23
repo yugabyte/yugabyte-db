@@ -102,7 +102,7 @@ The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `
 
 Deafult : 20000 for YugabyteDB versions 2.14/2.15, and 1000 for older releases.
 
-For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
+For example, if the total tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. If there is an error during the execution of the copy command, then some tuples can be persisted based on the already completed transaction. This implies that if an error occurs after inserting the 3500th row, then the first 3000 rows will be persisted in the database.
 
 - 1 to 1000 →  Transaction_1
 - 1001 to 2000 → Transaction_2
