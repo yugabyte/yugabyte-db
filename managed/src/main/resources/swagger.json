@@ -4841,7 +4841,7 @@
           "type" : "string"
         },
         "value" : {
-          "description" : "unlimited",
+          "description" : "true",
           "type" : "string"
         }
       },
@@ -9600,6 +9600,29 @@
       "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "ValidationResult" : {
+      "description" : "Validation result of a node config",
+      "properties" : {
+        "description" : {
+          "type" : "string"
+        },
+        "isRequired" : {
+          "type" : "boolean"
+        },
+        "isValid" : {
+          "type" : "boolean"
+        },
+        "type" : {
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS", "USER", "USER_GROUP", "HOME_DIR_SPACE", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PORTS", "PYTHON_VERSION" ],
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "type" : "object"
+    },
     "VolumeDetails" : {
       "properties" : {
         "mountPath" : {
@@ -12481,6 +12504,36 @@
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getProvider",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a cloud provider",
+        "tags" : [ "Cloud providers" ]
+      },
       "patch" : {
         "description" : "",
         "operationId" : "patchProvider",
@@ -17979,6 +18032,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List all of a zone's node instances",
+        "tags" : [ "Node instances" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes/validate" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "validateNodeInstance",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "azUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/ValidationResult"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Validate a node instance",
         "tags" : [ "Node instances" ]
       }
     },

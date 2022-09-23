@@ -3,8 +3,6 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
-import static com.yugabyte.yw.models.helpers.CommonUtils.encryptProviderConfig;
-import static com.yugabyte.yw.models.helpers.CommonUtils.decryptProviderConfig;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
