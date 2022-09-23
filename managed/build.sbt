@@ -128,7 +128,7 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mockito" % "mockito-inline" % "3.8.0" % Test,
   "org.mindrot" % "jbcrypt" % "0.4",
-  "org.postgresql" % "postgresql" % "42.2.25",
+  "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -386,7 +386,11 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8"
+  "net.minidev" % "json-smart" % "2.4.8",
+  // TODO(Shashank): Remove this in Step 3:
+  // Overrides to address vulnerability in swagger-play2
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
