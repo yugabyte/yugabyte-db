@@ -1674,6 +1674,8 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
 fi
 
 if [[ ${should_build_clangd_index} == "true" ]]; then
+  "${YB_BUILD_SUPPORT_DIR}/create_latest_symlink.sh" \
+    "${BUILD_ROOT}" "${YB_BUILD_PARENT_DIR}/latest-for-clangd"
   build_clangd_index "${clangd_index_format}"
 fi
 
