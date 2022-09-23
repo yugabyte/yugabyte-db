@@ -319,6 +319,9 @@ class CQLRequest : public CQLMessage {
 
   virtual ~CQLRequest();
 
+  bool trace_requested() const {
+    return (flags() & CQLMessage::kTracingFlag) != 0;
+  }
  protected:
   CQLRequest(const Header& header, const Slice& body);
 

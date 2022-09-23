@@ -114,7 +114,8 @@ namespace client {
 namespace internal {
 
 bool IsTracingEnabled() {
-  return FLAGS_collect_end_to_end_traces;
+  auto *trace = Trace::CurrentTrace();
+  return FLAGS_collect_end_to_end_traces || (trace && trace->end_to_end_traces_requested());
 }
 
 namespace {

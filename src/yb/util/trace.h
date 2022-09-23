@@ -206,6 +206,16 @@ class Trace : public RefCountedThreadSafe<Trace> {
     must_print_ = flag;
   }
 
+  bool end_to_end_traces_requested() const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return end_to_end_traces_requested_;
+  }
+
+  void set_end_to_end_traces_requested(bool flag) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    end_to_end_traces_requested_ = flag;
+  }
+
  private:
   friend class ScopedAdoptTrace;
   friend class RefCountedThreadSafe<Trace>;
@@ -238,6 +248,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // A hint to request that the collected trace be printed.
   bool must_print_ = false;
+  bool end_to_end_traces_requested_ = false;
 
   std::vector<scoped_refptr<Trace> > child_traces_;
 
@@ -259,7 +270,6 @@ class ScopedAdoptTrace {
   DFAKE_MUTEX(ctor_dtor_);
   Trace* old_trace_;
   scoped_refptr<Trace> trace_;
-  bool is_enabled_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
 };
