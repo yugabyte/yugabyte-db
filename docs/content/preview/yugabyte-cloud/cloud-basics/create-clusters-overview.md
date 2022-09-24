@@ -21,7 +21,7 @@ The following best practices are recommended for production clusters.
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
-| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track.<br>Use a [staging cluster](#staging-clusters) to test upgrades before upgrading your production cluster. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track.<!--<br>Use a [staging cluster](#staging-clusters) to test upgrades before upgrading your production cluster.--> |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
 
@@ -125,11 +125,12 @@ If you need a feature from a preview release (that isn't yet available in a stab
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
-#### Staging clusters
+<!-- #### Staging clusters
 
 Yugabyte tests every version in the stable branch for backwards compatibility. However, it's good practice to first test database updates against your pre-production environment (aka development, testing, staging, or canary environment) to ensure compatibility before upgrading your production clusters.
 
 Create a staging cluster (this can be smaller than your production cluster) and configure your pre-production environment to connect to it. When you are notified of an upcoming maintenance event, schedule the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment before updating your production cluster.
+-->
 
 ### Backups
 
