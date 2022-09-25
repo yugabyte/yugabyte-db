@@ -58,6 +58,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
@@ -1062,6 +1064,27 @@ OpId TabletPeer::GetLatestCheckPoint() {
     return txn_participant->GetLatestCheckPoint();
   }
   return OpId();
+}
+
+Result<NamespaceId> TabletPeer::GetNamespaceId() {
+  auto namespace_id = tablet()->metadata()->namespace_id();
+  if (!namespace_id.empty()) {
+    return namespace_id;
+  }
+  // This is empty the first time we try to fetch the namespace id from the tablet metadata, so
+  // fetch it from the client and populate the tablet metadata.
+  auto* client = client_future().get();
+  master::GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
+                                         tablet()->metadata()->namespace_name(),
+                                         boost::none /* database_type */, &resp));
+  namespace_id = resp.namespace_().id();
+  if (namespace_id.empty()) {
+    return STATUS(IllegalState, Format("Could not get namespace id for $0",
+                                       tablet()->metadata()->namespace_name()));
+  }
+  RETURN_NOT_OK(tablet()->metadata()->set_namespace_id(namespace_id));
+  return namespace_id;
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(

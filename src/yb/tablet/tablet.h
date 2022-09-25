@@ -749,6 +749,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return unique_index_key_schema_.get();
   }
 
+  bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

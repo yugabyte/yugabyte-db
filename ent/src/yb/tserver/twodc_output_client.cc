@@ -113,6 +113,14 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   Status ProcessRecord(
       const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
 
+  Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record);
+
+  Result<std::vector<TabletId>> GetInvolvedTargetTabletsFromCommitRecord(
+      const cdc::CDCRecordPB& record);
+
   Status SendTransactionCommits();
 
   Status SendUserTableWrites();
@@ -257,9 +265,9 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
           RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
           break;
         case cdc::CDCRecordPB::COMMITTED:
-           // TODO(Rahul): Handle the non 1:1 case for the transaction status table.
-           return STATUS(IllegalState, "Cannot currently handle COMMIT records when there is not a "
-                                       "1 to 1 tablet mapping for the transaction status table.");
+          // TODO(Rahul): Handle the non 1:1 case for the transaction status table.
+          return STATUS(IllegalState, "Cannot currently handle COMMIT records when there is not a "
+                                      "1 to 1 tablet mapping for the transaction status table.");
            break;
         default: {
           auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
@@ -282,6 +290,20 @@ Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
     }
   }
   return Status::OK();
+}
+
+Result<std::vector<TabletId>> TwoDCOutputClient::GetInvolvedTargetTabletsFromCommitRecord(
+    const cdc::CDCRecordPB& record) {
+  std::unordered_set<TabletId> involved_target_tablets;
+  auto involved_producer_tablets = std::vector<TabletId>(
+      record.transaction_state().tablets().begin(),
+      record.transaction_state().tablets().end());
+  for (const auto& producer_tablet : involved_producer_tablets) {
+    auto consumer_tablet_info = VERIFY_RESULT(cdc_consumer_->GetConsumerTableInfo(producer_tablet));
+    involved_target_tablets.insert(consumer_tablet_info.tablet_id);
+    // TODO(Rahul): Add the n : m case for involved tablets.
+  }
+  return std::vector<TabletId>(involved_target_tablets.begin(), involved_target_tablets.end());
 }
 
 Status TwoDCOutputClient::SendTransactionCommits() {
@@ -326,6 +348,14 @@ Status TwoDCOutputClient::SendUserTableWrites() {
 
 bool TwoDCOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
+}
+
+Status TwoDCOutputClient::ProcessCommitRecord(
+    const std::string& status_tablet,
+    const std::vector<std::string>& involved_target_tablet_ids,
+    const cdc::CDCRecordPB& record) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  return write_strategy_->ProcessCommitRecord(status_tablet, involved_target_tablet_ids, record);
 }
 
 Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_ids,
@@ -386,6 +416,11 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
 }
 
 Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
+  if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
+    auto target_tablet_ids = VERIFY_RESULT(GetInvolvedTargetTabletsFromCommitRecord(record));
+    RETURN_NOT_OK(ProcessCommitRecord(consumer_tablet_info_.tablet_id, target_tablet_ids, record));
+  }
+
   return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
 }
 

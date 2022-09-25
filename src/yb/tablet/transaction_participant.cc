@@ -117,7 +117,8 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
-      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state);
+      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state,
+      is_external);
 }
 
 class TransactionParticipant::Impl
@@ -621,7 +622,8 @@ class TransactionParticipant::Impl
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
       auto lock_and_iterator = LockAndFind(
-          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
+          data.is_external);
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -1508,7 +1510,8 @@ class TransactionParticipant::Impl
         .commit_ht = commit_time,
         .log_ht = data.hybrid_time,
         .sealed = data.sealed,
-        .status_tablet = data.state.tablets(0)
+        .status_tablet = data.state.tablets(0),
+        .is_external = data.state.has_external_commit_ht()
       };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);

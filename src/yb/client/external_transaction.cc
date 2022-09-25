@@ -49,6 +49,9 @@ void ExternalTransaction::Commit(CommitCallback commit_callback) {
   state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
   state.set_status(TransactionStatus::COMMITTED);
   state.set_external_commit_ht(metadata_.commit_ht);
+  for (const auto& involved_tablet_id : metadata_.involved_tablet_ids) {
+    *state.add_tablets() = involved_tablet_id;
+  }
   transaction_manager_->rpcs().RegisterAndStart(
       UpdateTransaction(
           TransactionRpcDeadline(),

@@ -40,6 +40,7 @@ struct ExternalTransactionMetadata {
   TransactionId transaction_id = TransactionId::Nil();
   TabletId status_tablet;
   uint64_t commit_ht;
+  std::vector<TabletId> involved_tablet_ids;
 };
 
 class ExternalTransaction {
