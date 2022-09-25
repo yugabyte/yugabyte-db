@@ -394,6 +394,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OpId GetLatestCheckPoint();
 
+  Result<NamespaceId> GetNamespaceId();
+
   TableType table_type();
 
   // Returns the number of segments in log_.

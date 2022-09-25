@@ -77,6 +77,7 @@ struct TransactionApplyData {
   TabletId status_tablet;
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
+  bool is_external = false;
 
   std::string ToString() const;
 };

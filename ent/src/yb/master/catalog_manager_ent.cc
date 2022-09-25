@@ -3165,14 +3165,12 @@ Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& c
   }
   resp->set_cluster_config_version(cluster_config.version());
   if (cluster_config.has_consumer_registry()) {
-    LOG(INFO) << "CONSUMER REGISTRY";
     {
       auto l = xcluster_safe_time_info_.LockForRead();
       *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
     }
 
     if (req->cluster_config_version() < cluster_config.version()) {
-      LOG(INFO) << "SENDING " << cluster_config.consumer_registry().ShortDebugString();
       *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
     }
   }

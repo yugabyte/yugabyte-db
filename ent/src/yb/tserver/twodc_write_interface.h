@@ -44,6 +44,10 @@ class TwoDCWriteInterface {
   virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
   virtual Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
+  virtual Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record) = 0;
   virtual std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() = 0;
 };
 

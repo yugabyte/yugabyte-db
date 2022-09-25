@@ -163,18 +163,7 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
 
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
-    // First handle the case where we see a local tablet APPLY record.
     const auto& tablet_id = process_record_info.tablet_id;
-    // Then handle, the case where we see a txn status COMMIT record.
-    if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
-      transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
-        .transaction_id = VERIFY_RESULT(
-            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
-        .status_tablet = tablet_id,
-        .commit_ht = record.time(),
-      });
-      return Status::OK();
-    }
     // Finally, handle records to be applied to both regular and intents db.
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
@@ -201,6 +190,21 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     auto* write_request = queue.back().get();
 
     return AddRecord(process_record_info, record, write_request->mutable_write_batch());
+  }
+
+  Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record) override {
+    DCHECK(record.operation() == cdc::CDCRecordPB::COMMITTED);
+    transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
+      .transaction_id = VERIFY_RESULT(
+          FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+      .status_tablet = status_tablet,
+      .commit_ht = record.time(),
+      .involved_tablet_ids = involved_target_tablet_ids
+    });
+    return Status::OK();
   }
 
   std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
