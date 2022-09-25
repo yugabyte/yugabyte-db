@@ -57,6 +57,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -787,6 +788,11 @@ shared_ptr<XClusterSafeTimeMap> TabletServer::GetXClusterSafeTimeMap() const {
 
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   xcluster_safe_time_map_->Update(safe_time_map);
+}
+
+Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
+    const NamespaceId& namespace_id, HybridTime commit_ht) {
+  return VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(namespace_id)) > commit_ht;
 }
 
 }  // namespace tserver

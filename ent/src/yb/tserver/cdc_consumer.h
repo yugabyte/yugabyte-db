@@ -18,6 +18,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
+
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/client_fwd.h"
 #include "yb/util/locks.h"
@@ -102,6 +107,8 @@ class CDCConsumer {
 
   client::TransactionManager* TransactionManager();
 
+  Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(const TabletId& producer_tablet_id);
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(should_run_mutex_);
@@ -134,9 +141,27 @@ class CDCConsumer {
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
 
-  std::unordered_map<cdc::ProducerTabletInfo, cdc::ConsumerTabletInfo,
-                     cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_
-                     GUARDED_BY(master_data_mutex_);
+  class TabletTag;
+  using ProducerConsumerTabletMap = boost::multi_index_container <
+    cdc::XClusterTabletInfo,
+    boost::multi_index::indexed_by <
+      boost::multi_index::hashed_unique <
+          boost::multi_index::member <
+              cdc::XClusterTabletInfo, cdc::ProducerTabletInfo,
+              &cdc::XClusterTabletInfo::producer_tablet_info>
+      >,
+      boost::multi_index::hashed_non_unique <
+          boost::multi_index::tag <TabletTag>,
+          boost::multi_index::const_mem_fun <
+              cdc::XClusterTabletInfo, const TabletId&,
+              &cdc::XClusterTabletInfo::producer_tablet_id
+          >
+      >
+    >
+  >;
+
+  ProducerConsumerTabletMap producer_consumer_tablet_map_from_master_
+      GUARDED_BY(master_data_mutex_);
 
   std::unordered_set<std::string> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
