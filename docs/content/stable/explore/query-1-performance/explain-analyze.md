@@ -1,8 +1,8 @@
 ---
-title: Analyzing Queries with EXPLAIN
-linkTitle: Analyzing queries with EXPLAIN
+title: Analyze queries with EXPLAIN
+linkTitle: Analyze queries
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
-headerTitle: Analyzing Queries with EXPLAIN
+headerTitle: Analyze queries with EXPLAIN
 image: /images/section_icons/index/develop.png
 menu:
   stable:
