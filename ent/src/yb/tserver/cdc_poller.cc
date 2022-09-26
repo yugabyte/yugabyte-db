@@ -13,6 +13,7 @@
 
 #include "yb/tserver/cdc_poller.h"
 #include "yb/client/client_fwd.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/twodc_output_client.h"
 
@@ -25,6 +26,8 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
@@ -32,16 +35,36 @@
 // Similar heuristic to heartbeat_interval in heartbeater.cc.
 DEFINE_int32(async_replication_polling_delay_ms, 0,
              "How long to delay in ms between applying and polling.");
+TAG_FLAG(async_replication_polling_delay_ms, runtime);
+
 DEFINE_int32(async_replication_idle_delay_ms, 100,
              "How long to delay between polling when we expect no data at the destination.");
+TAG_FLAG(async_replication_idle_delay_ms, runtime);
+
 DEFINE_int32(async_replication_max_idle_wait, 3,
              "Maximum number of consecutive empty GetChanges until the poller "
              "backs off to the idle interval, rather than immediately retrying.");
+TAG_FLAG(async_replication_max_idle_wait, runtime);
+
 DEFINE_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65 sec */,
              "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
+TAG_FLAG(replication_failure_delay_exponent, runtime);
+
 DEFINE_bool(cdc_consumer_use_proxy_forwarding, false,
             "When enabled, read requests from the CDC Consumer that go to the wrong node are "
             "forwarded to the correct node by the Producer.");
+TAG_FLAG(cdc_consumer_use_proxy_forwarding, runtime);
+
+DEFINE_test_flag(
+    int32, xcluster_simulated_lag_ms, 0,
+    "Simulate lag in xcluster replication. Replication is paused if set to -1.");
+TAG_FLAG(TEST_xcluster_simulated_lag_ms, runtime);
+DEFINE_test_flag(
+    string, xcluster_simulated_lag_tablet_filter, "",
+    "Comma separated list of producer tablet ids. If non empty, simulate lag in only applied to "
+    "this list of tablets.");
+// Strings are usually not runtime safe but in our case its ok if we temporary read garbled data
+TAG_FLAG(TEST_xcluster_simulated_lag_tablet_filter, runtime);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
@@ -144,9 +167,10 @@ void CDCPoller::DoPoll() {
   std::lock_guard<std::mutex> l(data_mutex_);
 
   // determine if we should delay our upcoming poll
-  int64_t delay = FLAGS_async_replication_polling_delay_ms; // normal throttling.
-  if (idle_polls_ >= FLAGS_async_replication_max_idle_wait) {
-    delay = std::max(delay, (int64_t)FLAGS_async_replication_idle_delay_ms); // idle backoff.
+  int64_t delay = GetAtomicFlag(&FLAGS_async_replication_polling_delay_ms);  // normal throttling.
+  if (idle_polls_ >= GetAtomicFlag(&FLAGS_async_replication_max_idle_wait)) {
+    delay = std::max(
+        delay, (int64_t)GetAtomicFlag(&FLAGS_async_replication_idle_delay_ms));  // idle backoff.
   }
   if (poll_failures_ > 0) {
     delay = std::max(delay, (int64_t)1 << poll_failures_); // exponential backoff for failures.
@@ -155,10 +179,33 @@ void CDCPoller::DoPoll() {
     SleepFor(MonoDelta::FromMilliseconds(delay));
   }
 
+  const auto xcluster_simulated_lag_ms = GetAtomicFlag(&FLAGS_TEST_xcluster_simulated_lag_ms);
+  if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {
+  ANNOTATE_IGNORE_READS_BEGIN();
+    const auto tablet_filter = FLAGS_TEST_xcluster_simulated_lag_tablet_filter;
+  ANNOTATE_IGNORE_READS_END();
+    const auto tablet_filter_list = strings::Split(tablet_filter, ",");
+    if (tablet_filter.empty() || std::find(
+                                     tablet_filter_list.begin(), tablet_filter_list.end(),
+                                     producer_tablet_info_.tablet_id) != tablet_filter_list.end()) {
+      auto delay = GetAtomicFlag(&FLAGS_async_replication_idle_delay_ms);
+      if (xcluster_simulated_lag_ms > 0) {
+        delay = xcluster_simulated_lag_ms;
+      }
+
+      SleepFor(MonoDelta::FromMilliseconds(delay));
+
+      // If replication is paused skip the GetChanges call
+      if (xcluster_simulated_lag_ms < 0) {
+        return Poll();
+      }
+    }
+  }
+
   cdc::GetChangesRequestPB req;
   req.set_stream_id(producer_tablet_info_.stream_id);
   req.set_tablet_id(producer_tablet_info_.tablet_id);
-  req.set_serve_as_proxy(FLAGS_cdc_consumer_use_proxy_forwarding);
+  req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
 
   cdc::CDCCheckpointPB checkpoint;
   *checkpoint.mutable_op_id() = op_id_;
@@ -236,7 +283,8 @@ void CDCPoller::HandlePoll(yb::Status status,
   }
   if (failed) {
     // In case of errors, try polling again with backoff
-    poll_failures_ = std::min(poll_failures_ + 1, FLAGS_replication_failure_delay_exponent);
+    poll_failures_ =
+        std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
     return Poll();
   }
   poll_failures_ = std::max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
@@ -265,7 +313,8 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
   if (!response.status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff
-    apply_failures_ = std::min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
+    apply_failures_ =
+        std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
     int64_t delay = (1 << apply_failures_) -1;
     SleepFor(MonoDelta::FromMilliseconds(delay));
     WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
