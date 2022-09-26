@@ -4,19 +4,27 @@ import {
   CUSTOM_METRIC_TIME_RANGE_OPTION,
   DROPDOWN_DIVIDER,
   METRIC_TIME_RANGE_OPTIONS,
-  ReplicationStatus
+  ReplicationStatus,
+  YBTableRelationType
 } from './constants';
 
-export interface ReplicationTable {
-  tableUUID: string;
+export interface YBTable {
+  isIndexTable: boolean;
+  keySpace: string;
   pgSchemaName: string;
+  relationType: YBTableRelationType;
+  sizeBytes: number;
   tableName: string;
   tableType: TableType;
-  keySpace: string;
-  sizeBytes: string;
+  tableUUID: string;
 }
 
-export interface Replication {
+/**
+ * XCluster supported table type.
+ */
+ export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
+
+export interface XClusterConfig {
   createTime: string;
   modifyTime: string;
   name: string;

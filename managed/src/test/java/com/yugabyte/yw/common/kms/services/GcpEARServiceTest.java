@@ -74,7 +74,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   @Mock public CryptoKey mockCryptoKey;
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getCustomerId());
 
@@ -96,13 +96,9 @@ public class GcpEARServiceTest extends FakeDBApplication {
     doReturn(fakeAuthConfig).when(mockGcpEARServiceUtil).getAuthConfig(configUUID);
     doReturn(fakeKeyRingRN).when(mockGcpEARServiceUtil).getKeyRingRN(fakeAuthConfig);
     doReturn(fakeCryptoKeyRN).when(mockGcpEARServiceUtil).getCryptoKeyRN(fakeAuthConfig);
-    doReturn(true).when(mockGcpEARServiceUtil).checkKeyRingExists(fakeAuthConfig, fakeKeyRingRN);
-    doReturn(true)
-        .when(mockGcpEARServiceUtil)
-        .checkCryptoKeyExists(fakeAuthConfig, fakeCryptoKeyRN);
-    doReturn(true)
-        .when(mockGcpEARServiceUtil)
-        .validateCryptoKeySettings(fakeAuthConfig, fakeCryptoKeyRN);
+    doReturn(true).when(mockGcpEARServiceUtil).checkKeyRingExists(fakeAuthConfig);
+    doReturn(true).when(mockGcpEARServiceUtil).checkCryptoKeyExists(fakeAuthConfig);
+    doReturn(true).when(mockGcpEARServiceUtil).validateCryptoKeySettings(fakeAuthConfig);
     doNothing().when(mockGcpEARServiceUtil).checkOrCreateKeyRing(fakeAuthConfig);
     doNothing().when(mockGcpEARServiceUtil).checkOrCreateCryptoKey(fakeAuthConfig);
     doReturn(randomBytes).when(mockGcpEARServiceUtil).generateRandomBytes(fakeAuthConfig, numBytes);
@@ -113,7 +109,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAuthConfigWithService() {
+  public void testCreateAuthConfigWithService() throws Exception {
     // Check if create key ring and crypto key functions are called
     ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
     ObjectNode createdAuthConfig =

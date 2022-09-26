@@ -14,14 +14,14 @@ import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { Replication, ReplicationTable } from '../XClusterTypes';
+import { XClusterConfig, YBTable } from '../XClusterTypes';
 
 import './AddTableToClusterModal.scss';
 
 interface Props {
   onHide: () => void;
   visible: boolean;
-  replication: Replication;
+  replication: XClusterConfig;
 }
 
 export function AddTablesToClusterModal({ visible, onHide, replication }: Props) {
@@ -37,7 +37,7 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
 
   const addTablesToXCluster = useMutation(
-    (replication: Replication) => {
+    (replication: XClusterConfig) => {
       return editXClusterTables(replication);
     },
     {
@@ -70,7 +70,7 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
     return <YBLoading />;
   }
 
-  const tablesInSourceUniverse = tables?.map((tables: ReplicationTable) => {
+  const tablesInSourceUniverse = tables?.map((tables: YBTable) => {
     return {
       ...tables,
       tableUUID: tables.tableUUID.replaceAll('-', '')
@@ -78,14 +78,14 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
   });
 
   const tablesNotInReplication = tablesInSourceUniverse?.filter(
-    (t: ReplicationTable) => !replication.tables.includes(t.tableUUID)
+    (t: YBTable) => !replication.tables.includes(t.tableUUID)
   );
 
   const initialValues = {
     tablesNotInReplication
   };
 
-  const handleRowSelect = (row: ReplicationTable, isSelected: boolean) => {
+  const handleRowSelect = (row: YBTable, isSelected: boolean) => {
     if (isSelected) {
       setSelectedTables([...selectedTables, row.tableUUID]);
     } else {
@@ -93,7 +93,7 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
     }
   };
 
-  const handleSelectAll = (isSelected: boolean, row: ReplicationTable[]) => {
+  const handleSelectAll = (isSelected: boolean, row: YBTable[]) => {
     if (isSelected) {
       setSelectedTables([...row.map((t) => t.tableUUID)]);
     } else {
@@ -147,7 +147,7 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
           <Row>
             <Col lg={12}>
               <BootstrapTable
-                data={values['tablesNotInReplication'].filter((table: ReplicationTable) => {
+                data={values['tablesNotInReplication'].filter((table: YBTable) => {
                   if (!searchText) {
                     return true;
                   }
@@ -168,9 +168,7 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
                 <TableHeaderColumn
                   dataField="pgSchemaName"
                   width="20%"
-                  dataFormat={(cell: string, row: ReplicationTable) =>
-                    formatSchemaName(row.tableType, cell)
-                  }
+                  dataFormat={(cell: string, row: YBTable) => formatSchemaName(row.tableType, cell)}
                 >
                   Schema Name
                 </TableHeaderColumn>

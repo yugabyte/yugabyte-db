@@ -196,6 +196,11 @@ export interface UniverseDetails {
   nodePrefix: string;
   resetAZConfig: boolean;
   rootCA: string | null;
+  xclusterInfo: {
+    sourceRootCertDirPath: string;
+    sourceXClusterConfigs: string[];
+    targetXClusterConfigs: string[];
+  };
   universeUUID: string;
   updateInProgress: boolean;
   updateSucceeded: boolean;
@@ -319,9 +324,9 @@ export interface KmsConfig {
 export interface HAPlatformInstance {
   uuid: string;
   config_uuid: string;
-  address: string,
-  is_leader: boolean,
-  is_local: boolean,
+  address: string;
+  is_leader: boolean;
+  is_local: boolean;
   last_backup: string | null;
 }
 
@@ -370,7 +375,7 @@ export interface IndexSchemaQueryData {
 }
 
 export interface IndexSchemaRecommendation {
-  data: IndexSchemaQueryData[]
+  data: IndexSchemaQueryData[];
   summary: React.ReactNode | string;
 }
 
@@ -400,5 +405,5 @@ export enum RecommendationTypeEnum {
   IndexSuggestion = 'IndexSuggestion',
   ConnectionSkew = 'ConnectionSkew',
   CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage',
+  CpuUsage = 'CpuUsage'
 }

@@ -18,7 +18,8 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | :------ | :----------------------- | :----------------------- | :--------------------|
-| node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| YugabyteDB node-postgres Smart Driver| [Documentation](yugabyte-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3-yb-1](https://www.npmjs.com/package/pg) | 2.8 and above |
+| PostgreSQL node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
@@ -33,7 +34,7 @@ For fully-runnable code snippets and explanations of common operations, see the 
 
 To develop Node.js applications for YugabyteDB, you need the following:
 
-- **Node.JS**\
+- **Node.js**\
   To download and install Node.js, refer to the [Node.js](https://nodejs.org/en/download/) documentation.\
   To check the version of node, use the following command:
 
@@ -54,5 +55,5 @@ To develop Node.js applications for YugabyteDB, you need the following:
 
 ## Next steps
 
-- Learn how to build NodeJS applications using [Sequelize](sequelize/).
+- Learn how to build Node.js applications using [Sequelize](sequelize/).
 - Learn how to use [Prisma](prisma/) with YugabyteDB.

@@ -1174,6 +1174,12 @@
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
         },
+        "incrementalBackup" : {
+          "type" : "boolean"
+        },
+        "parentBackup" : {
+          "type" : "boolean"
+        },
         "scheduleUUID" : {
           "description" : "Schedule UUID, if this backup is part of a schedule",
           "format" : "uuid",
@@ -1216,7 +1222,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "createTime", "updateTime" ],
+      "required" : [ "createTime", "incrementalBackup", "parentBackup", "updateTime" ],
       "type" : "object"
     },
     "BackupApiFilter" : {
@@ -11078,7 +11084,7 @@
     "/api/v1/customers/{cUUID}/backups/delete" : {
       "post" : {
         "description" : "",
-        "operationId" : "deleteBackupsv2",
+        "operationId" : "deleteBackupsV2",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -15280,7 +15286,7 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
-      "get" : {
+      "post" : {
         "description" : "",
         "operationId" : "needBootstrapTable",
         "parameters" : [ {
@@ -17837,7 +17843,7 @@
       }
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/need_bootstrap" : {
-      "get" : {
+      "post" : {
         "description" : "",
         "operationId" : "NeedBootstrapXClusterConfig",
         "parameters" : [ {

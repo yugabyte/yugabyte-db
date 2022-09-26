@@ -4,14 +4,20 @@ import moment from 'moment';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import {
-  getUniverseInfo,
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
-import { ReplicationAction, ReplicationStatus, REPLICATION_LAG_ALERT_NAME } from './constants';
+import {
+  ReplicationAction,
+  ReplicationStatus,
+  REPLICATION_LAG_ALERT_NAME,
+  SortOrder
+} from './constants';
+import { api } from '../../redesign/helpers/api';
 
-import { Replication } from './XClusterTypes';
+import { XClusterConfig } from './XClusterTypes';
+import { Universe } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -50,9 +56,9 @@ export const GetCurrentLag = ({
 }) => {
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', sourceUniverseUUID],
-    () => getUniverseInfo(sourceUniverseUUID)
+    () => api.fetchUniverse(sourceUniverseUUID)
   );
-  const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
+  const nodePrefix = universeInfo?.universeDetails.nodePrefix;
 
   const { data: metricsData, isFetching } = useQuery(
     ['xcluster-metric', replicationUUID, nodePrefix, 'metric'],
@@ -207,7 +213,7 @@ export const findUniverseName = function (universeList: Array<any>, universeUUID
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 };
 
-export const getEnabledConfigActions = (replication: Replication): ReplicationAction[] => {
+export const getEnabledConfigActions = (replication: XClusterConfig): ReplicationAction[] => {
   switch (replication.status) {
     case ReplicationStatus.INITIALIZED:
     case ReplicationStatus.UPDATING:
@@ -227,3 +233,43 @@ export const getEnabledConfigActions = (replication: Replication): ReplicationAc
       return [ReplicationAction.DELETE];
   }
 };
+
+/**
+ * Returns the UUID for all xCluster configs with the provided source and target universe.
+ */
+export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUniverse: Universe) => {
+  const sourceXClusterConfigs = sourceUniverse.universeDetails?.xclusterInfo?.sourceXClusterConfigs;
+  const targetXClusterConfigs = targetUniverse.universeDetails?.xclusterInfo?.targetXClusterConfigs;
+
+  const targetUniverseConfigUUIDs = new Set(targetXClusterConfigs);
+  return sourceXClusterConfigs
+    ? sourceXClusterConfigs.filter((configUUID) => targetUniverseConfigUUIDs.has(configUUID))
+    : [];
+};
+
+/**
+ * Adapt tableUUID to the format required for xCluster work.
+ * - tableUUID is given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format from
+ *   /customers/<customerUUID>/universes/<universeUUID>/tables endpoint
+ * - tableUUID used in xCluster endpoints have the '-' stripped away
+ */
+export const adaptTableUUID = (tableUUID: string) => tableUUID.replaceAll('-', '');
+
+export const tableSort = <RowType,>(
+  a: RowType,
+  b: RowType,
+  sortField: keyof RowType,
+  sortOrder: SortOrder,
+  tieBreakerField: keyof RowType
+) => {
+  let ord = 0;
+
+  ord = a[sortField] < b[sortField] ? -1 : 1;
+  // Break ties with the provided tie breaker field in ascending order.
+  if (a[sortField] === b[sortField]) {
+    return a[tieBreakerField] < b[tieBreakerField] ? -1 : 1;
+  }
+
+  return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
+};
+

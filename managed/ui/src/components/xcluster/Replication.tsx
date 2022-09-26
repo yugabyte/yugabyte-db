@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
 import { ConfigureMaxLagTimeModal } from './ConfigureMaxLagTimeModal';
-import { ConfigureReplicationModal } from './ConfigureReplicationModal';
+import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
 
 import styles from './Replication.module.scss';
@@ -46,24 +46,13 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
                 onClick={showAddClusterReplicationModal}
               />
             </Row>
-            <Row className={styles.configSupportText}>
-              <i className="fa fa-exclamation-circle" /> For replicating a source universe with
-              existing data, please{' '}
-              <a
-                href="https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/#bootstrapping-a-sink-cluster"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                contact support
-              </a>
-            </Row>
           </Row>
         </Col>
       </Row>
       <Row>
         <Col lg={12}>
           <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
-          <ConfigureReplicationModal
+          <CreateConfigModal
             currentUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}

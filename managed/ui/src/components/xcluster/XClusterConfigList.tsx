@@ -5,12 +5,13 @@ import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-quer
 import { useSelector } from 'react-redux';
 import { useInterval } from 'react-use';
 
-import { getUniverseInfo, getXclusterConfig } from '../../actions/xClusterReplication';
-import { YBLoading, YBLoadingCircleIcon } from '../common/indicators';
+import { getXclusterConfig } from '../../actions/xClusterReplication';
+import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
 import { TRANSITORY_STATES, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
+import { api } from '../../redesign/helpers/api';
 
-import { Replication } from './XClusterTypes';
+import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigList.module.scss';
 
@@ -24,15 +25,14 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   );
   const queryClient = useQueryClient();
 
-  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
-    ['universe', currentUniverseUUID],
-    () => getUniverseInfo(currentUniverseUUID)
+  const universeQuery = useQuery(['universe', currentUniverseUUID], () =>
+    api.fetchUniverse(currentUniverseUUID)
   );
 
   const sourceXClusterConfigUUIDs =
-    universeInfo?.data?.universeDetails?.sourceXClusterConfigs ?? [];
+    universeQuery.data?.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [];
   const targetXClusterConfigUUIDs =
-    universeInfo?.data?.universeDetails?.targetXClusterConfigs ?? [];
+    universeQuery.data?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [];
 
   // List the XCluster Configurations for which the current universe is a source or a target.
   const universeXClusterConfigUUIDs: string[] = [
@@ -46,9 +46,9 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     universeXClusterConfigUUIDs.map((uuid: string) => ({
       queryKey: ['Xcluster', uuid],
       queryFn: () => getXclusterConfig(uuid),
-      enabled: universeInfo?.data !== undefined
+      enabled: universeQuery.data?.universeDetails !== undefined
     }))
-  ) as UseQueryResult<Replication>[];
+  ) as UseQueryResult<XClusterConfig>[];
 
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig: any) => {
@@ -61,8 +61,11 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     });
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
-  if (currentUniverseLoading) {
+  if (universeQuery.isLoading) {
     return <YBLoading />;
+  }
+  if (universeQuery.isError || universeQuery.data === undefined) {
+    return <YBErrorIndicator />;
   }
 
   return (

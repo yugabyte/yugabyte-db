@@ -653,7 +653,8 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
 AsyncStartElection::AsyncStartElection(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
-                                       const scoped_refptr<TabletInfo>& tablet)
+                                       const scoped_refptr<TabletInfo>& tablet,
+                                       bool initial_election)
   : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
                            /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
@@ -662,7 +663,7 @@ AsyncStartElection::AsyncStartElection(Master *master,
 
   req_.set_dest_uuid(permanent_uuid_);
   req_.set_tablet_id(tablet_id_);
-  req_.set_initial_election(true);
+  req_.set_initial_election(initial_election);
 }
 
 void AsyncStartElection::HandleResponse(int attempt) {
