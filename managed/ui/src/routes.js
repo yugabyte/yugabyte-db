@@ -46,10 +46,8 @@ import { ReplicationDetails } from './components/xcluster';
  */
 const redirectToUrl = () => {
   const searchParam = new URLSearchParams(window.location.search);
-  const pathToRedirect = searchParam.get('redirectUrl');
-  pathToRedirect
-    ? browserHistory.push(`/?redirectUrl=${pathToRedirect}`)
-    : browserHistory.push('/');
+  const pathToRedirect = searchParam.get('orig_url');
+  pathToRedirect ? browserHistory.push(`/?orig_url=${pathToRedirect}`) : browserHistory.push('/');
 };
 
 export const clearCredentials = () => {
@@ -123,11 +121,9 @@ axios.interceptors.response.use(
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);
-      const location = searchParam.get('redirectUrl') || window.location.pathname;
+      const location = searchParam.get('orig_url') || window.location.pathname;
       browserHistory.push(
-        location && !['/', '/login'].includes(location)
-          ? `/login?redirectUrl=${location}`
-          : '/login'
+        location && !['/', '/login'].includes(location) ? `/login?orig_url=${location}` : '/login'
       );
     }
     return Promise.reject(error);
@@ -141,7 +137,7 @@ function validateSession(store, replacePath, callback) {
   const customerId = Cookies.get('customerId') || localStorage.getItem('customerId');
   const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
-    const location = searchParam.get('redirectUrl') || window.location.pathname;
+    const location = searchParam.get('orig_url') || window.location.pathname;
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         store.dispatch(insecureLoginResponse(response));
@@ -165,7 +161,7 @@ function validateSession(store, replacePath, callback) {
     });
     store.dispatch(customerTokenError());
     location && location !== '/'
-      ? browserHistory.push(`/login?redirectUrl=${location}`)
+      ? browserHistory.push(`/login?orig_url=${location}`)
       : browserHistory.push('/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
@@ -192,9 +188,9 @@ function validateSession(store, replacePath, callback) {
           localStorage.setItem('customerId', response.payload.data['uuid']);
         }
         localStorage.setItem('userId', userId);
-        if (searchParam.get('redirectUrl')) {
-          browserHistory.push(searchParam.get('redirectUrl'));
-          searchParam.delete('redirectUrl');
+        if (searchParam.get('orig_url')) {
+          browserHistory.push(searchParam.get('orig_url'));
+          searchParam.delete('orig_url');
         }
       } else {
         store.dispatch(resetCustomer());
