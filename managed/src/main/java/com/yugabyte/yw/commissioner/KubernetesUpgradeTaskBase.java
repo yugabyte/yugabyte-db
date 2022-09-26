@@ -14,7 +14,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -125,6 +127,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
+
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
             placementInfo,
@@ -143,8 +151,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.MASTER,
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
-          primaryCluster.userIntent.universeOverrides,
-          primaryCluster.userIntent.azOverrides,
+          universeOverrides,
+          azOverrides,
           isMasterChanged,
           isTServerChanged,
           newNamingStyle,
@@ -164,8 +172,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.TSERVER,
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
-          primaryCluster.userIntent.universeOverrides,
-          primaryCluster.userIntent.azOverrides,
+          universeOverrides,
+          azOverrides,
           false, // master change is false since it has already been upgraded.
           isTServerChanged,
           newNamingStyle,
@@ -189,8 +197,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             ServerType.TSERVER,
             softwareVersion,
             taskParams().sleepAfterTServerRestartMillis,
-            primaryCluster.userIntent.universeOverrides,
-            primaryCluster.userIntent.azOverrides,
+            universeOverrides,
+            azOverrides,
             false, // master change is false since it has already been upgraded.
             isTServerChanged,
             newNamingStyle,

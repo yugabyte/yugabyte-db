@@ -4090,13 +4090,35 @@
       "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
+    "KubernetesOverrideError" : {
+      "properties" : {
+        "errorString" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "KubernetesOverridesResponse" : {
+      "properties" : {
+        "overridesErrors" : {
+          "items" : {
+            "$ref" : "#/definitions/KubernetesOverrideError"
+          },
+          "type" : "array"
+        }
+      },
+      "type" : "object"
+    },
     "KubernetesOverridesUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
         },
         "azOverrides" : {
-          "type" : "string"
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
         },
         "backupInProgress" : {
           "type" : "boolean"
@@ -9123,7 +9145,10 @@
           "type" : "string"
         },
         "azOverrides" : {
-          "type" : "string"
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
         },
         "dedicatedNodes" : {
           "type" : "boolean"
@@ -17862,6 +17887,39 @@
         "tags" : [ "User management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/validate_kubernetes_overrides" : {
+      "post" : {
+        "description" : "Returns possible errors.",
+        "operationId" : "validateKubernetesOverrides",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UniverseConfigureTaskParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseConfigureTaskParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/KubernetesOverridesResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Validate kubernetes overrides.",
+        "tags" : [ "KubernetesOverridesController" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/xcluster_configs" : {
       "post" : {
         "description" : "",
@@ -18624,6 +18682,8 @@
     "name" : "Grafana Dashboard"
   }, {
     "name" : "Instance types"
+  }, {
+    "name" : "KubernetesOverridesController"
   }, {
     "name" : "License management"
   }, {
