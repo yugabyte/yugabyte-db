@@ -27,7 +27,7 @@ A role is a set of predefined permissions within YugabyteDB Anywhere. The follow
   * Manage the user access control by creating and managing users.
 
   For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).
-* **Admin** has privilege that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
+* **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 * **Backup Admin** has access the backup related tasks, such as the following:
 
   * Manage database backups and restore operations.
