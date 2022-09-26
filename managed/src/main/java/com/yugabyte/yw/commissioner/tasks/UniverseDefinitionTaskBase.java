@@ -1311,9 +1311,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+  protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
@@ -1322,6 +1320,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.rootCA = taskParams().rootCA;
     params.clientRootCA = taskParams().clientRootCA;
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    return params;
+  }
+
+  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
