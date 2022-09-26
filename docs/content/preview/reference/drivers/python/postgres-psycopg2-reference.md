@@ -15,15 +15,15 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
-    <a href="/preview/reference/drivers/python/yugabyte-psycopg2-reference" class="nav-link ">
+    <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      YugabyteDB Psycopg2
+      YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
   <li >
-    <a href="/preview/reference/drivers/python/postgres-psycopg2-reference" class="nav-link active">
+    <a href="../postgres-psycopg2-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2
+      PostgreSQL Psycopg2 Driver
     </a>
   </li>
 </ul>
@@ -32,11 +32,11 @@ Psycopg is the most popular PostgreSQL database adapter for the Python programmi
 
 ## Fundamentals
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](/preview/develop/build-apps/python/ysql-psycopg2) in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/python/ysql-psycopg2).
 
-Let us break down the quick start example and understand how to perform the common tasks required for Python application development using the PostgreSQL Psycopg driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Python application development using the PostgreSQL Psycopg driver.
 
-### Download the Driver Dependency
+### Download the driver dependency
 
 Building Psycopg requires a few prerequisites (a C compiler, some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#install-from-source) and the [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
@@ -67,23 +67,23 @@ Python applications can connect to and query the YugabyteDB database using the f
 
 - Import the psycopg2 package.
 
-   ```python
-   import psycopg2
-   ```
+    ```python
+    import psycopg2
+    ```
 
 - The Connection details can be provided as a string or a dictionary.
 
-   Connection String
+    Connection String
 
-   ```python
-   "dbname=database_name host=hostname port=port user=username  password=password"
-   ```
+    ```python
+    "dbname=database_name host=hostname port=port user=username  password=password"
+    ```
 
-   Connection Dictionary
+    Connection Dictionary
 
-   ```python
-   user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
-   ```
+    ```python
+    user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name'
+    ```
 
 The following table describes the connection parameters required to connect to the YugabyteDB database
 
@@ -97,19 +97,19 @@ The following table describes the connection parameters required to connect to t
 
 The following is an example connection string for connecting to YugabyteDB.
 
-   ```python
-   conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
-   ```
+```python
+conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
+```
 
 ### Create a cursor
 
-To execute any sql commands, a cursor needs to be created after a connection is made. It allows Python code to execute PostgreSQL commands in a database session. Cursors are created by the `connection.cursor()` method; they are bound to the connection for the entire lifetime, and all the commands are executed in the context of the database session wrapped by the connection.
+To execute any SQL commands, a cursor needs to be created after a connection is made. It allows Python code to execute PostgreSQL commands in a database session. Cursors are created by the `connection.cursor()` method; they are bound to the connection for the entire lifetime, and all the commands are executed in the context of the database session wrapped by the connection.
 
 ```python
 cur = conn.cursor()
 ```
 
-### Create table
+### Create tables
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `cursor.execute(statement)` method, using the following example:
 
@@ -118,20 +118,18 @@ CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varchar, age int, 
 ```
 
 ```python
-
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte')
 cur = conn.cursor()
 cur.execute('CREATE TABLE IF NOT EXISTS employee (id int PRIMARY KEY, name varchar, age int, language varchar)')
-
 ```
 
-### Read and Write Data
+### Read and write data
 
-#### Insert Data
+#### Insert data
 
 To write data into YugabyteDB, execute the `INSERT` statement using the `cursor.execute(statement)` method.
 
-For example,
+For example:
 
 ```sql
 INSERT INTO employee VALUES (1, 'John', 35, 'Java')
@@ -162,11 +160,11 @@ try {
 }
 ``` -->
 
-#### Query Data
+#### Query data
 
 To query data from YugabyteDB tables, execute the `SELECT` statement using `cursor.execute(statement)` method followed by `cursor.fetchall()` method. `fetchall()` fetches all the rows of a query result, returning them as a list of tuples. An empty list is returned if there are no records to fetch.
 
-For example,
+For example:
 
 ```sql
 SELECT * from employee;
@@ -181,7 +179,7 @@ for row in rows:
   print("\nQuery returned: %s, %s, %s" % (row[0], row[1], row[2]))
 ```
 
-### Configure SSL/TLS
+## Configure SSL/TLS
 
 Psycopg2 supports several SSL modes, as follows:
 
