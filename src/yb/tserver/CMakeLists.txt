@@ -192,6 +192,7 @@ set(TSERVER_SRCS
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
+  xcluster_safe_time_map.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 set(TSERVER_DEPS

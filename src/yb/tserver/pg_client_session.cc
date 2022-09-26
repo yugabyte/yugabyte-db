@@ -40,6 +40,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -50,6 +51,9 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
+DEFINE_bool(xcluster_consistent_reads, false, "Atomic reads for xcluster");
+TAG_FLAG(xcluster_consistent_reads, experimental);
+TAG_FLAG(xcluster_consistent_reads, runtime);
 
 namespace yb {
 namespace tserver {
@@ -361,12 +365,14 @@ client::YBSessionPtr CreateSession(
 PgClientSession::PgClientSession(
     client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, uint64_t id)
+    PgTableCache* table_cache, uint64_t id,
+    const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map)
     : client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
-      table_cache_(*table_cache), id_(id) {
-}
+      table_cache_(*table_cache),
+      id_(id),
+      xcluster_safe_time_map_(xcluster_safe_time_map) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -666,6 +672,40 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
   FATAL_INVALID_ENUM_VALUE(ReadTimeManipulation, manipulation);
 }
 
+Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
+    const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
+  // Early exit if namespace not provided or atomic reads not enabled
+  if (options.namespace_id().empty() || !xcluster_safe_time_map_ ||
+      !GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+    return Status::OK();
+  }
+
+  auto safe_time = xcluster_safe_time_map_->GetSafeTime(options.namespace_id());
+
+  if (safe_time) {
+    RSTATUS_DCHECK(
+        !safe_time->is_special(), TryAgain,
+        Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
+
+    // read_point is set for Distributed txns.
+    // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
+    // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
+    // to reset it back to the safe time.
+    if (read_point->GetReadTime().read.is_special() ||
+        read_point->GetReadTime().read > safe_time.get()) {
+      read_point->SetReadTime(ReadHybridTime::SingleTime(safe_time.get()), {} /* local_limits */);
+      VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
+    }
+  } else {
+    // NotFound is the only acceptable status
+    if (!safe_time.status().IsNotFound()) {
+      return safe_time.status();
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
 PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
   const auto& options = req.options();
@@ -727,6 +767,8 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
       VLOG_WITH_PREFIX(3) << "Keep read time: " << session->read_point()->GetReadTime();
     }
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, session->read_point()));
 
   if (options.defer_read_point()) {
     // This call is idempotent, meaning it has no effect after the first call.
@@ -801,6 +843,9 @@ Status PgClientSession::BeginTransactionIfNecessary(
                         << ", new read time";
     RETURN_NOT_OK(txn->Init(isolation));
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, &txn->read_point()));
+
   if (saved_priority_) {
     priority = *saved_priority_;
     saved_priority_ = boost::none;
