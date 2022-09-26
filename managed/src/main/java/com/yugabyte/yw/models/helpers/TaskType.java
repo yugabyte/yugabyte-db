@@ -47,7 +47,7 @@ public enum TaskType {
 
   CreatePitrConfig("CreatePitrConfig"),
 
-  RestoreSnapshot("RestoreSnapshot"),
+  RestoreSnapshotSchedule("RestoreSnapshotSchedule"),
 
   EditUniverse("EditUniverse"),
 
