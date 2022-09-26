@@ -43,12 +43,6 @@ class ConsumerRegistryPB;
 
 } // namespace cdc
 
-namespace client {
-
-class YBClient;
-
-} // namespace client
-
 namespace tserver {
 namespace enterprise {
 
@@ -69,12 +63,13 @@ class CDCConsumer {
   static Result<std::unique_ptr<CDCConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
-      TabletServer* tserver);
+     TabletServer* tserver);
 
   CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
-      std::unique_ptr<CDCClient> local_client);
+      std::unique_ptr<CDCClient> local_client,
+      client::TransactionManager* transaction_manager);
 
   ~CDCConsumer();
   void Shutdown() EXCLUDES(should_run_mutex_);
@@ -104,6 +99,8 @@ class CDCConsumer {
   Status ReloadCertificates();
 
   Status PublishXClusterSafeTime();
+
+  client::TransactionManager* TransactionManager();
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -174,6 +171,12 @@ class CDCConsumer {
 
   bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_);
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
+
+  client::TransactionManager* transaction_manager_;
+
+  client::YBTablePtr global_transaction_status_table_;
+
+  bool enable_replicate_transaction_status_table_;
 };
 
 } // namespace enterprise

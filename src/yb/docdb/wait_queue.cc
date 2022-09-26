@@ -36,6 +36,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -47,6 +48,37 @@ DEFINE_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, advanced);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, hidden);
 TAG_FLAG(wait_for_relock_unblocked_txn_keys_ms, runtime);
+
+DEFINE_uint64(force_single_shard_waiter_retry_ms, 30000,
+              "The amount of time to wait before sending the client of a single shard transaction "
+              "a retryable error. Such clients are periodically sent a retryable error to ensure "
+              "we don't maintain waiters in the wait queue for unresponsive or disconnected "
+              "clients. This is not required for multi-tablet transactions which have a "
+              "transaction ID and are rolled back if the transaction coordinator does not receive "
+              "a heartbeat, since for these we will eventually discover that the transaction has "
+              "been rolled back and remove the waiter. If set to zero, this will default to 30s.");
+
+METRIC_DEFINE_coarse_histogram(
+    tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
+    yb::MetricUnit::kMilliseconds,
+    "The amount of time a still-waiting transaction has been in the wait queue");
+METRIC_DEFINE_coarse_histogram(
+    tablet, wait_queue_finished_waiting_latency, "Wait Queue - Total Waiting Time",
+    yb::MetricUnit::kMilliseconds,
+    "The amount of time an unblocked transaction spent in the wait queue");
+METRIC_DEFINE_coarse_histogram(
+    tablet, wait_queue_blockers_per_waiter, "Wait Queue - Blockers per Waiter",
+    yb::MetricUnit::kTransactions, "The number of blockers a waiter is stuck on in the wait queue");
+METRIC_DEFINE_coarse_histogram(
+    tablet, wait_queue_waiters_per_blocker, "Wait Queue - Waiters per Blocker",
+    yb::MetricUnit::kTransactions,
+    "The number of waiters stuck on a particular blocker in the wait queue");
+METRIC_DEFINE_gauge_uint64(
+    tablet, wait_queue_num_waiters, "Wait Queue - Num Waiters",
+    yb::MetricUnit::kTransactions, "The number of waiters stuck on a blocker in the wait queue");
+METRIC_DEFINE_gauge_uint64(
+    tablet, wait_queue_num_blockers, "Wait Queue - Num Blockers",
+    yb::MetricUnit::kTransactions, "The number of unique blockers tracked in a wait queue");
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -62,6 +94,14 @@ CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
     return FLAGS_wait_for_relock_unblocked_txn_keys_ms * 1ms + CoarseMonoClock::Now();
   }
   return kDefaultWaitForRelockUnblockedTxnKeys + CoarseMonoClock::Now();
+}
+
+auto GetMaxSingleShardWaitDuration() {
+  constexpr uint64_t kDefaultMaxSingleShardWaitDurationMs = 30000;
+  if (FLAGS_force_single_shard_waiter_retry_ms == 0) {
+    return kDefaultMaxSingleShardWaitDurationMs * 1ms;
+  }
+  return FLAGS_force_single_shard_waiter_retry_ms * 1ms;
 }
 
 YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted));
@@ -100,6 +140,10 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
   }
 }
 
+inline auto GetMillis(CoarseMonoClock::Duration duration) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+}
+
 // Data for an active transaction which is waiting on some number of other transactions with which
 // it has detected conflicts. The blockers field owns shared_ptr references to BlockerData of
 // pending transactions it's blocked by. These references keep the BlockerData instances alive in
@@ -111,13 +155,15 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              const std::vector<BlockerDataAndSubtxnInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_,
-             rpc::Rpcs* rpcs)
+             rpc::Rpcs* rpcs,
+             scoped_refptr<Histogram>* finished_waiting_latency)
       : id(id_),
         locks(locks_),
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
         callback(std::move(callback_)),
         waiter_registration(std::move(waiter_registration_)),
+        finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
         rpcs_(*rpcs) {}
 
@@ -131,12 +177,20 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   void InvokeCallback(const Status& status) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
-    if (!status.ok() || !unlocked_) {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (!unlocked_) {
+      LOG_WITH_PREFIX(INFO)
+          << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
+          << "be rare.";
+      return;
+    }
+    finished_waiting_latency_->Increment(GetMillis(CoarseMonoClock::Now() - created_at));
+    if (!status.ok()) {
       callback(status);
       return;
     }
     *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_.reset();
+    unlocked_ = std::nullopt;;
     callback(locks->status());
   }
 
@@ -149,6 +203,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
   void TriggerStatusRequest(HybridTime now, client::YBClient* client, StatusCb cb) {
     UniqueLock<decltype(mutex_)> l(mutex_);
+    if (!unlocked_) {
+      VLOG_WITH_PREFIX(1)
+          << "Skipping GetTransactionStatus RPC for waiter whose callback was already invoked.";
+      return;
+    }
 
     if (handle_ != rpcs_.InvalidHandle()) {
       VLOG_WITH_PREFIX(1)
@@ -192,9 +251,9 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
  private:
-  std::optional<UnlockedBatch> unlocked_ = std::nullopt;
-
+  scoped_refptr<Histogram>& finished_waiting_latency_;
   mutable rw_spinlock mutex_;
+  std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   rpc::Rpcs& rpcs_;
   rpc::Rpcs::Handle handle_ GUARDED_BY(mutex_) = rpcs_.InvalidHandle();
 };
@@ -288,6 +347,10 @@ class BlockerData {
 const Status kShuttingDownError = STATUS(
     IllegalState, "Tablet shutdown in progress - there may be a new leader.");
 
+const Status kRetrySingleShardOp = STATUS(
+    TimedOut,
+    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
+
 } // namespace
 
 class WaitQueue::Impl {
@@ -295,9 +358,15 @@ class WaitQueue::Impl {
   Impl(TransactionStatusManager* txn_status_manager, const std::string& permanent_uuid,
        WaitingTxnRegistry* waiting_txn_registry,
        const std::shared_future<client::YBClient*>& client_future,
-       const server::ClockPtr& clock)
+       const server::ClockPtr& clock, const MetricEntityPtr& metrics)
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
-        waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock) {}
+        waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
+        pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
+        finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
+        blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
+        waiters_per_blocker_(METRIC_wait_queue_waiters_per_blocker.Instantiate(metrics)),
+        total_waiters_(METRIC_wait_queue_num_waiters.Instantiate(metrics, 0)),
+        total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)) {}
 
   ~Impl() {
     if (StartShutdown()) {
@@ -327,10 +396,6 @@ class WaitQueue::Impl {
       }
 
       if (waiter_status_.contains(waiter_txn_id)) {
-        // TODO(pessimistic): If two single-shard transactions come to the same tablet, we will hit
-        // this branch since they will both have waiter_txn_id=TransactionId::Nil(). We should
-        // handle this by storing single-shard transactions separately rather than indexing by
-        // TransactionId. See: https://github.com/yugabyte/yugabyte-db/issues/14014
         LOG_WITH_PREFIX_AND_FUNC(DFATAL)
             << "Existing waiter already found - " << waiter_txn_id << ". "
             << "This should not happen.";
@@ -378,8 +443,14 @@ class WaitQueue::Impl {
 
       waiter_data = std::make_shared<WaiterData>(
           waiter_txn_id, locks, status_tablet_id, std::move(blocker_datas), std::move(callback),
-          std::move(scoped_reporter), &rpcs_);
-      waiter_status_[waiter_txn_id] = waiter_data;
+          std::move(scoped_reporter), &rpcs_, &finished_waiting_latency_);
+      if (waiter_data->IsSingleShard()) {
+        DCHECK(single_shard_waiters_.size() == 0 ||
+               waiter_data->created_at >= single_shard_waiters_.front()->created_at);
+        single_shard_waiters_.push_front(waiter_data);
+      } else {
+        waiter_status_[waiter_txn_id] = waiter_data;
+      }
     }
 
     DCHECK(waiter_data);
@@ -399,6 +470,7 @@ class WaitQueue::Impl {
     const std::string kWaiterReason = "Getting status for waiter in wait queue";
     std::vector<WaiterDataPtr> waiters;
     std::vector<TransactionId> blockers;
+    std::vector<WaiterDataPtr> stale_single_shard_waiters;
 
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
@@ -407,18 +479,20 @@ class WaitQueue::Impl {
       }
       for (auto it = waiter_status_.begin(); it != waiter_status_.end(); ++it) {
         auto& waiter = it->second;
-        if (!waiter->IsSingleShard()) {
-          DCHECK(!waiter->status_tablet.empty());
-          waiters.push_back(waiter);
-        }
+        blockers_per_waiter_->Increment(waiter->blockers.size());
+        DCHECK(!waiter->IsSingleShard());
+        DCHECK(!waiter->status_tablet.empty());
+        waiters.push_back(waiter);
       }
       for (auto it = blocker_status_.begin(); it != blocker_status_.end();) {
         if (auto blocker = it->second.lock()) {
-          if (blocker->CleanAndGetSize() != 0) {
+          auto num_waiters = blocker->CleanAndGetSize();
+          if (num_waiters != 0) {
             VLOG_WITH_PREFIX(4)
                 << Format("blocker($0) has waiters($1)", it->first, blocker->DEBUG_GetWaiterIds());
             blockers.push_back(it->first);
             it++;
+            waiters_per_blocker_->Increment(num_waiters);
             continue;
           }
           VLOG_WITH_PREFIX(4) << "Erasing blocker with no live waiters " << it->first;
@@ -427,12 +501,22 @@ class WaitQueue::Impl {
         }
         it = blocker_status_.erase(it);
       }
+      EraseIf([&stale_single_shard_waiters](const auto& waiter) {
+        if (waiter->created_at + GetMaxSingleShardWaitDuration() < CoarseMonoClock::Now()) {
+          stale_single_shard_waiters.push_back(waiter);
+          return true;
+        }
+        return false;
+      }, &single_shard_waiters_);
+      total_waiters_->set_value(waiter_status_.size() + single_shard_waiters_.size());
+      total_blockers_->set_value(blocker_status_.size());
     }
 
     for (const auto& waiter : waiters) {
       auto duration = CoarseMonoClock::Now() - waiter->created_at;
       auto seconds = duration / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
+      pending_time_waiting_->Increment(GetMillis(duration));
       auto transaction_id = waiter->id;
       StatusRequest request {
         .id = &transaction_id,
@@ -468,10 +552,15 @@ class WaitQueue::Impl {
       };
       txn_status_manager_->RequestStatusAt(request);
     }
+
+    for (const auto& waiter : stale_single_shard_waiters) {
+      waiter->InvokeCallback(kRetrySingleShardOp);
+    }
   }
 
   bool StartShutdown() EXCLUDES(mutex_) {
     decltype(waiter_status_) waiter_status_copy;
+    decltype(single_shard_waiters_) single_shard_waiters_copy;
 
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
@@ -480,11 +569,15 @@ class WaitQueue::Impl {
       }
       shutting_down_ = true;
       waiter_status_copy.swap(waiter_status_);
+      single_shard_waiters_copy.swap(single_shard_waiters_);
       blocker_status_.clear();
     }
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
       waiter_data->ShutdownStatusRequest();
+      waiter_data->InvokeCallback(kShuttingDownError);
+    }
+    for (const auto& waiter_data : single_shard_waiters_copy) {
       waiter_data->InvokeCallback(kShuttingDownError);
     }
     return !shutdown_complete_;
@@ -626,7 +719,13 @@ class WaitQueue::Impl {
 
   void InvokeWaiterCallback(
       const Status& status, const WaiterDataPtr& waiter_data) EXCLUDES(mutex_) {
+    if (waiter_data->IsSingleShard()) {
+      waiter_data->InvokeCallback(status);
+      return;
+    }
+
     auto res = 0ul;
+
     {
       UniqueLock<decltype(mutex_)> l(mutex_);
       res = waiter_status_.erase(waiter_data->id);
@@ -693,6 +792,8 @@ class WaitQueue::Impl {
       TransactionIdHash>
     waiter_status_ GUARDED_BY(mutex_);
 
+  std::list<WaiterDataPtr> single_shard_waiters_ GUARDED_BY(mutex_);
+
   rpc::Rpcs rpcs_;
 
   TransactionStatusManager* const txn_status_manager_;
@@ -700,6 +801,12 @@ class WaitQueue::Impl {
   WaitingTxnRegistry* const waiting_txn_registry_;
   const std::shared_future<client::YBClient*>& client_future_;
   const server::ClockPtr& clock_;
+  scoped_refptr<Histogram> pending_time_waiting_;
+  scoped_refptr<Histogram> finished_waiting_latency_;
+  scoped_refptr<Histogram> blockers_per_waiter_;
+  scoped_refptr<Histogram> waiters_per_blocker_;
+  scoped_refptr<AtomicGauge<uint64_t>> total_waiters_;
+  scoped_refptr<AtomicGauge<uint64_t>> total_blockers_;
 };
 
 WaitQueue::WaitQueue(
@@ -707,8 +814,10 @@ WaitQueue::WaitQueue(
     const std::string& permanent_uuid,
     WaitingTxnRegistry* waiting_txn_registry,
     const std::shared_future<client::YBClient*>& client_future,
-    const server::ClockPtr& clock):
-  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock)) {}
+    const server::ClockPtr& clock,
+    const MetricEntityPtr& metrics):
+  impl_(new Impl(txn_status_manager, permanent_uuid, waiting_txn_registry, client_future, clock,
+                 metrics)) {}
 
 WaitQueue::~WaitQueue() = default;
 

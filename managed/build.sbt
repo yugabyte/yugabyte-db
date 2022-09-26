@@ -187,6 +187,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -404,14 +405,15 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.25-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b3"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
   "com.typesafe.akka" %% "akka-actor" % "2.5.16"

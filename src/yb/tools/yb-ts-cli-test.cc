@@ -125,9 +125,9 @@ TEST_F(YBTsCliTest, TestVModuleUpdate) {
   }
 
   {
-    // Should NOT be able to update for any module unspecified at start-up.
+    // Should be able to update for any module unspecified at start-up.
     argv.push_back("foo=1,baz=2");
-    ASSERT_NOK(Subprocess::Call(argv));
+    ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();
   }
 
@@ -290,9 +290,16 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet.tablet_status().tablet_id();
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(0)->uuid()].get(),
+                                            tablet_id, timeout));
     argv.push_back(tablet_id);
     ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();
+
+    for (size_t i = 1; i < cluster_->num_tablet_servers(); ++i) {
+      ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
+                                              tablet_id, timeout));
+    }
   }
 
   auto wait_until_rows = workload.rows_inserted() + 1000;
@@ -327,6 +334,8 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
 
   for (const auto& tablet : tablets) {
     const auto& tablet_id = tablet.tablet_status().tablet_id();
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(0)->uuid()].get(),
+                                            tablet_id, timeout));
     argv.push_back(tablet_id);
     ASSERT_OK(Subprocess::Call(argv));
     argv.pop_back();

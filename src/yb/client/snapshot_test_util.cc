@@ -265,6 +265,12 @@ Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
 Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
     const TableHandle& table, const YQLDatabase db_type, const std::string& db_name,
     const WaitSnapshot wait_snapshot, const MonoDelta interval, const MonoDelta retention) {
+  return CreateSchedule(table.table(), db_type, db_name, wait_snapshot, interval, retention);
+}
+
+Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
+    const YBTablePtr table, const YQLDatabase db_type, const std::string& db_name,
+    const WaitSnapshot wait_snapshot, const MonoDelta interval, const MonoDelta retention) {
   rpc::RpcController controller;
   controller.set_timeout(60s);
   master::CreateSnapshotScheduleRequestPB req;
@@ -273,7 +279,9 @@ Result<SnapshotScheduleId> SnapshotTestUtil::CreateSchedule(
   options.set_retention_duration_sec(retention.ToSeconds());
   auto& tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
   master::TableIdentifierPB* table_identifier = tables.Add();
-  table_identifier->set_table_id(table.table()->id());
+  if (table != nullptr) {
+    table_identifier->set_table_id(table->id());
+  }
   master::NamespaceIdentifierPB* namespace_identifier = table_identifier->mutable_namespace_();
   namespace_identifier->set_database_type(db_type);
   namespace_identifier->set_name(db_name);

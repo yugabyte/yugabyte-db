@@ -128,9 +128,14 @@ class TransactionParticipant : public TransactionStatusManager {
   // he should just append it to appropriate value.
   //
   // Returns boost::none when transaction is unknown.
+  //
+  // When external_transaction is set for xcluster transactions, the function ignores the start time
+  // of the txn when fetching the transaction since the txn status record and intent bach can come
+  // out of order.
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool external_transaction = false);
 
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
@@ -232,7 +237,7 @@ class TransactionParticipant : public TransactionStatusManager {
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
  private:
-  int64_t RegisterRequest() override;
+  Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
   class Impl;

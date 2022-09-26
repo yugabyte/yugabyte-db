@@ -2,6 +2,8 @@
  Schema |                      Name                      |   Type   |        Owner
 --------+------------------------------------------------+----------+----------------------
  public | chat_user                                      | table    | yugabyte_test
+ public | p1                                             | table    | yugabyte_test
+ public | p2                                             | table    | yugabyte_test
  public | rls_private                                    | table    | yugabyte_test
  public | rls_public                                     | table    | yugabyte_test
  public | tbl1                                           | table    | yugabyte_test
@@ -35,7 +37,7 @@
  public | tr1                                            | table    | yugabyte_test
  public | tr2                                            | table    | yugabyte_test
  public | uaccount                                       | table    | regress_rls_alice
-(34 rows)
+(36 rows)
 
           List of tablespaces
     Name    |     Owner     | Location
@@ -85,3 +87,30 @@
  grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 |
 (7 rows)
 
+                 Table "public.p1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
+Indexes:
+    "p1_pkey" PRIMARY KEY, lsm (k HASH)
+    "c1" UNIQUE CONSTRAINT, lsm (v ASC)
+
+                 Table "public.p2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null | 
+ v      | text    |           |          | 
+Indexes:
+    "p2_pkey" PRIMARY KEY, lsm (k HASH)
+    "c2" UNIQUE CONSTRAINT, lsm (v HASH)
+
+     yb_get_range_split_clause
+------------------------------------
+ SPLIT AT VALUES (('foo'), ('qux'))
+(1 row)
+
+ num_tablets
+-------------
+          10
+(1 row)

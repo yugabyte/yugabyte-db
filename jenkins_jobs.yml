@@ -2,7 +2,7 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang12
+    compiler: clang13
     build_type: asan
     release_artifact: false
 
@@ -12,12 +12,12 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang13
+    compiler: clang14
     build_type: debug
     release_artifact: false
 
   - os: alma8
-    compiler: clang13
+    compiler: clang14
     build_type: release
     release_artifact: true
 
@@ -49,6 +49,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu20.04
-    compiler: clang13
+    compiler: clang14
     build_type: debug
     release_artifact: false

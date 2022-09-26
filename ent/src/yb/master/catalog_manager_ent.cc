@@ -3042,20 +3042,6 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
                                               rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
 
-  ListNamespacesRequestPB list_namespace_req;
-  list_namespace_req.set_database_type(YQL_DATABASE_PGSQL);
-  ListNamespacesResponsePB list_namespace_resp;
-  RETURN_NOT_OK(ListNamespaces(&list_namespace_req, &list_namespace_resp));
-  for (const auto& ns : list_namespace_resp.namespaces()) {
-    ListTablegroupsRequestPB tablegroup_req;
-    tablegroup_req.set_namespace_id(ns.id());
-    ListTablegroupsResponsePB tablegroup_resp;
-    RETURN_NOT_OK(ListTablegroups(&tablegroup_req, &tablegroup_resp, rpc));
-    if (tablegroup_resp.has_error() || tablegroup_resp.tablegroups_size() > 0) {
-      return STATUS(NotSupported, "Not allowed to create snapshot schedule "
-                                  "when one or more tablegroups exist on the cluster");
-    }
-  }
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
       *req, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
@@ -3129,12 +3115,14 @@ Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& c
   }
   resp->set_cluster_config_version(cluster_config.version());
   if (cluster_config.has_consumer_registry()) {
+    LOG(INFO) << "CONSUMER REGISTRY";
     {
       auto l = xcluster_safe_time_info_.LockForRead();
       *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
     }
 
     if (req->cluster_config_version() < cluster_config.version()) {
+      LOG(INFO) << "SENDING " << cluster_config.consumer_registry().ShortDebugString();
       *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
     }
   }
@@ -5408,7 +5396,10 @@ Status CatalogManager::InitCDCConsumer(
 
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
-  auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
+  consumer_registry->set_enable_replicate_transaction_status_table(
+       GetAtomicFlag(&FLAGS_enable_replicate_transaction_status_table));
+  auto* producer_map = consumer_registry->mutable_producer_map();
   auto it = producer_map->find(producer_universe_uuid);
   if (it != producer_map->end()) {
     return STATUS(InvalidArgument, "Already created a consumer for this universe");
@@ -6776,6 +6767,26 @@ bool CatalogManager::IsCdcEnabled(
     const TableInfo& table_info) const {
   SharedLock lock(mutex_);
   return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
+}
+
+// This function will be replaced with IsTablePartOfCDCSDK when PR for
+// tablet split will be merged: https://phabricator.dev.yugabyte.com/D18638
+bool CatalogManager::IsCdcSdkEnabled(const TableInfo& table_info) {
+  master::ListCDCStreamsRequestPB list_req;
+  master::ListCDCStreamsResponsePB list_resp;
+  list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+  list_req.set_namespace_id(table_info.namespace_id());
+  RETURN_NOT_OK_RET(ListCDCStreams(&list_req, &list_resp), false);
+  if (list_resp.streams().size() != 0) {
+    for (auto stream : list_resp.streams()) {
+      for (auto table_id : stream.table_id()) {
+        if (table_id == table_info.id()) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {

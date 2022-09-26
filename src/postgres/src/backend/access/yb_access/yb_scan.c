@@ -2281,6 +2281,7 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
 static double ybcIndexEvalClauseSelectivity(Relation index,
+											double reltuples,
 											Bitmapset *qual_cols,
 											bool is_unique_idx,
                                             Bitmapset *hash_key,
@@ -2302,8 +2303,11 @@ static double ybcIndexEvalClauseSelectivity(Relation index,
 	if (bms_is_subset(primary_key, qual_cols))
 	{
 		/* For unique indexes full key guarantees single row. */
-		return is_unique_idx ? YBC_SINGLE_ROW_SELECTIVITY
-						     : YBC_SINGLE_KEY_SELECTIVITY;
+		if (is_unique_idx)
+			return (reltuples == 0) ? YBC_SINGLE_ROW_SELECTIVITY : 
+									 (double)(1.0 / reltuples);
+		else
+			return YBC_SINGLE_KEY_SELECTIVITY;
 	}
 
 	return YBC_HASH_SCAN_SELECTIVITY;
@@ -2401,6 +2405,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		else
 		{
 			*selectivity = ybcIndexEvalClauseSelectivity(index,
+														baserel->tuples,
 														scan_plan.sk_cols,
 														is_unique,
 														scan_plan.hash_key,
@@ -2435,6 +2440,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
 		 */
 		double const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
+																	  baserel->tuples,
 																	  const_quals,
 																	  is_unique,
 																	  scan_plan.hash_key,

@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -26,7 +26,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -38,7 +37,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -553,7 +551,7 @@ public class BackupsControllerTest extends FakeDBApplication {
         Json.parse(
             "{\"backupType\": \"PGSQL_TABLE_TYPE\","
                 + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo/"
+                + "\"storageLocation\": \"s3://foo-1/"
                 + "univ-"
                 + defaultUniverse.universeUUID.toString()
                 + "/ybc_backup/bar\"}");
@@ -569,7 +567,7 @@ public class BackupsControllerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(RestoreBackupParams.class);
 
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString(), anyString())).thenCallRealMethod();
+    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackupYb(bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
@@ -613,7 +611,7 @@ public class BackupsControllerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(RestoreBackupParams.class);
 
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString(), anyString())).thenCallRealMethod();
+    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackupYb(bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
@@ -1060,7 +1058,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(true);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result = editBackup(defaultUser, bodyJson, backup.backupUUID);
@@ -1199,7 +1196,7 @@ public class BackupsControllerTest extends FakeDBApplication {
             new PlatformServiceException(
                 BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
         .when(mockBackupUtil)
-        .validateStorageConfigOnLocations(any(), any());
+        .validateStorageConfigOnBackup(any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     Result result =
@@ -1212,7 +1209,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testInvalidEditBackupTaskParmas() {
+  public void testInvalidEditBackupTaskParams() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
@@ -1221,7 +1218,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     UUID invalidConfigUUID = UUID.randomUUID();
     backup.updateStorageConfigUUID(invalidConfigUUID);
-    // when(mockBackupUtil.validateStorageConfigOnLocations(any(), any())).thenReturn(false);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("timeBeforeDeleteFromPresentInMillis", "0");
     Result result =
@@ -1376,5 +1372,57 @@ public class BackupsControllerTest extends FakeDBApplication {
             "Got error getting throttle params for universe {}, error: {}",
             universe.universeUUID.toString(),
             "some failure"));
+  }
+
+  @Test
+  public void testDeleteFailedIncrementalBackup() {
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    bp.baseBackupUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Failed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteCompletedIncrementalBackup() {
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    bp.baseBackupUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 0);
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 }

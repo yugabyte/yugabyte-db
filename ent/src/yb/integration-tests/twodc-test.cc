@@ -22,6 +22,7 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/cdc/cdc_service.h"
@@ -98,6 +99,8 @@ DECLARE_bool(TEST_hang_wait_replication_drain);
 DECLARE_int32(ns_replication_sync_retry_secs);
 DECLARE_int32(ns_replication_sync_backoff_secs);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_bool(TEST_disable_cleanup_applied_transactions);
 
 namespace yb {
 
@@ -280,6 +283,50 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     ASSERT_OK(pair.second->CommitFuture().get());
   }
 
+  Result<int64_t> GetCommitTimeOfTransaction(YBClient* client, const TransactionId& txn_id) {
+    auto transaction_status_table = client::YBTableName(
+          YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    std::vector<TabletId> tablet_uuids;
+    // Read from the transaction status table
+    RETURN_NOT_OK(client->GetTablets(
+        transaction_status_table, 0 /* max_tablets */, &tablet_uuids, nullptr));
+    if(static_cast<int>(tablet_uuids.size()) != FLAGS_transaction_table_num_tablets) {
+      return STATUS(InvalidArgument, "Could not fetch txn status tablets");
+    }
+    tserver::GetTransactionStatusResponsePB txn_status_resp;
+    RETURN_NOT_OK(WaitFor([&]() {
+      for (const auto& uuid : tablet_uuids) {
+        tserver::GetTransactionStatusRequestPB req;
+        req.set_tablet_id(uuid);
+        req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
+        rpc::Rpcs rpcs;
+        auto status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
+            client::GetTransactionStatus, &rpcs)(
+                CoarseMonoClock::Now() + MonoDelta::FromSeconds(30), nullptr /* tablet */,
+                client, &req);
+        if (!status_future.valid()) {
+          continue;
+        }
+        if (status_future.wait_for(NonTsanVsTsan(3s, 10s)) != std::future_status::ready) {
+          continue;
+        }
+        auto resp = status_future.get();
+        if (!resp.ok()) {
+          continue;
+        }
+        if (resp->status().size() != 1) {
+          continue;
+        }
+        if (resp->status(0) != TransactionStatus::COMMITTED) {
+          continue;
+        }
+        txn_status_resp = *resp;
+        return true;
+      }
+      return false;
+    }, MonoDelta::FromSeconds(30), "Commited transaction"));
+    return txn_status_resp.status_hybrid_time(0);
+  }
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -1294,6 +1341,45 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTable) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId2));
   // Delete the second replication id and ensure we poll for nothing.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  FLAGS_TEST_disable_cleanup_applied_transactions = true;
+  constexpr int kNumTablets = 1;
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {kNumTablets}, {kNumTablets}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
+  ASSERT_OK(txn.second->CommitFuture().get());
+  auto txn_id = txn.second->id();
+
+  auto commit_ht_producer = ASSERT_RESULT(GetCommitTimeOfTransaction(producer_client(), txn_id));
+  auto commit_ht_consumer = ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
+  ASSERT_EQ(commit_ht_producer, commit_ht_consumer);
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithoutApply) {
+  // This is a test that should only pass when we use the new intents format along with the txn
+  // status table. We do this by disabling replication of APPLY records and ensuring that we can
+  // still read records from the committed transaction.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
+  ASSERT_OK(txn.second->CommitFuture().get());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {

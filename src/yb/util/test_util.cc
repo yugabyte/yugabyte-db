@@ -58,6 +58,7 @@ DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
+DECLARE_string(vmodule);
 
 using std::string;
 using strings::Substitute;
@@ -162,6 +163,14 @@ void OverrideFlagForSlowTests(const std::string& flag_name,
   }
   google::SetCommandLineOptionWithMode(flag_name.c_str(), new_value.c_str(),
                                        google::SET_FLAG_IF_DEFAULT);
+}
+
+void EnableVerboseLoggingForModule(const std::string& module, int level) {
+  if (!FLAGS_vmodule.empty()) {
+    FLAGS_vmodule += Format(",$0=$1", module, level);
+  } else {
+    FLAGS_vmodule = Format("$0=$1", module, level);
+  }
 }
 
 int SeedRandom() {

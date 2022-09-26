@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -54,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Arrays;
@@ -66,11 +69,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import play.Configuration;
 import play.libs.Json;
 
@@ -322,17 +325,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodeIdx index to be used in node name.
    * @param region region in which this node is present.
    * @param az zone in which this node is present.
-   * @param dedicatedTo process type that node is reserved for.
    * @return a string which can be used as the node name.
    */
   public static String getNodeName(
-      Cluster cluster,
-      String tagValue,
-      String prefix,
-      int nodeIdx,
-      String region,
-      String az,
-      @Nullable ServerType dedicatedTo) {
+      Cluster cluster, String tagValue, String prefix, int nodeIdx, String region, String az) {
     if (!tagValue.isEmpty()) {
       checkTagPattern(tagValue);
     }
@@ -353,9 +349,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       } else {
         newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az);
       }
-    }
-    if (dedicatedTo != null) {
-      newName += "-" + dedicatedTo.name().toLowerCase();
     }
 
     log.info("Node name " + newName + " at index " + nodeIdx);
@@ -412,8 +405,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   taskParams().nodePrefix,
                   node.nodeIdx,
                   node.cloudInfo.region,
-                  node.cloudInfo.az,
-                  node.dedicatedTo);
+                  node.cloudInfo.az);
           iter++;
         }
         node.isYsqlServer = isYSQL;
@@ -1164,7 +1156,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException(getName() + ": nodePrefix not set");
     }
     if (opType == UniverseOpType.CREATE
-        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
+        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0
+        && !taskParams().clusters.get(0).userIntent.dedicatedNodes) {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
@@ -1227,6 +1220,143 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
       }
+    }
+  }
+
+  protected void createCertUpdateTasks(
+      Collection<NodeDetails> nodes,
+      NodeManager.CertRotateAction certRotateAction,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    UserIntent userIntent = getUserIntent();
+
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.rootCARotationType = rootCARotationType;
+      params.clientRootCARotationType = clientRootCARotationType;
+      params.certRotateAction = certRotateAction;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createYbcUpdateCertDirsTask(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = NodeManager.CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUpdateCertDirsTask(
+      Collection<NodeDetails> nodes, ServerType serverType, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              serverType,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = NodeManager.CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+    params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected LinkedHashSet<NodeDetails> toOrderedSet(
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
+    nodeSet.addAll(nodes.getLeft());
+    nodeSet.addAll(nodes.getRight());
+    return nodeSet;
+  }
+
+  protected void createCertUpdateTasks(
+      List<NodeDetails> masters,
+      List<NodeDetails> tservers,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    // Copy new server certs to all nodes
+    createCertUpdateTasks(
+        toOrderedSet(Pair.of(masters, tservers)),
+        NodeManager.CertRotateAction.ROTATE_CERTS,
+        subTaskGroupType,
+        rootCARotationType,
+        clientRootCARotationType);
+    // Update gflags of cert directories
+    createUpdateCertDirsTask(masters, ServerType.MASTER, subTaskGroupType);
+    createUpdateCertDirsTask(tservers, ServerType.TSERVER, subTaskGroupType);
+
+    if (taskParams().ybcInstalled) {
+      createYbcUpdateCertDirsTask(tservers, subTaskGroupType);
     }
   }
 

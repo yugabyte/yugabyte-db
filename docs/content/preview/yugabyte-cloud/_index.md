@@ -12,6 +12,16 @@ menu:
     parent: yugabytedb-managed
     weight: 1
 type: homepage
+resourcesIntro: Quick Links
+resources:
+  - title: What's New
+    url: /preview/yugabyte-cloud/release-notes/
+  - title: YugabyteDB Managed FAQ
+    url: /preview/faq/yugabytedb-managed-faq/
+  - title: Example Applications
+    url: /preview/develop/build-apps/
+  - title: Troubleshoot
+    url: /preview/yugabyte-cloud/cloud-troubleshoot/
 body_class: yb-page-style
 ---
 

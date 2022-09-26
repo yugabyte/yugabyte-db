@@ -47,6 +47,7 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -69,6 +70,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
@@ -234,6 +236,9 @@ TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);
 DEFINE_int64(protege_synchronization_timeout_ms, 1000,
              "Timeout to synchronize protege before performing step down. "
              "0 to disable synchronization.");
+
+DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
+                 "Inside RaftConsensus::ReportFailureDetectedTask, skip normal election.");
 
 namespace yb {
 namespace consensus {
@@ -745,8 +750,8 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
   election_state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   election_state->proxy->RunLeaderElectionAsync(
       &election_state->req, &election_state->resp, &election_state->rpc,
-      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
-          election_state));
+      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, shared_from(this),
+                election_state));
 
   LOG_WITH_PREFIX(INFO) << "Transferring leadership to " << peer.permanent_uuid();
 
@@ -1010,6 +1015,12 @@ void RaftConsensus::ReportFailureDetectedTask() {
         old_value, MonoTime::Min(), std::memory_order_release)) {
       break;
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_skip_election_when_fail_detected)) {
+    LOG_WITH_PREFIX(INFO) << "Skip normal election when failure detected due to "
+                          << "FLAGS_TEST_skip_election_when_fail_detected";
+    return;
   }
 
   // Start an election.
@@ -2214,6 +2225,8 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
                          "Bad preceding_opid: $0, last received: $1",
                          deduped_req.preceding_op_id,
                          state_->GetLastReceivedOpIdUnlocked());
+  } else if (state_->GetLastReceivedOpIdCurLeaderUnlocked().empty()) {
+    state_->UpdateLastReceivedOpIdFromCurrentLeaderUnlocked(deduped_req.preceding_op_id);
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;

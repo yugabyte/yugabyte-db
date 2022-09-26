@@ -45,6 +45,10 @@ public enum TaskType {
 
   CreateBackup("CreateBackup"),
 
+  CreatePitrConfig("CreatePitrConfig"),
+
+  RestoreSnapshot("RestoreSnapshot"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),

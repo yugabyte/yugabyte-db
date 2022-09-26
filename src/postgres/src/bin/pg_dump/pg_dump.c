@@ -17035,6 +17035,26 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
+		const bool is_unique_index_constraint =
+			coninfo->contype == 'u' && indxinfo->indexdef;
+
+		/*
+		 * If the constraint type is unique and index definition (indexdef)
+		 * exists, it means a constraint exists for this table which is
+		 * backed by an unique index.
+		 * Note: when indexdef is not set to null, it means either
+		 * unique or non-unique index exists for a table. The indexdef
+		 * contains the full YSQL command to create the index.
+		 */
+		if (is_unique_index_constraint)
+		{
+			static const char index_def_prefix[] = "CREATE UNIQUE INDEX ";
+			Assert(strncmp(indxinfo->indexdef, index_def_prefix,
+						   strlen(index_def_prefix)) == 0);
+			appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n\n",
+							  index_def_prefix, &indxinfo->indexdef[20]);
+		}
+
 		appendPQExpBuffer(q, "ALTER TABLE ONLY %s\n",
 						  fmtQualifiedDumpable(tbinfo));
 		appendPQExpBuffer(q, "    ADD CONSTRAINT %s ",
@@ -17047,40 +17067,62 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 		}
 		else
 		{
-			appendPQExpBuffer(q, "%s (",
+			appendPQExpBuffer(q, "%s ",
 							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
-			for (k = 0; k < indxinfo->indnkeyattrs; k++)
+
+			/*
+			 * If a table has an unique constraint with index definition,
+			 * then ALTER TABLE ADD CONSTRAINT UNIQUE command must append
+			 * the USING INDEX syntax followed by the unique index name in
+			 * order to attach the index as a constraint type.
+			 */
+			if (is_unique_index_constraint)
 			{
-				int			indkey = (int) indxinfo->indkeys[k];
-				const char *attname;
-
-				if (indkey == InvalidAttrNumber)
-					break;
-				attname = getAttrName(indkey, tbinfo);
-
-				appendPQExpBuffer(q, "%s%s",
-								  (k == 0) ? "" : ", ",
-								  fmtId(attname));
+				appendPQExpBuffer(q, "USING INDEX %s",
+								  indxinfo->dobj.name);
 			}
-
-			if (indxinfo->indnkeyattrs < indxinfo->indnattrs)
-				appendPQExpBuffer(q, ") INCLUDE (");
-
-			for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
+			/*
+			 * If a table has a non-unique constraint or does not have an
+			 * index definition, the original ALTER TABLE ADD CONSTRAINT
+			 * command is used and the rest of the query is constructed.
+			 */
+			else
 			{
-				int			indkey = (int) indxinfo->indkeys[k];
-				const char *attname;
+				appendPQExpBufferChar(q, '(');
 
-				if (indkey == InvalidAttrNumber)
-					break;
-				attname = getAttrName(indkey, tbinfo);
+				for (k = 0; k < indxinfo->indnkeyattrs; k++)
+				{
+					int			indkey = (int) indxinfo->indkeys[k];
+					const char *attname;
 
-				appendPQExpBuffer(q, "%s%s",
-								  (k == indxinfo->indnkeyattrs) ? "" : ", ",
-								  fmtId(attname));
+					if (indkey == InvalidAttrNumber)
+						break;
+					attname = getAttrName(indkey, tbinfo);
+
+					appendPQExpBuffer(q, "%s%s",
+									(k == 0) ? "" : ", ",
+									fmtId(attname));
+				}
+
+				if (indxinfo->indnkeyattrs < indxinfo->indnattrs)
+					appendPQExpBuffer(q, ") INCLUDE (");
+
+				for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
+				{
+					int			indkey = (int) indxinfo->indkeys[k];
+					const char *attname;
+
+					if (indkey == InvalidAttrNumber)
+						break;
+					attname = getAttrName(indkey, tbinfo);
+
+					appendPQExpBuffer(q, "%s%s",
+									(k == indxinfo->indnkeyattrs) ? "" : ", ",
+									fmtId(attname));
+				}
+
+				appendPQExpBufferChar(q, ')');
 			}
-
-			appendPQExpBufferChar(q, ')');
 
 			/* Get the table and index properties from YB, if relevant. */
 			YbTableProperties yb_table_properties = NULL;

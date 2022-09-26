@@ -118,6 +118,8 @@ public class HealthChecker {
 
   private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
+  public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
+
   private final Environment environment;
 
   private final play.Configuration config;
@@ -434,7 +436,7 @@ public class HealthChecker {
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+    if (!runtimeConfigFactory.forUniverse(u).getBoolean("yb.health.trigger_api.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
@@ -644,7 +646,7 @@ public class HealthChecker {
     boolean testReadWrite =
         runtimeConfigFactory
             .forUniverse(params.universe)
-            .getBoolean("yb.metrics.db_read_write_test");
+            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));

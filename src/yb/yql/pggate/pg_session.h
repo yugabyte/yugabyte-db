@@ -127,6 +127,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
+  [[nodiscard]] bool HasCatalogReadPoint() const;
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -296,8 +297,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
-  Status PatchStatus(const Status& status, const PgObjectIds& relations);
-
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
@@ -356,8 +355,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const scoped_refptr<server::HybridClock> clock_;
 
-  // YBSession to read data from catalog tables.
-  boost::optional<ReadHybridTime> catalog_read_time_;
+  ReadHybridTime catalog_read_time_;
 
   // Execution status.
   Status status_;

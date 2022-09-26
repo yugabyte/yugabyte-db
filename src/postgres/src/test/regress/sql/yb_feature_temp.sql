@@ -345,3 +345,14 @@ CREATE UNIQUE INDEX ON tempt (v1);
 INSERT INTO tempt VALUES (1, 2, 3), (4, 5, 6);
 INSERT INTO tempt VALUES (2, 2, 3);
 SELECT * FROM tempt ORDER BY k;
+
+-- types in temp schema
+set search_path = pg_temp, public;
+create domain pg_temp.nonempty as text check (value <> '');
+-- function-syntax invocation of types matches rules for functions
+select nonempty('');
+select pg_temp.nonempty('');
+-- other syntax matches rules for tables
+select ''::nonempty;
+
+reset search_path;

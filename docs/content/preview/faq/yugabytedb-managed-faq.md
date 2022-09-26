@@ -12,6 +12,8 @@ menu:
     parent: faq
     weight: 2775
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 ## YugabyteDB Managed
@@ -76,7 +78,7 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 
 To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{% support-cloud %}} for trial credits.
 
-### Can I migrate my Sandbox cluster to a Dedicated cluster?
+### Can I migrate my Sandbox to a Dedicated cluster?
 
 Currently self-service migration is not supported. Contact {{% support-cloud %}} for help with migration.
 
@@ -102,9 +104,9 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Sandbox clusters are provisioned with a **preview** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
+Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series.
 
-By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the preview track when you create the cluster.-->
+By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. You can choose the preview track when you create the cluster.
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
@@ -122,9 +124,9 @@ Enterprise Support is included in the base price for Dedicated clusters. Refer t
 
 Sandbox and Dedicated cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
-### Where can I find the support policy and Service Level Agreement (SLA) for YugabyteDB Managed?
+### Where can I find the support policy and SLA?
 
-The YugabyteDB Managed SLA, terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
+The YugabyteDB Managed Service Level Agreement (SLA), terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
 
 ### How do I check the status of YugabyteDB Managed?
 
@@ -144,7 +146,7 @@ YugabyteDB Managed uses both encryption in transit and encryption at rest to pro
 
 YugabyteDB Managed uses a shared responsibility model for security. For more information on YugabyteDB Managed security, refer to [Security architecture](../../yugabyte-cloud/cloud-security/).
 
-## Cluster configuration and management
+## Cluster management
 
 ### What cluster configurations can I create?
 

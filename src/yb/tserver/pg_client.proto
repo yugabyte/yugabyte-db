@@ -350,6 +350,7 @@ message PgPerformOptionsPB {
   ReadHybridTimePB read_time = 11;
   bool use_catalog_session = 12;
   bool force_global_transaction = 13;
+  string namespace_id = 14;
 }
 
 message PgPerformRequestPB {

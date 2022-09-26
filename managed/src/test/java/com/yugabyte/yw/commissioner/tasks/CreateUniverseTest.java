@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -244,6 +246,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   public void testCreateDedicatedUniverseSuccess() {
     UniverseDefinitionTaskParams taskParams = getTaskParams(true);
     taskParams.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    PlacementInfoUtil.SelectMastersResult selectMastersResult =
+        PlacementInfoUtil.selectMasters(
+            null, taskParams.nodeDetailsSet, null, true, taskParams.getPrimaryCluster().userIntent);
+    selectMastersResult.addedMasters.forEach(taskParams.nodeDetailsSet::add);
+    PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

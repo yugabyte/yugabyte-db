@@ -17,12 +17,21 @@ YugabyteDB Anywhere first needs to be installed on a host computer, and then you
 
 You can install YugabyteDB Anywhere on the following Linux distributions:
 
-- Ubuntu 16.04, 18.04, or 20.04 LTS
-- Red Hat Enterprise Linux (RHEL) 7.x
-- Oracle Linux 7.x
-- CentOS 7.x
-- Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, or 2.0
-- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
+- CentOS (default)
+- Ubuntu 18 and 20, via Replicated
+- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+
+<!--
+
+- Ubuntu 18 and 20, via Replicated
+- Red Hat Enterprise Linux (RHEL) 8 (tested on 8.5). 
+- Oracle Linux 7 and 8 (tested).
+- AlmaLinux OS 8, via Replicated
+- CentOS (default).
+- Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, or 2.0.
+- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+
+-->
 
 ## Hardware requirements
 
@@ -111,21 +120,23 @@ You need to perform the following steps:
    image:
 	commonRegistry: ""
     	repository: **quay.io/yugabyte/yugaware**
+   ```
+
  	tag: **{{ version.build }}**
-   	pullPolicy: IfNotPresent
-   	pullSecret: yugabyte-k8s-pull-secret
-   	thirdparty-deps:
-   		registry: quay.io
-   		tag: **latest**
-   		name: **yugabyte/thirdparty-deps** 
-   	prometheus:
-   		registry: ""
-   		tag:  **{{ version.prometheus }}**
-   		name: **prom/prometheus**
-   	nginx:
-   		registry: ""
-   		tag: **{{ version.nginx }}**
-   		name: nginx
+ 	pullPolicy: IfNotPresent
+ 	pullSecret: yugabyte-k8s-pull-secret
+ 	thirdparty-deps:
+ 		registry: quay.io
+ 		tag: **latest**
+ 		name: **yugabyte/thirdparty-deps** 
+ 	prometheus:
+ 		registry: ""
+ 		tag:  **{{ version.prometheus }}**
+ 		name: **prom/prometheus**
+ 	nginx:
+ 		registry: ""
+ 		tag: **{{ version.nginx }}**
+ 		name: nginx
    ```
    
 2. Pull images to your Docker Desktop, as follows:

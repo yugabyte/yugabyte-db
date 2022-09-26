@@ -1,17 +1,23 @@
 ---
-title: Connect an app
+title: Connect an application
 linkTitle: Connect an app
+description: Node.js drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: postgres-node-driver
     parent: nodejs-drivers
-    weight: 500
+    weight: 600
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
+   <li >
+    <a href="../yugabyte-node-driver/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB node-postgres Smart Driver
+    </a>
+  </li>
   <li >
     <a href="../postgres-node-driver/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
@@ -21,7 +27,7 @@ type: docs
 
 </ul>
 
-The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL which can be used to connect with YugabyteDB YSQL API. Because YugabyteDB YSQL API has is fully compatible with PostgreSQL node-postgres (pg) driver, it allows Node.js programmers to connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
+The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL which can be used to connect with YugabyteDB YSQL API. Because YugabyteDB YSQL API is fully compatible with PostgreSQL node-postgres (pg) driver, it allows Node.js programmers to connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
 
 ## CRUD operations
 
@@ -31,7 +37,7 @@ The following sections break down the example to demonstrate how to perform comm
 
 ### Step 1: Install the driver dependency and async utility
 
-Download and install the node-postgres driver using the following command (you need to have Node.JS installed on your system):
+Download and install the node-postgres driver using the following command (you need to have Node.js installed on your system):
 
 ```sh
 npm install pg
@@ -43,7 +49,7 @@ To install the async utility, run the following command:
 $ npm install --save async
 ```
 
-After this, you can start using the driver in your code.
+You can start using the driver in your code.
 
 ### Step 2:  Set up the database connection
 
@@ -65,9 +71,9 @@ client.connect()
 | :-------- | :---------- | :------ |
 | host | Hostname of the YugabyteDB instance | localhost |
 | port | Listen port for YSQL | 5433 |
-| database | Database name | `yugabyte` |
-| user | User for connecting to the database | `yugabyte` |
-| password | Password for connecting to the database | `yugabyte` |
+| database | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
 
 #### Use SSL
 
@@ -81,7 +87,7 @@ client.connect()
 
 For other ways to provide connection and SSL-related details, refer to the [node-postgres](https://node-postgres.com/) documentation.
 
-| node-postgres Parameter | Description |
+| PostgreSQL node-postgres Parameter | Description |
 | :---------------------- | :---------- |
 | sslmode | SSL mode |
 | sslrootcert | path to the root certificate on your computer |
@@ -155,8 +161,10 @@ Shutting down
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Node.JS app that uses the PostgreSQL node.js driver to connect to your cluster, set up tables, run queries, and print out results.
+After completing these steps, you should have a working Node.js app that uses the PostgreSQL node.js driver to connect to your cluster, set up tables, run queries, and print out results.
 
 ## Next steps
 
-Learn how to build Node.js applications using [Sequelize ORM](../sequelize).
+- Build Node.js applications using [Sequelize ORM](../sequelize).
+
+- [Node.js driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/#fundamentals) of the PostgreSQL psycopg2 driver.

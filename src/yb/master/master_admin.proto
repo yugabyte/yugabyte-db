@@ -100,6 +100,14 @@ message CreateTransactionStatusTableResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AddTransactionStatusTabletRequestPB {
+  required bytes table_id = 1;
+}
+
+message AddTransactionStatusTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message DeleteNotServingTabletRequestPB {
   required bytes tablet_id = 1;
 }
@@ -155,6 +163,8 @@ service MasterAdmin {
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
   rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
       returns (CreateTransactionStatusTableResponsePB);
+  rpc AddTransactionStatusTablet(AddTransactionStatusTabletRequestPB)
+      returns (AddTransactionStatusTabletResponsePB);
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
 
