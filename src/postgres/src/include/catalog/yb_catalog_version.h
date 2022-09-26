@@ -13,7 +13,8 @@
 #ifndef YB_CATALOG_VERSION_H
 #define YB_CATALOG_VERSION_H
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_yb_utils.h"
 
 /*
  * Enum representing how the catalog version is stored on this cluster.
@@ -50,8 +51,5 @@ bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
 
 /* Return the catalog version type. */
 YbCatalogVersionType YbGetCatalogVersionType();
-
-/* Get actual db_oid for pg_yb_catalog_version */
-Oid YbMasterCatalogVersionTableDBOid();
 
 #endif							/* YB_CATALOG_VERSION_H */
