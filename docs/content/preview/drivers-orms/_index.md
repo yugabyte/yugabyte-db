@@ -13,16 +13,14 @@ menu:
     parent: develop
     weight: 570
 type: indexpage
+showRightNav: true
 ---
 
 The [Yugabyte Structured Query Language (YSQL) API](../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can use the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) to read and write data into YugabyteDB databases. YSQL-compatible PostgreSQL drivers are listed in the compatibility matrix below.
 
-In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports **smart drivers**, which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+## Smart drivers
 
-- **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
-- [Topology-aware](../deploy/multi-dc/). For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
-
-All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
+In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports [smart drivers](smart-drivers/), which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
 {{< note title="Note" >}}
 
@@ -55,8 +53,8 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
 | [YugabyteDB PGX Smart Driver](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
-| [PGX](go/pgx/) | Full | [CRUD Example](go/pgx/) |
-| [PQ](go/pq/) | Full | [CRUD Example](go/pq/) |
+| [PGX Driver](go/pgx/) | Full | [CRUD Example](go/pgx/) |
+| [PQ Driver](go/pq/) | Full | [CRUD Example](go/pq/) |
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
 | [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
 
@@ -73,7 +71,7 @@ The following libraries are officially supported by YugabyteDB.
 
 | Name | Type | Support | Example |
 | :--- | :--- | :-------| :------ |
-| [Npgsql](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
+| [Npgsql Driver](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
 | [EntityFramework](csharp/entityframework/) | ORM | Full | [CRUD Example](csharp/entityframework/) |
 
 ### [Python](python/)
@@ -81,7 +79,7 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM | Support Level | Example apps |
 | :------------------------- | :------------ | :----------- |
 | [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
-| [PostgreSQL Psycopg2](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
+| [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
 | aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |

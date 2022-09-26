@@ -1,5 +1,5 @@
 ---
-title: Connect an app
+title: Connect an application
 linkTitle: Connect an app
 description: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -11,25 +11,23 @@ menu:
 type: docs
 ---
 
-For Go applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link">
+    <a href="../yb-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB PGX Driver
+      YugabyteDB PGX Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link active">
+    <a href="../pgx/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link">
+    <a href="../pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -41,7 +39,7 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/go/ysql-pgx) page.
+For Go applications, most drivers provide database connectivity through the standard `database/sql` API. Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/go/ysql-pgx) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -185,7 +183,7 @@ if err != nil {
 }
 ```
 
-## Next steps
+## Learn more
 
-- Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/#fundamentals) of the PGX Driver.
+- Build Go applications using [GORM](../gorm)
+- [Go driver reference](../../../reference/drivers/go/pgx-reference/#fundamentals)

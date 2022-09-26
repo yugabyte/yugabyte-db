@@ -15,14 +15,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link active">
+    <a href="../ebean/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link">
+    <a href="../hibernate/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Hibernate ORM
     </a>
@@ -38,7 +38,7 @@ Ebean ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and th
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/develop/build-apps/java/ysql-ebean/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/java/ysql-ebean/) page.
 
 The following sections demonstrate how to perform common tasks required for Java-based [Play Framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html) application development using the Ebean ORM.
 
