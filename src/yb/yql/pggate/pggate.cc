@@ -1757,7 +1757,6 @@ void PgApiImpl::StartSysTablePrefetching() {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
-  CHECK(!pg_session_->HasCatalogReadPoint());
   pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
 }
 

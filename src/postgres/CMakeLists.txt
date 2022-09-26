@@ -73,7 +73,7 @@ list(APPEND build_postgres_args
      --cxxflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
      # We specify a leading space where we could otherwise get an empty argument.
      --cppflags              " ${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
-     --ldflags               "${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
+     --ldflags               " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
      --ldflags_ex            " ${CMAKE_EXE_LINKER_FLAGS}"
      --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"
      --openssl_lib_dir       "${OPENSSL_LIB_DIR}"
