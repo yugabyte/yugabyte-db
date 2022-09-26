@@ -40,7 +40,6 @@ type: docs
 [YugabyteDB PGX smart driver](https://github.com/yugabyte/pgjdbc) is a distributed Go driver for [YSQL](../../../../api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
-
 - It is **topology-aware**, which is essential for geographically-distributed applications.
 
 ## Load balancing

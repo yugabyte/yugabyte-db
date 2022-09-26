@@ -31,7 +31,6 @@ type: docs
 [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
-
 - It is **topology-aware**, which is essential for geographically-distributed applications.
 
 ## Load balancing
