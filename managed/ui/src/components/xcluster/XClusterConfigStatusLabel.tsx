@@ -2,12 +2,12 @@ import React from 'react';
 import clsx from 'clsx';
 
 import { ReplicationStatus } from './constants';
-import { Replication } from './XClusterTypes';
+import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigStatusLabel.module.scss';
 
 interface XClusterConfigStatusProps {
-  xClusterConfig: Replication;
+  xClusterConfig: XClusterConfig;
 }
 
 export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStatusProps) => {
