@@ -523,11 +523,7 @@ Result<PerformFuture> PgSession::Perform(
   tserver::PgPerformOptionsPB options;
   if (use_catalog_session) {
     if (catalog_read_time_) {
-      if (*catalog_read_time_) {
-        catalog_read_time_->ToPB(options.mutable_read_time());
-      } else {
-        options.mutable_read_time();
-      }
+      catalog_read_time_.ToPB(options.mutable_read_time());
     }
     options.set_use_catalog_session(true);
   } else {
@@ -661,6 +657,10 @@ void PgSession::SetTimeout(const int timeout_ms) {
 
 void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
+}
+
+bool PgSession::HasCatalogReadPoint() const {
+  return static_cast<bool>(catalog_read_time_);
 }
 
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {

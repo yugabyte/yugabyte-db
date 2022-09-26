@@ -53,19 +53,8 @@ uint64_t YbGetMasterCatalogVersion()
 	switch (YbGetCatalogVersionType())
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
-			/*
-			 * MyDatabaseId is 0 during connection setup time before
-			 * MyDatabaseId is resolved. In per-db mode, we use TemplateDbOid
-			 * during this period to find the catalog version in order to load
-			 * initial catalog cache (needed for resolving MyDatabaseId, auth
-			 * check etc.). Once MyDatabaseId is resolved from then on we'll
-			 * use its catalog version.
-			 */
 			if (YbGetMasterCatalogVersionFromTable(
-				(YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId))
-						? MyDatabaseId
-						: TemplateDbOid,
-				&version))
+			    	YbMasterCatalogVersionTableDBOid(), &version))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -386,6 +375,16 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
 	}
 
+	/*
+	 * Fetching of the YBTupleIdAttributeNumber attribute is required for
+	 * the ability to prefetch data from the pb_yb_catalog_version table via
+	 * PgSysTablePrefetcher.
+	 */
+	YBCPgExpr expr = YBCNewColumnRef(
+		ybc_stmt, YBTupleIdAttributeNumber, InvalidOid /* attr_typid */,
+		InvalidOid /* attr_collation */, NULL /* type_attrs */);
+	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 
 	bool      has_data = false;
@@ -435,4 +434,19 @@ Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 									  values, nulls);
 	return YBCGetYBTupleIdFromTuple(catalog_version_rel, tuple,
 									RelationGetDescr(catalog_version_rel));
+}
+
+Oid YbMasterCatalogVersionTableDBOid()
+{
+	/*
+	 * MyDatabaseId is 0 during connection setup time before
+	 * MyDatabaseId is resolved. In per-db mode, we use TemplateDbOid
+	 * during this period to find the catalog version in order to load
+	 * initial catalog cache (needed for resolving MyDatabaseId, auth
+	 * check etc.). Once MyDatabaseId is resolved from then on we'll
+	 * use its catalog version.
+	 */
+
+	return YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId)
+		? MyDatabaseId : TemplateDbOid;
 }
