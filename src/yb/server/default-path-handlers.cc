@@ -476,11 +476,17 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
     arg = FindWithDefault(req.parsed_args, "include_schema", "false");
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
 
+    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    json_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
     arg = FindWithDefault(req.parsed_args, "level", "debug");
     SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (promethus_opts) {
+    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    promethus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
     SetParsedValue(&promethus_opts->level,
                    MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
