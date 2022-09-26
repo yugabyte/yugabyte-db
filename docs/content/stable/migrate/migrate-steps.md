@@ -141,7 +141,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 {{< note title="Renaming index names for MySQL" >}}
 
 YugabyteDB Voyager renames the indexes for MySQL migrations while exporting the schema.
-MySQL supports two or more indexes to have the same name (in the same database), provided they are for different tables. YugabyteDB (just like PostgreSQL) does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
+MySQL supports two or more indexes to have the same name in the same database, provided they are for different tables. Similarly to PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
 
 {{< /note >}}
 
