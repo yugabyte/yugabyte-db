@@ -236,20 +236,16 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
     List<SnapshotInfo> snapshotList1 = new ArrayList<>();
     UUID snapshotUUID11 = UUID.randomUUID();
+    long snapshotTime11 = System.currentTimeMillis() + 2 * 1000 * 86400L;
     SnapshotInfo snapshot11 =
         new SnapshotInfo(
-            snapshotUUID11,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.COMPLETE);
+            snapshotUUID11, snapshotTime11, snapshotTime11 - 1000 * 86400L, State.COMPLETE);
     snapshotList1.add(snapshot11);
     UUID snapshotUUID12 = UUID.randomUUID();
+    long snapshotTime12 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot12 =
         new SnapshotInfo(
-            snapshotUUID12,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.COMPLETE);
+            snapshotUUID12, snapshotTime12, snapshotTime12 - 1000 * 86400L, State.COMPLETE);
     snapshotList1.add(snapshot12);
     SnapshotScheduleInfo schedule1 =
         new SnapshotScheduleInfo(scheduleUUID1, 86400L, 7L * 86400L, snapshotList1);
@@ -267,20 +263,16 @@ public class PitrControllerTest extends FakeDBApplication {
     PitrConfig pitr2 = PitrConfig.create(scheduleUUID2, params2);
     List<SnapshotInfo> snapshotList2 = new ArrayList<>();
     UUID snapshotUUID21 = UUID.randomUUID();
+    long snapshotTime21 = System.currentTimeMillis() + 2 * 1000 * 86400L;
     SnapshotInfo snapshot21 =
         new SnapshotInfo(
-            snapshotUUID21,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.COMPLETE);
+            snapshotUUID21, snapshotTime21, snapshotTime21 - 1000 * 86400L, State.FAILED);
     snapshotList2.add(snapshot21);
     UUID snapshotUUID22 = UUID.randomUUID();
+    long snapshotTime22 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot22 =
         new SnapshotInfo(
-            snapshotUUID22,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.FAILED);
+            snapshotUUID22, snapshotTime22, snapshotTime22 - 1000 * 86400L, State.COMPLETE);
     snapshotList2.add(snapshot22);
     SnapshotScheduleInfo schedule2 =
         new SnapshotScheduleInfo(scheduleUUID2, 86400L, 7L * 86400L, snapshotList2);
@@ -295,23 +287,18 @@ public class PitrControllerTest extends FakeDBApplication {
     params3.customerUUID = defaultCustomer.uuid;
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
+    long currentTime3 = System.currentTimeMillis();
     PitrConfig pitr3 = PitrConfig.create(scheduleUUID3, params3);
     List<SnapshotInfo> snapshotList3 = new ArrayList<>();
     UUID snapshotUUID31 = UUID.randomUUID();
+    long snapshotTime31 = System.currentTimeMillis() + 1000 * 86400L;
     SnapshotInfo snapshot31 =
         new SnapshotInfo(
-            snapshotUUID31,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.COMPLETE);
+            snapshotUUID31, snapshotTime31, snapshotTime31 - 1000 * 86400L, State.COMPLETE);
     snapshotList3.add(snapshot31);
     UUID snapshotUUID32 = UUID.randomUUID();
-    SnapshotInfo snapshot32 =
-        new SnapshotInfo(
-            snapshotUUID32,
-            System.currentTimeMillis(),
-            System.currentTimeMillis() - 1000 * 86400L,
-            State.FAILED);
+    long snapshotTime32 = System.currentTimeMillis();
+    SnapshotInfo snapshot32 = new SnapshotInfo(snapshotUUID32, snapshotTime32, 0L, State.FAILED);
     snapshotList3.add(snapshot32);
     SnapshotScheduleInfo schedule3 =
         new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
@@ -330,7 +317,6 @@ public class PitrControllerTest extends FakeDBApplication {
     while (it.hasNext()) {
       JsonNode schedule = it.next();
       count++;
-      LOG.info(schedule.toString());
       long intervalInSecs = schedule.get("scheduleInterval").asLong();
       long retentionDurationInSecs = schedule.get("retentionPeriod").asLong();
       assertEquals(86400L, intervalInSecs);
@@ -339,20 +325,22 @@ public class PitrControllerTest extends FakeDBApplication {
       if (!scheduleInfoMap.containsKey(scheduleUUID)) {
         Assert.fail();
       }
-      JsonNode snapshots = schedule.get("snapshots");
-      Iterator<JsonNode> snapshotIterator = snapshots.elements();
-      int snapshotCount = 0;
-      while (snapshotIterator.hasNext()) {
-        JsonNode snapshot = snapshotIterator.next();
-        snapshotCount++;
-        assertTrue(
-            snapshot.has("snapshotUUID")
-                && snapshot.has("snapshotTime")
-                && snapshot.has("previousSnapshotTime")
-                && snapshot.has("state"));
-        UUID.fromString(snapshot.get("snapshotUUID").asText());
+      long minTime = schedule.get("minRecoverTimeInMillis").asLong();
+      long maxTime = schedule.get("maxRecoverTimeInMillis").asLong();
+      String state = schedule.get("state").asText();
+      if (scheduleUUID.equals(scheduleUUID1)) {
+        assertTrue(snapshotTime12 - 1000 * 86400L > minTime);
+        assertTrue(currentTime3 < maxTime);
+        assertEquals("COMPLETE", state);
+      } else if (scheduleUUID.equals(scheduleUUID2)) {
+        assertTrue(currentTime3 < maxTime);
+        assertEquals("FAILED", state);
+      } else if (scheduleUUID.equals(scheduleUUID3)) {
+        assertTrue(currentTime3 < minTime && minTime > snapshotTime32 - 1000 * 86400L);
+        assertEquals("FAILED", state);
+      } else {
+        Assert.fail();
       }
-      assertEquals(2, snapshotCount);
     }
     assertEquals(3, count);
     assertAuditEntry(0, defaultCustomer.uuid);

@@ -5,18 +5,15 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
 import lombok.NoArgsConstructor;
 
-@ApiModel(description = "Restore snapshot parameters")
+@ApiModel(description = "Restore snapshot schedule parameters")
 @NoArgsConstructor
-public class RestoreSnapshotParams extends UniverseTaskParams {
+public class RestoreSnapshotScheduleParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Universe UUID")
   public UUID universeUUID;
 
   @ApiModelProperty(value = "PITR Config UUID")
   public UUID pitrConfigUUID;
-
-  @ApiModelProperty(value = "Snapshot UUID")
-  public UUID snapshotUUID;
 
   @ApiModelProperty(value = "Restore Time In millis")
   public long restoreTimeInMillis;
