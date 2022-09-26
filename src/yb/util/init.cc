@@ -119,6 +119,9 @@ Status SetupLogDir(const std::string& server_type) {
 }
 
 void SetGLogHeader(const std::string& server_info) {
+  // Needed for tests that start multiple mini-masters and mini-tservers in parallel
+  static std::mutex set_glog_header_mtx;
+  std::lock_guard lock(set_glog_header_mtx);
   google::SetApplicationFingerprint(VersionInfo::GetShortVersionString() + server_info);
 }
 
