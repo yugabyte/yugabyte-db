@@ -15,14 +15,14 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
  <li >
-    <a href="/preview/reference/drivers/nodejs/yugabyte-pg-reference/" class="nav-link active">
+    <a href="../yugabyte-pg-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB node-postgres Driver
+      YugabyteDB node-postgres Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/nodejs/postgres-pg-reference/" class="nav-link">
+    <a href="../postgres-pg-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL node-postgres Driver
     </a>
@@ -30,18 +30,14 @@ type: docs
 
 </ul>
 
-This page provides details for getting started with `YugabyteDB node-postgres Driver` for connecting to YugabyteDB YSQL API.
-
-The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres).
-
-Although the upstream PostgreSQL node-postgres driver works with YugabyteDB, the YugabyteDB driver enhances the driver by eliminating the need for external load balancers.
+[YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional connection load balancing features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
 - It is **topology-aware**, which is essential for geographically-distributed applications. The driver uses servers that are part of a set of geo-locations specified by topology keys.
 
 ## Load balancing
 
-The YugabyteDB node-postgres driver has the following load balancing features:
+The YugabyteDB node-postgres smart driver has the following load balancing features:
 
 - Uniform load balancing
 
@@ -49,17 +45,17 @@ The YugabyteDB node-postgres driver has the following load balancing features:
 
 - Topology-aware load balancing
 
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB Psycopg2 driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. Client applications can use them to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB Psycopg2 driver is topology-aware. The driver uses servers that are part of a set of geo-locations specified by topology keys. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
-The YugabyteDB Psycopg2 driver can be configured with pooling as well.
+The YugabyteDB node-postgres smart driver can be configured with pooling as well.
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/nodejs/ysql-pg/) in the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/nodejs/ysql-pg/).
 
 ## Download the driver dependency
 
-Download and install the YugabyteDB node-postgres driver using the following command (you need to have Node.js installed on your system):
+Download and install the YugabyteDB node-postgres smart driver using the following command (you need to have Node.js installed on your system):
 
 ```sh
 npm install @yugabytedb/pg
@@ -69,7 +65,7 @@ You can start using the driver in your code.
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL psycopg2 driver.
+Learn how to perform the common tasks required for Node.js App Development using the YugabyteDB node-postgres smart driver.
 
 {{< note title="Note">}}
 
@@ -106,7 +102,7 @@ To use the driver, do the following:
     client.conn
     ```
 
-- To configure a simple connection pool of max 100 connections using `Pool`, specify load balance as follows:
+- To configure a basic connection pool of maximum 100 connections using `Pool`, specify load balance as follows:
 
   ```js
     let pool = new Pool({
@@ -122,8 +118,9 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB node-postgres Driver with YugabyteDB. You'll start by creating a three node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
-Next, you'll use a Node.js app to demonstrate the driver's load balancing features.
+This tutorial shows how to use the YugabyteDB node-postgres smart Driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+
+Next, you use a Node.js application to demonstrate the driver's load balancing features.
 
 {{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher.
@@ -145,13 +142,13 @@ $ ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-wes
 
 To check uniform load balancing, do the following:
 
-1. Create a nodejs file to run the example:
+1. Create a Node.js file to run the example:
 
     ```sh
     touch example.js
     ```
 
-1. Add the following code in the example.js
+1. Add the following code in `example.js` file.
 
     ```js
 
@@ -207,7 +204,7 @@ To check uniform load balancing, do the following:
 
 ### Check topology-aware load balancing
 
-For topology-aware load balancing, add  with the `topologyKeys` property set to `aws.us-west.us-west-2a`. Only two nodes will be used in this case.
+For topology-aware load balancing, run the application with the `topologyKeys` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
 
 ```js
 const pg = require('@yugabytedb/pg');
@@ -252,11 +249,7 @@ async function createNumConnections(numConnections) {
 
 ```
 
-The application creates 30 connections and displays a key value pair map where the keys are the host and the values are the number of connections on them (This is the client side perspective of the number of connections). The first two nodes should have 15 connections each, and the third node should have zero connections.
-
-Alternatively, to verify both the behavior, visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes. This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or search for the occurrence count of the `host` keyword on that webpage.
-
-![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
+To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
 
 ## Clean up
 
@@ -265,3 +258,7 @@ When you're done experimenting, run the following command to destroy the local c
 ```sh
 ./bin/yb-ctl destroy
 ```
+
+## Learn more
+
+To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).

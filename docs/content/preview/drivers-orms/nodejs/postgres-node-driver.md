@@ -1,6 +1,7 @@
 ---
-title: Connect an app
+title: Connect an application
 linkTitle: Connect an app
+description: Node.js drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -12,13 +13,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="/preview/drivers-orms/nodejs/yugabyte-node-driver/" class="nav-link">
+    <a href="../yugabyte-node-driver/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB node-postgres Driver
+      YugabyteDB node-postgres Smart Driver
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/nodejs/postgres-node-driver/" class="nav-link active">
+    <a href="../postgres-node-driver/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL node-postgres Driver
     </a>
@@ -164,4 +165,6 @@ After completing these steps, you should have a working Node.js app that uses th
 
 ## Next steps
 
-Learn how to build Node.js applications using [Sequelize ORM](../sequelize).
+- Build Node.js applications using [Sequelize ORM](../sequelize).
+
+- [Node.js driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/#fundamentals) of the PostgreSQL psycopg2 driver.
