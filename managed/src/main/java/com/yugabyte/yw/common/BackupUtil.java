@@ -28,6 +28,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.text.SimpleDateFormat;
@@ -573,5 +577,11 @@ public class BackupUtil {
       }
     }
     return keyspaceRegionLocations;
+  }
+
+  public static boolean checkInProgressIncrementalBackup(Backup backup) {
+    return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
+        .stream()
+        .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
   }
 }

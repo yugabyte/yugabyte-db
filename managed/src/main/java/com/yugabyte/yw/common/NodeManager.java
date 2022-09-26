@@ -824,7 +824,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -873,7 +873,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -928,7 +928,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1040,7 +1040,7 @@ public class NodeManager extends DevopsBase {
 
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType == ServerType.CONTROLLER.toString()) {
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));

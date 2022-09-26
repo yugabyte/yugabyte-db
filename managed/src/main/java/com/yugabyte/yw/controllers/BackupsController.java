@@ -593,26 +593,32 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete backups V2",
       response = YBPTasks.class,
-      nickname = "deleteBackupsv2")
+      nickname = "deleteBackupsV2")
   public Result deleteYb(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
     List<YBPTask> taskList = new ArrayList<>();
     for (DeleteBackupInfo deleteBackupInfo : deleteBackupParams.deleteBackupInfos) {
       UUID backupUUID = deleteBackupInfo.backupUUID;
-      Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+      Backup backup = Backup.maybeGet(customerUUID, backupUUID).orElse(null);
       if (backup == null) {
-        LOG.debug("Can not delete {} backup as it is not present in the database.", backupUUID);
+        LOG.error("Can not delete {} backup as it is not present in the database.", backupUUID);
       } else {
-        if (backup.state.equals(BackupState.InProgress)) {
-          LOG.debug("Can not delete {} backup as it is still in progress", backupUUID);
-        } else if (backup.state.equals(BackupState.DeleteInProgress)
-            || backup.state.equals(BackupState.QueuedForDeletion)) {
-          LOG.debug("Backup {} is already in queue for deletion", backupUUID);
+        if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+          LOG.error(
+              "Backup {} is in the state {}. Deletion is not allowed", backupUUID, backup.state);
         } else {
           UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
           if (storageConfigUUID == null) {
+            // Pick default backup storage config to delete the backup if not provided.
             storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
+          }
+          if (backup.isIncrementalBackup() && backup.state.equals(BackupState.Completed)) {
+            // Currently, we don't allow users to delete successful standalone incremental backups.
+            // They can only delete the full backup, along which all the incremental backups
+            // will also be deleted.
+            LOG.error("Cannot delete backup {} as it in {} state", backup.backupUUID, backup.state);
+            continue;
           }
           BackupTableParams params = backup.getBackupInfo();
           params.storageConfigUUID = storageConfigUUID;

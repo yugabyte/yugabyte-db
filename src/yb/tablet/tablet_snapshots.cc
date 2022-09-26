@@ -33,7 +33,9 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -42,6 +44,11 @@
 #include "yb/util/status_log.h"
 
 using namespace std::literals;
+
+DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
+                 "How much time in secs to delay restoring tablet split metadata after restoring "
+                 "checkpoint.");
+TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
 namespace yb {
 namespace tablet {
@@ -261,6 +268,10 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
+  if (delay_time_secs > 0) {
+    SleepFor(MonoDelta::FromSeconds(delay_time_secs));
+  }
   if (s.ok() && restoration_id) {
     s = tablet().RestoreStarted(restoration_id);
   }

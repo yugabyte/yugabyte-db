@@ -571,3 +571,6 @@ FROM t4
    ->  Materialize  (cost=0.00..116.50 rows=1000 width=20)
          ->  Index Scan using t3_pkey on t3  (cost=0.00..114.00 rows=1000 width=20)
 (5 rows)
+
+-- Clean up
+DROP TABLE t1, t2, t3, t4 CASCADE;

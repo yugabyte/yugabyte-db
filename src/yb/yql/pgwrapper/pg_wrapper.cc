@@ -451,7 +451,8 @@ Status PgWrapper::Start() {
   // Configure UNIX domain socket for index backfill tserver-postgres communication and for
   // Yugabyte Platform backups.
   argv.push_back("-k");
-  const std::string& socket_dir = PgDeriveSocketDir(conf_.listen_addresses);
+  const std::string& socket_dir = PgDeriveSocketDir(
+      HostPort(conf_.listen_addresses, conf_.pg_port));
   RETURN_NOT_OK(Env::Default()->CreateDirs(socket_dir));
   argv.push_back(socket_dir);
 

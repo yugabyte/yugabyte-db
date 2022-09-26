@@ -720,3 +720,66 @@ macro(enable_lto_if_needed)
             "APPLE=${APPLE}")
   endif()
 endmacro()
+
+macro(configure_macos_sdk)
+  if(APPLE AND "${YB_COMPILER_TYPE}" MATCHES "^clang[0-9]+$")
+    if(NOT "${MACOS_SDK_DIR}" STREQUAL "" AND
+       NOT "${MACOS_SDK_VERSION}" STREQUAL "")
+      message("Using cached macOS SDK directory ${MACOS_SDK_DIR}, version ${MACOS_SDK_VERSION}")
+    else()
+      set(MACOS_SDK_BASE_DIR "/Library/Developer/CommandLineTools/SDKs")
+
+      file(GLOB MACOS_SDK_DIRS "${MACOS_SDK_BASE_DIR}/*")
+      set(MACOS_SDK_DIR "")
+      set(MACOS_SDK_VERSION "")
+      foreach(MACOS_SDK_CANDIDATE_DIR ${MACOS_SDK_DIRS})
+        get_filename_component(
+          MACOS_SDK_CANDIDATE_DIR_NAME "${MACOS_SDK_CANDIDATE_DIR}" NAME)
+        if("${MACOS_SDK_CANDIDATE_DIR_NAME}" MATCHES "^MacOSX([0-9.]+)[.]sdk$")
+          set(MACOS_SDK_CANDIDATE_VERSION "${CMAKE_MATCH_1}")
+          if ("${MACOS_SDK_VERSION}" STREQUAL "" OR
+              "${MACOS_SDK_CANDIDATE_VERSION}" VERSION_GREATER "${MACOS_SDK_VERSION}")
+            set(MACOS_SDK_DIR "${MACOS_SDK_CANDIDATE_DIR}")
+            set(MACOS_SDK_VERSION "${MACOS_SDK_CANDIDATE_VERSION}")
+          endif()
+        endif()
+      endforeach()
+      if("${MACOS_SDK_VERSION}" STREQUAL "")
+        message(FATAL_ERROR "Did not find a macOS SDK at ${MACOS_SDK_BASE_DIR}")
+      endif()
+      message("Using macOS SDK version ${MACOS_SDK_VERSION} at ${MACOS_SDK_DIR}")
+      # CMake's INTERNAL type of cache variables implies FORCE, overwriting existing entries.
+      # https://cmake.org/cmake/help/latest/command/set.html
+      set(MACOS_SDK_DIR "${MACOS_SDK_DIR}" CACHE INTERNAL "macOS SDK directory")
+      set(MACOS_SDK_VERSION "${MACOS_SDK_VERSION}" CACHE INTERNAL "macOS SDK version")
+    endif()
+    set(MACOS_SDK_INCLUDE_DIR "${MACOS_SDK_DIR}/usr/include")
+    INCLUDE_DIRECTORIES(SYSTEM "${MACOS_SDK_INCLUDE_DIR}")
+    ADD_LINKER_FLAGS("-L${MACOS_SDK_DIR}/usr/lib")
+  endif()
+endmacro()
+
+function(add_latest_symlink_target)
+  # Provide a 'latest' symlink to this build directory if the "blessed" multi-build layout is
+  # detected:
+  #
+  # build/
+  # build/<first build directory>
+  # build/<second build directory>
+  # ...
+  set(LATEST_BUILD_SYMLINK_PATH "${YB_BUILD_ROOT_PARENT}/latest")
+  if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
+    message("LATEST SYMLINK PATH: ${LATEST_BUILD_SYMLINK_PATH}")
+    if ("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${LATEST_BUILD_SYMLINK_PATH}")
+      message(FATAL_ERROR
+              "Should not run cmake inside the build/latest symlink. "
+              "First change directories into the destination of the symlink.")
+    endif()
+
+    add_custom_target(latest_symlink ALL
+      "${BUILD_SUPPORT_DIR}/create_latest_symlink.sh"
+      "${CMAKE_CURRENT_BINARY_DIR}"
+      "${LATEST_BUILD_SYMLINK_PATH}"
+      COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
+  endif()
+endfunction()

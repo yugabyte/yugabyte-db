@@ -218,6 +218,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Status WaitForTableIntentsApplied(const TableId& table_id) override;
 
+  Status WaitForTableNumActiveLeadersPeers(size_t expected_leaders);
+
  protected:
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
