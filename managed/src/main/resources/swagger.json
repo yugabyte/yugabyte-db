@@ -15286,7 +15286,7 @@
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
-      "get" : {
+      "post" : {
         "description" : "",
         "operationId" : "needBootstrapTable",
         "parameters" : [ {
@@ -17843,7 +17843,7 @@
       }
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/need_bootstrap" : {
-      "get" : {
+      "post" : {
         "description" : "",
         "operationId" : "NeedBootstrapXClusterConfig",
         "parameters" : [ {

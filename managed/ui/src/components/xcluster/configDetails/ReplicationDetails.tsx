@@ -20,7 +20,7 @@ import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
-import { Replication } from '../XClusterTypes';
+import { XClusterConfig } from '../XClusterTypes';
 import { ReplicationAction, TRANSITORY_STATES, XClusterConfigState } from '../constants';
 import {
   findUniverseName,
@@ -36,7 +36,6 @@ import { ReplicationOverview } from './ReplicationOverview';
 import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 
 import './ReplicationDetails.scss';
-
 
 interface Props {
   params: {
@@ -55,7 +54,7 @@ export function ReplicationDetails({ params }: Props) {
   const {
     data: replication,
     isLoading
-  }: { data: Replication | undefined; isLoading: boolean } = useQuery(
+  }: { data: XClusterConfig | undefined; isLoading: boolean } = useQuery(
     ['Xcluster', params.replicationUUID],
     () => getXclusterConfig(params.replicationUUID)
   );
@@ -74,7 +73,7 @@ export function ReplicationDetails({ params }: Props) {
   }, 20_000);
 
   const toggleConfigPausedState = useMutation(
-    (replication: Replication) => {
+    (replication: XClusterConfig) => {
       return editXClusterState(
         replication,
         replication.paused ? XClusterConfigState.RUNNING : XClusterConfigState.PAUSED

@@ -1,0 +1,50 @@
+.formInstruction {
+  margin-bottom: 25px;
+
+  font-weight: bold;
+  font-size: 14px;
+}
+
+// TODO: rename
+.infoSearch {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 25px 0 5px;
+}
+
+.tableToolbar {
+  display: flex;
+  gap: 10px;
+
+  .keyspaceSearchInput {
+    width: 100%;
+  }
+}
+
+.bootstrapTableContainer {
+  margin: 10px 0;
+  padding: 20px;
+
+  height: fit-content;
+
+  border: 1px solid #dde1e6;
+  border-radius: 8px;
+}
+
+.bootstrapTable { 
+  overflow-y: auto;
+}
+
+.paginationControls {
+  display: flex;
+
+  .pageSizeInput {
+    margin-top: 20px;
+    width: auto;
+  }
+
+  .yBPagination {
+    margin-left: auto;
+  }
+}
