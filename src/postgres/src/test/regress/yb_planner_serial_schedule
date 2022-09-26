@@ -7,3 +7,4 @@ test: yb_planner_indexes
 test: yb_planner_joins
 test: yb_planner_join_order
 test: yb_planner_size_estimates
+test: yb_planner_heuristic_selectivity

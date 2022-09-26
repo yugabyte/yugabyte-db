@@ -325,7 +325,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   uint32_t master_errors = 0;
 
   if (!IsLoadBalancerEnabled()) {
-    LOG(INFO) << "Load balancing is not enabled.";
+    YB_LOG_EVERY_N_SECS(INFO, 10) << "Load balancing is not enabled.";
     return;
   }
 

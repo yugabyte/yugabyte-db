@@ -173,6 +173,10 @@ class CDCConsumer {
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
 
   client::TransactionManager* transaction_manager_;
+
+  client::YBTablePtr global_transaction_status_table_;
+
+  bool enable_replicate_transaction_status_table_;
 };
 
 } // namespace enterprise

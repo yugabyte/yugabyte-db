@@ -116,7 +116,6 @@ class TransactionCoordinator {
 
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
-
   // Handles new request for transaction update.
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external);
 

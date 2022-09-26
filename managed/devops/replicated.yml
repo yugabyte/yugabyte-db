@@ -796,3 +796,12 @@ config:
         title: How long until query execution times out, default to 30s
         type: text
         default: "30s"
+
+state:
+  ready:
+    command: http_status_code
+    args:
+    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
+    - '200'
+    - '15'
+    timeout: 900

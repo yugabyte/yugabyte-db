@@ -89,9 +89,10 @@ DEFINE_test_flag(int64, inject_random_delay_on_txn_status_response_ms, 0,
                  "help simulate e.g. out-of-order responses where PENDING is received by client "
                  "after a COMMITTED response.");
 
-DECLARE_bool(enable_deadlock_detection);
 DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
                  "Should we disable the GC of transactions already applied on all tablets.");
+
+DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 using namespace std::placeholders;
