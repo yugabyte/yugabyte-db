@@ -92,6 +92,23 @@ For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this w
 
 {{< /note >}}
 
+## Copy options
+
+### ROWS_PER_TRANSACTION
+
+The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
+
+Deafult : 20000 for YugabyteDB versions 2.14/2.15, and 1000 for older releases.
+
+For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
+
+- 1 to 1000 →  Transaction_1
+- 1001 to 2000 → Transaction_2
+- 2001 to 3000 → Transaction_3
+- 3001 to 3500 → Error
+
+First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
+
 ## Examples
 
 The examples below assume a table like this:
