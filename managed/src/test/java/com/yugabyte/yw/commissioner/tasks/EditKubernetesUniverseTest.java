@@ -343,9 +343,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -411,9 +409,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -489,9 +485,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(3))
         .getPodStatus(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
