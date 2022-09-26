@@ -22,6 +22,8 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -197,6 +199,14 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
+    String universeOverrides =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides;
+    Map<String, String> azOverrides =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
+
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
       upgradePodsTask(
@@ -206,8 +216,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ServerType.MASTER,
           ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
-          null, // Is this old code to update k8s universe?
-          null,
+          universeOverrides, // Is this old code to update k8s universe?
+          azOverrides,
           masterChanged,
           tserverChanged,
           newNamingStyle,
@@ -225,8 +235,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ServerType.TSERVER,
           ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
-          null,
-          null,
+          universeOverrides,
+          azOverrides,
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged,
           newNamingStyle,
