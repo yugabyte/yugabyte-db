@@ -132,7 +132,7 @@ You should see output similar to the following:
 
 ```output
  pid  | datid | datname  | relid |  command  | type |  yb_status  | bytes_processed | bytes_total | tuples_processed | tuples_excluded
--------+-------+----------+-------+-----------+------+-------------+-----------------+-------------+------------------+-----------------
+------+-------+----------+-------+-----------+------+-------------+-----------------+-------------+------------------+-----------------
 74390 | 13288 | yugabyte | 16404 | COPY FROM | PIPE | IN PROGRESS |          766682 |           0 |            40000 |               0
 (1 row)
 ```

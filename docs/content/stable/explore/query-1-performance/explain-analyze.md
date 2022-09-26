@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: explain-analyze
     parent: query-tuning
-    weight: 400
+    weight: 500
 type: docs
 ---
 
