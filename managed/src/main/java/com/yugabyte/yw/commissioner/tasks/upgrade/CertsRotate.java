@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
@@ -127,5 +128,18 @@ public class CertsRotate extends UpgradeTaskBase {
 
   private void createUpdateCertDirsTask(Collection<NodeDetails> nodes, ServerType serverType) {
     createUpdateCertDirsTask(nodes, serverType, getTaskSubGroupType());
+  }
+
+  @Override
+  protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
+    UniverseSetTlsParams.Params params = super.createSetTlsParams(subTaskGroupType);
+
+    // TODO: sort out the mess with these props silently shadowing their namesakes
+    // in UniverseDefinitionTaskParams
+    // (referencing them through taskParams() may cause subtle bugs)
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    return params;
   }
 }
