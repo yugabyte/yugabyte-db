@@ -31,7 +31,7 @@ type: docs
 
 </ul>
 
-[YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with a additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
+[YugabyteDB JDBC smart driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
 
