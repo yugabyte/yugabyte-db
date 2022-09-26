@@ -104,7 +104,7 @@ For example, using the Go driver, you would set the parameters as follows:
 
 For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
-Using a smart driver (which is topology aware) however, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+If you are using a smart driver with topology awareness, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
 Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
