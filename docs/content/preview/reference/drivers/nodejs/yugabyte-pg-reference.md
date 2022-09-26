@@ -73,13 +73,6 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
 
 {{< /note >}}
 
-### Load balancing connection properties
-
-The following connection properties need to be added to enable load balancing:
-
-- `loadBalance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
-
 ## Use the driver
 
 To use the driver, do the following:
@@ -115,6 +108,13 @@ To use the driver, do the following:
         max: 100
     })
   ```
+
+### Load balancing connection properties
+
+The following connection properties need to be added to enable load balancing:
+
+- `loadBalance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
 ## Try it out
 

@@ -82,10 +82,10 @@ client.connect()
 
 For other ways to provide connection and SSL-related details, refer to the [node-postgres](https://node-postgres.com/) documentation.
 
-| YugabyteDB node-postgres Parameter | Description |
-| :---------------------- | :---------- |
-| sslmode | SSL mode |
-| sslrootcert | path to the root certificate on your computer |
+| YugabyteDB node-postgres Parameter | Description | Default
+| :---------------------- | :---------- | :------------ |
+| sslmode | SSL mode | require |
+| sslrootcert | path to the root certificate on your computer | ~/.postgresql/ |
 
 If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
