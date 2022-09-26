@@ -20,7 +20,7 @@ import {
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  ReplicationTable,
+  YBTable,
   StandardMetricTimeRangeOption,
   TableReplicationMetric
 } from '../XClusterTypes';
@@ -41,7 +41,7 @@ const getTimeRange = (metricTimeRangeOption: StandardMetricTimeRangeOption): Met
 };
 
 interface Props {
-  tableDetails: ReplicationTable;
+  tableDetails: YBTable;
   replicationUUID: string;
   universeUUID: string;
   queryEnabled: boolean;

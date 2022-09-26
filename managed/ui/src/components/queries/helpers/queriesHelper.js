@@ -87,7 +87,7 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
   };
 };
 
-const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
+export const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
   if (!caseSensitive) {
     textString = textString.toLowerCase();
     patternString = patternString.toLowerCase();

@@ -1,40 +1,29 @@
 import React from 'react';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
-import { editXclusterName, fetchUniversesList } from '../../../actions/xClusterReplication';
-import { YBModalForm } from '../../common/forms';
-import { TargetUniverseForm } from '../ConfigureReplicationModal';
-import { Replication } from '../XClusterTypes';
 import * as Yup from 'yup';
+import { Col, Row } from 'react-bootstrap';
+import { Field } from 'formik';
+import { useMutation, useQueryClient } from 'react-query';
+import { toast } from 'react-toastify';
+
+import { editXclusterName } from '../../../actions/xClusterReplication';
+import { YBModalForm } from '../../common/forms';
+import { XClusterConfig } from '../XClusterTypes';
+import { YBFormInput } from '../../common/forms/fields';
 
 interface Props {
   visible: boolean;
   onHide: () => void;
-  replication: Replication;
+  replication: XClusterConfig;
 }
 const validationSchema = Yup.object().shape({
-  name: Yup.string().required('Replication name is required'),
-  targetUniverseUUID: Yup.string().required('Target universe UUID is required')
+  name: Yup.string().required('Replication name is required')
 });
 export function EditReplicationDetails({ onHide, visible, replication }: Props) {
-  const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
-  );
   const queryClient = useQueryClient();
   const initialValues: any = { ...replication };
 
-  if (universeList) {
-    const targetUniverse = universeList.find(
-      (universe: any) => universe.universeUUID === replication.targetUniverseUUID
-    );
-    initialValues['targetUniverseUUID'] = {
-      label: targetUniverse?.name,
-      value: targetUniverse?.universeUUID
-    };
-  }
-
   const modifyXclusterOperation = useMutation(
-    (values: Replication) => {
+    (values: XClusterConfig) => {
       return editXclusterName(values);
     },
     {
@@ -45,8 +34,9 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
       onError: (err: any) => {
         toast.error(
           err.response.data.error instanceof String
-              ? err.response.data.error
-              : JSON.stringify(err.response.data.error));
+            ? err.response.data.error
+            : JSON.stringify(err.response.data.error)
+        );
       }
     }
   );
@@ -73,11 +63,18 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
       submitLabel="Apply Changes"
       showCancelButton
       render={(props: any) => {
-        if (isUniverseListLoading) {
-          return <p>Loading</p>;
-        }
-
-        return <TargetUniverseForm isEdit={true} {...props} universeList={universeList} />;
+        return (
+          <Row>
+            <Col lg={8}>
+              <Field
+                name="name"
+                placeholder="Replication name"
+                label="Replication Name"
+                component={YBFormInput}
+              />
+            </Col>
+          </Row>
+        );
       }}
     />
   );
