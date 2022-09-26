@@ -15,9 +15,9 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
  <li >
-    <a href="/preview/reference/drivers/nodejs/yugabyte-pg-reference/" class="nav-link">
+    <a href="../yugabyte-pg-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB node-postgres Driver
+      YugabyteDB node-postgres Smart Driver
     </a>
   </li>
   <li >
@@ -36,7 +36,7 @@ Learn how to establish a connection to YugabyteDB database and begin CRUD operat
 
 ## Install the driver dependency and async utility
 
-Postgres Node.js driver is available as a Node module, and you can install the driver using the following command:
+The PostgreSQL Node.js driver is available as a Node module, and you can install the driver using the following command:
 
 ```sh
 npm install pg
@@ -58,13 +58,13 @@ Node.js applications can connect to and query the YugabyteDB database using the 
 
 The following table describes the connection parameters required to connect to the YugabyteDB database.
 
-| node-postgres Parameters | Description | Default |
-| :---------- | :---------- | :------ |
+| Parameters | Description | Default |
+| :--------- | :---------- | :------ |
 | hostname  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | database name | yugabyte
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
+| user | database user | yugabyte
+| password | user password | yugabyte
 
 The following is an example connection string for connecting to YugabyteDB.
 
@@ -138,7 +138,7 @@ client
     })
 ```
 
-### Configure SSL/TLS
+## Configure SSL/TLS
 
 To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
@@ -161,7 +161,7 @@ var client = new Client({
 });
 ```
 
-#### SSL modes
+### SSL modes
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -172,7 +172,7 @@ var client = new Client({
 | verify-ca | Supported <br/> (Self-signed certificates aren't supported.) |
 | verify-full | Supported |
 
-### Transaction and isolation levels
+## Transaction and isolation levels
 
 YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 

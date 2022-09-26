@@ -73,7 +73,7 @@ $ sudo python setup.py install
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Python application development using the PostgreSQL psycopg2 driver.
+Learn how to perform the common tasks required for Python application development using the YugabyteDB psycopg2 smart driver.
 <!--  -->
 <!-- {{< note title="Note">}} -->
 <!--  -->

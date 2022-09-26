@@ -52,7 +52,7 @@ PostgreSQL JDBC Driver is available as a Maven dependency, and you can download 
 </dependency>
 ```
 
-### Gradle Dependency
+### Gradle dependency
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
@@ -68,7 +68,7 @@ Learn how to perform common tasks required for Java application development usin
 * [Create Table](/postgres-jdbc-fundamentals/#create-table)
 * [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
 
-### Connect to YugabyteDB Database
+### Connect to YugabyteDB database
 
 Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. The `java.sql.*` package includes all the JDBC interfaces required for working with YugabyteDB.
 
@@ -86,8 +86,10 @@ Example JDBC URL for connecting to YugabyteDB can be seen below.
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
 ```
 
-| JDBC Parameters | Description | Default |
-| :---------- | :---------- | :------ |
+The following table describes the connection parameters required to connect to the YugabyteDB database.
+
+| Parameters | Description | Default |
+| :--------- | :---------- | :------ |
 | hostname  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | database name | yugabyte
@@ -98,7 +100,7 @@ Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/
 
 Create database tables using the `java.sql.Statement` interface, which is used to execute the `CREATE TABLE` DDL statement.
 
-For example
+For example:
 
 ```sql
 CREATE TABLE IF NOT EXISTS employee (id int primary key, name varchar, age int, language text)
@@ -124,7 +126,7 @@ try {
 
 To write data to YugabyteDB, execute the `INSERT` statement using the `java.sql.Statement` interface.
 
-For example
+For example:
 
 ```java
 INSERT INTO employee VALUES (1, 'John', 35, 'Java')
@@ -165,7 +167,7 @@ try {
 
 To query data in YugabyteDB tables, execute the `SELECT` statement using the `java.sql.statement` interface. Query results are returned using the `java.sql.ResultSet` interface, which can be iterated using the `resultSet.next()` method for reading the data. Refer to [ResultSet](https://docs.oracle.com/javase/7/docs/api/java/sql/ResultSet.html) in the Java documentation.
 
-For example
+For example:
 
 ```sql
 SELECT * from employee;
@@ -198,16 +200,16 @@ Example JDBC URL for connecting to a secure YugabyteDB cluster can be seen below
 Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt", "yugabyte", "yugabyte");
 ```
 
-| JDBC Parameters | Description | Default |
-| :---------- | :---------- | :------ |
+| Parameters | Description | Default |
+| :--------- | :---------- | :------ |
 | ssl  | Enable SSL JDBC Connection | false
 | ssl-mode |  SSL mode used for JDBC Connection | require
 | sslrootcert | Server CA Certificate | root.crt
 
-### SSL Modes
+### SSL modes
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
-| :------- | :--------------------- | ------------------ |
+| :------- | :--------------------- | :----------------- |
 | disable  | SSL Disabled | supported
 | allow    | SSL enabled only if server requires SSL connection | Not supported
 | prefer | SSL enabled only if server requires SSL connection | Not supported
@@ -215,7 +217,7 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-### JDBC Client Identity Authentication
+### JDBC client identity authentication
 
 YugabyteDB cluster can be configured to authenticate the identity of the JDBC clients connecting to the cluster. In such cases, server certificate (`yugabytedb.crt`) and server key (`yugabytedb.key`) are required along with root certificate (`ca.crt`).
 
@@ -255,8 +257,8 @@ The following is an example JDBC URL for connecting to a secure YugabyteDB clust
 Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=verify-full&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte");
 ```
 
-| JDBC Parameters | Description | Default |
-| :---------- | :---------- | :------ |
+| Parameters | Description | Default |
+| :--------- | :---------- | :------ |
 | ssl  | Enable SSL JDBC Connection | false
 | ssl-mode |  SSL mode used for JDBC Connection | require
 | sslcert | Client SSL Certificate | yugabytedb.crt
@@ -288,7 +290,6 @@ try {
 } catch (SQLException e) {
   System.err.println(e.getMessage());
 }
-
 ```
 
 By default PostgreSQL JDBC driver will have `auto-commit` mode enabled which means each SQL statement is treated as a transaction and is automatically committed. If one or more SQL statements are encapsulated in a transaction, auto-commit mode must be disabled by using `setAutoCommit()` method of the `Connection` object.

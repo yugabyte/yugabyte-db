@@ -109,7 +109,7 @@ The following connection properties need to be added to enable load balancing:
 - load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
 - topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
-## Use the driver
+### Use the driver
 
 The YugabyteDB JDBC driver's driver class is `com.yugabyte.Driver`.
 
@@ -230,7 +230,7 @@ For topology-aware load balancing, run the SqlInserts workload application with 
 
 To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
 
-## Clean up
+### Clean up
 
 When you're done experimenting, run the following command to destroy the local cluster:
 
