@@ -206,7 +206,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
   // component is not cleared. In either case, after Reset()
   // consumption() should equal the size of the last component which
   // is 512 bytes.
-  arena.Reset();
+  arena.Reset(ResetMode::kKeepLast);
   ASSERT_EQ(512, mem_tracker->consumption());
 
   // Allocate beyond allowed consumption. This should still go

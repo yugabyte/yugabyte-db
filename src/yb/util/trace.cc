@@ -260,7 +260,7 @@ ThreadSafeObjectPool<ThreadSafeArena>& ArenaPool() {
 Trace::~Trace() {
   auto* arena = arena_.load(std::memory_order_acquire);
   if (arena) {
-    arena->Reset();
+    arena->Reset(ResetMode::kKeepLast);
     ArenaPool().Release(arena);
   }
 }
