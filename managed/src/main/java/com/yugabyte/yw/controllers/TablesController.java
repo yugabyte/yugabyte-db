@@ -1158,7 +1158,7 @@ public class TablesController extends AuthenticatedController {
 
   @Data
   private static class TableSizes {
-    private Double sstSizeBytes;
-    private Double walSizeBytes;
+    private double sstSizeBytes;
+    private double walSizeBytes;
   }
 }
