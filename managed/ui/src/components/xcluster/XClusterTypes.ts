@@ -1,12 +1,15 @@
 import moment from 'moment';
-import { TableType } from '../../redesign/helpers/dtos';
+
 import {
   CUSTOM_METRIC_TIME_RANGE_OPTION,
   DROPDOWN_DIVIDER,
+  MetricNames,
   METRIC_TIME_RANGE_OPTIONS,
   ReplicationStatus,
   YBTableRelationType
 } from './constants';
+
+import { TableType } from '../../redesign/helpers/dtos';
 
 export interface YBTable {
   isIndexTable: boolean;
@@ -22,7 +25,7 @@ export interface YBTable {
 /**
  * XCluster supported table type.
  */
- export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
+export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
 
 export interface XClusterConfig {
   createTime: string;
@@ -44,8 +47,10 @@ export interface TableDetails {
   tableId: string;
 }
 
+// TODO: Move the metric types to dtos.ts or another more appropriate file.
+
 export interface MetricTrace {
-  instanceName: string;
+  instanceName?: string;
   name: string;
   type: string;
   x: number[];
@@ -57,9 +62,8 @@ export interface MetricTrace {
   };
 }
 
-// TODO - Make this more robust and reusable
-export interface TableReplicationMetric {
-  tserver_async_replication_lag_micros: {
+export type Metrics<Name extends MetricNames> = {
+  [metricName in Name]: {
     data: MetricTrace[];
     directURLs: string[];
     layout: {
@@ -75,7 +79,7 @@ export interface TableReplicationMetric {
     };
     queryKey: string;
   };
-}
+};
 
 // Time range selector types.
 
