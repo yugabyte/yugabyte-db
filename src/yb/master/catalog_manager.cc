@@ -9004,9 +9004,7 @@ Status CatalogManager::DisableTabletSplitting(
   return Status::OK();
 }
 
-Status CatalogManager::IsTabletSplittingComplete(
-    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
-    rpc::RpcContext* rpc) {
+bool CatalogManager::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
   vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
@@ -9016,12 +9014,18 @@ Status CatalogManager::IsTabletSplittingComplete(
     }
   }
   for (const auto& table : tables) {
-    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, req->wait_for_parent_deletion())) {
-      resp->set_is_tablet_splitting_complete(false);
-      return Status::OK();
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table, wait_for_parent_deletion)) {
+      return false;
     }
   }
-  resp->set_is_tablet_splitting_complete(true);
+  return true;
+}
+
+Status CatalogManager::IsTabletSplittingComplete(
+    const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  resp->set_is_tablet_splitting_complete(
+      IsTabletSplittingCompleteInternal(req->wait_for_parent_deletion()));
   return Status::OK();
 }
 
