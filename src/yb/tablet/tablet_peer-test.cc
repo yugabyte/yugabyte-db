@@ -66,6 +66,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"

@@ -63,6 +63,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"

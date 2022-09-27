@@ -45,6 +45,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"

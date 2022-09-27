@@ -35,12 +35,12 @@
 #include "yb/client/table_alterer.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_string(certs_dir);

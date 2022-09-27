@@ -33,7 +33,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -1048,8 +1047,8 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         },
         kCreateIndexStartupGracePeriod,
         "Wait for pg_index indislive=true",
-        MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-        test_util::kDefaultWaitDelayMultiplier,
+        MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+        kDefaultWaitDelayMultiplier,
         kMaxDelay));
 
     LOG(INFO) << "Waiting for pg_index indisready to be true";
@@ -1061,7 +1060,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         kIndexStateFlagsUpdateDelay + kIndexStateFlagsUpdateGracePeriod,
         "Wait for pg_index indisready=true",
         kIndexStateFlagsUpdateDelay - kMaxDelay /* initial_delay */,
-        test_util::kDefaultWaitDelayMultiplier,
+        kDefaultWaitDelayMultiplier,
         kMaxDelay));
 
     LOG(INFO) << "Waiting till (approx) the end of the delay after committing indisready true";

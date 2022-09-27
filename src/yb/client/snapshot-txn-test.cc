@@ -46,6 +46,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"

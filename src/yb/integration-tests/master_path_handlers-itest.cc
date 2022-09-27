@@ -31,6 +31,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"

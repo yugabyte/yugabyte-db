@@ -43,13 +43,13 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pggate_flags.h"

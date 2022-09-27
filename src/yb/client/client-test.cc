@@ -95,6 +95,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
@@ -104,7 +105,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"

@@ -135,6 +135,7 @@ set(UTIL_SRCS
   async_task_util.cc
   atomic.cc
   background_task.cc
+  backoff_waiter.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
@@ -336,6 +337,7 @@ set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest ${YB_TEST_LINK_LIBS_EXTENSI
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(auto_flags-test)
 ADD_YB_TEST(background_task-test)
+ADD_YB_TEST(backoff_waiter-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
