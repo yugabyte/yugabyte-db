@@ -2597,6 +2597,14 @@
           "description" : "The node's instance type",
           "type" : "string"
         },
+        "kubernetesNamespace" : {
+          "description" : "Kubernetes namespace",
+          "type" : "string"
+        },
+        "kubernetesPodName" : {
+          "description" : "Pod name in Kubernetes",
+          "type" : "string"
+        },
         "lun_indexes" : {
           "description" : "Mounted disks LUN indexes",
           "items" : {
