@@ -1,3 +1,5 @@
+@use '../../../_style/colors.scss';
+
 .formInstruction {
   margin-bottom: 25px;
 
@@ -32,7 +34,7 @@
   border-radius: 8px;
 }
 
-.bootstrapTable { 
+.bootstrapTable {
   overflow-y: auto;
 }
 
@@ -47,4 +49,34 @@
   .yBPagination {
     margin-left: auto;
   }
+}
+
+.validationErrorContainer {
+  display: flex;
+
+  margin-top: 20px;
+  padding: 12px;
+
+  background-color: #fee6e0;
+  border: 1px solid colors.$YB_ERROR_ICON_COLOR;
+  border-radius: 4px;
+
+  i {
+    color: colors.$YB_ERROR_ICON_COLOR
+  }
+
+  .errorMessage {
+    margin-left: 10px;
+
+    h5 {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+  }
+
 }

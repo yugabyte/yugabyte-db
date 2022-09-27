@@ -9,9 +9,9 @@ import { Universe } from '../../../redesign/helpers/dtos';
 import { Field, FormikProps } from 'formik';
 import { getUniverseStatus, universeState } from '../../universes/helpers/universeHelpers';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 import styles from './SelectTargetUniverseStep.module.scss';
-import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
@@ -39,7 +39,7 @@ export const SelectTargetUniverseStep = ({
     return <YBErrorIndicator />;
   }
 
-  const { initialValues, values } = formik.current;
+  const { values } = formik.current;
   return (
     <>
       <div className={styles.formInstruction}>1. Select the target universe</div>
@@ -52,7 +52,7 @@ export const SelectTargetUniverseStep = ({
         />
 
         <Field
-          name="targetUniverseUUID"
+          name="targetUniverse"
           component={YBFormSelect}
           options={universeListQuery.data
             .filter(
@@ -63,14 +63,13 @@ export const SelectTargetUniverseStep = ({
             .map((universe) => {
               return {
                 label: universe.name,
-                value: universe.universeUUID
+                value: universe
               };
             })}
           field={{
-            name: 'targetUniverseUUID',
-            value: values.targetUniverseUUID
+            name: 'targetUniverse',
+            value: values.targetUniverse
           }}
-          defaultValue={initialValues.targetUniverseUUID}
           label="Target Universe"
         />
       </div>
