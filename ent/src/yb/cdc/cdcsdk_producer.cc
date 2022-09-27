@@ -26,11 +26,9 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
-DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
-TAG_FLAG(cdc_snapshot_batch_size, runtime);
+DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
 
-DEFINE_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
-TAG_FLAG(stream_truncate_record, runtime);
+DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
 DECLARE_int64(cdc_intent_retention_ms);
 
