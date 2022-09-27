@@ -367,13 +367,14 @@ public class BackupsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     RestoreBackupParams taskParams = parseJsonAndValidate(RestoreBackupParams.class);
-
-    if (taskParams.newOwner != null) {
-      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Invalid owner rename during restore operation");
-      }
-    }
+    taskParams.backupStorageInfoList.forEach(
+        bSI -> {
+          if (StringUtils.isNotBlank(bSI.newOwner)
+              && !Pattern.matches(VALID_OWNER_REGEX, bSI.newOwner)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid owner rename during restore operation");
+          }
+        });
 
     taskParams.customerUUID = customerUUID;
 
