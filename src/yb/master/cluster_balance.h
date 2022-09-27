@@ -100,6 +100,8 @@ class ClusterLoadBalancer {
 
   void ReportMetrics();
 
+  MonoTime LastRunTime() const;
+
   Status IsIdle() const;
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
@@ -427,6 +429,8 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  std::atomic<MonoTime> last_load_balance_run_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

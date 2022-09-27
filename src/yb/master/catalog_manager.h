@@ -764,6 +764,8 @@ class CatalogManager :
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp) override;
 
+  MonoTime LastLoadBalancerRunTime() const;
+
   Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                     IsLoadBalancerIdleResponsePB* resp);
 

@@ -101,6 +101,8 @@ class TwoDCTestBase : public YBTest {
   Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
 
+  Status WaitForLoadBalancersToStabilize();
+
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
 
