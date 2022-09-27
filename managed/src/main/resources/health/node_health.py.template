@@ -470,7 +470,7 @@ def get_rss_from_statm(statm):
         if len(stats) < 3:
             continue
         process_rss = stats[2]
-        if not process_rss.isdecimal():
+        if not process_rss.isdigit():
             continue
         total_rss += int(process_rss)
     return total_rss
@@ -762,7 +762,7 @@ class NodeChecker():
                     continue
                 epoch, filename = splits
                 epoch = epoch.split('.')[0]
-                if not epoch.isdecimal():
+                if not epoch.isdigit():
                     continue
                 log_tuples.append((epoch, filename,
                                    seconds_to_human_readable_time(int(time.time() - int(epoch)))))
@@ -837,7 +837,7 @@ class NodeChecker():
         for child_process in child_processes:
             if process_name in child_process:
                 pid = child_process.strip(process_name).strip()
-                if pid.isdecimal():
+                if pid.isdigit():
                     return pid
 
         return None
@@ -852,7 +852,7 @@ class NodeChecker():
 
         cmd = "ps --no-headers -C {} -o pid=".format(process_name)
         pid = self._check_output(cmd).strip()
-        if pid.isdecimal():
+        if pid.isdigit():
             return pid
         return None
 
@@ -897,7 +897,7 @@ class NodeChecker():
 
         if uptime is None or not uptime:
             return e.fill_and_return_entry(['Process is not running'], has_error=True)
-        elif uptime.isdecimal():
+        elif uptime.isdigit():
             if process == MASTER:
                 hc_metric_definition = HEALTH_CHECK_MASTER_BOOT_TIME_SEC
             elif process == TSERVER:
@@ -947,7 +947,7 @@ class NodeChecker():
         e = self._new_metric_entry("OOM kills last 10 minutes")
         cmd = "sudo -n journalctl -k --since \"10min ago\" | grep \"invoked oom-killer\" | wc -l"
         oom_kills = self._check_output(cmd, [0, 1]).strip()
-        if oom_kills.isdecimal():
+        if oom_kills.isdigit():
             metric = Metric.from_definition(YB_NODE_OOM_KILLS_10MIN).add_value(oom_kills)
             return e.fill_and_return_entry([oom_kills], has_error=False, metrics=[metric])
 
@@ -1104,7 +1104,7 @@ class NodeChecker():
             return e.fill_and_return_entry(
                 ['Error checking file descriptors: {}'.format(counts)], has_error=True)
 
-        if not all(count.isdecimal() for count in counts):
+        if not all(count.isdigit() for count in counts):
             return e.fill_and_return_entry(
                 ['Received invalid counts: {}'.format(counts)], has_error=True)
 
@@ -1231,7 +1231,7 @@ class NodeChecker():
                 output_parts = child_process.strip().split()
                 worker_pid = output_parts[0].strip()
                 uptime_sec = output_parts[1].strip()
-                if worker_pid.isdecimal() and uptime_sec.isdecimal() \
+                if worker_pid.isdigit() and uptime_sec.isdigit() \
                     and int(uptime_sec) > CMD_TIMEOUT_SEC:
                     logging.info("Killing {}".format(child_process))
                     self._check_output("kill -9 {}".format(worker_pid))

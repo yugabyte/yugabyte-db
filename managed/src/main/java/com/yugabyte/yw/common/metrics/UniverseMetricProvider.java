@@ -15,13 +15,12 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
@@ -42,7 +41,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import com.google.inject.Inject;
 
 @Singleton
 @Slf4j
@@ -128,12 +126,8 @@ public class UniverseMetricProvider implements MetricsProvider {
 
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
-              if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
-                log.warn(
-                    "Universe {} does not seem to be created correctly"
-                        + " - skipping per-node metrics",
-                    universe.getUniverseUUID());
-                break;
+              if (!nodeDetails.isActive()) {
+                continue;
               }
 
               String ipAddress = nodeDetails.cloudInfo.private_ip;
