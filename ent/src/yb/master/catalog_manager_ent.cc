@@ -185,6 +185,22 @@ DEFINE_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
              "during the import snapshot metadata phase of restore.");
 TAG_FLAG(import_snapshot_max_concurrent_create_table_requests, runtime);
 
+DEFINE_int32(inflight_splits_completion_timeout_secs, 600,
+             "Total time to wait for all inflight splits to complete during Restore.");
+TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
+TAG_FLAG(inflight_splits_completion_timeout_secs, runtime);
+
+DEFINE_int32(pitr_max_restore_duration_secs, 600,
+             "Maximum amount of time to complete a PITR restore.");
+TAG_FLAG(pitr_max_restore_duration_secs, advanced);
+TAG_FLAG(pitr_max_restore_duration_secs, runtime);
+
+DEFINE_int32(pitr_split_disable_check_freq_ms, 500,
+             "Delay before retrying to see if inflight tablet split operations have completed "
+             "after which PITR restore can be performed.");
+TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
+TAG_FLAG(pitr_split_disable_check_freq_ms, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -3073,6 +3089,40 @@ Status CatalogManager::EditSnapshotSchedule(
   *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
       id, *req, leader_ready_term(), rpc->GetClientDeadline()));
   return Status::OK();
+}
+
+Status CatalogManager::RestoreSnapshotSchedule(
+    const RestoreSnapshotScheduleRequestPB* req,
+    RestoreSnapshotScheduleResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  HybridTime ht = HybridTime(req->restore_ht());
+  auto deadline = rpc->GetClientDeadline();
+
+  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
+      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
+  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
+
+  // Disable splitting and then wait for all pending splits to complete before starting restoration.
+  DisableTabletSplittingInternal(disable_duration_ms, "PITR");
+
+  bool inflight_splits_finished = false;
+  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
+    // Wait for existing split operations to complete.
+    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */)) {
+      inflight_splits_finished = true;
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
+  }
+
+  if (!inflight_splits_finished) {
+    EnableTabletSplitting("PITR");
+    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
+  }
+
+  return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, leader_ready_term(), deadline);
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
