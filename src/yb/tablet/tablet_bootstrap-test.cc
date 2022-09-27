@@ -226,6 +226,8 @@ class BootstrapTest : public LogTestBase {
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
+      .post_split_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
