@@ -1396,6 +1396,8 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
     ASSERT_GT(tablet_ids.size(), 0);
   }
 
+  ASSERT_OK(WaitForLoadBalancersToStabilize());
+
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;

@@ -11189,8 +11189,12 @@ Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
-                                          IsLoadBalancerIdleResponsePB* resp) {
+MonoTime CatalogManager::LastLoadBalancerRunTime() const {
+  return load_balance_policy_->LastRunTime();
+}
+
+Status CatalogManager::IsLoadBalancerIdle(
+    const IsLoadBalancerIdleRequestPB* req, IsLoadBalancerIdleResponsePB* resp) {
   Status s = load_balance_policy_->IsIdle();
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::LOAD_BALANCER_RECENTLY_ACTIVE, s);

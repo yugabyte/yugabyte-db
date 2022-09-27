@@ -186,6 +186,8 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       yb_tables.push_back(consumer_table);
     }
 
+    RETURN_NOT_OK(WaitForLoadBalancersToStabilize());
+
     return yb_tables;
   }
 
@@ -893,6 +895,8 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
         ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
         producer_tables.push_back(producer_table);
       }
+
+      ASSERT_OK(WaitForLoadBalancersToStabilize());
 
       // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
       FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = rpc_delay_ms;
