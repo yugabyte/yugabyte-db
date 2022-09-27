@@ -25,8 +25,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -35,21 +35,21 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -333,7 +333,30 @@ public class BackupsController extends AuthenticatedController {
     } else {
       backupUtil.validateTables(null, universe, null, taskParams.backupType);
     }
-
+    if (taskParams.incrementalBackupFrequency != 0L) {
+      if (taskParams.incrementalBackupFrequencyTimeUnit == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Please provide time unit for incremental backup frequency.");
+      }
+      if (taskParams.baseBackupUUID != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot assign base backup while creating backup schedules.");
+      }
+      if (!universe.isYbcEnabled()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create incremental backup schedules on non-ybc universes.");
+      }
+      BackupUtil.validateBackupFrequency(taskParams.incrementalBackupFrequency);
+      long schedulingFrequency = taskParams.schedulingFrequency;
+      if (!StringUtils.isEmpty(taskParams.cronExpression)) {
+        schedulingFrequency = BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
+      }
+      if (schedulingFrequency <= taskParams.incrementalBackupFrequency) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Incremental backup frequency should be lower than full backup frequency.");
+      }
+    }
     Schedule schedule =
         Schedule.create(
             customerUUID,
