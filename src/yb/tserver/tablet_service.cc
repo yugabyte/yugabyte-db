@@ -1650,7 +1650,8 @@ void TabletServiceAdminImpl::UpgradeYsql(
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
-                                              FLAGS_heartbeat_interval_ms);
+                                              FLAGS_heartbeat_interval_ms,
+                                              req->use_single_connection());
   const auto status = upgrade_helper.Upgrade();
   if (!status.ok()) {
     LOG(INFO) << "YSQL upgrade failed: " << status;
