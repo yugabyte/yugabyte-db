@@ -18,12 +18,13 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
+import { api } from '../../../redesign/helpers/api';
+import { XClusterModalName } from '../constants';
 
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 import { XClusterConfig, YBTable } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
-import { api } from '../../../redesign/helpers/api';
 
 interface props {
   replication: XClusterConfig;
@@ -40,7 +41,7 @@ export function ReplicationTables({ replication }: props) {
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<YBTable>();
 
   const showAddTablesToClusterModal = () => {
-    dispatch(openDialog('addTablesToClusterModal'));
+    dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
@@ -161,7 +162,7 @@ export function ReplicationTables({ replication }: props) {
                   btnIcon="fa fa-line-chart"
                   onClick={(e: any) => {
                     setOpenTableLagGraphDetails(row);
-                    dispatch(openDialog('replicationLagGraphModal'));
+                    dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
                     e.currentTarget.blur();
                   }}
                 />
@@ -173,7 +174,7 @@ export function ReplicationTables({ replication }: props) {
                     <MenuItem
                       onClick={() => {
                         setDeleteTableDetails(row);
-                        dispatch(openDialog('DeleteReplicationTableModal'));
+                        dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
                       }}
                     >
                       <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
@@ -194,7 +195,7 @@ export function ReplicationTables({ replication }: props) {
           universeUUID={universeInfo.universeUUID}
           nodePrefix={universeInfo.universeDetails.nodePrefix}
           queryEnabled={isActiveTab}
-          visible={visibleModal === 'replicationLagGraphModal'}
+          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
           onHide={() => {
             dispatch(closeDialog());
           }}
