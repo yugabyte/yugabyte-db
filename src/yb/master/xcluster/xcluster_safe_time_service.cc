@@ -415,6 +415,9 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   std::shared_ptr<client::YBSession> session = ybclient->NewSession();
   session->SetTimeout(ybclient->default_rpc_timeout());
 
+  std::vector<client::YBOperationPtr> ops;
+  ops.reserve(entries_to_delete.size());
+
   for (auto& tablet : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
@@ -425,15 +428,11 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
                       << ". cluster_uuid: " << tablet.cluster_uuid
                       << ", tablet_id: " << tablet.tablet_id;
 
-    session->Apply(op);
+    ops.push_back(std::move(op));
   }
 
-  auto future = session->FlushFuture();
-  auto future_status = future.wait_for(ybclient->default_rpc_timeout().ToChronoMilliseconds());
-  SCHECK(
-      future_status == std::future_status::ready, IOError,
-      "Timed out waiting for flush to XClusterSafeTime table");
-  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to cleanup to XClusterSafeTime table");
+  RETURN_NOT_OK_PREPEND(
+      session->ApplyAndFlushSync(ops), "Failed to cleanup to XClusterSafeTime table");
 
   return OK();
 }

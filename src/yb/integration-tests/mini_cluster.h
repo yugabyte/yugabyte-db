@@ -225,6 +225,8 @@ class MiniCluster : public MiniClusterBase {
     return port_picker_.AllocateFreePort();
   }
 
+  Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
+
  private:
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;

@@ -162,6 +162,12 @@ Status TwoDCTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_on_c
   return consumer_status;
 }
 
+Status TwoDCTestBase::WaitForLoadBalancersToStabilize() {
+  RETURN_NOT_OK(
+      producer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
+  return consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
+}
+
 Status TwoDCTestBase::CreateDatabase(
     Cluster* cluster, const std::string& namespace_name, bool colocated) {
   auto conn = EXPECT_RESULT(cluster->Connect());
