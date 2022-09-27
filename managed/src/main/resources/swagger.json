@@ -922,6 +922,56 @@
       "required" : [ "name", "targetType" ],
       "type" : "object"
     },
+    "AlertTemplateSettings" : {
+      "description" : "Alert template settings",
+      "properties" : {
+        "createTime" : {
+          "description" : "Creation time",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
+        },
+        "template" : {
+          "description" : "Template",
+          "maxLength" : 50,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "createTime", "customerUUID", "template", "uuid" ],
+      "type" : "object"
+    },
+    "AlertTemplateSettingsFormData" : {
+      "properties" : {
+        "settings" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertTemplateSettings"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        }
+      },
+      "required" : [ "settings" ],
+      "type" : "object"
+    },
     "AlertingData" : {
       "description" : "Alerting configuration",
       "properties" : {
@@ -1000,7 +1050,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -10801,6 +10851,101 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Update an alert destination",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_settings" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateSettings"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get alert template settings",
+        "tags" : [ "Alerts" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "EditAlertTemplateSettingsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertTemplateSettingsFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateSettings"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Crete or update alert template settings list",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_settings/{settingsUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "settingsUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete an alert template settings",
         "tags" : [ "Alerts" ]
       }
     },
