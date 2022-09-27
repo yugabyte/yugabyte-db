@@ -138,3 +138,11 @@ export const SortOrder = {
   DESCENDING: 'desc'
 } as const;
 export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
+
+export const XClusterModalName = {
+  ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
+  EDIT_CONFIG: 'editXClusterConfigModal',
+  DELETE_CONFIG: 'deleteXClusterConfigModal',
+  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',
+  REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal'
+} as const;
