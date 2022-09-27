@@ -4267,9 +4267,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
 
   int expected_key1 = 0;
   int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
-    LOG(INFO) << "Record found: " << record.ShortDebugString();
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -4278,11 +4279,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
         ASSERT_EQ(std::to_string(expected_key2), record.row_message().new_tuple(0).datum_string());
         expected_key2++;
       }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
     }
   }
 
+  ASSERT_TRUE(ddl_tables.contains("test1"));
+  ASSERT_TRUE(ddl_tables.contains("test2"));
+
   ASSERT_EQ(insert_count, expected_key1);
   ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 3);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
