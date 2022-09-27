@@ -32,6 +32,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"

@@ -70,7 +70,6 @@
 #include <boost/optional.hpp>
 #include <glog/logging.h>
 
-#include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
@@ -168,6 +167,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
@@ -4756,7 +4756,7 @@ Status CatalogManager::IsCreateTableInProgress(const TableId& table_id,
 
 Status CatalogManager::WaitForCreateTableToFinish(
     const TableId& table_id, CoarseTimePoint deadline) {
-  return client::RetryFunc(
+  return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&CatalogManager::IsCreateTableInProgress, this, table_id, _1, _2));
 }

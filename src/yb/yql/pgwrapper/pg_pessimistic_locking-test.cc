@@ -34,6 +34,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 
 #include "yb/util/pb_util.h"

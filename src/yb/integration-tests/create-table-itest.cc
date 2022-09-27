@@ -32,6 +32,8 @@
 
 #include "yb/integration-tests/create-table-itest-base.h"
 
+#include "yb/util/backoff_waiter.h"
+
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_int64(is_raft_leader);

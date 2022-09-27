@@ -21,6 +21,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 

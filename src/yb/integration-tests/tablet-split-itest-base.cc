@@ -56,6 +56,8 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
