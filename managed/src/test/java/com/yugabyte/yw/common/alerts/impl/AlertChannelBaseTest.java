@@ -111,7 +111,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
     AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
     assertEquals(
-        substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE) + "\n\n" + alert.getMessage(),
+        substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
         channelBase.getNotificationText(alert, channel));
   }
 

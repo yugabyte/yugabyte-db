@@ -23,7 +23,8 @@ const initialStateFeatureInTest = {
   enableAzuKMS: true,
   allowOptionalAuth: false,
   enablePITR: false,
-  enableDedicatedNodes: false
+  enableDedicatedNodes: false,
+  enableNotificationTemplates: false
 };
 
 const initialStateFeatureReleased = {
@@ -49,7 +50,8 @@ const initialStateFeatureReleased = {
   enableAzuKMS: true,
   allowOptionalAuth: false,
   enablePITR: false,
-  enableDedicatedNodes: false
+  enableDedicatedNodes: false,
+  enableNotificationTemplates: false
 };
 
 export const FeatureFlag = (

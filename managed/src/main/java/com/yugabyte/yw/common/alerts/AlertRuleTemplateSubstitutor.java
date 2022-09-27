@@ -76,6 +76,12 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
     }
 
     @Override
+    public String getAnnotationValue(String name) {
+      // Don't have annotations in alert config
+      return null;
+    }
+
+    @Override
     public UUID getUuid() {
       return alertDefinition.getUuid();
     }
