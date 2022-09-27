@@ -58,7 +58,7 @@ The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-d
 
 For details, see the [v4.6 README](https://github.com/yugabyte/cassandra-java-driver/blob/4.6.0-yb-x/README.md) in our GitHub repository.
 
-For a tutorial on building a sample Java application with this driver, see [Build a Java application](../../../develop/build-apps/java/ycql/).
+For a tutorial on building a sample Java application with this driver, see [Build a Java application](../../../drivers-orms/java/datastax-ycql-4.6/).
 
 To build Java applications with this driver, you must add the following Maven dependency to your application:
 
@@ -77,6 +77,8 @@ For details, see the [Maven repository contents](https://mvnrepository.com/artif
 The [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), version `3.10.0-yb-x`, is based on the [DataStax Java Driver for Apache Cassandra v.3.10](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
 
 For details, see the [v3.10 README](https://github.com/yugabyte/cassandra-java-driver/blob/3.10.0-yb-x/README.md) in our GitHub repository.
+
+For a tutorial on building a sample Java application with this driver, see [Build a Java application](../../../drivers-orms/java/datastax-ycql/).
 
 To build Java applications with this driver, you must add the following Maven dependency to your application:
 

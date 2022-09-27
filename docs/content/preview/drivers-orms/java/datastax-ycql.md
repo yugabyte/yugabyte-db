@@ -1,78 +1,31 @@
 ---
-title: Build a Java application that uses YCQL
-headerTitle: Build a Java application
-linkTitle: More examples
-description: Build a sample Java application with the Yugabyte Java Driver for YCQL.
+title: Connect an application
+linkTitle: Connect an app using YCQL
+description: JDBC drivers for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-java
-    identifier: java-4
-    weight: 550
+    identifier: datastax-java-driver
+    parent: java-drivers
+    weight: 500
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../ysql-yb-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YB - JDBC
-    </a>
-  </li>
   <li >
-    <a href="../ysql-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC
+    <a href="../datastax-ycql/" class="nav-link active">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      YugabyteDB YCQL DataStax Driver
     </a>
   </li>
-  <li >
-    <a href="../ysql-vertx-pg-client/" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vert.x PG Client
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC SSL/TLS
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-hibernate/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Hibernate
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data YugabyteDB
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-spring-data/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-ebean/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebean
-    </a>
-  </li>
-  <li>
-    <a href="../ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../ycql-4.6/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
+   <li >
+    <a href="../datastax-ycql-4.6/" class="nav-link">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      YugabyteDB YCQL(4.6) DataStax Driver
     </a>
   </li>
 </ul>
+
 
 ## Maven
 
@@ -94,7 +47,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../../quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../quick-start/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 
