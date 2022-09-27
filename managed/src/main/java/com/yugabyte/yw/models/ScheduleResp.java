@@ -30,6 +30,8 @@ public class ScheduleResp {
   BackupInfo backupInfo;
   JsonNode taskParams;
   boolean backlogStatus;
+  long incrementalBackupFrequency;
+  TimeUnit incrementalBackupFrequencyTimeUnit;
 
   @Value
   @Builder

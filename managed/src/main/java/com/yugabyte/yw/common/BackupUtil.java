@@ -127,6 +127,14 @@ public class BackupUtil {
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {
+    if (getCronExpressionTimeInterval(cronExpression)
+        < BackupUtil.MIN_SCHEDULE_DURATION_IN_MILLIS) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Duration between the cron schedules cannot be less than 1 hour");
+    }
+  }
+
+  public static long getCronExpressionTimeInterval(String cronExpression) {
     Cron parsedUnixCronExpression;
     try {
       CronParser unixCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
@@ -142,13 +150,10 @@ public class BackupUtil {
         executionTime.timeFromLastExecution(Instant.now().atZone(ZoneId.of("UTC"))).get();
     Duration duration = Duration.ZERO;
     duration = duration.plus(timeToNextExecution).plus(timeFromLastExecution);
-    if (duration.getSeconds() < BackupUtil.MIN_SCHEDULE_DURATION_IN_SECS) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Duration between the cron schedules cannot be less than 1 hour");
-    }
+    return duration.getSeconds() * 1000;
   }
 
-  public static void validateBackupFrequency(Long frequency) throws PlatformServiceException {
+  public static void validateBackupFrequency(long frequency) throws PlatformServiceException {
     if (frequency < MIN_SCHEDULE_DURATION_IN_MILLIS) {
       throw new PlatformServiceException(BAD_REQUEST, "Minimum schedule duration is 1 hour");
     }
