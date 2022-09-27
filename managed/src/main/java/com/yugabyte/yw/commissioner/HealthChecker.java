@@ -661,18 +661,24 @@ public class HealthChecker {
         return;
       }
       providerCode = provider.code;
-      for (NodeDetails nd : details.nodeDetailsSet) {
+      List<NodeDetails> activeNodes =
+          details
+              .getNodesInCluster(cluster.uuid)
+              .stream()
+              .filter(NodeDetails::isActive)
+              .collect(Collectors.toList());
+      for (NodeDetails nd : activeNodes) {
         if (nd.cloudInfo.private_ip == null) {
           log.warn(
               String.format(
-                  "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
+                  "Universe %s has active unprovisioned node %s.",
+                  params.universe.name, nd.nodeName));
           setHealthCheckFailedMetric(params.customer, params.universe);
           return;
         }
       }
       List<NodeDetails> sortedDetails =
-          details
-              .getNodesInCluster(cluster.uuid)
+          activeNodes
               .stream()
               .sorted(Comparator.comparing(NodeDetails::getNodeName))
               .collect(Collectors.toList());
