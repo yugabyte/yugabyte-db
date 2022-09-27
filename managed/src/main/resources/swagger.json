@@ -222,25 +222,32 @@
       "type" : "object"
     },
     "AlertChannel" : {
+      "description" : "Alert notification channel",
       "properties" : {
         "customer_uuid" : {
+          "description" : "Customer UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "name" : {
+          "description" : "Name",
           "maxLength" : 63,
           "minLength" : 1,
           "type" : "string"
         },
         "params" : {
-          "$ref" : "#/definitions/AlertChannelParams"
+          "$ref" : "#/definitions/AlertChannelParams",
+          "description" : "Channel params"
         },
         "uuid" : {
+          "description" : "Channel UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "customer_uuid", "name", "params", "uuid" ],
+      "required" : [ "customer_uuid", "name", "params" ],
       "type" : "object"
     },
     "AlertChannelEmailParams" : {
@@ -249,22 +256,25 @@
       }, {
         "properties" : {
           "defaultRecipients" : {
+            "description" : "Use health check notification recipients",
             "type" : "boolean"
           },
           "defaultSmtpSettings" : {
+            "description" : "Use health check notification SMTP settings",
             "type" : "boolean"
           },
           "recipients" : {
+            "description" : "List of recipients",
             "items" : {
               "type" : "string"
             },
             "type" : "array"
           },
           "smtpData" : {
-            "$ref" : "#/definitions/SmtpData"
+            "$ref" : "#/definitions/SmtpData",
+            "description" : "SMTP settings"
           }
         },
-        "required" : [ "defaultRecipients", "defaultSmtpSettings", "recipients", "smtpData" ],
         "type" : "object"
       } ]
     },
@@ -290,11 +300,13 @@
       }, {
         "properties" : {
           "apiKey" : {
+            "description" : "API key",
             "maxLength" : 2147483647,
             "minLength" : 1,
             "type" : "string"
           },
           "routingKey" : {
+            "description" : "Routing key",
             "maxLength" : 2147483647,
             "minLength" : 1,
             "type" : "string"
@@ -305,16 +317,18 @@
       } ]
     },
     "AlertChannelParams" : {
+      "description" : "Supertype for channel params for different channel types.",
       "discriminator" : "channelType",
       "properties" : {
         "textTemplate" : {
+          "description" : "Notification text template",
           "type" : "string"
         },
         "titleTemplate" : {
+          "description" : "Notification title template",
           "type" : "string"
         }
       },
-      "required" : [ "textTemplate", "titleTemplate" ],
       "type" : "object"
     },
     "AlertChannelSlackParams" : {
@@ -323,18 +337,21 @@
       }, {
         "properties" : {
           "iconUrl" : {
+            "description" : "Slack icon URL",
             "type" : "string"
           },
           "username" : {
+            "description" : "Slack username",
             "maxLength" : 2147483647,
             "minLength" : 1,
             "type" : "string"
           },
           "webhookUrl" : {
+            "description" : "Slack webhook URL",
             "type" : "string"
           }
         },
-        "required" : [ "iconUrl", "username", "webhookUrl" ],
+        "required" : [ "username", "webhookUrl" ],
         "type" : "object"
       } ]
     },
@@ -344,6 +361,7 @@
       }, {
         "properties" : {
           "webhookUrl" : {
+            "description" : "Webhook URL",
             "type" : "string"
           }
         },
@@ -416,19 +434,16 @@
         "targetType" : {
           "description" : "Target type",
           "enum" : [ "PLATFORM", "UNIVERSE" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "template" : {
           "description" : "Template name",
           "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "thresholdUnit" : {
           "description" : "Threshold unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "thresholds" : {
@@ -625,13 +640,11 @@
         "targetType" : {
           "description" : "Target type",
           "enum" : [ "PLATFORM", "UNIVERSE" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "template" : {
           "description" : "Template name",
           "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "thresholdConditionReadOnly" : {
@@ -664,7 +677,6 @@
         "thresholdUnit" : {
           "description" : "Threshold unit",
           "enum" : [ "STATUS", "COUNT", "PERCENT", "MILLISECOND", "SECOND", "DAY" ],
-          "readOnly" : true,
           "type" : "string"
         },
         "thresholdUnitName" : {
@@ -766,35 +778,42 @@
       "type" : "object"
     },
     "AlertDestination" : {
+      "description" : "Alert notification destination",
       "properties" : {
         "channels" : {
+          "description" : "Alert notification channels",
           "items" : {
             "format" : "uuid",
             "type" : "string"
           },
           "maxItems" : 2147483647,
           "minItems" : 1,
-          "readOnly" : true,
           "type" : "array"
         },
         "customerUUID" : {
+          "description" : "Customer UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         },
         "defaultDestination" : {
+          "description" : "Default alert notification destination",
           "type" : "boolean"
         },
         "name" : {
+          "description" : "Name",
           "maxLength" : 63,
           "minLength" : 1,
           "type" : "string"
         },
         "uuid" : {
+          "description" : "Destination UUID",
           "format" : "uuid",
+          "readOnly" : true,
           "type" : "string"
         }
       },
-      "required" : [ "channels", "customerUUID", "defaultDestination", "name", "uuid" ],
+      "required" : [ "channels", "customerUUID", "defaultDestination", "name" ],
       "type" : "object"
     },
     "AlertDestinationFormData" : {

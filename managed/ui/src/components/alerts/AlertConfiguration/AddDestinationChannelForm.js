@@ -9,7 +9,7 @@ import * as Yup from 'yup';
 import './AddDestinationChannelForm.scss';
 
 export const AddDestinationChannelForm = (props) => {
-  const { customer, visible, onHide, onError, defaultChannel } = props;
+  const { customer, visible, onHide, onError, defaultChannel, enableNotificationTemplates } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
   const [customSMTP, setCustomSMTP] = useState(props.customSmtp ? props.customSmtp : false);
   const [defaultRecipients, setDefaultRecipients] = useState(
@@ -51,6 +51,9 @@ export const AddDestinationChannelForm = (props) => {
       name: '',
       params: {}
     };
+
+    payload['params']['titleTemplate'] = values['notificationTitle'];
+    payload['params']['textTemplate'] = values['notificationText'];
 
     switch (values.CHANNEL_TYPE) {
       case 'slack':
@@ -155,6 +158,45 @@ export const AddDestinationChannelForm = (props) => {
     webhookURL: Yup.string().required('Web hook Url is Required')
   });
 
+  const getNotificationTemplateRows = () => {
+    if (!enableNotificationTemplates) {
+      return (<span />);
+    }
+    const defaultNotificationTitle = "YugabyteDB Anywhere {{ $labels.severity }} alert"
+      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}"
+    const defaultNotificationText = "{{ $labels.definition_name }} alert with severity level"
+      + " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'"
+      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}"
+    return (
+      <>
+        <Row>
+          <Col lg={12}>
+            <Field
+              name="notificationTitle"
+              type="text"
+              label="Notification Title Template"
+              placeholder={defaultNotificationTitle}
+              component={YBFormInput}
+              disabled={isReadOnly}
+            />
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12}>
+            <Field
+              name="notificationText"
+              type="text"
+              label="Notification Template"
+              placeholder={defaultNotificationText}
+              component={YBFormInput}
+              disabled={isReadOnly}
+            />
+          </Col>
+        </Row>
+      </>
+    );
+  }
+
   const getChannelForm = () => {
     switch (channelType) {
       case 'pagerduty':
@@ -196,6 +238,7 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       case 'webhook':
@@ -225,6 +268,7 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       case 'slack':
@@ -254,6 +298,7 @@ export const AddDestinationChannelForm = (props) => {
                 />
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       case 'email':
@@ -422,6 +467,7 @@ export const AddDestinationChannelForm = (props) => {
                 )}
               </Col>
             </Row>
+            {getNotificationTemplateRows()}
           </>
         );
       default:

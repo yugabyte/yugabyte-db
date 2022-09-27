@@ -510,7 +510,10 @@ public class AlertConfigurationService {
             definition.setQuery(configuration.getTemplate().buildTemplate(customer));
             if (!configuration.getTemplate().isSkipTargetLabels()) {
               definition.setLabels(
-                  MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+                  MetricLabelsBuilder.create()
+                      .appendCustomer(customer)
+                      .appendSource(customer)
+                      .getDefinitionLabels());
             }
             if (!configuration.getMaintenanceWindowUuidsSet().isEmpty()) {
               definition.setLabel(
@@ -588,7 +591,10 @@ public class AlertConfigurationService {
                     configuration.getTemplate().buildTemplate(customer, universe));
                 if (!configuration.getTemplate().isSkipTargetLabels()) {
                   universeDefinition.setLabels(
-                      MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+                      MetricLabelsBuilder.create()
+                          .appendCustomer(customer)
+                          .appendSource(universe)
+                          .getDefinitionLabels());
                 }
                 Set<UUID> appliedMaintenanceWindows = new HashSet<>();
                 if (!configuration.getMaintenanceWindowUuidsSet().isEmpty()) {
