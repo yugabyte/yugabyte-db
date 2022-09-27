@@ -53,12 +53,14 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return replication_info_;
   }
 
-  void SetBlacklist() const override {
-    // Set the blacklist so we can also mark the tablet servers as we add them up.
-    global_state_->SetBlacklist(blacklist_);
-
-    // Set the leader blacklist so we can also mark the tablet servers as we add them up.
-    global_state_->SetLeaderBlacklist(leader_blacklist_);
+  void SetBlacklistAndPendingDeleteTS() override {
+    for (const auto& ts_desc : global_state_->ts_descs_) {
+      AddTSIfBlacklisted(ts_desc, blacklist_, false);
+      AddTSIfBlacklisted(ts_desc, leader_blacklist_, true);
+      if (ts_desc->HasTabletDeletePending()) {
+        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
+      }
+    }
   }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
