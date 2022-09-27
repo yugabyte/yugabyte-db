@@ -298,7 +298,9 @@ public class TableManagerTest extends FakeDBApplication {
               : testProvider.getYbHome() + VM_CERT_DIR);
     }
     cmd.add(backupTableParams.actionType.name().toLowerCase());
-    if (backupTableParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        mockruntimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     return cmd;

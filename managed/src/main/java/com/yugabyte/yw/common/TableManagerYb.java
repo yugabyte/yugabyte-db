@@ -305,7 +305,10 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
     }
-    if (backupTableParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (backupTableParams.useTablespaces) {
