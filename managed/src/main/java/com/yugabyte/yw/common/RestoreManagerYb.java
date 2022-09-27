@@ -26,6 +26,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.StringUtils;
+
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -176,12 +179,12 @@ public class RestoreManagerYb extends DevopsBase {
         commandArgs.add("--restore_time");
         commandArgs.add(restoreTimeStampMicroUnix);
       }
-      if (restoreBackupParams.newOwner != null) {
+      if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
         commandArgs.add("--edit_ysql_dump_sed_reg_exp");
         commandArgs.add(
             String.format(
                 "s|OWNER TO %s|OWNER TO %s|",
-                restoreBackupParams.oldOwner, restoreBackupParams.newOwner));
+                backupStorageInfo.oldOwner, backupStorageInfo.newOwner));
       }
     }
 

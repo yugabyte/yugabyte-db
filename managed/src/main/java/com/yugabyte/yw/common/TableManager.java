@@ -242,7 +242,7 @@ public class TableManager extends DevopsBase {
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
           }
-          if (backupTableParams.newOwner != null) {
+          if (StringUtils.isNotBlank(backupTableParams.newOwner)) {
             commandArgs.add("--edit_ysql_dump_sed_reg_exp");
             commandArgs.add(
                 String.format(
