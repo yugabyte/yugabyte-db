@@ -673,4 +673,12 @@ public class Util {
     }
     return new Pair<>(osType.toLowerCase(), archType.toLowerCase());
   }
+
+  /**
+   * Basic DNS address check which allows only alphanumeric characters and hyphen (-) in the name.
+   * Hyphen cannot be at the beginning or at the end of a DNS label.
+   */
+  public static boolean isValidDNSAddress(String dns) {
+    return dns.matches("^((?!-)[A-Za-z0-9-]+(?<!-)\\.)+[A-Za-z]+$");
+  }
 }
