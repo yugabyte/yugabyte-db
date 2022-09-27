@@ -182,56 +182,6 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
   }
 }
 
-namespace test_util {
-
-constexpr int kDefaultInitialWaitMs = 1;
-constexpr double kDefaultWaitDelayMultiplier = 1.1;
-constexpr int kDefaultMaxWaitDelayMs = 2000;
-
-} // namespace test_util
-
-// Waits for the given condition to be true or until the provided deadline happens.
-Status Wait(
-    const std::function<Result<bool>()>& condition,
-    MonoTime deadline,
-    const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-Status Wait(
-    const std::function<Result<bool>()>& condition,
-    CoarseTimePoint deadline,
-    const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-Status LoggedWait(
-    const std::function<Result<bool>()>& condition,
-    CoarseTimePoint deadline,
-    const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-// Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-Status LoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const std::string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& rel_path, const std::string& tool_name);
 

@@ -24,10 +24,10 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"

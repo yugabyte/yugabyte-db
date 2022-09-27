@@ -63,11 +63,11 @@
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
