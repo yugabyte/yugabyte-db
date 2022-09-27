@@ -132,7 +132,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             taskParams().nodePrefix,
             provider,
             universeDetails.communicationPorts.masterRpcPort,
-            newNamingStyle);
+            newNamingStyle,
+            provider.getK8sPodAddrTemplate());
 
     if (isMasterChanged) {
       upgradePodsTask(
