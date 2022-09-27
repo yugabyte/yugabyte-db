@@ -1672,6 +1672,14 @@
           "description" : "Keyspace name",
           "type" : "string"
         },
+        "newOwner" : {
+          "description" : "User name of the new tables owner",
+          "type" : "string"
+        },
+        "oldOwner" : {
+          "description" : "User name of the current tables owner",
+          "type" : "string"
+        },
         "sse" : {
           "description" : "Is SSE",
           "type" : "boolean"
@@ -6346,10 +6354,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "newOwner" : {
-          "description" : "User name of the new tables owner",
-          "type" : "string"
-        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -6360,10 +6364,6 @@
         },
         "nodeExporterUser" : {
           "description" : "Node exporter user",
-          "type" : "string"
-        },
-        "oldOwner" : {
-          "description" : "User name of the current tables owner",
           "type" : "string"
         },
         "parallelism" : {
