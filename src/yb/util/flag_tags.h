@@ -209,4 +209,48 @@ class FlagTagger {
     TAG_FLAG(TEST_##name, unsafe); \
     TAG_FLAG(TEST_##name, hidden);
 
+// Runtime flags.
+#define DEFINE_RUNTIME_bool(name, default_value, description) \
+  DEFINE_bool(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+#define DEFINE_RUNTIME_int32(name, default_value, description) \
+  DEFINE_int32(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+#define DEFINE_RUNTIME_int64(name, default_value, description) \
+  DEFINE_int64(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+#define DEFINE_RUNTIME_uint64(name, default_value, description) \
+  DEFINE_uint64(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+#define DEFINE_RUNTIME_double(name, default_value, description) \
+  DEFINE_double(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+#define DEFINE_RUNTIME_string(name, default_value, description) \
+  DEFINE_string(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
+// Non Runtime flags.
+#define DEFINE_NON_RUNTIME_bool(name, default_value, description) \
+  DEFINE_bool(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_int32(name, default_value, description) \
+  DEFINE_int32(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_int64(name, default_value, description) \
+  DEFINE_int64(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_uint64(name, default_value, description) \
+  DEFINE_uint64(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_double(name, default_value, description) \
+  DEFINE_double(name, default_value, description);
+
+#define DEFINE_NON_RUNTIME_string(name, default_value, description) \
+  DEFINE_string(name, default_value, description);
+
 #endif /* YB_UTIL_FLAG_TAGS_H */
