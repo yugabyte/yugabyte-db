@@ -52,6 +52,7 @@ static const char *PSQL_SERVER_CONNECTION_TOTAL = "yb_ysqlserver_connection_tota
 static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_connection_total";
 // This is the total number of connections rejected due to "too many clients already"
 static const char *PSQL_SERVER_CONNECTION_OVER_LIMIT = "yb_ysqlserver_connection_over_limit_total";
+static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connection_total";
 
 namespace {
 
@@ -60,6 +61,7 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
   rpczEntry *entry = *rpczResultPointer;
 
   uint64_t tot_connections = 0;
+  uint64_t new_connections = 0;
   uint64_t tot_active_connections = 0;
   for (int i = 0; i < *num_backends; ++i, ++entry) {
     if (entry->proc_id > 0) {
@@ -68,6 +70,7 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
       }
       tot_connections++;
     }
+    new_connections += entry->new_conn;
   }
 
   std::ostringstream errMsg;
@@ -88,6 +91,10 @@ void emitConnectionMetrics(PrometheusWriter *pwriter) {
           prometheus_attr, PSQL_SERVER_CONNECTION_OVER_LIMIT, *too_many_conn_p),
       errMsg.str());
   }
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntryNonTable(
+          prometheus_attr, PSQL_SERVER_NEW_CONNECTION_TOTAL, new_connections),
+    errMsg.str());
   pgCallbacks.freeRpczEntries();
 }
 

@@ -237,6 +237,7 @@ pullRpczEntries(void)
       before_changecount = beentry->st_changecount;
 
       rpcz[i].proc_id = beentry->st_procpid;
+      rpcz[i].new_conn = beentry->yb_new_conn;
 
       /* avoid filling any more fields if invalid */
       if (beentry->st_procpid <= 0) {

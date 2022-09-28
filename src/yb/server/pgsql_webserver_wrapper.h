@@ -50,6 +50,7 @@ typedef struct rpczEntry {
   int64 query_start_timestamp;
   char *backend_type;
   uint8 backend_active;
+  int new_conn;
   char *backend_status;
   char *host;
   char *port;
