@@ -3,7 +3,7 @@ title: Read replicas
 linkTitle: Read replicas
 description: Scale YugabyteDB Managed clusters.
 headcontent: Reduce read latencies in remote regions
-image: /images/section_icons/deploy/enterprise.png
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-readreplica
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-If your user base is geographically distributed, you can add read replicas to improve read latency in regions that are far from your primary region.
+If your user base is geographically distributed, you can add [read replicas](../../cloud-basics/create-clusters-topology/#read-replicas) to improve read latency in regions that are far from your primary region.
 
 Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously.
 
@@ -29,7 +29,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 ## Prerequisites
 
 - Primary cluster that is deployed in a VPC.
-- Replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy the replicas.
+- Replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy the replicas. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Add or edit read replicas
 
@@ -43,9 +43,9 @@ To add or edit read-replicas:
 
 1. For each replica, set the following options:
 
-    **Region** - Choose the [region](../../../release-notes#cloud-provider-regions) where you want to deploy the replica.
+    **Region** - Choose the [region](../../release-notes#cloud-provider-regions) where you want to deploy the replica.
 
-    **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-vpcs/).
+    **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
     **Replication Factor** - Enter the number of copies of your data. Replication factor refers to the number of copies of your data in your read replica. This ensures the availability of your read replica in case of node outages. This is independent of the of the fault tolerance of the primary cluster, and does not contribute to failover.
 
