@@ -31,6 +31,7 @@ The following table lists the activity that is logged.
 | Source | Activity |
 | --- | --- |
 | Cluster | Create Cluster<br>Delete Cluster<br>Edit Cluster<br>Upgrade Cluster<br>Pause Cluster<br>Resume Cluster |
+| Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | Allow List | Create Allow List<br>Delete Allow List |
 | Backup | Create Backup<br>Delete Backup<br>Restore Backup |
 | Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
