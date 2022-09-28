@@ -3952,6 +3952,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
         auto* condition = update_req->mutable_if_expr()->mutable_condition();
         condition->set_op(QL_OP_EXISTS);
         session->Apply(update_op);
+        stream_ops.push_back(std::make_pair(stream->id(), update_op));
         LOG(INFO) << "Setting checkpoint to OpId::Max() for stream " << stream->id()
                   << " and tablet " << tablet_id << " with request "
                   << update_req->ShortDebugString();
