@@ -115,10 +115,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     }
   }
 
-  WritableFileOptions opts;
-  opts.sync_on_close = true;
   std::unique_ptr<WritableFile> file;
-  RETURN_NOT_OK(env().NewWritableFile(opts, file_path, &file));
+  RETURN_NOT_OK(env().NewWritableFile(file_path, &file));
 
   data_id->set_file_name(file_pb.name());
   RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get()),
@@ -213,6 +211,8 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
       }
     }
   }
+
+  RETURN_NOT_OK(appendable->Sync());
 
   VLOG_WITH_PREFIX(2) << "Transmission rate: " << rate_limiter->GetRate();
 
