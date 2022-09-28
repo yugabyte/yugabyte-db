@@ -34,9 +34,9 @@ There are two types of time to live (TTL) in YCQL:
 - Table-level TTL that is not stored in DocDB. Instead, it is stored in the YB-Master system catalog as part of the table’s schema.
 - Non-table-level TTL that includes the column-level TTL stored with the value of the column and the row-level TTL.
 
-If no TTL is present at the column’s value, the table level TTL acts as the default value.
+If no TTL is present at the column’s value, the table-level TTL acts as the default value.
 
-Furthermore, YCQL distinguishes between rows created using `INSERT` and `UPDATE` statements. This difference as well the row-level TTL are tracked using a so-called liveness column, which is a special system column invisible to you. It is added for inserts, but not updates, making sure the row is present even if all non-primary key columns are deleted only in the case of inserts.
+Furthermore, YCQL distinguishes between rows created using `INSERT` and `UPDATE` statements. This difference as well as the row-level TTL are tracked using a so-called liveness column, which is a special system column invisible to you. It is added for inserts, but not updates, ensuring that the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
 ## Table-level TTL
 
@@ -81,7 +81,7 @@ SELECT * FROM pageviews;
 
 ## Column-level TTL
 
-YCQL also allows to set a column-level TTL, in which case the TTL is stored as part of the DocDB column value that you can set only when updating the column, as demonstrated by the following example:
+YCQL also allows you to set a column-level TTL, in which case the TTL is stored as part of the DocDB column value that you can set only when updating the column, as demonstrated by the following example:
 
 ```sql
 INSERT INTO pageviews(path,views) VALUES ('/index', 10);
@@ -148,7 +148,7 @@ When using the `file_expiration_value_ttl_overrides_table_ttl` flag, be sure to 
 
 ### Configuring for existing YCQL datasets
 
-To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, a temporary 2 times space amplification of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents has entirely expired, roughly TTL amount of time after the file expiration feature was configured.
+To convert existing YCQL tables to ones configured for file expiration, the same TServer flag values as above can be used. However, a temporary 2 times space amplification of the data should be expected in this case. This amplification happens because the existing file structure will have kept most data in a single large file, and that file will now be excluded from compactions going forward. Thus, this file will be unchanged until its contents have entirely expired, approximately TTL amount of time after the file expiration feature was configured.
 
 Additionally, if data files were created with YugabyteDB versions 2.6.6 or earlier, or 2.8.1 or earlier, files may lack the necessary metadata to be expired naturally. The `file_expiration_ignore_value_ttl` flag can be set to `true` to ignore the missing metadata. This will ignore the row- and column-level TTL metadata, expiring files purely based on the table's `default_time_to_live`.
 
