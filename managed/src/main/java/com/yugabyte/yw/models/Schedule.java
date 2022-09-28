@@ -489,13 +489,7 @@ public class Schedule extends Model {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
         schedules.parallelStream().map(s -> toScheduleResp(s)).collect(Collectors.toList());
-    SchedulePagedApiResponse responseMin;
-    try {
-      responseMin = SchedulePagedApiResponse.class.newInstance();
-    } catch (Exception e) {
-      throw new IllegalStateException(
-          "Failed to create " + SchedulePagedApiResponse.class.getSimpleName() + " instance", e);
-    }
+    SchedulePagedApiResponse responseMin = new SchedulePagedApiResponse();
     responseMin.setEntities(schedulesList);
     responseMin.setHasPrev(response.isHasPrev());
     responseMin.setHasNext(response.isHasNext());
