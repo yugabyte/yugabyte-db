@@ -34,6 +34,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"

@@ -73,6 +73,7 @@
 
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -80,7 +81,6 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"

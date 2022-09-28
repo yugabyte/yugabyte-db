@@ -60,6 +60,7 @@
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
@@ -69,7 +70,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/thread.h"
 

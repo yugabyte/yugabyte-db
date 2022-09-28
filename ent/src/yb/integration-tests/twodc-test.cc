@@ -67,12 +67,12 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

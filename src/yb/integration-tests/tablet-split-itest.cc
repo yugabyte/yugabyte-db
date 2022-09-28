@@ -79,6 +79,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
@@ -88,7 +89,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT

@@ -175,7 +175,7 @@ public class InstanceType extends Model {
   public static void resetInstanceTypeDetailsForProvider(UUID providerUuid) {
     String updateQuery =
         "UPDATE instance_type "
-            + "SET instance_type_details_json = '' WHERE provider_uuid = :providerUuid";
+            + "SET instance_type_details = '{}' WHERE provider_uuid = :providerUuid";
     SqlUpdate update =
         Ebean.createSqlUpdate(updateQuery).setParameter("providerUuid", providerUuid);
     int modifiedCount = Ebean.execute(update);

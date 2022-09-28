@@ -42,6 +42,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
