@@ -45,7 +45,7 @@ Paused clusters are not billed for instance vCPU capacity. Disk and backup stora
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-read-replicas/">
+    <a class="section-link icon-offset" href="managed-read-replica/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
         <div class="title">Read replicas</div>

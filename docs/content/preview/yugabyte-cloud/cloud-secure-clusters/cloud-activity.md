@@ -29,7 +29,7 @@ To filter the activity list, enter a search term. You can also filter the list b
 The following table lists the activity that is logged.
 
 | Source | Activity |
-| --- | --- |
+| :----- | :------- |
 | Cluster | Create Cluster<br>Delete Cluster<br>Edit Cluster<br>Upgrade Cluster<br>Pause Cluster<br>Resume Cluster |
 | Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | Allow List | Create Allow List<br>Delete Allow List |
