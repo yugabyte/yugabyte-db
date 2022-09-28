@@ -4816,17 +4816,19 @@ opt_procedural:
  *
  *****************************************************************************/
 
- CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
- 				{
- 					parser_ybc_beta_feature(@1, "tablegroup", true);
- 					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
- 					n->tablegroupname = $3;
- 					n->owner = $4;
- 					n->options = $5;
- 					n->tablespacename = $6;
- 					$$ = (Node *) n;
- 				}
- 		;
+CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
+				{
+					parser_ybc_not_support_in_templates(@1, "Tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+
+					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
+					n->tablegroupname = $3;
+					n->owner = $4;
+					n->options = $5;
+					n->tablespacename = $6;
+					$$ = (Node *) n;
+				}
+		;
 
 OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 			| /*EMPTY */				{ $$ = NULL; }
@@ -8026,6 +8028,7 @@ opt_unique:
 opt_concurrently:
 			CONCURRENTLY
 				{
+					parser_ybc_not_support_in_templates(@1, "Concurrent index creation");
 					$$ = YB_CONCURRENCY_EXPLICIT_ENABLED;
 				}
 			| NONCONCURRENTLY
@@ -8034,7 +8037,8 @@ opt_concurrently:
 				}
 			| /*EMPTY*/
 				{
-					$$ = *YBCGetGFlags()->ysql_disable_index_backfill
+					$$ = (*YBCGetGFlags()->ysql_disable_index_backfill ||
+						  YbIsConnectedToTemplateDb())
 						? YB_CONCURRENCY_DISABLED
 						: YB_CONCURRENCY_IMPLICIT_ENABLED;
 				}
@@ -8208,6 +8212,8 @@ BackfillIndexStmt:
 			BACKFILL INDEX oid_list opt_for_bfinstr
 				READ TIME read_time RowBounds
 				{
+					parser_ybc_not_support_in_templates(@1, "Index backfill");
+
 					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
 					n->oid_list = $3;
 
@@ -17407,7 +17413,7 @@ ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg)
 	static int restricted = -1;
 	if (restricted == -1)
 	{
-		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
+		restricted = YBIsUsingYBParser() && YbIsConnectedToTemplateDb();
 	}
 
 	if (restricted && !IsYsqlUpgrade)

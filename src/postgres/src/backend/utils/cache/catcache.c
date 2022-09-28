@@ -1837,7 +1837,7 @@ SearchCatCacheMiss(CatCache *cache,
 			                              cache->id == TYPENAMENSP ||
 			                              ((cache->id == RELNAMENSP) &&
 			                               namespace_id == PG_CATALOG_NAMESPACE &&
-			                               !YBIsPreparingTemplates()) ||
+			                               !YBCIsInitDbModeEnvVarSet()) ||
 			                              isTempOrTempToastNamespace(namespace_id);
 			if (!allow_negative_entries)
 			{

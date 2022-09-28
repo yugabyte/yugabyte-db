@@ -719,7 +719,7 @@ DefineIndex(Oid relationId,
 		 */
 		if (IsYugaByteEnabled() &&
 			!IsBootstrapProcessingMode() &&
-			!YBIsPreparingTemplates() &&
+			!YbIsConnectedToTemplateDb() &&
 			IsYBRelation(rel))
 		{
 			is_colocated = YbIsUserTableColocated(databaseId,
@@ -1669,7 +1669,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	 */
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates())
+		!YbIsConnectedToTemplateDb())
 	{
 		Relation rel = RelationIdGetRelation(relId);
 		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
@@ -1682,7 +1682,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	/* Get whether the index is part of a tablegroup */
 	Oid tablegroupId = InvalidOid;
 	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
+		!IsBootstrapProcessingMode() && !YbIsConnectedToTemplateDb())
 		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
 	/*
