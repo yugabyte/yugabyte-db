@@ -971,12 +971,12 @@
     "id" : 44,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "cpu_stime",
+      "legendFormat" : "System",
       "expr" : "avg(avg_over_time({export_type=\"master_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "cpu_utime",
+      "legendFormat" : "User",
       "expr" : "avg(avg_over_time({export_type=\"master_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "B"
     } ],
@@ -3909,12 +3909,12 @@
     "id" : 5,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "system",
+      "legendFormat" : "System",
       "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "user",
+      "legendFormat" : "User",
       "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
       "refId" : "B"
     } ],
@@ -4481,17 +4481,17 @@
     "id" : 74,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "free",
+      "legendFormat" : "Free",
       "expr" : "avg(avg_over_time({saved_name=\"node_memory_MemFree_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "cached",
+      "legendFormat" : "Cached",
       "expr" : "avg(avg_over_time({saved_name=\"node_memory_Cached_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "buffered",
+      "legendFormat" : "Buffered",
       "expr" : "avg(avg_over_time({saved_name=\"node_memory_Buffers_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "C"
     } ],
@@ -7944,12 +7944,12 @@
     "id" : 110,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "cpu_stime",
+      "legendFormat" : "System",
       "expr" : "avg(avg_over_time({export_type=\"tserver_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "cpu_utime",
+      "legendFormat" : "User",
       "expr" : "avg(avg_over_time({export_type=\"tserver_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "B"
     } ],
@@ -8832,7 +8832,7 @@
     "id" : 119,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "remote bootstraps",
+      "legendFormat" : "Remote Bootstraps",
       "expr" : "sum(rpc_latency_count{export_type=\"tserver_export\", server_type=\"yb_consensus\", service_type=\"ConsensusService\", service_method=\"StartRemoteBootstrap\", node_prefix=~\"$dbcluster\"})",
       "refId" : "A"
     } ],
@@ -9675,7 +9675,7 @@
     "id" : 130,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "",
+      "legendFormat" : "Connections Alive",
       "expr" : "sum(rpc_connections_alive{export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"})",
       "refId" : "A"
     } ],
@@ -10641,7 +10641,7 @@
     "id" : 16,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "",
+      "legendFormat" : "Connections Alive",
       "expr" : "sum(rpc_connections_alive{export_type=\"cql_export\", node_prefix=~\"$dbcluster\"})",
       "refId" : "A"
     } ],
@@ -13108,7 +13108,7 @@
     "id" : 99,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "",
+      "legendFormat" : "Connections Alive",
       "expr" : "sum(rpc_connections_alive{export_type=\"redis_export\", node_prefix=~\"$dbcluster\"})",
       "refId" : "A"
     } ],
