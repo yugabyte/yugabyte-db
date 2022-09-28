@@ -27,7 +27,7 @@ type ResponseError struct {
 	Message       string `json:"error"`
 }
 
-type RegisterResponseEmpty struct {
+type ResponseMessage struct {
 	SuccessStatus bool   `json:"success"`
 	Message       string `json:"message"`
 }

@@ -514,6 +514,8 @@ class CatalogManager :
       const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion);
+
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)

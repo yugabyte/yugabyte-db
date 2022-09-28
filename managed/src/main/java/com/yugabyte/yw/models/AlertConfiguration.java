@@ -337,9 +337,8 @@ public class AlertConfiguration extends Model {
       }
       expression.endOr();
     }
-    if (filter.getTemplate() != null) {
-      expression.eq("template", filter.getTemplate().name());
-    }
+
+    appendInClause(expression, "template", filter.getTemplatesStr());
     if (filter.getDestinationType() != null) {
       switch (filter.getDestinationType()) {
         case NO_DESTINATION:

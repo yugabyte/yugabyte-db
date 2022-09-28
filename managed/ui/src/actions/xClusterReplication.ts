@@ -2,9 +2,9 @@ import axios from 'axios';
 import moment from 'moment';
 
 import { ROOT_URL } from '../config';
-import { XClusterConfig, TableReplicationMetric } from '../components/xcluster';
+import { XClusterConfig, Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
-import { XClusterConfigState } from '../components/xcluster/constants';
+import { MetricNames, XClusterConfigState } from '../components/xcluster/constants';
 
 export function getUniverseInfo(universeUUID: string) {
   const cUUID = localStorage.getItem('customerId');
@@ -92,12 +92,15 @@ export function queryLagMetricsForUniverse(
     start: moment().utc().subtract('1', 'hour').format('X'),
     end: moment().utc().format('X'),
     nodePrefix,
-    metrics: ['tserver_async_replication_lag_micros'],
+    metrics: [MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC],
     xClusterConfigUuid: replicationUUID
   };
 
   const customerUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
+  return axios.post<Metrics<'tserver_async_replication_lag_micros'>>(
+    `${ROOT_URL}/customers/${customerUUID}/metrics`,
+    DEFAULT_GRAPH_FILTER
+  );
 }
 
 export function queryLagMetricsForTable(
@@ -111,13 +114,30 @@ export function queryLagMetricsForTable(
     end,
     tableId,
     nodePrefix,
-    metrics: ['tserver_async_replication_lag_micros']
+    metrics: [MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC]
   };
   const customerUUID = localStorage.getItem('customerId');
-  return axios.post<TableReplicationMetric>(
+  return axios.post<Metrics<'tserver_async_replication_lag_micros'>>(
     `${ROOT_URL}/customers/${customerUUID}/metrics`,
     DEFAULT_GRAPH_FILTER
   );
+}
+
+export function fetchUniverseDiskUsageMetric(
+  nodePrefix: string,
+  start = moment().utc().subtract('1', 'hour').format('X'),
+  end = moment().utc().format('X')
+) {
+  const graphFilter = {
+    start,
+    end,
+    nodePrefix,
+    metrics: [MetricNames.DISK_USAGE]
+  };
+  const customerUUID = localStorage.getItem('customerId');
+  return axios
+    .post<Metrics<'disk_usage'>>(`${ROOT_URL}/customers/${customerUUID}/metrics`, graphFilter)
+    .then((response) => response.data);
 }
 
 export function fetchTaskProgress(taskUUID: string) {

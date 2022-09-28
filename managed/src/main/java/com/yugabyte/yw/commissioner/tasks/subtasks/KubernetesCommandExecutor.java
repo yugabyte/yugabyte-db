@@ -311,7 +311,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
     Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+    Provider provider = Provider.get(taskParams().providerUUID);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = u.getUniverseDetails().nodePrefix;
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -391,17 +392,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
-                  String.format(
-                      "%s.%s%s.%s.%s",
-                      hostname, helmFullNameWithSuffix, "yb-masters", namespace, domain);
+                  PlacementInfoUtil.formatPodAddress(
+                      provider.getK8sPodAddrTemplate(),
+                      hostname,
+                      helmFullNameWithSuffix + "yb-masters",
+                      namespace,
+                      domain);
             } else {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
-                  String.format(
-                      "%s.%s%s.%s.%s",
-                      hostname, helmFullNameWithSuffix, "yb-tservers", namespace, domain);
+                  PlacementInfoUtil.formatPodAddress(
+                      provider.getK8sPodAddrTemplate(),
+                      hostname,
+                      helmFullNameWithSuffix + "yb-tservers",
+                      namespace,
+                      domain);
             }
+            nodeDetail.cloudInfo.kubernetesNamespace = namespace;
+            nodeDetail.cloudInfo.kubernetesPodName = hostname;
             if (isMultiAz) {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();

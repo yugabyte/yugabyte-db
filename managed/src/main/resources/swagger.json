@@ -922,6 +922,56 @@
       "required" : [ "name", "targetType" ],
       "type" : "object"
     },
+    "AlertTemplateSettings" : {
+      "description" : "Alert template settings",
+      "properties" : {
+        "createTime" : {
+          "description" : "Creation time",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "labels" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Labels",
+          "type" : "object"
+        },
+        "template" : {
+          "description" : "Template",
+          "maxLength" : 50,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "createTime", "customerUUID", "template", "uuid" ],
+      "type" : "object"
+    },
+    "AlertTemplateSettingsFormData" : {
+      "properties" : {
+        "settings" : {
+          "items" : {
+            "$ref" : "#/definitions/AlertTemplateSettings"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        }
+      },
+      "required" : [ "settings" ],
+      "type" : "object"
+    },
     "AlertingData" : {
       "description" : "Alerting configuration",
       "properties" : {
@@ -1000,7 +1050,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertTemplateSettings", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -2545,6 +2595,14 @@
         },
         "instance_type" : {
           "description" : "The node's instance type",
+          "type" : "string"
+        },
+        "kubernetesNamespace" : {
+          "description" : "Kubernetes namespace",
+          "type" : "string"
+        },
+        "kubernetesPodName" : {
+          "description" : "Pod name in Kubernetes",
           "type" : "string"
         },
         "lun_indexes" : {
@@ -4841,7 +4899,7 @@
           "type" : "string"
         },
         "value" : {
-          "description" : "unlimited",
+          "description" : "true",
           "type" : "string"
         }
       },
@@ -9600,6 +9658,29 @@
       "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "machineImages", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "ValidationResult" : {
+      "description" : "Validation result of a node config",
+      "properties" : {
+        "description" : {
+          "type" : "string"
+        },
+        "isRequired" : {
+          "type" : "boolean"
+        },
+        "isValid" : {
+          "type" : "boolean"
+        },
+        "type" : {
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS", "USER", "USER_GROUP", "HOME_DIR_SPACE", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PORTS", "PYTHON_VERSION" ],
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "type" : "object"
+    },
     "VolumeDetails" : {
       "properties" : {
         "mountPath" : {
@@ -10778,6 +10859,101 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Update an alert destination",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_settings" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateSettings"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get alert template settings",
+        "tags" : [ "Alerts" ]
+      },
+      "put" : {
+        "description" : "",
+        "operationId" : "editAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "EditAlertTemplateSettingsRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AlertTemplateSettingsFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateSettings"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Crete or update alert template settings list",
+        "tags" : [ "Alerts" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/alert_template_settings/{settingsUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteAlertTemplateSettings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "settingsUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete an alert template settings",
         "tags" : [ "Alerts" ]
       }
     },
@@ -12481,6 +12657,36 @@
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getProvider",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a cloud provider",
+        "tags" : [ "Cloud providers" ]
+      },
       "patch" : {
         "description" : "",
         "operationId" : "patchProvider",
@@ -17979,6 +18185,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List all of a zone's node instances",
+        "tags" : [ "Node instances" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes/validate" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "validateNodeInstance",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "azUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/ValidationResult"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Validate a node instance",
         "tags" : [ "Node instances" ]
       }
     },

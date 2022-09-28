@@ -8,7 +8,7 @@ import {
 } from 'react-bootstrap-table';
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
-import { FormikProps } from 'formik';
+import { FormikErrors, FormikProps } from 'formik';
 
 import { fetchTablesInUniverse, getXclusterConfig } from '../../../actions/xClusterReplication';
 import { api } from '../../../redesign/helpers/api';
@@ -16,7 +16,11 @@ import { YBControlledSelect, YBInputField } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { hasSubstringMatch } from '../../queries/helpers/queriesHelper';
 import { adaptTableUUID, getSharedXClusterConfigs, tableSort } from '../ReplicationUtils';
-import { CreateXClusterConfigFormValues, FormStep } from './CreateConfigModal';
+import {
+  CreateXClusterConfigFormErrors,
+  CreateXClusterConfigFormValues,
+  FormStep
+} from './CreateConfigModal';
 import { SortOrder, YBTableRelationType } from '../constants';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import YBPagination from '../../tables/YBPagination/YBPagination';
@@ -101,6 +105,8 @@ export const SelectTablesStep = ({
 
   const { values, setFieldValue } = formik.current;
 
+  // Casting because FormikValues and FormikError have different types.
+  const errors = formik.current.errors as FormikErrors<CreateXClusterConfigFormErrors>;
   /**
    * Wrapper around setFieldValue from formik.
    * Ensure current step is set to Form.SELECT_TABLES when
@@ -114,10 +120,10 @@ export const SelectTablesStep = ({
   };
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', values.targetUniverseUUID.value, 'tables'],
-    () => fetchTablesInUniverse(values.targetUniverseUUID.value).then((res) => res.data),
+    ['universe', values.targetUniverse.value, 'tables'],
+    () => fetchTablesInUniverse(values.targetUniverse.value.universeUUID).then((res) => res.data),
     {
-      enabled: !!values?.targetUniverseUUID?.value
+      enabled: !!values?.targetUniverse?.value
     }
   );
 
@@ -125,9 +131,8 @@ export const SelectTablesStep = ({
     api.fetchUniverse(currentUniverseUUID)
   );
 
-  const targetUniverseQuery = useQuery<Universe>(
-    ['universe', values.targetUniverseUUID.value],
-    () => api.fetchUniverse(values.targetUniverseUUID.value)
+  const targetUniverseQuery = useQuery<Universe>(['universe', values.targetUniverse.value], () =>
+    api.fetchUniverse(values.targetUniverse.value.universeUUID)
   );
 
   const sharedXClusterConfigUUIDs =
@@ -374,6 +379,15 @@ export const SelectTablesStep = ({
       <div>
         {values.tableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
       </div>
+      {errors.tableUUIDs && (
+        <div className={styles.validationErrorContainer}>
+          <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+          <div className={styles.errorMessage}>
+            <h5>{errors.tableUUIDs.title}</h5>
+            <p>{errors.tableUUIDs.body}</p>
+          </div>
+        </div>
+      )}
     </>
   );
 };

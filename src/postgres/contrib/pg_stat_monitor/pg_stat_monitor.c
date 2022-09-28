@@ -52,10 +52,6 @@ do                                                      \
 void _PG_init(void);
 void _PG_fini(void);
 
-/*---- Initicalization Function Declarations ----*/
-void _PG_init(void);
-void _PG_fini(void);
-
 /*---- Local variables ----*/
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */

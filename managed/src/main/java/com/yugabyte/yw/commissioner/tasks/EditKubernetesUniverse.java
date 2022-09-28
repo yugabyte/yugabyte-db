@@ -100,7 +100,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle);
+              newNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       // validate clusters
       for (Cluster cluster : taskParams().clusters) {

@@ -84,7 +84,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               taskParams().nodePrefix,
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
-              taskParams().useNewHelmNamingStyle);
+              taskParams().useNewHelmNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       createPodsTask(placement, masterAddresses, true);

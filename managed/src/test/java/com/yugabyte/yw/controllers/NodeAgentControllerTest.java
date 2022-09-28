@@ -27,13 +27,16 @@ import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.helpers.NodeConfig;
 import java.util.Set;
 import java.util.UUID;
@@ -70,12 +73,10 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     String nodeAgentConfig = "yb.node_agent.preflight_checks.";
     providerConfig.setValue(nodeAgentConfig + "internet_connection", "true");
     providerConfig.setValue(nodeAgentConfig + "python_version", "2.7");
-    providerConfig.setValue(nodeAgentConfig + "min_ram_size_mb", "2");
     providerConfig.setValue(nodeAgentConfig + "prometheus_no_node_exporter", "true");
     providerConfig.setValue(nodeAgentConfig + "ports", "true");
     providerConfig.setValue(nodeAgentConfig + "ntp_service", "true");
     providerConfig.setValue(nodeAgentConfig + "min_tmp_dir_space_mb", "100");
-    providerConfig.setValue(nodeAgentConfig + "min_cpu_cores", "1");
     providerConfig.setValue(nodeAgentConfig + "user", "fakeUser");
     providerConfig.setValue(nodeAgentConfig + "user_group", "fakeGroup");
     providerConfig.setValue(nodeAgentConfig + "min_prometheus_space_mb", "100");
@@ -86,6 +87,14 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     user = ModelFactory.testUser(customer);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.publicKey = "/path/to/public.key";
+    keyInfo.privateKey = "/path/to/private.key";
+    keyInfo.vaultFile = "/path/to/vault_file";
+    keyInfo.vaultPasswordFile = "/path/to/vault_password";
+    AccessKey.create(provider.uuid, "access-code1", keyInfo);
+    InstanceType.upsert(
+        provider.uuid, "c5.xlarge", 1 /* cores */, 2.0 /* mem in GB */, new InstanceTypeDetails());
   }
 
   private Result registerNodeAgent(NodeAgentForm formData) {
@@ -164,7 +173,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.ip = "10.20.30.40";
     testNode.region = region.code;
     testNode.zone = zone.code;
-    testNode.instanceType = "fake_instance_type";
+    testNode.instanceType = "c5.xlarge";
     testNode.sshUser = "ssh-user";
     // Missing node configurations in the payload.
     result = assertPlatformException(() -> createNode(zone.uuid, testNode, jwt));
@@ -283,15 +292,13 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     testNode.ip = "10.20.30.40";
     testNode.region = region.code;
     testNode.zone = zone.code;
-    testNode.instanceType = "fake_instance_type";
+    testNode.instanceType = "c5.xlarge";
     testNode.sshUser = "ssh-user";
     // Get a new JWT after the update.
     String updatedJwt = nodeAgentHandler.getClientToken(nodeAgentUuid, user.uuid);
-    NodeConfig nodeConfig = new NodeConfig();
+    NodeConfig nodeConfig = new NodeConfig(NodeConfig.Type.NTP_SERVICE_STATUS, "true");
     testNode.nodeConfigs = Sets.newSet(nodeConfig);
-    nodeConfig.setType(NodeConfig.Type.NTP_SERVICE_STATUS);
-    nodeConfig.setValue("true");
-    // Missing preflight checks should return an error
+    // Missing preflight checks should return an error.
     result = assertPlatformException(() -> createNode(zone.uuid, testNode, updatedJwt));
     assertEquals(result.status(), BAD_REQUEST);
     // Accepted value for NTP_SERVICE_STATUS is "running".
@@ -319,7 +326,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.MOUNT_POINTS, "{\"/home/yugabyte\":\"true\"}"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.NTP_SERVICE_STATUS, "true"));
     nodeConfigs.add(new NodeConfig(NodeConfig.Type.CPU_CORES, "1"));
-    nodeConfigs.add(new NodeConfig(NodeConfig.Type.RAM_SIZE, "6"));
+    nodeConfigs.add(new NodeConfig(NodeConfig.Type.RAM_SIZE, "4096"));
     return nodeConfigs;
   }
 }

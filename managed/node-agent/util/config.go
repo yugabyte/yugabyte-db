@@ -4,11 +4,10 @@
 package util
 
 import (
-	"bufio"
-	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -202,19 +201,21 @@ func (config *Config) StoreCommandFlagString(
 }
 
 func Version() string {
-	file, err := os.Open(VersionFile())
+	content, err := ioutil.ReadFile(VersionFile())
 	if err != nil {
-		FileLogger().Errorf("Version file is not found")
-		return ""
+		FileLogger().Fatal("Error when opening file: ", err)
 	}
-	defer file.Close()
-	buffer := &bytes.Buffer{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		buffer.WriteString(scanner.Text())
+	data := struct {
+		Version  string `json:"version_number"`
+		BuildNum string `json:"build_number"`
+	}{}
+	err = json.Unmarshal(content, &data)
+	if err != nil {
+		FileLogger().Fatal("Error in parsing version file")
 	}
-	if err := scanner.Err(); err != nil {
-		return ""
+	format := "%s-%s"
+	if IsDigits(data.BuildNum) {
+		format = "%s-b%s"
 	}
-	return strings.TrimSpace(buffer.String())
+	return fmt.Sprintf(format, data.Version, data.BuildNum)
 }

@@ -14,11 +14,11 @@ COMMAND_TIMEOUT_SEC = 600
 
 class KubernetesClient:
     def __init__(self, args):
-        self.namespace = args.pod_fqdn.split('.')[2]
-        self.pod_name = args.pod_fqdn.split('.')[0]
+        self.pod_name = args.k8s_config["podName"]
+        self.namespace = args.k8s_config["namespace"]
         self.is_master = args.is_master
         self.env_config = os.environ.copy()
-        self.env_config["KUBECONFIG"] = args.kubeconfig
+        self.env_config["KUBECONFIG"] = args.k8s_config["KUBECONFIG"]
 
     def wrap_command(self, cmd):
         command = cmd
