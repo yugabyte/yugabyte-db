@@ -1,6 +1,6 @@
 ---
 title: Connect an application
-linkTitle: Connect an app using YSQL
+linkTitle: Connect an app
 description: JDBC driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -10,6 +10,21 @@ menu:
     weight: 500
 type: docs
 ---
+
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yugabyte-jdbc/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
