@@ -120,10 +120,9 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Test
   public void testSendNotification_MetricsSetOk() {
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer), "Some error");
-    am.setChannelStatusMetric(
-        PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, defaultChannel, "Some channel error");
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer));
+    am.setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, defaultChannel, false);
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
@@ -138,7 +137,6 @@ public class AlertManagerTest extends FakeDBApplication {
                 .targetUuid(defaultCustomer.getUuid())
                 .build(),
             1.0);
-    assertThat(amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
     Metric channelStatus =
         AssertHelper.assertMetricValue(
             metricService,
@@ -148,7 +146,6 @@ public class AlertManagerTest extends FakeDBApplication {
                 .targetUuid(defaultChannel.getUuid())
                 .build(),
             1.0);
-    assertThat(channelStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 
   @Test
@@ -171,9 +168,6 @@ public class AlertManagerTest extends FakeDBApplication {
                 .targetUuid(defaultChannel.getUuid())
                 .build(),
             0.0);
-    assertThat(
-        channelStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
-        equalTo("Error sending notification: test"));
   }
 
   @Test
@@ -267,11 +261,6 @@ public class AlertManagerTest extends FakeDBApplication {
                 .targetUuid(defaultCustomer.getUuid())
                 .build(),
             0.0);
-    assertThat(
-        amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
-        equalTo(
-            "Unable to notify about alert(s) using default destination, "
-                + "there are no recipients configured in the customer's profile."));
 
     // Restoring recipients.
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
@@ -289,7 +278,6 @@ public class AlertManagerTest extends FakeDBApplication {
                 .targetUuid(defaultCustomer.getUuid())
                 .build(),
             1.0);
-    assertThat(amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 
   // Aren't checking ACKNOWLEDGED in any state fields as such alert should not be

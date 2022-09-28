@@ -37,7 +37,6 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -47,7 +46,6 @@ import lombok.AllArgsConstructor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -243,9 +241,8 @@ public class AlertManager {
         log.warn(
             "Unable to notify about alert {}, there is no default destination specified.",
             alert.getUuid());
-        metricService.setStatusMetric(
-            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
-            "Unable to notify about alert(s), there is no default destination specified.");
+        metricService.setFailureStatusMetric(
+            MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
         return SendNotificationResult.FAILED_TO_RESCHEDULE;
       } else {
         log.error(
@@ -261,10 +258,8 @@ public class AlertManager {
         && ((AlertChannelEmailParams) channels.get(0).getParams()).defaultRecipients
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
-      metricService.setStatusMetric(
-          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer),
-          "Unable to notify about alert(s) using default destination, "
-              + "there are no recipients configured in the customer's profile.");
+      metricService.setFailureStatusMetric(
+          MetricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, customer));
       return SendNotificationResult.FAILED_TO_RESCHEDULE;
     }
 
@@ -288,7 +283,7 @@ public class AlertManager {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.warn(String.format("Channel %s skipped: %s", channel.getUuid(), e.getMessage()), e);
         }
-        handleChannelSendError(channel, report, "Misconfigured alert channel: " + e.getMessage());
+        handleChannelSendError(channel, report);
         continue;
       }
 
@@ -298,16 +293,11 @@ public class AlertManager {
         handler.sendNotification(customer, tempAlert, channel);
         atLeastOneSucceeded = true;
         setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
-      } catch (PlatformServiceException e) {
-        if (report.failuresByChannel(channel.getUuid()) == 0) {
-          log.error(e.getMessage(), e);
-        }
-        handleChannelSendError(channel, report, e.getMessage());
       } catch (Exception e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.error(e.getMessage(), e);
         }
-        handleChannelSendError(channel, report, "Error sending notification: " + e.getMessage());
+        handleChannelSendError(channel, report);
       }
     }
 
@@ -316,25 +306,20 @@ public class AlertManager {
         : SendNotificationResult.FAILED_TO_RESCHEDULE;
   }
 
-  private void handleChannelSendError(
-      AlertChannel channel, AlertNotificationReport report, String alertMessage) {
+  private void handleChannelSendError(AlertChannel channel, AlertNotificationReport report) {
     report.failChannel(channel.getUuid());
-    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel, alertMessage);
+    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel, false);
   }
 
   @VisibleForTesting
   void setOkChannelStatusMetric(PlatformMetrics metric, AlertChannel channel) {
-    setChannelStatusMetric(metric, channel, StringUtils.EMPTY);
+    setChannelStatusMetric(metric, channel, true);
   }
 
   @VisibleForTesting
-  void setChannelStatusMetric(PlatformMetrics metric, AlertChannel channel, String message) {
-    boolean isSuccess = StringUtils.isEmpty(message);
+  void setChannelStatusMetric(PlatformMetrics metric, AlertChannel channel, boolean isSuccess) {
     Metric statusMetric = buildMetricTemplate(metric, channel).setValue(isSuccess ? 1.0 : 0.0);
-    if (!isSuccess) {
-      statusMetric.setLabel(KnownAlertLabels.ERROR_MESSAGE, message);
-    }
-    metricService.cleanAndSave(Collections.singletonList(statusMetric));
+    metricService.save(statusMetric);
   }
 
   private Metric buildMetricTemplate(PlatformMetrics metric, AlertChannel channel) {

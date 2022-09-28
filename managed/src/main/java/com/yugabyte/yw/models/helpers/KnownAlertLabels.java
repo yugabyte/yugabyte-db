@@ -24,7 +24,6 @@ public enum KnownAlertLabels {
   ALERT_STATE,
   SEVERITY,
   THRESHOLD,
-  ERROR_MESSAGE,
   NODE_NAME,
   NODE_PREFIX,
   INSTANCE,

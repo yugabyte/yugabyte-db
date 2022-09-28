@@ -62,7 +62,6 @@ import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
@@ -312,9 +311,8 @@ public class AlertControllerTest extends FakeDBApplication {
             .setCustomerUUID(customer.getUuid())
             .setSourceUuid(createdChannel.getUuid())
             .setLabels(MetricLabelsBuilder.create().appendSource(createdChannel).getMetricLabels())
-            .setValue(0.0)
-            .setLabel(KnownAlertLabels.ERROR_MESSAGE, "Some error");
-    metricService.cleanAndSave(Collections.singletonList(channelStatus));
+            .setValue(0.0);
+    metricService.save(channelStatus);
 
     Result result =
         doRequestWithAuthToken(

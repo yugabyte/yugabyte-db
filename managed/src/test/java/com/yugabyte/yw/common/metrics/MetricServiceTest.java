@@ -1,11 +1,14 @@
 // Copyright (c) YugaByte, Inc.
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.common.metrics;
 
+import static com.yugabyte.yw.common.metrics.MetricService.STATUS_NOT_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.fail;
@@ -13,39 +16,42 @@ import static org.junit.Assert.fail;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
-public class MetricTest extends FakeDBApplication {
-
-  private final Instant testStart = Instant.now();
+@Slf4j
+public class MetricServiceTest extends FakeDBApplication {
 
   private Customer customer;
 
   private Universe universe;
 
-  @InjectMocks private MetricService metricService;
+  private MetricService metricService;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
+    metricService = app.injector().instanceOf(MetricService.class);
   }
 
   @Test
@@ -66,10 +72,9 @@ public class MetricTest extends FakeDBApplication {
 
   @Test
   public void testUpdateAndGetByKey() {
-    metricService.setStatusMetric(
+    metricService.setFailureStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
-            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"),
-        "Error");
+            .setKeyLabel(KnownAlertLabels.NODE_NAME, "node1"));
 
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe)
@@ -80,7 +85,7 @@ public class MetricTest extends FakeDBApplication {
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
-            .sourceLabels("node_name:node1")
+            .sourceLabel("node_name", "node1")
             .build();
     Metric metric = metricService.get(key);
 
@@ -113,23 +118,145 @@ public class MetricTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDelete() {
-    metricService.setStatusMetric(
-        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
+  public void testConcurrentMetricUpdateAndCustomerDelete() throws InterruptedException {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    List<Metric> metrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
+                .setValue(1D));
+    metricService.save(metrics);
 
-    MetricKey key =
+    List<Metric> updatedMetrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe)
+                .setValue(0D)
+                .setLabel(KnownAlertLabels.NODE_NAME, "qwerty"),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe)
+                .setValue(0D)
+                .setLabel(KnownAlertLabels.NODE_NAME, "qwerty1"),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
+                .setValue(0D)
+                .setLabels(Collections.emptyMap()));
+
+    Future<?> metricSaveFuture = executor.submit(() -> metricService.save(updatedMetrics));
+    Future<?> customerRemovalFuture =
+        executor.submit(
+            () -> {
+              customer.delete();
+              metricService.markSourceRemoved(customer.getUuid(), null);
+            });
+    try {
+      customerRemovalFuture.get();
+    } catch (ExecutionException e) {
+      log.error("Exception occurred in customer removal worker", e);
+      fail("Exception occurred in customer removal worker: " + e);
+    }
+    try {
+      metricSaveFuture.get();
+    } catch (ExecutionException e) {
+      log.error("Exception occurred in metric save worker", e);
+      fail("Exception occurred in metric save worker: " + e);
+    }
+    executor.shutdown();
+  }
+
+  @Test
+  public void testDelete() {
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe));
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+
+    MetricKey keyToDelete =
         MetricKey.builder()
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
             .build();
+    MetricKey keyRemaining =
+        MetricKey.builder()
+            .customerUuid(customer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+            .targetUuid(universe.getUniverseUUID())
+            .build();
 
-    MetricFilter metricFilter = MetricFilter.builder().key(key).build();
+    MetricFilter filterToDelete = MetricFilter.builder().key(keyToDelete).build();
+    MetricFilter filterRemaining = MetricFilter.builder().key(keyRemaining).build();
 
-    metricService.delete(metricFilter);
+    metricService.delete(filterToDelete);
 
-    Metric metric = metricService.get(key);
-    assertThat(metric, nullValue());
+    List<Metric> deletedMetric = metricService.list(filterToDelete);
+    List<Metric> remainingMetric = metricService.list(filterRemaining);
+
+    assertThat(deletedMetric, empty());
+    assertThat(remainingMetric, hasSize(1));
+  }
+
+  @Test
+  public void testMarkSourceInactive() {
+    MetricKey universeExistsMetricKey =
+        MetricKey.from(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricService.markSourceInactive(customer.getUuid(), universe.getUniverseUUID());
+
+    Metric universeExistsMetric = metricService.get(universeExistsMetricKey);
+
+    List<Metric> metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    assertThat(metricsLeft, contains(universeExistsMetric));
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    universeExistsMetric = metricService.get(universeExistsMetricKey);
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // Only metrics, valid for INACTIVE state are written.
+    assertThat(metricsLeft, contains(universeExistsMetric));
+    assertThat(universeExistsMetric.getValue(), equalTo(STATUS_NOT_OK));
+
+    metricService.markSourceActive(customer.getUuid(), universe.getUniverseUUID());
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // Writing both metrics after universe unpause is successful.
+    assertThat(metricsLeft, hasSize(2));
+  }
+
+  @Test
+  public void testMarkSourceRemoved() {
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setOkStatusMetric(buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
+
+    List<Metric> metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    assertThat(metricsLeft, empty());
+
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe));
+
+    metricsLeft = metricService.list(MetricFilter.builder().build());
+
+    // No metrics can be written after source is permanently deleted.
+    assertThat(metricsLeft, empty());
   }
 
   @Test
@@ -179,14 +306,13 @@ public class MetricTest extends FakeDBApplication {
 
     assertThat(updatedNode1Metric.getExpireTime(), equalTo(node1Metric.getExpireTime()));
     assertThat(updatedNode2Metric.getValue(), equalTo(3D));
-    assertThat(updatedNode2Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode2Metric.getExpireTime(), equalTo(node2Metric.getExpireTime()));
     assertThat(updatedNode3Metric.getValue(), equalTo(3D));
-    assertThat(updatedNode3Metric.getExpireTime(), not(equalTo(node1Metric.getExpireTime())));
+    assertThat(updatedNode3Metric.getExpireTime(), equalTo(node3Metric.getExpireTime()));
     assertThat(updatedNode4Metric, nullValue());
   }
 
   private void assertMetric(Metric metric, double value) {
-    assertThat(metric.getUuid(), notNullValue());
     assertThat(metric.getCreateTime(), notNullValue());
     assertThat(metric.getUpdateTime(), notNullValue());
     assertThat(metric.getExpireTime(), notNullValue());
@@ -203,6 +329,5 @@ public class MetricTest extends FakeDBApplication {
     assertThat(
         metric.getLabelValue(KnownAlertLabels.UNIVERSE_UUID),
         equalTo(universe.getUniverseUUID().toString()));
-    assertThat(metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 }

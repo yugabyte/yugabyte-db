@@ -9,11 +9,13 @@
  */
 package com.yugabyte.yw.models.filters;
 
+import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -21,6 +23,7 @@ import java.util.UUID;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
+import org.apache.commons.collections.CollectionUtils;
 
 @Value
 @Builder
@@ -30,12 +33,42 @@ public class MetricFilter {
   List<PlatformMetrics> metrics;
   Set<MetricSourceKey> sourceKeys;
   Set<MetricKey> keys;
+  Set<MetricKey> keysExcluded;
   Boolean expired;
+
+  // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
+  // checks.
+  public MetricFilterBuilder toBuilder() {
+    MetricFilterBuilder result = MetricFilter.builder();
+    if (customerUuid != null) {
+      result.customerUuid(customerUuid);
+    }
+    if (sourceUuid != null) {
+      result.sourceUuid(sourceUuid);
+    }
+    if (metrics != null) {
+      result.metrics(metrics);
+    }
+    if (sourceKeys != null) {
+      result.sourceKeys(sourceKeys);
+    }
+    if (keys != null) {
+      result.keys(keys);
+    }
+    if (keysExcluded != null) {
+      result.keysExcluded(keysExcluded);
+    }
+    if (expired != null) {
+      result.expired(expired);
+    }
+    return result;
+  }
 
   public static class MetricFilterBuilder {
     List<PlatformMetrics> metrics = new ArrayList<>();
     Set<MetricSourceKey> sourceKeys = new HashSet<>();
     Set<MetricKey> keys = new HashSet<>();
+    Set<MetricKey> keysExcluded = new HashSet<>();
 
     public MetricFilterBuilder customerUuid(@NonNull UUID customerUuid) {
       this.customerUuid = customerUuid;
@@ -77,9 +110,51 @@ public class MetricFilter {
       return this;
     }
 
+    public MetricFilterBuilder keysExcluded(@NonNull Collection<MetricKey> keysExcluded) {
+      this.keysExcluded.addAll(keysExcluded);
+      return this;
+    }
+
+    public MetricFilterBuilder keyExcluded(@NonNull MetricKey keyExcluded) {
+      this.keysExcluded.add(keyExcluded);
+      return this;
+    }
+
     public MetricFilterBuilder expireTime(@NonNull Boolean expired) {
       this.expired = expired;
       return this;
     }
+  }
+
+  public boolean match(Metric metric) {
+    if (customerUuid != null && !customerUuid.equals(metric.getCustomerUUID())) {
+      return false;
+    }
+    if (sourceUuid != null && !sourceUuid.equals(metric.getSourceUuid())) {
+      return false;
+    }
+    if (CollectionUtils.isNotEmpty(metrics)
+        && !metrics.contains(PlatformMetrics.fromMetricName(metric.getName()))) {
+      return false;
+    }
+    MetricKey metricKey = MetricKey.from(metric);
+    if (CollectionUtils.isNotEmpty(sourceKeys) && !sourceKeys.contains(metricKey.getSourceKey())) {
+      return false;
+    }
+    if (CollectionUtils.isNotEmpty(keys) && !keys.contains(metricKey)) {
+      return false;
+    }
+    if (CollectionUtils.isNotEmpty(keysExcluded) && keysExcluded.contains(metricKey)) {
+      return false;
+    }
+    if (expired != null) {
+      if (expired && metric.getExpireTime().after(new Date())) {
+        return false;
+      }
+      if (!expired && metric.getExpireTime().before(new Date())) {
+        return false;
+      }
+    }
+    return !metric.isDeleted();
   }
 }
