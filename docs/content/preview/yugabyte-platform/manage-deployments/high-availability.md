@@ -52,6 +52,8 @@ You can configure the active instance as follows:
 
 1. Click **Create**.
 
+1. Optionally, if HTTPS is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of the other node.
+
 1. Switch to **Instance Configuration**.
 
     The address for this instance should be the only information under **Instances**.
@@ -92,6 +94,10 @@ The restore take a few seconds, after which expect to be logged out.
 1. Login using credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
+
+## Check results
+
+During a high-availability backup, the entire database is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
 
 ## Upgrade instances
 
