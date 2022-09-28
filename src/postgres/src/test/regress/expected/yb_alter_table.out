@@ -8,11 +8,15 @@ ALTER INDEX temp_table_b_idx RENAME TO temp_table_b_idx_new;
 ---
 --- Verify yb_db_admin role can ALTER table
 ---
+CREATE TABLE foo(a INT UNIQUE);
+CREATE TABLE bar(b INT);
+ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
 CREATE TABLE table_other(a int, b int);
 CREATE INDEX index_table_other ON table_other(a);
 SET SESSION AUTHORIZATION yb_db_admin;
 ALTER TABLE table_other RENAME to table_new;
 ALTER TABLE table_new OWNER TO regress_alter_table_user1;
+ALTER TABLE bar DROP CONSTRAINT baz;
 ALTER TABLE pg_database RENAME TO test; -- should fail
 ERROR:  permission denied: "pg_database" is a system catalog
 ALTER TABLE pg_tablespace OWNER TO regress_alter_table_user1; -- should fail
@@ -22,6 +26,9 @@ ERROR:  permission denied: "pg_tablespace" is a system catalog
 ---
 ALTER INDEX index_table_other RENAME TO index_table_other_new;
 RESET SESSION AUTHORIZATION;
+DROP TABLE foo;
+DROP TABLE bar;
+DROP TABLE table_new;
 ---
 --- Verify alter table which requires table rewrite
 ---

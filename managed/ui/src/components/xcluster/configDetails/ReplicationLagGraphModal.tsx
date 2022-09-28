@@ -1,13 +1,13 @@
 import React, { FC } from 'react';
 import { YBModal } from '../../common/forms/fields';
 
-import { ReplicationTable } from '../XClusterTypes';
+import { YBTable } from '../XClusterTypes';
 import { TableLagGraph } from './TableLagGraph';
 
 import styles from './ReplicationLagGraphModal.module.scss';
 
 interface Props {
-  tableDetails: ReplicationTable;
+  tableDetails: YBTable;
   replicationUUID: string;
   queryEnabled: boolean;
   universeUUID: string;

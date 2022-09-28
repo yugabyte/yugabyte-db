@@ -297,8 +297,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
-  Status PatchStatus(const Status& status, const PgObjectIds& relations);
-
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.

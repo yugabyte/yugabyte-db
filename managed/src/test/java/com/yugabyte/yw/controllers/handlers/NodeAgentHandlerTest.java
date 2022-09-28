@@ -16,10 +16,11 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -127,7 +128,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
     assertThrows(
         "Invalid current state LIVE, expected state UPGRADING",
-        IllegalStateException.class,
+        PlatformServiceException.class,
         () -> nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid));
     // Initiate upgrade.
     nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);

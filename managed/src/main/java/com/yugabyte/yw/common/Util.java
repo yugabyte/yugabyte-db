@@ -91,6 +91,8 @@ public class Util {
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
 
+  public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -670,5 +672,13 @@ public class Util {
       osType = OsType.EL8.toString();
     }
     return new Pair<>(osType.toLowerCase(), archType.toLowerCase());
+  }
+
+  /**
+   * Basic DNS address check which allows only alphanumeric characters and hyphen (-) in the name.
+   * Hyphen cannot be at the beginning or at the end of a DNS label.
+   */
+  public static boolean isValidDNSAddress(String dns) {
+    return dns.matches("^((?!-)[A-Za-z0-9-]+(?<!-)\\.)+[A-Za-z]+$");
   }
 }

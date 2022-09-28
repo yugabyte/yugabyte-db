@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
@@ -26,19 +26,18 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -280,6 +279,147 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
     assertEquals(BAD_REQUEST, r.status());
     verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testCreateIncrementalScheduleBackupSuccess() {
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateIncrementalScheduleBackupWithOutFrequencyTimeUnit() {
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Please provide time unit for incremental backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
+  public void testCreateIncrementalScheduleBackupOnNonYbcUniverse() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson, "error", "Cannot create incremental backup schedules on non-ybc universes.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
+  public void testCreateIncrementalScheduleBackupWithInvalidIncrementalFrequency() {
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("incrementalBackupFrequency", 10000000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson,
+        "error",
+        "Incremental backup frequency should be lower than full backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+    bodyJson.put("schedulingFrequency", 10000000000L);
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.remove("cronExpression");
+    System.out.println("***N Is: " + bodyJson);
+    r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson,
+        "error",
+        "Incremental backup frequency should be lower than full backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+    bodyJson.put("incrementalBackupFrequency", 100000L);
+    r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Minimum schedule duration is 1 hour");
+    assertEquals(BAD_REQUEST, r.status());
+    bodyJson.put("incrementalBackupFrequency", 1000000000L);
+    r = createBackupSchedule(bodyJson, null);
+    assertOk(r);
+  }
+
+  @Test
+  public void testCreateIncrementalScheduleBackupWithBaseBackup() {
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.universeUUID.toString());
+    bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("baseBackupUUID", UUID.randomUUID().toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Cannot assign base backup while creating backup schedules.");
+    assertEquals(BAD_REQUEST, r.status());
   }
 
   @Test
@@ -1374,5 +1514,57 @@ public class BackupsControllerTest extends FakeDBApplication {
             "Got error getting throttle params for universe {}, error: {}",
             universe.universeUUID.toString(),
             "some failure"));
+  }
+
+  @Test
+  public void testDeleteFailedIncrementalBackup() {
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    bp.baseBackupUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Failed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteCompletedIncrementalBackup() {
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = UUID.randomUUID();
+    bp.baseBackupUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    ObjectNode resultNode = Json.newObject();
+    ArrayNode arrayNode = resultNode.putArray("backups");
+    for (String item : backupUUIDList) {
+      ObjectNode deleteBackupObject = Json.newObject();
+      deleteBackupObject.put("backupUUID", item);
+      arrayNode.add(deleteBackupObject);
+    }
+    Result result = deleteBackupYb(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 0);
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 }

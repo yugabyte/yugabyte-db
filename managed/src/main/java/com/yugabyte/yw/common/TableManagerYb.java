@@ -78,7 +78,7 @@ public class TableManagerYb extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
@@ -87,7 +87,7 @@ public class TableManagerYb extends DevopsBase {
     if (region.provider.code.equals("kubernetes")) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
-        podFQDNToConfig.putAll(
+        podAddrToConfig.putAll(
             PlacementInfoUtil.getKubernetesConfigPerPod(
                 pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
@@ -194,7 +194,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            podFQDNToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -250,7 +250,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            podFQDNToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -275,13 +275,13 @@ public class TableManagerYb extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> podFQDNToConfig,
+      Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());

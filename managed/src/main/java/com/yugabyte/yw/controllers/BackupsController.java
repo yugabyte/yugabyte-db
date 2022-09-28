@@ -25,8 +25,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -35,21 +35,21 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
+import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -333,7 +333,30 @@ public class BackupsController extends AuthenticatedController {
     } else {
       backupUtil.validateTables(null, universe, null, taskParams.backupType);
     }
-
+    if (taskParams.incrementalBackupFrequency != 0L) {
+      if (taskParams.incrementalBackupFrequencyTimeUnit == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Please provide time unit for incremental backup frequency.");
+      }
+      if (taskParams.baseBackupUUID != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot assign base backup while creating backup schedules.");
+      }
+      if (!universe.isYbcEnabled()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create incremental backup schedules on non-ybc universes.");
+      }
+      BackupUtil.validateBackupFrequency(taskParams.incrementalBackupFrequency);
+      long schedulingFrequency = taskParams.schedulingFrequency;
+      if (!StringUtils.isEmpty(taskParams.cronExpression)) {
+        schedulingFrequency = BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
+      }
+      if (schedulingFrequency <= taskParams.incrementalBackupFrequency) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Incremental backup frequency should be lower than full backup frequency.");
+      }
+    }
     Schedule schedule =
         Schedule.create(
             customerUUID,
@@ -367,13 +390,14 @@ public class BackupsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     RestoreBackupParams taskParams = parseJsonAndValidate(RestoreBackupParams.class);
-
-    if (taskParams.newOwner != null) {
-      if (!Pattern.matches(VALID_OWNER_REGEX, taskParams.newOwner)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Invalid owner rename during restore operation");
-      }
-    }
+    taskParams.backupStorageInfoList.forEach(
+        bSI -> {
+          if (StringUtils.isNotBlank(bSI.newOwner)
+              && !Pattern.matches(VALID_OWNER_REGEX, bSI.newOwner)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Invalid owner rename during restore operation");
+          }
+        });
 
     taskParams.customerUUID = customerUUID;
 
@@ -593,26 +617,32 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete backups V2",
       response = YBPTasks.class,
-      nickname = "deleteBackupsv2")
+      nickname = "deleteBackupsV2")
   public Result deleteYb(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DeleteBackupParams deleteBackupParams = parseJsonAndValidate(DeleteBackupParams.class);
     List<YBPTask> taskList = new ArrayList<>();
     for (DeleteBackupInfo deleteBackupInfo : deleteBackupParams.deleteBackupInfos) {
       UUID backupUUID = deleteBackupInfo.backupUUID;
-      Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+      Backup backup = Backup.maybeGet(customerUUID, backupUUID).orElse(null);
       if (backup == null) {
-        LOG.debug("Can not delete {} backup as it is not present in the database.", backupUUID);
+        LOG.error("Can not delete {} backup as it is not present in the database.", backupUUID);
       } else {
-        if (backup.state.equals(BackupState.InProgress)) {
-          LOG.debug("Can not delete {} backup as it is still in progress", backupUUID);
-        } else if (backup.state.equals(BackupState.DeleteInProgress)
-            || backup.state.equals(BackupState.QueuedForDeletion)) {
-          LOG.debug("Backup {} is already in queue for deletion", backupUUID);
+        if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
+          LOG.error(
+              "Backup {} is in the state {}. Deletion is not allowed", backupUUID, backup.state);
         } else {
           UUID storageConfigUUID = deleteBackupInfo.storageConfigUUID;
           if (storageConfigUUID == null) {
+            // Pick default backup storage config to delete the backup if not provided.
             storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
+          }
+          if (backup.isIncrementalBackup() && backup.state.equals(BackupState.Completed)) {
+            // Currently, we don't allow users to delete successful standalone incremental backups.
+            // They can only delete the full backup, along which all the incremental backups
+            // will also be deleted.
+            LOG.error("Cannot delete backup {} as it in {} state", backup.backupUUID, backup.state);
+            continue;
           }
           BackupTableParams params = backup.getBackupInfo();
           params.storageConfigUUID = storageConfigUUID;

@@ -44,6 +44,7 @@ namespace enterprise {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kKeyColumnName = "key";
 
 struct TwoDCTestParams {
   TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
@@ -91,14 +92,47 @@ class TwoDCTestBase : public YBTest {
 
   Status InitClusters(const MiniClusterOptions& opts);
 
+  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
+  // is not safe to run in parallel.
+  Status InitPostgres(Cluster* cluster);
+
   void TearDown() override;
 
   Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
 
+  Status WaitForLoadBalancersToStabilize();
+
+  Status CreateDatabase(
+      Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
+
   static Result<client::YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets, const client::YBSchema* schema);
+
+  Result<client::YBTableName> CreateYsqlTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& schema_name,
+      const std::string& table_name,
+      const boost::optional<std::string>& tablegroup_name,
+      uint32_t num_tablets,
+      bool colocated = false,
+      const ColocationId colocation_id = 0);
+
+  Status CreateYsqlTable(
+      uint32_t idx, uint32_t num_tablets, Cluster* cluster,
+      std::vector<client::YBTableName>* table_names,
+      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false);
+
+  Result<client::YBTableName> GetYsqlTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& schema_name,
+      const std::string& table_name,
+      bool verify_table_name = true,
+      bool verify_schema_name = false,
+      bool exclude_system_tables = true);
 
   Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);

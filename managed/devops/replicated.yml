@@ -9,7 +9,7 @@
 replicated_api_version: "2.8.0"
 name: "yugaware"
 properties:
-  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
+  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
   console_title: YugaByte Platform Deployment Console
 backup:
@@ -148,7 +148,7 @@ components:
           - name: POSTGRES_DB
             static_val: 'yugaware'
           - name: POSTGRES_USER
-            static_val: 'postgres'
+            static_val: '{{repl ConfigOption "dbuser"}}'
           - name: POSTGRES_PASSWORD
             static_val: '{{repl ConfigOption "dbpass"}}'
           - name: PGDATA
@@ -176,10 +176,19 @@ components:
         config_files:
           - filename: /home/update_password.sql
             contents: |
-              ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+              ALTER USER {{repl ConfigOption "dbuser"}} WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
           - filename: /home/reload_pg_hba_conf.sql
             contents: |
               SELECT pg_reload_conf();
+          - filename: /home/create_user.sql
+            contents: |
+              CREATE USER {{repl ConfigOption "dbuser"}} WITH SUPERUSER CREATEDB CREATEROLE;
+          - filename: /home/create_user_if_missing.sh
+            contents: |
+              # Check for the existence of role before creating.
+              if ! ( psql -U postgres -t -c '\du' | cut -d \| -f 1 | grep -qw {{repl ConfigOption "dbuser"}} ) then
+                psql -U postgres -f /home/create_user.sql;
+              fi
           - filename: /home/enable_ldap.sh
             contents: |
               sleep 5;
@@ -196,6 +205,7 @@ components:
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/startup.sh
             contents: |
+                {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
                 {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
@@ -438,7 +448,7 @@ components:
               db {
                 default.host="{{repl ConfigOption "docker_gateway"}}"
                 default.port="{{repl ConfigOption "db_external_port"}}"
-                default.username="postgres"
+                default.username="{{repl ConfigOption "dbuser"}}"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
                 default.migration.initOnMigrate=true
@@ -470,7 +480,7 @@ components:
                 cors {
                   pathPrefixes = ["/"]
                   allowedOrigins = [
-                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}",
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}",
                     "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
@@ -498,7 +508,7 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
                 security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
                 security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
                 security.ssh2_enabled = false
@@ -565,11 +575,11 @@ components:
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             public_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             port_type: tcp
-            when: '{{repl or (ConfigOptionEquals "nginx_external_port" "80") (ConfigOptionEquals "nginx_external_port" "443")}}'
+            when: '{{repl or (ConfigOptionEquals "nginx_custom_port" "80") (ConfigOptionEquals "nginx_custom_port" "443")}}'
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            public_port: '{{repl ConfigOption "nginx_external_port" }}'
+            public_port: '{{repl ConfigOption "nginx_custom_port" }}'
             port_type: tcp
-            when: '{{repl and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}'
+            when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
 
 config:
   - name: database
@@ -583,6 +593,10 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+      - name: dbuser
+        title: DB User
+        type: text
+        default: "postgres"
       - name: expose_db_port
         title: Expose Postgres Database Port
         help_text: When enabled you can access postgres database on host ip
@@ -678,16 +692,22 @@ config:
         value: ""
         default: "9000"
         when: '{{repl ConfigOptionEquals "expose_app_port" "1" }}'
-      - name: nginx_external_port
-        title: Yugaware UI Port
+      - name: enable_custom_port
+        title: Enable Yugaware UI Custom Port
+        type: bool
+        value: ""
+        default: "0"
+      - name: nginx_custom_port
+        title: Yugaware UI Custom Port
         type: text
         value: ""
-        default: "80"
+        default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
+        when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
       - name: https_enabled
         title: Enable HTTPS
         help_text: When enabled we will listen to https
         type: bool
-        default: "0"
+        default: "1"
       - name: upload_size
         title: Maximum Request Size
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
@@ -776,3 +796,12 @@ config:
         title: How long until query execution times out, default to 30s
         type: text
         default: "30s"
+
+state:
+  ready:
+    command: http_status_code
+    args:
+    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
+    - '200'
+    - '15'
+    timeout: 900

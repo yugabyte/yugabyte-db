@@ -61,7 +61,7 @@ import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.TableBackup;
 import org.yb.ybc.TableBackupSpec;
-
+import org.yb.ybc.UserChangeSpec;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.NamespaceType;
 import org.yb.ybc.CloudType;
@@ -277,9 +277,16 @@ public class YbcBackupUtil {
       YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
     String keyspace = backupStorageInfo.keyspace;
-    BackupServiceTaskExtendedArgs extendedArgs = BackupServiceTaskExtendedArgs.newBuilder().build();
+    BackupServiceTaskExtendedArgs.Builder extendedArgs = BackupServiceTaskExtendedArgs.newBuilder();
+    if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
+      extendedArgs.setUserSpec(
+          UserChangeSpec.newBuilder()
+              .setNewUsername(backupStorageInfo.newOwner)
+              .setOldUsername(backupStorageInfo.oldOwner)
+              .build());
+    }
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
-        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
+        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs.build());
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
     CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
     backupServiceTaskCreateRequestBuilder.setNs(keyspace).setCsConfig(cloudStoreConfig);

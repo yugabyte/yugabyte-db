@@ -695,6 +695,15 @@ DefineIndex(Oid relationId,
 				 errmsg("cannot set colocation_id for non-colocated index")));
 
 	/*
+	 * Fail if the index is colocated and tablespace
+	 * is specified while creation.
+	 */
+	if (OidIsValid(tablespaceId) && is_colocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
+
+	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
 	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
 	 */

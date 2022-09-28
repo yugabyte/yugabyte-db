@@ -17,6 +17,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
 
 #include "yb/tserver/twodc_write_interface.h"
@@ -24,6 +25,7 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
@@ -104,17 +106,24 @@ Status CombineExternalIntents(
   return Status::OK();
 }
 
-Status AddRecord(
-    const cdc::CDCRecordPB& record,
-    docdb::KeyValueWriteBatchPB* write_batch) {
+Status AddRecord(const ProcessRecordInfo& process_record_info,
+                 const cdc::CDCRecordPB& record,
+                 docdb::KeyValueWriteBatchPB* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {
+    if (process_record_info.enable_replicate_transaction_status_table) {
+      // If we are replicating the transaction status table, we don't need to process individual
+      // APPLY records since the target txn status table will be responsible for fanning out Apply
+      // RPCs to involved tablets.
+      return Status::OK();
+    }
     auto* apply_txn = write_batch->mutable_apply_external_transactions()->Add();
     apply_txn->set_transaction_id(record.transaction_state().transaction_id());
     apply_txn->set_commit_hybrid_time(record.transaction_state().commit_hybrid_time());
     return Status::OK();
   }
 
-  if (record.has_transaction_state()) {
+  if (!process_record_info.enable_replicate_transaction_status_table &&
+      record.has_transaction_state()) {
     return CombineExternalIntents(
         record.transaction_state(), record.changes(), write_batch->mutable_write_pairs());
   }
@@ -129,6 +138,16 @@ Status AddRecord(
     } else {
       write_pair->set_external_hybrid_time(record.time());
     }
+    if (record.has_transaction_state()) {
+      // enable_replicate_transaction_status_table is true.
+      TransactionMetadataPB metadata;
+      metadata.set_transaction_id(record.transaction_state().transaction_id());
+      metadata.set_status_tablet(process_record_info.status_tablet_id);
+      metadata.set_isolation(IsolationLevel::SNAPSHOT_ISOLATION);
+      *write_pair->mutable_transaction() = metadata;
+      write_batch->set_enable_replicate_transaction_status_table(
+        true /* enable_replicate_transaction_status_table */);
+    }
   }
 
   return Status::OK();
@@ -142,18 +161,10 @@ Status AddRecord(
 class BatchedWriteImplementation : public TwoDCWriteInterface {
   ~BatchedWriteImplementation() = default;
 
-  Status ProcessRecord(const std::string& tablet_id, const cdc::CDCRecordPB& record) override {
-    // First handle, the case where we see a txn status COMMIT record.
-    if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
-      transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
-        .transaction_id = VERIFY_RESULT(
-            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
-        .status_tablet = tablet_id,
-        .commit_ht = record.time(),
-      });
-      return Status::OK();
-    }
-
+  Status ProcessRecord(
+      const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
+    const auto& tablet_id = process_record_info.tablet_id;
+    // Finally, handle records to be applied to both regular and intents db.
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
       it = records_.emplace(tablet_id, std::deque<std::unique_ptr<WriteRequestPB>>()).first;
@@ -178,7 +189,22 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
     }
     auto* write_request = queue.back().get();
 
-    return AddRecord(record, write_request->mutable_write_batch());
+    return AddRecord(process_record_info, record, write_request->mutable_write_batch());
+  }
+
+  Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record) override {
+    DCHECK(record.operation() == cdc::CDCRecordPB::COMMITTED);
+    transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
+      .transaction_id = VERIFY_RESULT(
+          FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+      .status_tablet = status_tablet,
+      .commit_ht = record.time(),
+      .involved_tablet_ids = involved_target_tablet_ids
+    });
+    return Status::OK();
   }
 
   std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
@@ -199,7 +225,9 @@ class BatchedWriteImplementation : public TwoDCWriteInterface {
   }
 
  private:
-  std::map<std::string, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
+  // Contains key value pairs to apply to regular and intents db. The key of this map is the
+  // tablet to send to.
+  std::map<TabletId, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
   std::vector<client::ExternalTransactionMetadata> transaction_metadatas_;
 };
 

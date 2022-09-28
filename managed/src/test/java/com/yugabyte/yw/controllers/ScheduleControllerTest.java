@@ -15,6 +15,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -394,6 +395,50 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode schedulesJson = Json.parse(contentAsString(result));
     ArrayNode response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(response.size(), 3);
+  }
+
+  @Test
+  public void testListIncrementScheduleBackup() {
+    ObjectNode bodyJson2 = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson2.put("universeUUID", universe.universeUUID.toString());
+    bodyJson2.put("storageConfigUUID", customerConfig.configUUID.toString());
+    bodyJson2.put("cronExpression", "0 */2 * * *");
+    bodyJson2.put("scheduleName", "schedule-1");
+    bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
+    bodyJson2.put("incrementalBackupFrequency", 3600000L);
+    bodyJson2.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    Result r = createBackupSchedule(bodyJson2, null);
+    assertOk(r);
+    ObjectNode bodyJson3 = Json.newObject();
+    bodyJson3.put("direction", "ASC");
+    bodyJson3.put("sortBy", "scheduleUUID");
+    bodyJson3.put("offset", 0);
+    bodyJson3.set("filter", Json.newObject().set("status", Json.newArray().add("Active")));
+    Result result = getPagedSchedulesList(defaultCustomer.uuid, bodyJson3);
+    assertOk(result);
+    JsonNode schedulesJson = Json.parse(contentAsString(result));
+    ArrayNode response = (ArrayNode) schedulesJson.get("entities");
+    assertEquals(2, response.size());
+    System.out.println(response);
+    int incrementalScheduleCount = 0;
+    for (JsonNode resp : response) {
+      if (resp.has("incrementalBackupFrequency")) {
+        long incrementalBackupFrequency = resp.get("incrementalBackupFrequency").asLong(0);
+        if (incrementalBackupFrequency > 0) {
+          incrementalScheduleCount++;
+        }
+      }
+    }
+    assertEquals(1, incrementalScheduleCount);
   }
 
   @Test

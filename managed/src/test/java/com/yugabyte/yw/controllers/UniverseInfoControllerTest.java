@@ -25,12 +25,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsBytes;
 import static play.test.Helpers.contentAsString;
@@ -42,10 +39,8 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AccessKey;
@@ -63,12 +58,13 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
@@ -78,12 +74,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import play.libs.Json;
+import play.libs.ws.WSClient;
 import play.mvc.Result;
 
 @Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
+  @Mock WSClient mockWsClient;
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
@@ -242,7 +240,8 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    QueryHelper queryHelper = new QueryHelper(null, mockPlatformExecutorFactory);
+    ExecutorService executor = Executors.newFixedThreadPool(1);
+    QueryHelper queryHelper = new QueryHelper(null, executor, mockWsClient);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"

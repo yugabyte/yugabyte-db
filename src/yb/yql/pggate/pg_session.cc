@@ -25,7 +25,6 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -40,6 +39,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
@@ -540,6 +540,25 @@ Result<PerformFuture> PgSession::Perform(
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
+  // If all operations belong to the same database then set the namespace
+  if (!ops.relations.empty()) {
+    PgOid database_oid = ops.relations[0].database_oid;
+    for (const auto& relation : ops.relations) {
+      if (PREDICT_FALSE(database_oid != relation.database_oid)) {
+        // We do not expect this to be true. Adding a log to catch violation just in case.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+            "Operations from multiple databases ('$0', '$1') found in a single Perform step",
+            database_oid, relation.database_oid);
+        database_oid = kPgInvalidOid;
+        break;
+      }
+    }
+
+    if (database_oid != kPgInvalidOid) {
+      options.set_namespace_id(GetPgsqlNamespaceId(database_oid));
+    }
+  }
+
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });
@@ -638,17 +657,6 @@ void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
 
 void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
-}
-
-Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {
-  if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
-    auto op_index = OpIndex::ValueFromStatus(status);
-    if (op_index && *op_index < relations.size()) {
-      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
-    }
-  }
-  return status;
 }
 
 Result<int> PgSession::TabletServerCount(bool primary_only) {

@@ -52,6 +52,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -231,12 +232,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
-  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const
-      EXCLUDES(xcluster_safe_time_mutex_);
+  std::shared_ptr<XClusterSafeTimeMap> GetXClusterSafeTimeMap() const;
 
-  void UpdateXClusterSafeTime(
-      const google::protobuf::Map<std::string, google::protobuf::uint64>& safe_time_map)
-      EXCLUDES(xcluster_safe_time_mutex_);
+  void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
+      const NamespaceId& namespace_id, HybridTime commit_ht);
 
  protected:
   virtual Status RegisterServices();
@@ -324,9 +325,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
 
-  mutable rw_spinlock xcluster_safe_time_mutex_;
-  std::unordered_map<NamespaceId, HybridTime> xcluster_safe_time_map_
-      GUARDED_BY(xcluster_safe_time_mutex_);
+  std::shared_ptr<XClusterSafeTimeMap> xcluster_safe_time_map_;
 
   PgConfigReloader pg_config_reloader_;
 

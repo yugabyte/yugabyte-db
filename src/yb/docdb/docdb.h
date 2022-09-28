@@ -231,6 +231,7 @@ struct IntentKeyValueForCDC {
   std::string key_buf, value_buf;
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
+  DocHybridTime intent_ht;
 
   std::string ToString() const;
 

@@ -55,8 +55,9 @@ DEFINE_string(master_addresses, "localhost:7100",
 DEFINE_string(init_master_addrs, "",
               "host:port of any yb-master in a cluster");
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
-DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
+// Command-specific flags
+DEFINE_bool(exclude_dead, false, "Exclude dead tservers from output");
 
 using std::cerr;
 using std::endl;
@@ -917,9 +918,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   RegisterJson("ddl_log", "", std::bind(&DdlLog, client, _1));
 
   Register(
-      "upgrade_ysql", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->UpgradeYsql(),
+      "upgrade_ysql", " [use_single_connection] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() > 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        // Use just one simultaneous connection for YSQL upgrade.
+        // This is much slower but does not incur overhead for each database.
+        bool use_single_connection = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "use_single_connection")) {
+            use_single_connection = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        RETURN_NOT_OK_PREPEND(client->UpgradeYsql(use_single_connection),
                               "Unable to upgrade YSQL cluster");
         return Status::OK();
       });

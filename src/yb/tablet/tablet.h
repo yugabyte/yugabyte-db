@@ -749,6 +749,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return unique_index_key_schema_.get();
   }
 
+  bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -770,7 +772,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      const rocksdb::UserFrontiers* frontiers);
+      const rocksdb::UserFrontiers* frontiers,
+      bool external_transaction = false);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,

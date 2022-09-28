@@ -297,6 +297,7 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
   ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;
+  last_load_balance_run_ = MonoTime::Min();
 }
 
 // Reduce remaining_tasks by pending_tasks value, after sanitizing inputs.
@@ -325,7 +326,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   uint32_t master_errors = 0;
 
   if (!IsLoadBalancerEnabled()) {
-    LOG(INFO) << "Load balancing is not enabled.";
+    YB_LOG_EVERY_N_SECS(INFO, 10) << "Load balancing is not enabled.";
     return;
   }
 
@@ -653,7 +654,11 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
   // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
   can_perform_global_operations_ = can_perform_global_operations_ || ai.IsIdle();
+
+  last_load_balance_run_ = MonoTime::Now();
 }
+
+MonoTime ClusterLoadBalancer::LastRunTime() const { return last_load_balance_run_; }
 
 Status ClusterLoadBalancer::IsIdle() const {
   if (IsLoadBalancerEnabled() && !is_idle_.load(std::memory_order_acquire)) {

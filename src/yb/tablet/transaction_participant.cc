@@ -117,7 +117,8 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
-      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state);
+      leader_term, transaction_id, op_id, commit_ht, log_ht, sealed, status_tablet, apply_state,
+      is_external);
 }
 
 class TransactionParticipant::Impl
@@ -295,11 +296,13 @@ class TransactionParticipant::Impl
 
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool external_transaction) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(
-        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
+        external_transaction);
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -619,7 +622,8 @@ class TransactionParticipant::Impl
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
       auto lock_and_iterator = LockAndFind(
-          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
+          data.is_external);
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -1313,14 +1317,15 @@ class TransactionParticipant::Impl
   };
 
   LockAndFindResult LockAndFind(
-      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
+      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags,
+      bool external_transaction = false) {
     loader_.WaitLoaded(id);
     bool recently_removed;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (!external_transaction && (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
@@ -1505,7 +1510,8 @@ class TransactionParticipant::Impl
         .commit_ht = commit_time,
         .log_ht = data.hybrid_time,
         .sealed = data.sealed,
-        .status_tablet = data.state.tablets(0)
+        .status_tablet = data.state.tablets(0),
+        .is_external = data.state.has_external_commit_ht()
       };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
@@ -1729,8 +1735,9 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+    bool external_transaction) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, external_transaction);
 }
 
 void TransactionParticipant::BatchReplicated(

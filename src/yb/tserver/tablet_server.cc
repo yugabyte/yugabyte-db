@@ -57,6 +57,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -177,6 +178,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
+  xcluster_safe_time_map_ = make_shared<XClusterSafeTimeMap>();
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
@@ -432,7 +434,8 @@ Status TabletServer::RegisterServices() {
           clock(),
           std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
-          &messenger()->scheduler())));
+          &messenger()->scheduler(),
+          GetXClusterSafeTimeMap())));
 
   return Status::OK();
 }
@@ -779,31 +782,17 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
-Result<HybridTime> TabletServer::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  HybridTime safe_ht = HybridTime::kInvalid;
-
-  {
-    SharedLock l(xcluster_safe_time_mutex_);
-    auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);
-    if (safe_time) {
-      safe_ht = *safe_time;
-    }
-  }
-
-  if (safe_ht.is_special()) {
-    return STATUS(NotFound, Format("XCluster safe time not found for namespace $0", namespace_id));
-  }
-
-  return safe_ht;
+shared_ptr<XClusterSafeTimeMap> TabletServer::GetXClusterSafeTimeMap() const {
+  return xcluster_safe_time_map_;
 }
 
-void TabletServer::UpdateXClusterSafeTime(
-    const google::protobuf::Map<std::string, google::protobuf::uint64>& safe_time_map) {
-  std::lock_guard l(xcluster_safe_time_mutex_);
-  xcluster_safe_time_map_.clear();
-  for (auto& entry : safe_time_map) {
-    xcluster_safe_time_map_[entry.first] = HybridTime(entry.second);
-  }
+void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
+  xcluster_safe_time_map_->Update(safe_time_map);
+}
+
+Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
+    const NamespaceId& namespace_id, HybridTime commit_ht) {
+  return VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(namespace_id)) > commit_ht;
 }
 
 }  // namespace tserver

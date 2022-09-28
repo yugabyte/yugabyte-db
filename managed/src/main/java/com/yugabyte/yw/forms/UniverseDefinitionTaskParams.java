@@ -419,7 +419,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public String universeOverrides;
 
     // AZ level overrides for kubernetes universes.
-    @ApiModelProperty public String azOverrides;
+    @ApiModelProperty public Map<String, String> azOverrides;
 
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;

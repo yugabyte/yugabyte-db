@@ -1266,9 +1266,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     az2.updateConfig(config);
     az3.updateConfig(config);
     Map<UUID, String> expectedDomains = new HashMap<>();
-    expectedDomains.put(az1.uuid, "svc.test");
-    expectedDomains.put(az2.uuid, "svc.test");
-    expectedDomains.put(az3.uuid, "svc.test");
+    expectedDomains.put(az1.uuid, "test");
+    expectedDomains.put(az2.uuid, "test");
+    expectedDomains.put(az3.uuid, "test");
     assertEquals(expectedDomains, PlacementInfoUtil.getDomainPerAZ(pi));
   }
 
@@ -1704,11 +1704,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
     String nodePrefix = "demo-universe";
+    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     // New naming style
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true, podAddressTemplate);
     String masterAddressFormat =
         "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
     String expectedMasterAddresses =
@@ -1722,7 +1723,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old naming style
     masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false, podAddressTemplate);
     masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
     expectedMasterAddresses =
         String.format(masterAddressFormat, nodePrefix, az1.code)
@@ -1744,10 +1745,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
+    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true, podAddressTemplate);
     assertEquals(
         "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
         masterAddresses);
@@ -1766,11 +1768,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
       NodeDetails node = ApiUtils.getDummyNodeDetails(idx);
       node.azUuid = az.uuid;
+      node.cloudInfo.kubernetesNamespace = "ns" + idx;
+      node.cloudInfo.kubernetesPodName = "pod" + idx;
       nodeDetailsSet.add(node);
       idx++;
     }
-    Map<String, String> expectedConfigPerPod =
-        ImmutableMap.of("10.0.0.1", "az-1", "10.0.0.2", "az-2", "10.0.0.3", "az-3");
+    Map<String, Map<String, String>> expectedConfigPerPod =
+        ImmutableMap.of(
+            "10.0.0.1",
+            ImmutableMap.of("podName", "pod1", "namespace", "ns1", "KUBECONFIG", "az-1"),
+            "10.0.0.2",
+            ImmutableMap.of("podName", "pod2", "namespace", "ns2", "KUBECONFIG", "az-2"),
+            "10.0.0.3",
+            ImmutableMap.of("podName", "pod3", "namespace", "ns3", "KUBECONFIG", "az-3"));
 
     assertEquals(
         expectedConfigPerPod, PlacementInfoUtil.getKubernetesConfigPerPod(pi, nodeDetailsSet));

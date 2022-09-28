@@ -462,7 +462,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       pending_row = pending_row->next;
     }
 
-    pending_rows_arena_.Reset();
+    pending_rows_arena_.Reset(ResetMode::kKeepLast);
     first_pending_row_ = nullptr;
     last_pending_row_next_ = &first_pending_row_;
     return Status::OK();

@@ -178,6 +178,7 @@ TableInfo::~TableInfo() = default;
 Status TableInfo::LoadFromPB(const TableId& primary_table_id, const TableInfoPB& pb) {
   table_id = pb.table_id();
   namespace_name = pb.namespace_name();
+  namespace_id = pb.namespace_id();
   table_name = pb.table_name();
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(Primary(primary_table_id == table_id), table_id));
@@ -211,6 +212,7 @@ Status TableInfo::MergeWithRestored(const TableInfoPB& pb) {
 void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_id(table_id);
   pb->set_namespace_name(namespace_name);
+  pb->set_namespace_id(namespace_id);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
 
@@ -1048,6 +1050,14 @@ string RaftGroupMetadata::wal_root_dir() const {
   return wal_root_dir;
 }
 
+Status RaftGroupMetadata::set_namespace_id(const NamespaceId& namespace_id) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    primary_table_info_unlocked()->namespace_id = namespace_id;
+  }
+  return Flush();
+}
+
 void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto it = kv_store_.tables.find(primary_table_id_);
@@ -1392,6 +1402,11 @@ std::string RaftGroupMetadata::namespace_name(const TableId& table_id) const {
   }
   const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
   return table_info->namespace_name;
+}
+
+NamespaceId RaftGroupMetadata::namespace_id() const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  return primary_table_info()->namespace_id;
 }
 
 std::string RaftGroupMetadata::table_name(

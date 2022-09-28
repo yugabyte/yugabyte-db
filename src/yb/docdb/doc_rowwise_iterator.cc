@@ -1475,7 +1475,8 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       }
     }
 
-    row_ = SubDocument();
+    DCHECK(row_.type() == ValueEntryType::kObject);
+    row_.object_container().clear();
     auto doc_found_res = doc_reader_->Get(doc_key, &row_);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();

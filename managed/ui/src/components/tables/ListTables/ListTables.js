@@ -238,7 +238,8 @@ class ListTableGrid extends Component {
           tableName: item.tableName,
           status: 'success',
           isIndexTable: item.isIndexTable,
-          sizeBytes: item.sizeBytes
+          sizeBytes: item.sizeBytes,
+          walSizeBytes: item.walSizeBytes
         };
       });
     }
@@ -327,7 +328,16 @@ class ListTableGrid extends Component {
           dataFormat={formatBytes}
           dataSort
         >
-          Size
+          SST Size
+        </TableHeaderColumn>
+        <TableHeaderColumn
+          dataField={'walSizeBytes'}
+          width="15%"
+          columnClassName={'yb-table-cell'}
+          dataFormat={formatBytes}
+          dataSort
+        >
+          WAL Size
         </TableHeaderColumn>
         {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn

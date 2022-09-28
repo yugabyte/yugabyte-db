@@ -12,6 +12,7 @@ import { MetricsPanel } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
+  MetricNames,
   METRIC_TIME_RANGE_OPTIONS,
   REPLICATION_LAG_ALERT_NAME,
   TABLE_LAG_GRAPH_EMPTY_METRIC,
@@ -20,14 +21,13 @@ import {
 import {
   MetricTimeRange,
   MetricTimeRangeOption,
-  ReplicationTable,
+  YBTable,
   StandardMetricTimeRangeOption,
-  TableReplicationMetric
+  Metrics
 } from '../XClusterTypes';
 
 import styles from './TableLagGraph.module.scss';
 
-const REPLICATION_LAG_METRIC_NAME = 'tserver_async_replication_lag_micros';
 const METRIC_TRACE_NAME = 'Committed Lag (Milliseconds)';
 const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60000;
 const GRAPH_WIDTH = 850;
@@ -41,7 +41,7 @@ const getTimeRange = (metricTimeRangeOption: StandardMetricTimeRangeOption): Met
 };
 
 interface Props {
-  tableDetails: ReplicationTable;
+  tableDetails: YBTable;
   replicationUUID: string;
   universeUUID: string;
   queryEnabled: boolean;
@@ -123,7 +123,7 @@ export const TableLagGraph: FC<Props> = ({
    * If found, then we try to add a trace for the max acceptable lag.
    * If not found, then we just show no data.
    */
-  const setTracesToPlot = (graphMetric: TableReplicationMetric) => {
+  const setTracesToPlot = (graphMetric: Metrics<'tserver_async_replication_lag_micros'>) => {
     const committedLagData = graphMetric.tserver_async_replication_lag_micros.data.find(
       (trace) => trace.name === METRIC_TRACE_NAME
     );
@@ -199,7 +199,7 @@ export const TableLagGraph: FC<Props> = ({
       <MetricsPanel
         className={styles.graphContainer}
         currentUser={currentUser}
-        metricKey={`${REPLICATION_LAG_METRIC_NAME}_${tableName}`}
+        metricKey={`${MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
         metric={_.cloneDeep(graphMetric.tserver_async_replication_lag_micros)}
         width={GRAPH_WIDTH}
         height={GRAPH_HEIGHT}

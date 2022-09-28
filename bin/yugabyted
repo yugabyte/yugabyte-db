@@ -922,7 +922,10 @@ class ControlScript(object):
         #         self.configs.saved_data.get("data_dir"))
 
         if self.configs.temp_data.get("ui"):
-            yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")]
+            yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
+                [
+                    "-database_host={}".format(bind_ip)
+                ]
             self.processes["yugabyted-ui"] = ProcessManager(
                 "yugabyted-ui", yugabyted_ui_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir"))
@@ -2321,7 +2324,7 @@ class ControlScript(object):
                 "--callhome", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--ui", choices=BOOL_CHOICES, default="false", metavar="",
+                "--ui", choices=BOOL_CHOICES, default="true", metavar="",
                 help="Toggle enabling or disabling webserver UI. Default false.")
             cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
@@ -2481,7 +2484,7 @@ class Configs(object):
         self.temp_data = {
             "demo_db": DEFAULT_DEMO_DATABASE,
             "background": True,
-            "ui": False,
+            "ui": True,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
             "data_placement_constraint": "",
