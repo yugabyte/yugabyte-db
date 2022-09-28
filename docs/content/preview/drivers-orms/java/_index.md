@@ -20,6 +20,8 @@ The following projects can be used to implement Java applications using the Yuga
 | ------- | ------------------------ | ------------------------ | ---------------------|
 | YugabyteDB JDBC Smart Driver [Recommended] | [Documentation](yugabyte-jdbc)<br />[Hello World App](../../develop/build-apps/java/ysql-yb-jdbc)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a)<br />[Reference Page](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2) | 2.8 and above
 | PostgreSQL JDBC Driver | [Documentation](postgres-jdbc)<br />[Hello World App](../../develop/build-apps/java/ysql-jdbc)<br /> [Reference Page](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.4 and above
+| YugabyteDB YCQL (3.10) Driver | [Documentation](ycql)<br />[Reference Page](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-3-10) | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | |
+| YugabyteDB YCQL (4.6) Driver | [Documentation](ycql)<br />[Reference Page](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-3-10) | [4.6.0-yb-11](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.6.0-yb-11) | |
 
 | Projects | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |

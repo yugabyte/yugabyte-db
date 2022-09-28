@@ -402,11 +402,15 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/java/ycql/"
-  to = "/preview/drivers-orms/java/datastax-ycql/"
+  to = "/preview/drivers-orms/java/ycql/"
 
 [[redirects]]
   from = "preview/develop/build-apps/java/ycql-4.6/"
-  to = "/preview/drivers-orms/java/datastax-ycql-4.6/"
+  to = "/preview/drivers-orms/java/ycql-4.6/"
+
+[[redirects]]
+  from = "preview/develop/build-apps/go/ycql/"
+  to = "/preview//drivers-orms/go/ycql/"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

@@ -1,7 +1,7 @@
 ---
 title: Connect an application
 linkTitle: Connect an app using YSQL
-description: JDBC drivers for YSQL
+description: JDBC driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:

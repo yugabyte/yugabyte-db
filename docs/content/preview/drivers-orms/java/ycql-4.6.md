@@ -1,11 +1,11 @@
 ---
 title: Connect an application
 linkTitle: Connect an app using YCQL
-description: JDBC drivers for YCQL
+description: Java driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    identifier: datastax-java-driver-4.6
+    identifier: ycql-java-driver-4.6
     parent: java-drivers
     weight: 500
 type: docs
@@ -13,15 +13,15 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../datastax-ycql/" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      YugabyteDB YCQL DataStax Driver
+      YugabyteDB Java Driver for YCQL (3.10)
     </a>
   </li>
   <li >
-    <a href="../datastax-ycql-4.6/" class="nav-link active">
+    <a href="../ycql-4.6/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      YugabyteDB YCQL(4.6) DataStax Driver
+      YugabyteDB Java Driver for YCQL (4.6)
     </a>
   </li>
 </ul>
