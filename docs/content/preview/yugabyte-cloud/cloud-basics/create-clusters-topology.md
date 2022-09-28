@@ -26,7 +26,7 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
 | xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
-| Read replica | Strong in source, eventual in replica | Low in primary region (1-10ms) | Low in region (1-10ms) | Low latency reads |
+| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
 
 ## Single region multi-zone cluster
 
