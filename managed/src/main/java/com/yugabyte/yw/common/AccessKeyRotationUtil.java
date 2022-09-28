@@ -2,18 +2,6 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -27,12 +15,20 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-
+import io.ebean.annotation.Transactional;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
-
-import io.ebean.annotation.Transactional;
 import play.libs.Json;
 
 @Singleton
@@ -196,12 +192,12 @@ public class AccessKeyRotationUtil {
   public List<AccessKey> getUniverseAccessKeys(
       Universe universe, Map<AccessKeyId, AccessKey> allAccessKeys) {
     List<Cluster> clusters = universe.getUniverseDetails().clusters;
-    UUID providerUUID = UUID.fromString(clusters.get(0).userIntent.provider);
     List<AccessKey> accessKeys = new ArrayList<AccessKey>();
     clusters.forEach(
         cluster -> {
           String clusterAccessKeyCode = cluster.userIntent.accessKeyCode;
           if (StringUtils.isNotEmpty(clusterAccessKeyCode)) {
+            UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
             AccessKeyId id = AccessKeyId.create(providerUUID, clusterAccessKeyCode);
             accessKeys.add(allAccessKeys.get(id));
           }
