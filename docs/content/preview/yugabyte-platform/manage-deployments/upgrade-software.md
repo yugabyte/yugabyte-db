@@ -46,3 +46,5 @@ You can perform a rolling upgrade on a live universe deployment as follows:
     ![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)<br><br>
 
     To trigger an upgrade that involves downtime, deselect **Rolling Upgrade**.
+
+For information on how rolling upgrades are performed in YugabyteDB, see [Upgrade a deployment](../../../manage/upgrade-deployment/). 
