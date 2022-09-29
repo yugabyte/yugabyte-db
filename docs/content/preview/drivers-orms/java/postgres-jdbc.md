@@ -10,16 +10,29 @@ menu:
     weight: 500
 type: docs
 ---
+<!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../yugabyte-jdbc/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
+  </li>
+
+  <li >
+    <a href="../ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
+  </li>
+</ul> -->
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li class="active">
       <a href="../yugabyte-jdbc/" class="nav-link">
+        <i class="icon-postgres" aria-hidden="true"></i>
         YSQL
       </a>
     </li>
     <li>
       <a href="../ycql/" class="nav-link">
+        <i class="icon-cassandra" aria-hidden="true"></i>
         YCQL
       </a>
     </li>
@@ -30,14 +43,14 @@ type: docs
 
   <li >
     <a href="../yugabyte-jdbc/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <!-- <i class="icon-java-bold" aria-hidden="true"></i> -->
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
 
   <li >
     <a href="../postgres-jdbc/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <!-- <i class="icon-postgres" aria-hidden="true"></i> -->
       PostgreSQL JDBC Driver
     </a>
   </li>

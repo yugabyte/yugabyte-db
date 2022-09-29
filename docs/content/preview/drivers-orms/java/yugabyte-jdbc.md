@@ -30,14 +30,12 @@ type: docs
 
   <li >
     <a href="../yugabyte-jdbc/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
 
   <li >
     <a href="../postgres-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL JDBC Driver
     </a>
   </li>

@@ -1,6 +1,6 @@
 ---
 title: Connect an application
-linkTitle: Connect an app using YCQL
+linkTitle: Connect an app
 description: C# driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -11,11 +11,25 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../postgres-npgsql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
     <a href="../ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
       YugabyteDB C# Driver for YCQL
     </a>
   </li>
