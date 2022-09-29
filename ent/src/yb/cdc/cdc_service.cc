@@ -1742,38 +1742,41 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
             << ", last replicated time: " << last_replicated_time_str
             << ", last active time: " << last_active_time_cdc_state_table;
 
-      // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
-      if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
+    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
+    if (tablet_stream_to_be_deleted && checkpoint == OpId::Max().ToString()) {
+      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+    }
+
+    auto get_stream_metadata = GetStream(stream_id);
+    if (!get_stream_metadata.ok()) {
+      LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
+                   << get_stream_metadata.status();
+      // The stream_id present in the cdc_state table was not found in the master cache, it means
+      // that the stream is deleted. To update the corresponding tablet PEERs, give an entry in
+      // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
+      // OpId::Max()(i.e no need to retain the intents.). And also mark the row to be deleted.
+      if (!tablet_min_checkpoint_map.contains(tablet_id)) {
+        VLOG(2) << "We could not get the metadata for the stream: " << stream_id;
+        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+        tablet_info.cdc_op_id = OpId::Max();
+        tablet_info.cdc_sdk_op_id = OpId::Max();
+      }
+      if (get_stream_metadata.status().IsNotFound()) {
+        VLOG(2) << "We will remove the entry for the stream: " << stream_id
+                << ", from cdc_state table.";
         tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
       }
+      continue;
+    }
+    StreamMetadata& record = **get_stream_metadata;
 
-      auto get_stream_metadata = GetStream(stream_id);
-      if (!get_stream_metadata.ok()) {
-        LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id
-                     << ": " << get_stream_metadata.status();
-        // Read stream_id from cdc_state table not found in the master cache, it mean's stream
-        // is deleted. To update the corresponding tablet PEERs, give an entry in
-        // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
-        // OpId::Max()(i.e no need to retain the intents.)
-        if (!tablet_min_checkpoint_map.contains(tablet_id) &&
-          get_stream_metadata.status().IsNotFound()) {
-          VLOG(2) << "Stream: " << stream_id << ", is expired for tablet: " << tablet_id
-                  << ", hence we are adding default entries to tablet_min_checkpoint_map";
-          auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
-          tablet_info.cdc_op_id = OpId::Max();
-          tablet_info.cdc_sdk_op_id = OpId::Max();
-        }
-        continue;
-      }
-      StreamMetadata& record = **get_stream_metadata;
-
-      auto op_id_result = OpId::FromString(checkpoint);
-      if (!op_id_result.ok()) {
-        LOG(WARNING) << "Read invalid op id " << row.column(1).string_value() << " for tablet "
-                    << tablet_id << ": " << op_id_result.status();
-        continue;
-      }
-      const auto& op_id = *op_id_result;
+    auto op_id_result = OpId::FromString(checkpoint);
+    if (!op_id_result.ok()) {
+      LOG(WARNING) << "Read invalid op id " << row.column(1).string_value() << " for tablet "
+                   << tablet_id << ": " << op_id_result.status();
+      continue;
+    }
+    const auto& op_id = *op_id_result;
 
       // Check that requested tablet_id is part of the CDC stream.
       ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
