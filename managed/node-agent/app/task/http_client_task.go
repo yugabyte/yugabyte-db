@@ -607,6 +607,7 @@ func createRegisterAgentRequest(config *util.Config) model.RegisterRequest {
 	req := model.RegisterRequest{}
 	req.Name = config.String(util.NodeNameKey)
 	req.IP = config.String(util.NodeIpKey)
+	req.Port = config.Int(util.NodePortKey)
 	req.Version = config.String(util.PlatformVersionKey)
 	req.State = model.Registering.Name()
 	return req
