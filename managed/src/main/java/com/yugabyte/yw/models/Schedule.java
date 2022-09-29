@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.models;
 
+import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
-import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
-import static com.cronutils.model.CronType.UNIX;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -18,26 +18,26 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
-import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
 import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
-import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
-import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.PersistenceContextScope;
-import io.ebean.ExpressionList;
+import io.ebean.Query;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -407,6 +407,16 @@ public class Schedule extends Model {
         .findList();
   }
 
+  public static List<Schedule> getAllActiveSchedulesByOwnerUUIDAndType(
+      UUID ownerUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("owner_uuid", ownerUUID)
+        .eq("status", "Active")
+        .eq("task_type", taskType)
+        .findList();
+  }
+
   public static List<Schedule> getAllByCustomerUUIDAndType(UUID customerUUID, TaskType taskType) {
     return find.query()
         .where()
@@ -479,13 +489,7 @@ public class Schedule extends Model {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
         schedules.parallelStream().map(s -> toScheduleResp(s)).collect(Collectors.toList());
-    SchedulePagedApiResponse responseMin;
-    try {
-      responseMin = SchedulePagedApiResponse.class.newInstance();
-    } catch (Exception e) {
-      throw new IllegalStateException(
-          "Failed to create " + SchedulePagedApiResponse.class.getSimpleName() + " instance", e);
-    }
+    SchedulePagedApiResponse responseMin = new SchedulePagedApiResponse();
     responseMin.setEntities(schedulesList);
     responseMin.setHasPrev(response.isHasPrev());
     responseMin.setHasNext(response.isHasNext());
@@ -535,6 +539,8 @@ public class Schedule extends Model {
         BackupRequestParams params =
             mapper.convertValue(scheduleTaskParams, BackupRequestParams.class);
         builder.backupInfo(getV2ScheduleBackupInfo(params));
+        builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
+        builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
       } else if (Util.canConvertJsonNode(scheduleTaskParams, MultiTableBackup.Params.class)) {
         MultiTableBackup.Params params =
             mapper.convertValue(scheduleTaskParams, MultiTableBackup.Params.class);

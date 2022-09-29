@@ -1,22 +1,33 @@
 import moment from 'moment';
-import { TableType } from '../../redesign/helpers/dtos';
+
 import {
   CUSTOM_METRIC_TIME_RANGE_OPTION,
   DROPDOWN_DIVIDER,
+  MetricNames,
   METRIC_TIME_RANGE_OPTIONS,
-  ReplicationStatus
+  ReplicationStatus,
+  YBTableRelationType
 } from './constants';
 
-export interface ReplicationTable {
-  tableUUID: string;
+import { TableType } from '../../redesign/helpers/dtos';
+
+export interface YBTable {
+  isIndexTable: boolean;
+  keySpace: string;
   pgSchemaName: string;
+  relationType: YBTableRelationType;
+  sizeBytes: number;
   tableName: string;
   tableType: TableType;
-  keySpace: string;
-  sizeBytes: string;
+  tableUUID: string;
 }
 
-export interface Replication {
+/**
+ * XCluster supported table type.
+ */
+export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
+
+export interface XClusterConfig {
   createTime: string;
   modifyTime: string;
   name: string;
@@ -36,8 +47,10 @@ export interface TableDetails {
   tableId: string;
 }
 
+// TODO: Move the metric types to dtos.ts or another more appropriate file.
+
 export interface MetricTrace {
-  instanceName: string;
+  instanceName?: string;
   name: string;
   type: string;
   x: number[];
@@ -49,9 +62,8 @@ export interface MetricTrace {
   };
 }
 
-// TODO - Make this more robust and reusable
-export interface TableReplicationMetric {
-  tserver_async_replication_lag_micros: {
+export type Metrics<Name extends MetricNames> = {
+  [metricName in Name]: {
     data: MetricTrace[];
     directURLs: string[];
     layout: {
@@ -67,7 +79,7 @@ export interface TableReplicationMetric {
     };
     queryKey: string;
   };
-}
+};
 
 // Time range selector types.
 

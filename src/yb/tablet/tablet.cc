@@ -244,6 +244,9 @@ DEFINE_test_flag(bool, pause_before_post_split_compaction, false,
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
                  "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
+
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
@@ -402,7 +405,9 @@ Tablet::Tablet(const TabletInitData& data)
       is_sys_catalog_(data.is_sys_catalog),
       txns_enabled_(data.txns_enabled),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, data.allowed_history_cutoff_provider, metadata_.get())) {
+          clock_, data.allowed_history_cutoff_provider, metadata_.get())),
+      post_split_compaction_pool_(data.post_split_compaction_pool),
+      ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -440,11 +445,11 @@ Tablet::Tablet(const TabletInitData& data)
       data.transaction_participant_context &&
       (is_sys_catalog_ || transactional)) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        data.transaction_participant_context, this, tablet_metrics_entity_);
+        data.transaction_participant_context, this, DCHECK_NOTNULL(tablet_metrics_entity_));
     if (data.waiting_txn_registry) {
       wait_queue_ = std::make_unique<docdb::WaitQueue>(
         transaction_participant_.get(), metadata_->fs_manager()->uuid(), data.waiting_txn_registry,
-        client_future_, clock());
+        client_future_, clock(), DCHECK_NOTNULL(tablet_metrics_entity_));
     }
   }
 
@@ -466,7 +471,8 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata_->fs_manager()->uuid(),
         data.transaction_coordinator_context,
-        metrics_->expired_transactions.get());
+        metrics_->expired_transactions.get(),
+         DCHECK_NOTNULL(tablet_metrics_entity_));
   }
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
@@ -896,6 +902,12 @@ void Tablet::DoCleanupIntentFiles() {
 }
 
 Status Tablet::EnableCompactions(ScopedRWOperationPause* non_abortable_ops_pause) {
+  if (state_ != kOpen) {
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Cannot enable compaction for the tablet in state other than kOpen, current state is $0",
+        state_);
+    return Status::OK();
+  }
   if (!non_abortable_ops_pause) {
     auto operation = CreateNonAbortableScopedRWOperation();
     RETURN_NOT_OK(operation);
@@ -1204,7 +1216,8 @@ Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    const rocksdb::UserFrontiers* frontiers) {
+    const rocksdb::UserFrontiers* frontiers,
+    bool external_transaction) {
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
@@ -1212,6 +1225,7 @@ Status Tablet::WriteTransactionalBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
+    metadata.external_transaction = external_transaction;
     auto add_result = transaction_participant()->Add(metadata);
     if (!add_result.ok()) {
       return add_result.status();
@@ -1220,7 +1234,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
   auto prepare_batch_data = transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set, external_transaction);
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
@@ -1254,6 +1268,35 @@ Status Tablet::WriteTransactionalBatch(
   return Status::OK();
 }
 
+namespace {
+
+std::vector<KeyValueWriteBatchPB> SplitWriteBatchByTransaction(
+    const KeyValueWriteBatchPB& put_batch) {
+  std::map<std::string, KeyValueWriteBatchPB> map;
+  for (const auto& write_pair : put_batch.write_pairs()) {
+    if (!write_pair.has_transaction()) {
+      continue;
+    }
+    // The write pair has transaction metadata, so it should be part of the transaction write batch.
+    auto transaction_id = write_pair.transaction().transaction_id();
+    auto& write_batch = map[transaction_id];
+    if (!write_batch.has_transaction()) {
+      *write_batch.mutable_transaction() = write_pair.transaction();
+    }
+    auto *new_write_pair = write_batch.add_write_pairs();
+    new_write_pair->set_key(write_pair.key());
+    new_write_pair->set_value(write_pair.value());
+    new_write_pair->set_external_hybrid_time(write_pair.external_hybrid_time());
+  }
+  std::vector<KeyValueWriteBatchPB> v;
+  for (auto& entry : map) {
+    v.push_back(std::move(entry.second));
+  }
+  return v;
+}
+
+} // namespace
+
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx,
     const KeyValueWriteBatchPB& put_batch,
@@ -1276,9 +1319,18 @@ Status Tablet::ApplyKeyValueRowOperations(
     auto* regular_write_batch_ptr = !already_applied_to_regular_db ? &regular_write_batch : nullptr;
 
     // See comments for PrepareExternalWriteBatch.
+    if (put_batch.enable_replicate_transaction_status_table()) {
+      auto batches_by_transaction = SplitWriteBatchByTransaction(put_batch);
+      for (const auto& write_batch : batches_by_transaction) {
+        RETURN_NOT_OK(WriteTransactionalBatch(
+            batch_idx, write_batch, hybrid_time, frontiers, true /* external_transaction */));
+      }
+    }
     rocksdb::WriteBatch intents_write_batch;
+    auto* intents_write_batch_ptr = !put_batch.enable_replicate_transaction_status_table() ?
+        &intents_write_batch : nullptr;
     bool has_non_external_records = PrepareExternalWriteBatch(
-        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch,
+        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, intents_write_batch_ptr,
         external_txn_intents_state_.get());
 
     if (intents_write_batch.Count() != 0) {
@@ -2011,7 +2063,7 @@ Result<pgwrapper::PGConn> ConnectToPostgres(
   // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
   // it to at least 2 in the first place. See connectDBComplete.
   auto conn_res = pgwrapper::PGConnBuilder({
-    .host = PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
+    .host = PgDeriveSocketDir(pgsql_proxy_bind_address),
     .port = pgsql_proxy_bind_address.port(),
     .dbname = database_name,
     .user = "postgres",
@@ -3160,6 +3212,10 @@ ScopedRWOperation Tablet::GetPermitToWrite(CoarseTimePoint deadline) {
 Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   auto scoped_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_operation);
+  return StillHasOrphanedPostSplitDataAbortable();
+}
+
+bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
   return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
 }
 
@@ -3603,18 +3659,32 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   return middle_key;
 }
 
-Status Tablet::TriggerPostSplitCompactionIfNeeded(
-    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction) {
+void Tablet::TriggerPostSplitCompactionIfNeeded() {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_post_split_compaction)) {
+    LOG(INFO) << "Skipping post split compaction due to FLAGS_TEST_skip_post_split_compaction";
+    return;
+  }
+  if (!post_split_compaction_pool_ || state_ != State::kOpen) {
+    return;
+  }
+  Status status = Status::OK();
   if (post_split_compaction_task_pool_token_) {
-    return STATUS(
+    status = STATUS(
         IllegalState, "Already triggered post split compaction for this tablet instance.");
   }
-  if (VERIFY_RESULT(StillHasOrphanedPostSplitData())) {
-    post_split_compaction_task_pool_token_ = get_token_for_compaction();
-    return post_split_compaction_task_pool_token_->SubmitFunc(
+  if (status.ok() && StillHasOrphanedPostSplitDataAbortable()) {
+    post_split_compaction_task_pool_token_ =
+        post_split_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    status = post_split_compaction_task_pool_token_->SubmitFunc(
         std::bind(&Tablet::TriggerPostSplitCompactionSync, this));
+    if (status.ok()) {
+      ts_post_split_compaction_added_->Increment();
+    }
   }
-  return Status::OK();
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet: "
+                             << status.ToString();
+  }
 }
 
 void Tablet::TriggerPostSplitCompactionSync() {

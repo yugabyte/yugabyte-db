@@ -227,14 +227,6 @@ Result<PgDocResponse::Data> PgDocResponse::Get() {
 PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
     : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
-PgDocOp::~PgDocOp() {
-  // Wait for result in case request was sent.
-  // Operation can be part of transaction it is necessary to complete it before transaction commit.
-  if (response_.Valid()) {
-    WARN_NOT_OK(ResultToStatus(response_.Get()), "Operation completion failed");
-  }
-}
-
 Status PgDocOp::ExecuteInit(const PgExecParameters *exec_params) {
   end_of_data_ = false;
   if (exec_params) {

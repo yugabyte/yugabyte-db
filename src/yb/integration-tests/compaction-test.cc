@@ -53,6 +53,7 @@
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"

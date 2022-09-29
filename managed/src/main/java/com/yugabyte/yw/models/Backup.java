@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.models;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.Sets;
@@ -38,7 +38,6 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -84,6 +83,9 @@ public class Backup extends Model {
     // Complete or partial failure to delete
     @EnumValue("FailedToDelete")
     FailedToDelete,
+
+    @EnumValue("Stopping")
+    Stopping,
 
     @EnumValue("Stopped")
     Stopped,
@@ -459,7 +461,10 @@ public class Backup extends Model {
           List<Backup> backupList =
               backups
                   .stream()
-                  .filter(backup -> !Universe.isUniversePaused(backup.getBackupInfo().universeUUID))
+                  .filter(
+                      backup ->
+                          !Universe.isUniversePaused(backup.getBackupInfo().universeUUID)
+                              && !backup.isIncrementalBackup())
                   .collect(Collectors.toList());
           ret.put(customer, backupList);
         });
@@ -477,7 +482,8 @@ public class Backup extends Model {
         || (this.state == BackupState.QueuedForDeletion && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.DeleteInProgress && newState == BackupState.FailedToDelete)
         || (this.state == BackupState.Completed && newState == BackupState.Stopped)
-        || (this.state == BackupState.Failed && newState == BackupState.Stopped)) {
+        || (this.state == BackupState.Failed && newState == BackupState.Stopped)
+        || (this.state == BackupState.Stopping && newState == BackupState.Stopped)) {
       LOG.debug("New Backup API: transitioned from {} to {}", this.state, newState);
       this.state = newState;
       save();
@@ -766,5 +772,13 @@ public class Backup extends Model {
     responseMin.setHasNext(response.isHasNext());
     responseMin.setTotalCount(response.getTotalCount());
     return responseMin;
+  }
+
+  public boolean isIncrementalBackup() {
+    return !this.isParentBackup();
+  }
+
+  public boolean isParentBackup() {
+    return this.baseBackupUUID.equals(this.backupUUID);
   }
 }

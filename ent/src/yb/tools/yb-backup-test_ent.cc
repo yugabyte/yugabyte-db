@@ -45,6 +45,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
@@ -189,6 +190,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
       const vector<string>& expected_splits) {
     if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
+      LOG(WARNING) << Format("Tablets size ($0) != expected_splits.size() + 1 ($1)", tablets.size(),
+          expected_splits.size() + 1);
       return false;
     }
 
@@ -219,7 +222,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   // in the future.
   void ManualSplitTablet(
       const string& tablet_id, const string& table_name, const int expected_num_tablets,
-      bool wait_for_parent_deletion) {
+      bool wait_for_parent_deletion, const std::string& namespace_name = string()) {
     master::SplitTabletRequestPB split_req;
     split_req.set_tablet_id(tablet_id);
     master::SplitTabletResponsePB split_resp;
@@ -239,7 +242,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       return splitting_complete_resp.is_tablet_splitting_complete();
     }, 30s, "Wait for ongoing splits to finish."));
 
-    auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split"));
+    auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split", namespace_name));
     ASSERT_EQ(tablets.size(), expected_num_tablets);
   }
 
@@ -254,6 +257,23 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
                   << ", partition: " << tablet.partition().ShortDebugString();
       }
     }
+  }
+
+  Status WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id) {
+    const auto ts = cluster_->tablet_server(tserver_idx);
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto resp = VERIFY_RESULT(cluster_->GetTabletStatus(*ts, tablet_id));
+          if (resp.has_error()) {
+            LOG(ERROR) << "Peer " << ts->uuid() << " tablet " << tablet_id
+                       << " error: " << resp.error().status().ShortDebugString();
+            return false;
+          }
+          return resp.tablet_status().has_has_been_fully_compacted() &&
+                 resp.tablet_status().has_been_fully_compacted();
+        },
+        15s * kTimeMultiplier,
+        Format("Waiting for tablet $0 fully compacted on tserver $1", tablet_id, ts->id()));
   }
 
   void DoTestYEDISBackup(helpers::TableOp tableOp);
@@ -1487,13 +1507,16 @@ TEST_F_EX(YBBackupTest,
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
+  constexpr int expected_num_tablets = 4;
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
-  // Override the master flag to enable automatic tablet splitting
+  // Enable automatic tablet splitting (overriden by YBBackupTestNumTablets).
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_limit_per_table",
+                                       IntToString(expected_num_tablets)));
 
   const string table_name = "mytbl";
 
-  // Create table
+  // Create table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
                                       " SPLIT AT VALUES (('4a'))", table_name)));
 
@@ -1507,43 +1530,35 @@ TEST_F_EX(YBBackupTest,
   // '!' indicates the end of the range group of a key.
   ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
 
-  // Insert data
+  // Insert data.
   ASSERT_NO_FATALS(InsertRows(
       Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
 
-  // Flush table
+  // Flush table so SST file size is accurate.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
 
   // Wait for automatic split to complete.
-  constexpr int num_tablets = 4;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
-        return res.size() == num_tablets;
-      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+        return res.size() == expected_num_tablets;
+      }, 30s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
 
-  // Verify that it has these four tablets:
-  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
-  LogTabletsInfo(tablets);
-  ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
-
-  // Backup
+  // Backup.
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
+  // Drop the table.
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
-  // Restore
+  // Restore.
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
-  // Validate
+  // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
-  ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
+  ASSERT_EQ(tablets.size(), expected_num_tablets);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -2374,6 +2389,58 @@ TEST_F_EX(
            2 | 2
           (1 row)
       )#"));
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUncompactedChildTabletAndSplit),
+    YBBackupTestOneTablet) {
+  const string table_name = "mytbl";
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "true"));
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", table_name)));
+  int row_count = 200;
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 SELECT i, i FROM generate_series(1, $1) AS i", table_name, row_count),
+      row_count));
+
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Wait for intents and flush table because it is necessary for manual tablet split.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
+  auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  constexpr bool kWaitForParentDeletion = false;
+  ManualSplitTablet(
+      tablets[0].tablet_id(), table_name, /* expected_num_tablets = */ 2, kWaitForParentDeletion);
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 2);
+
+  // Create backup, unset skip flag, and restore to a new db.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
+  std::string db_name = "yugabyte_new";
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "restore"}));
+
+  // Sanity check the tablet count.
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore", db_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablets[0].tablet_id()));
+  // Wait for compaction to complete.
+  ASSERT_OK(WaitForTabletFullyCompacted(leader_idx, tablets[0].tablet_id()));
+  ManualSplitTablet(
+      tablets[0].tablet_id(), table_name, /* expected_num_tablets = */ 3, kWaitForParentDeletion,
+      db_name);
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore-split", db_name));
+  ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplication)) {

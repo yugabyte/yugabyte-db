@@ -12,7 +12,7 @@ import {
   GetCurrentLag
 } from './ReplicationUtils';
 import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
-import { Replication } from './XClusterTypes';
+import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
 import { ReplicationStatus } from './constants';
@@ -20,7 +20,7 @@ import { ReplicationStatus } from './constants';
 import styles from './XClusterConfigCard.module.scss';
 
 interface XClusterConfigCardProps {
-  xClusterConfig: Replication;
+  xClusterConfig: XClusterConfig;
   currentUniverseUUID: string;
   currentUserTimezone: string | undefined;
 }

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
@@ -28,6 +30,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -54,6 +57,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Arrays;
@@ -70,6 +74,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import play.Configuration;
 import play.libs.Json;
 
@@ -1185,7 +1190,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-              || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+              || cluster.userIntent.azOverrides != null
+                  && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
         } else { // During edit universe, overrides can't be changed.
@@ -1193,29 +1199,194 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
-            Map<String, String> curAZOverrides =
-                HelmUtils.flattenMap(
-                    HelmUtils.convertYamlToMap(univCluster.userIntent.azOverrides));
+            Map<String, String> curAZsOverrides = univCluster.userIntent.azOverrides;
+            Map<String, String> newAZsOverrides = cluster.userIntent.azOverrides;
+            if (curAZsOverrides == null) curAZsOverrides = new HashMap<>();
+            if (newAZsOverrides == null) newAZsOverrides = new HashMap<>();
+            if (curAZsOverrides.size() != newAZsOverrides.size()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
+            if (!Sets.difference(curAZsOverrides.keySet(), newAZsOverrides.keySet()).isEmpty()
+                || !Sets.difference(newAZsOverrides.keySet(), curAZsOverrides.keySet()).isEmpty()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
             Map<String, String> newUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(cluster.userIntent.universeOverrides));
-            Map<String, String> newAZOverrides =
-                HelmUtils.flattenMap(HelmUtils.convertYamlToMap(cluster.userIntent.azOverrides));
-            if (!(curUnivOverrides.equals(newUnivOverrides)
-                && curAZOverrides.equals(newAZOverrides))) {
+            if (!curUnivOverrides.equals(newUnivOverrides)) {
               throw new IllegalArgumentException(
-                  "Universe overrides can't be modified during the edit operation.");
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+            for (String az : curAZsOverrides.keySet()) {
+              String curAZOverridesStr = curAZsOverrides.get(az);
+              Map<String, Object> curAZOverrides = HelmUtils.convertYamlToMap(curAZOverridesStr);
+              String newAZOverridesStr = newAZsOverrides.get(az);
+              Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
+              if (!curAZOverrides.equals(newAZOverrides)) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "Kubernetes overrides can't be modified during the edit operation. "
+                            + "For AZ %s, previous overrides: %s, new overrides: %s",
+                        az, curAZOverridesStr, newAZOverridesStr));
+              }
             }
           }
         }
       } else {
         // Non k8s universes should not have kubernetes overrides.
         if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-            || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+            || cluster.userIntent.azOverrides != null
+                && cluster.userIntent.azOverrides.size() != 0) {
           throw new IllegalArgumentException(
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
       }
+    }
+  }
+
+  protected void createCertUpdateTasks(
+      Collection<NodeDetails> nodes,
+      NodeManager.CertRotateAction certRotateAction,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    UserIntent userIntent = getUserIntent();
+
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.rootCARotationType = rootCARotationType;
+      params.clientRootCARotationType = clientRootCARotationType;
+      params.certRotateAction = certRotateAction;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createYbcUpdateCertDirsTask(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = NodeManager.CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUpdateCertDirsTask(
+      Collection<NodeDetails> nodes, ServerType serverType, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              serverType,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = NodeManager.CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+    params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    return params;
+  }
+
+  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
+
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected LinkedHashSet<NodeDetails> toOrderedSet(
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
+    nodeSet.addAll(nodes.getLeft());
+    nodeSet.addAll(nodes.getRight());
+    return nodeSet;
+  }
+
+  protected void createCertUpdateTasks(
+      List<NodeDetails> masters,
+      List<NodeDetails> tservers,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    // Copy new server certs to all nodes
+    createCertUpdateTasks(
+        toOrderedSet(Pair.of(masters, tservers)),
+        NodeManager.CertRotateAction.ROTATE_CERTS,
+        subTaskGroupType,
+        rootCARotationType,
+        clientRootCARotationType);
+    // Update gflags of cert directories
+    createUpdateCertDirsTask(masters, ServerType.MASTER, subTaskGroupType);
+    createUpdateCertDirsTask(tservers, ServerType.TSERVER, subTaskGroupType);
+
+    if (taskParams().ybcInstalled) {
+      createYbcUpdateCertDirsTask(tservers, subTaskGroupType);
     }
   }
 

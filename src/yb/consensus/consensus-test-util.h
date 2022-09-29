@@ -57,11 +57,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/server/clock.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals;

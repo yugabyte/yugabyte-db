@@ -515,6 +515,13 @@ Status GetChangesForXCluster(const std::string& stream_id,
           txn_state->set_transaction_id(msg->transaction_state().transaction_id());
           txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
           tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+        } else if (msg->transaction_state().status() == TransactionStatus::COMMITTED) {
+          auto* record = resp->add_records();
+          record->set_operation(CDCRecordPB::COMMITTED);
+          record->set_time(msg->hybrid_time());
+          auto* txn_state = record->mutable_transaction_state();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
+          *txn_state->mutable_tablets() = msg->transaction_state().tablets();
         }
         break;
       case consensus::OperationType::WRITE_OP:

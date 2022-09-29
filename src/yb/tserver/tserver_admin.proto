@@ -270,6 +270,9 @@ message SplitTabletResponsePB {
 }
 
 message UpgradeYsqlRequestPB {
+  // Perform an upgrade unsing just one connection.
+  // This is much slower but does not incur overhead for each database.
+  optional bool use_single_connection = 1 [ default = false ];
 }
 
 message UpgradeYsqlResponsePB {

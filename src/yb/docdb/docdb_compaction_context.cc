@@ -462,7 +462,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       pending_row = pending_row->next;
     }
 
-    pending_rows_arena_.Reset();
+    pending_rows_arena_.Reset(ResetMode::kKeepLast);
     first_pending_row_ = nullptr;
     last_pending_row_next_ = &first_pending_row_;
     return Status::OK();
@@ -775,7 +775,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
       VLOG(4) << "Packed row active: " << packed_row_.active();
       // TODO(packed_row) remove control fields from value
-      if (!packed_row_.active() && packed_row_.can_start_packing() &&
+      if (!packed_row_.active() &&
+          packed_row_.can_start_packing() &&
+          // Don't start packing if we already passed columns for this key.
+          // Could happen because of history retention.
+          doc_key_serial_ != last_passed_doc_key_serial_ &&
           !CanHaveOtherDataBefore(ht.hybrid_time())) {
         packed_row_.StartPacking(internal_key, doc_key_size, ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);

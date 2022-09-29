@@ -285,6 +285,8 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
     .tablet_splitter = nullptr,
     .allowed_history_cutoff_provider = {},
     .transaction_manager_provider = nullptr,
+    .post_split_compaction_pool = nullptr,
+    .post_split_compaction_added = nullptr
   };
   Tablet t(tablet_init_data);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");

@@ -66,13 +66,13 @@
 
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"

@@ -23,6 +23,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/util/auto_flags.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"

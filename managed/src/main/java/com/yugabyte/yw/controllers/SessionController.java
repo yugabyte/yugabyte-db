@@ -387,6 +387,9 @@ public class SessionController extends AbstractPlatformController {
     String emailAttr =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
+    String originUrl = request().getQueryString("orig_url");
+    String redirectTo = originUrl != null ? originUrl : "/";
+
     if (emailAttr.equals("")) {
       email = profile.getEmail();
     } else {
@@ -424,10 +427,11 @@ public class SessionController extends AbstractPlatformController {
           null,
           null);
     }
+
     if (environment.isDev()) {
-      return redirect("http://localhost:3000/");
+      return redirect("http://localhost:3000" + redirectTo);
     } else {
-      return redirect("/");
+      return redirect(redirectTo);
     }
   }
 

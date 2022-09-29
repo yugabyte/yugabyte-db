@@ -226,6 +226,7 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   cache_->EvictThroughOp(1);
   ASSERT_EQ(cache_->num_cached_ops(), 0);
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
 
   // Append (1.2).
@@ -234,8 +235,10 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   ASSERT_OK(AppendReplicateMessageToCache(/* term = */ 2, /* index = */ 1));
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
+  // Wait several seconds for actaully pausing at Log::Sync().
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
   // Resume Log::Sync and set FLAGS_TEST_pause_before_wal_sync to true again.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_set_pause_before_wal_sync) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = false;
   SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
 

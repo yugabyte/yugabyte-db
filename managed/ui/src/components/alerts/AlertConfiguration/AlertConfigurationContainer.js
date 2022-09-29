@@ -42,7 +42,8 @@ const mapStateToProps = (state) => {
     customerProfile: state.customer ? state.customer.profile : null,
     modal: state.modal,
     initialValues: state.customer.setInitialVal,
-    universes: state.universe.universeList
+    universes: state.universe.universeList,
+    featureFlags: state.featureFlags
   };
 };
 

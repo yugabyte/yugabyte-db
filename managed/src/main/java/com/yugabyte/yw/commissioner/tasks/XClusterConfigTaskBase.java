@@ -28,14 +28,12 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +50,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
@@ -78,7 +77,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   static {
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Initialized,
-        ImmutableList.of(TaskType.CreateXClusterConfig, TaskType.DeleteXClusterConfig));
+        ImmutableList.of(
+            TaskType.CreateXClusterConfig,
+            TaskType.DeleteXClusterConfig,
+            TaskType.RestartXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Running,
         ImmutableList.of(
@@ -86,17 +88,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             TaskType.DeleteXClusterConfig,
             TaskType.RestartXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
-        XClusterConfigStatusType.Updating, ImmutableList.of(TaskType.DeleteXClusterConfig));
+        XClusterConfigStatusType.Updating,
+        ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.DeletedUniverse, ImmutableList.of(TaskType.DeleteXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.DeletionFailed, ImmutableList.of(TaskType.DeleteXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Failed,
-        ImmutableList.of(
-            TaskType.EditXClusterConfig,
-            TaskType.DeleteXClusterConfig,
-            TaskType.RestartXClusterConfig));
+        ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
   }
 
   protected XClusterConfigTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -138,12 +138,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected Optional<XClusterConfig> maybeGetXClusterConfig() {
     return XClusterConfig.maybeGet(taskParams().xClusterConfig.uuid);
-  }
-
-  protected XClusterConfig refreshXClusterConfig() {
-    taskParams().xClusterConfig.refresh();
-    Ebean.refreshMany(taskParams().xClusterConfig, "tables");
-    return taskParams().xClusterConfig;
   }
 
   protected void setXClusterConfigStatus(XClusterConfigStatusType status) {
@@ -576,17 +570,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return getTableIdsNeedBootstrap(getXClusterConfigFromTaskParams().getTables());
   }
 
-  public static Set<String> getTableIds(
-      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
-    if (tablesInfoList == null) {
-      return Collections.emptySet();
-    }
-    return tablesInfoList
-        .stream()
-        .map(tableInfo -> tableInfo.getId().toStringUtf8())
-        .collect(Collectors.toSet());
-  }
-
   /**
    * It returns a set of tables that xCluster replication can be set up without bootstrapping.
    *
@@ -973,6 +956,97 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                   });
           mainTableIndexTablesMap.put(mainTableUuid, indexTableUuidList);
         });
+    log.debug("mainTableIndexTablesMap for {} is {}", mainTableUuidList, mainTableIndexTablesMap);
     return mainTableIndexTablesMap;
   }
+
+  public static Set<String> getTableIdsToAdd(
+      Set<String> currentTableIds, Set<String> destinationTableIds) {
+    return destinationTableIds
+        .stream()
+        .filter(tableId -> !currentTableIds.contains(tableId))
+        .collect(Collectors.toSet());
+  }
+
+  public static Set<String> getTableIdsToRemove(
+      Set<String> currentTableIds, Set<String> destinationTableIds) {
+    return currentTableIds
+        .stream()
+        .filter(tableId -> !destinationTableIds.contains(tableId))
+        .collect(Collectors.toSet());
+  }
+
+  public static Pair<Set<String>, Set<String>> getTableIdsDiff(
+      Set<String> currentTableIds, Set<String> destinationTableIds) {
+    return new Pair<>(
+        getTableIdsToAdd(currentTableIds, destinationTableIds),
+        getTableIdsToRemove(currentTableIds, destinationTableIds));
+  }
+
+  public static Set<String> convertTableUuidStringsToTableIdSet(Collection<String> tableUuids) {
+    return tableUuids
+        .stream()
+        .map(uuidOrId -> uuidOrId.replace("-", ""))
+        .collect(Collectors.toSet());
+  }
+
+  // TableInfo helpers: Convenient methods for working with
+  // MasterDdlOuterClass.ListTablesResponsePB.TableInfo.
+  // --------------------------------------------------------------------------------
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
+      YBClientService ybService, Universe universe) {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
+    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeCertificate = universe.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+      ListTablesResponse listTablesResponse = client.getTablesList(null, true, null);
+      tableInfoList = listTablesResponse.getTableInfoList();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    return tableInfoList;
+  }
+
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
+      YBClientService ybService, Universe universe, Collection<String> tableIds) {
+    return getTableInfoList(ybService, universe)
+        .stream()
+        .filter(tableInfo -> tableIds.contains(tableInfo.getId().toStringUtf8()))
+        .collect(Collectors.toList());
+  }
+
+  protected final List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
+      Universe universe) {
+    return getTableInfoList(this.ybService, universe);
+  }
+
+  public static Set<String> getTableIds(
+      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    if (tablesInfoList == null) {
+      return Collections.emptySet();
+    }
+    return tablesInfoList
+        .stream()
+        .map(tableInfo -> tableInfo.getId().toStringUtf8())
+        .collect(Collectors.toSet());
+  }
+
+  public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+      groupByNamespaceId(
+          Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    return tablesInfoList
+        .stream()
+        .collect(
+            Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8()));
+  }
+
+  public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+      groupByNamespaceName(
+          Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    return tablesInfoList
+        .stream()
+        .collect(Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getName()));
+  }
+  // --------------------------------------------------------------------------------
+  // End of TableInfo helpers.
 }

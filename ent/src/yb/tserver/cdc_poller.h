@@ -59,7 +59,9 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
             const std::shared_ptr<CDCClient>& local_client,
             const std::shared_ptr<CDCClient>& producer_client,
             CDCConsumer* cdc_consumer,
-            bool use_local_tserver);
+            bool use_local_tserver,
+            client::YBTablePtr global_transaction_status_table,
+            bool enable_replicate_transaction_status_table);
   ~CDCPoller();
 
   // Begins poll process for a producer tablet.

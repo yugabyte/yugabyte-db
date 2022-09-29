@@ -58,7 +58,7 @@ func TestHandleAgentRegistrationFailure(t *testing.T) {
 }
 
 func TestHandleAgentUnregistration(t *testing.T) {
-	testUnregistrationHandler := NewAgentUnregistrationHandler(true, dummyApiToken)
+	testUnregistrationHandler := NewAgentUnregistrationHandler(dummyApiToken)
 	ctx := context.Background()
 	result, err := testUnregistrationHandler.Handle(ctx)
 
@@ -67,8 +67,8 @@ func TestHandleAgentUnregistration(t *testing.T) {
 		return
 	}
 
-	//Test Success Response.
-	data, ok := result.(*model.RegisterResponseEmpty)
+	// Test Success Response.
+	data, ok := result.(*model.ResponseMessage)
 	if !ok {
 		t.Errorf("Error while inferencing data to Register response success")
 		return
@@ -126,8 +126,8 @@ func TestGetNodeConfig(t *testing.T) {
 
 }
 
-func TestHandleGetPlatformConfig(t *testing.T) {
-	handler := NewGetPlatformCurrentConfigHandler()
+func TestHandleGetInstanceType(t *testing.T) {
+	handler := NewGetInstanceTypeHandler()
 	response, err := handler.Handle(context.Background())
 	if err != nil {
 		t.Errorf("Unexpected error %s", err.Error())
@@ -138,15 +138,15 @@ func TestHandleGetPlatformConfig(t *testing.T) {
 	}
 }
 
-func TestHandleNodeCapability(t *testing.T) {
+func TestHandlePostNodeInstance(t *testing.T) {
 	data := getTestPreflightCheckVal()
-	handler := NewSendNodeCapabilityHandler(data)
+	handler := NewPostNodeInstanceHandler(data)
 	testResponseData, err := handler.Handle(context.Background())
 	if err != nil {
 		t.Errorf("Unexpected Error %s ", err.Error())
 	}
 
-	testResponseDataMap, ok := testResponseData.(*map[string]model.NodeCapabilityResponse)
+	testResponseDataMap, ok := testResponseData.(*map[string]model.NodeInstanceResponse)
 	if !ok {
 		t.Errorf("Unexpected Type Inference Error")
 	}

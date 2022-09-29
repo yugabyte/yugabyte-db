@@ -53,7 +53,8 @@ public class MetricQueryResponse {
    * @param layout, MetricConfig.Layout object
    * @return JsonNode, Json data that plot.ly can understand
    */
-  public ArrayList<MetricGraphData> getGraphData(String metricName, MetricConfig.Layout layout) {
+  public ArrayList<MetricGraphData> getGraphData(
+      String metricName, MetricConfig.Layout layout, MetricSettings metricSettings) {
     ArrayList<MetricGraphData> metricGraphDataList = new ArrayList<>();
 
     for (final JsonNode objNode : data.result) {
@@ -72,12 +73,10 @@ public class MetricQueryResponse {
         String key = metricInfo.fieldNames().next();
         metricGraphData.name = metricInfo.get(key).asText();
       } else if (metricInfo.size() == 0) {
-        // TODO: This is 0 for the special metrics where we would like to grou by __name__ but
-        // PromQL seems to not allow for that. As such, we default the metric name to the one
-        // passed in.
-        //
-        // https://www.robustperception.io/whats-in-a-__name__
-        if (StringUtils.isNotBlank(metricGraphData.instanceName)) {
+        if (StringUtils.isNotBlank(metricGraphData.instanceName)
+            && metricSettings.getNodeSplitMode() == NodeSplitMode.NONE) {
+          // In case of aggregated metric query need to set name == instanceName for graphs,
+          // which are grouped by instance name by default
           metricGraphData.name = metricGraphData.instanceName;
         } else {
           metricGraphData.name = metricName;

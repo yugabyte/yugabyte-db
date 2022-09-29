@@ -306,7 +306,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
       if (activeRole) {
         for (ServerType processType : processTypes) {
-          createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          if (!context.skipStartingProcesses) {
+            createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          }
           if (processType == ServerType.CONTROLLER) {
             createWaitForYbcServerTask(new HashSet<NodeDetails>(singletonNodeList))
                 .setSubTaskGroupType(subGroupType);
@@ -582,14 +584,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
   }
 
-  protected LinkedHashSet<NodeDetails> toOrderedSet(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
-    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
-    nodeSet.addAll(nodes.getLeft());
-    nodeSet.addAll(nodes.getRight());
-    return nodeSet;
-  }
-
   public LinkedHashSet fetchAllNodes(UpgradeOption upgradeOption) {
     return toOrderedSet(fetchNodes(upgradeOption));
   }
@@ -689,6 +683,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean skipStartingProcesses = false;
     Consumer<NodeDetails> postAction;
   }
 }

@@ -29,6 +29,8 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -109,7 +111,10 @@ public class UniversePerfControllerTest extends FakeDBApplication {
                     bind(PlatformExecutorFactory.class).toInstance(mockPlatformExecutorFactory))
                 .overrides(
                     bind(RuntimeConfigFactory.class)
-                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig))))
+                        .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
+                .overrides(
+                    bind(CustomWsClientFactory.class)
+                        .toProvider(CustomWsClientFactoryProvider.class)))
         .build();
   }
 

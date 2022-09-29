@@ -33,7 +33,7 @@
 add_library(gutil_c STATIC dynamic_annotations.c utf/rune.c)
 
 set(YB_PCH_PREFIX gutil)
-set(YB_PCH_DEP_LIBS gmock)
+set(YB_PCH_DEP_LIBS gmock gtest)
 
 set(GUTIL_SRCS
   bits.cc

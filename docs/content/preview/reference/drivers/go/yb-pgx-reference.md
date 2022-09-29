@@ -15,21 +15,21 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="/preview/reference/drivers/go/yb-pgx-reference/" class="nav-link active">
+    <a href="../yb-pgx-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-       YugabyteDB PGX Driver
+       YugabyteDB PGX Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/go/pgx-reference/" class="nav-link">
+    <a href="../pgx-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/go/pq-reference/" class="nav-link">
+    <a href="../pq-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -37,30 +37,24 @@ type: docs
 
 </ul>
 
-[YugabyteDB PGX driver](https://github.com/yugabyte/pgjdbc) is a Go driver for [YSQL](/preview/api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/).
-
-Although the upstream PGX driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
-The driver has the following features:
+[YugabyteDB PGX smart driver](https://github.com/yugabyte/pgjdbc) is a distributed Go driver for [YSQL](../../../../api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
-
-  The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
-
 - It is **topology-aware**, which is essential for geographically-distributed applications.
-
-  The driver uses servers that are part of a set of geo-locations specified by topology keys.
 
 ## Load balancing
 
-The YugabyteDB PGX driver has the following load balancing features:
+The YugabyteDB PGX smart driver has the following load balancing features:
 
 - Uniform load balancing
 
     In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the YugabyteDB PGX driver.
 
+    The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
+
 - Topology-aware load balancing
 
-    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware. The driver uses servers that are part of a set of geo-locations specified by topology keys. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
 ## Quick start
 
@@ -215,7 +209,7 @@ if err != nil {
 }
 ```
 
-### Using pgxpool API
+## Use pgxpool API
 
 The YugabyteDB PGX driver also provides pool APIs via the `pgxpool` package. You can import it as follows:
 
@@ -225,7 +219,7 @@ import (
 )
 ```
 
-#### Establishing a connection
+### Establish a connection
 
 The primary way of establishing a connection is with `pgxpool.Connect()`.
 
@@ -268,16 +262,13 @@ rows, err := pool.Query(context.Background(), "SELECT name, age, language FROM e
 
 For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) documentation.
 
-### Configure SSL/TLS
+## Configure SSL/TLS
 
-To build a Go application that communicates securely over SSL with YugabyteDB database,
-you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
-To generate these certificates and install them while launching the cluster, follow the instructions in
-[Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
 Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../develop/build-apps/go/ysql-pgx/#ca-certificate).
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
-environment variables as below at the client side.
+
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -289,7 +280,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | PGSSLMODE |  SSL mode used for the connection |
 | PGSSLROOTCERT | Server CA Certificate |
 
-#### SSL modes
+### SSL modes
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | ------------------ |
@@ -300,14 +291,11 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-### Transaction and isolation levels
+## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB
-supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
-maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
-The PGX driver provides the `conn.Begin()` function to start a transaction.
-The `conn.BeginEx()` function can create a transaction with a specified isolation level.
+The PGX driver provides the `conn.Begin()` function to start a transaction. The `conn.BeginEx()` function can create a transaction with a specified isolation level.
 
 ```go
 tx, err := conn.Begin()

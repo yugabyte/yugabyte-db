@@ -593,6 +593,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<ThreadPool> read_pool_;
 
   // Thread pool for manually triggering compactions for tablets created from a split.
+  // This is used by a tablet method to schedule compactions on the child tablets after
+  // a split so each tablet has a reference to this pool.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
@@ -627,7 +629,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
 
   // Gauge to monitor post-split compactions that have been started.
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>

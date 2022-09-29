@@ -262,11 +262,11 @@ size_t ClusterLoadBalancer::get_total_wrong_placement() const {
 }
 
 size_t ClusterLoadBalancer::get_total_blacklisted_servers() const {
-  return state_->blacklisted_servers_.size();
+  return global_state_->blacklisted_servers_.size();
 }
 
 size_t ClusterLoadBalancer::get_total_leader_blacklisted_servers() const {
-  return state_->leader_blacklisted_servers_.size();
+  return global_state_->leader_blacklisted_servers_.size();
 }
 
 size_t ClusterLoadBalancer::get_total_over_replication() const {
@@ -297,6 +297,7 @@ ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
   ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;
+  last_load_balance_run_ = MonoTime::Min();
 }
 
 // Reduce remaining_tasks by pending_tasks value, after sanitizing inputs.
@@ -325,7 +326,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   uint32_t master_errors = 0;
 
   if (!IsLoadBalancerEnabled()) {
-    LOG(INFO) << "Load balancing is not enabled.";
+    YB_LOG_EVERY_N_SECS(INFO, 10) << "Load balancing is not enabled.";
     return;
   }
 
@@ -354,7 +355,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   int pending_stepdown_leader_tasks = 0;
 
   // Set blacklist upfront since per table states require it.
-  SetBlacklist();
+  // Also, set tservers that have pending deletes.
+  SetBlacklistAndPendingDeleteTS();
 
   for (const auto& table : GetTableMap()) {
     if (SkipLoadBalancing(*table.second)) {
@@ -653,7 +655,11 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
   // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
   can_perform_global_operations_ = can_perform_global_operations_ || ai.IsIdle();
+
+  last_load_balance_run_ = MonoTime::Now();
 }
+
+MonoTime ClusterLoadBalancer::LastRunTime() const { return last_load_balance_run_; }
 
 Status ClusterLoadBalancer::IsIdle() const {
   if (IsLoadBalancerEnabled() && !is_idle_.load(std::memory_order_acquire)) {
@@ -1108,8 +1114,8 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
     --right;
     const TabletServerId& high_load_uuid = sorted_leader_load[right];
     auto high_leader_blacklisted =
-        (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
-         state_->leader_blacklisted_servers_.end());
+        (global_state_->leader_blacklisted_servers_.find(high_load_uuid) !=
+         global_state_->leader_blacklisted_servers_.end());
     auto high_load = state_->GetLeaderLoad(high_load_uuid);
     if (high_leader_blacklisted) {
       if (high_load > 0) {
@@ -1158,8 +1164,8 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
   ssize_t last_pos = sorted_leader_load.size() - 1;
   for (ssize_t left = 0; left <= last_pos; ++left) {
     const TabletServerId& low_load_uuid = sorted_leader_load[left];
-    auto low_leader_blacklisted = (state_->leader_blacklisted_servers_.find(low_load_uuid) !=
-        state_->leader_blacklisted_servers_.end());
+    auto low_leader_blacklisted = (global_state_->leader_blacklisted_servers_.find(low_load_uuid)
+        != global_state_->leader_blacklisted_servers_.end());
     if (low_leader_blacklisted) {
       // Left marker has gone beyond non-leader blacklisted tservers.
       return false;
@@ -1167,8 +1173,9 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
 
     for (auto right = last_pos; right >= 0; --right) {
       const TabletServerId& high_load_uuid = sorted_leader_load[right];
-      auto high_leader_blacklisted = (state_->leader_blacklisted_servers_.find(high_load_uuid) !=
-          state_->leader_blacklisted_servers_.end());
+      auto high_leader_blacklisted =
+          (global_state_->leader_blacklisted_servers_.find(high_load_uuid) !=
+              global_state_->leader_blacklisted_servers_.end());
       ssize_t load_variance =
           state_->GetLeaderLoad(high_load_uuid) - state_->GetLeaderLoad(low_load_uuid);
 
@@ -1345,8 +1352,8 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMoveAcrossAffinitizedPriorities(
       idx--;
       const TabletServerId& from_uuid = leader_set[idx];
       if (state_->GetLeaderLoad(from_uuid) == 0) {
-        bool is_blacklisted = state_->leader_blacklisted_servers_.find(from_uuid) !=
-                              state_->leader_blacklisted_servers_.end();
+        bool is_blacklisted = global_state_->leader_blacklisted_servers_.find(from_uuid) !=
+                              global_state_->leader_blacklisted_servers_.end();
         if (is_blacklisted) {
           // Blacklisted nodes are sorted to the end even if their load is 0.
           // There could still be non-blacklisted nodes with higher loads. So keep looking.
@@ -1444,13 +1451,40 @@ void ClusterLoadBalancer::GetAllAffinitizedZones(
   CatalogManagerUtil::GetAllAffinitizedZones(replication_info, affinitized_zones);
 }
 
-void ClusterLoadBalancer::SetBlacklist() const {
+void ClusterLoadBalancer::AddTSIfBlacklisted(
+    const std::shared_ptr<TSDescriptor>& ts_desc, const BlacklistPB& blacklist,
+    const bool leader_blacklist) {
+  for (const auto& blacklist_hp : blacklist.hosts()) {
+    if (ts_desc->IsRunningOn(blacklist_hp)) {
+      if (leader_blacklist) {
+        global_state_->leader_blacklisted_servers_.insert(ts_desc->permanent_uuid());
+      } else {
+        global_state_->blacklisted_servers_.insert(ts_desc->permanent_uuid());
+      }
+      return;
+    }
+  }
+  if (!leader_blacklist && ts_desc->has_faulty_drive()) {
+    global_state_->blacklisted_servers_.insert(ts_desc->permanent_uuid());
+  }
+}
+
+void ClusterLoadBalancer::SetBlacklistAndPendingDeleteTS() {
   // Set the blacklist and leader blacklist so
   // we can also mark the tablet servers as we add them up.
   {
+    global_state_->blacklisted_servers_.clear();
+    global_state_->leader_blacklisted_servers_.clear();
+    global_state_->servers_with_pending_deletes_.clear();
+
     auto l = catalog_manager_->ClusterConfig()->LockForRead();
-    global_state_->SetBlacklist(l->pb.server_blacklist());
-    global_state_->SetLeaderBlacklist(l->pb.leader_blacklist());
+    for (const auto& ts_desc : global_state_->ts_descs_) {
+      AddTSIfBlacklisted(ts_desc, l->pb.server_blacklist(), false /* leader_blacklist */);
+      AddTSIfBlacklisted(ts_desc, l->pb.leader_blacklist(), true /* leader_blacklist */);
+      if (ts_desc->HasTabletDeletePending()) {
+        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
+      }
+    }
   }
 }
 

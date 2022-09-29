@@ -97,15 +97,15 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
   };
 
   const auto first_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
-  ASSERT_EQ(first_connect_rpc_count, 5);
+  ASSERT_EQ(first_connect_rpc_count, 4);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
-  ASSERT_EQ(subsequent_connect_rpc_count, 2);
+  ASSERT_EQ(subsequent_connect_rpc_count, 1);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithoutPartitionTables)) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 4);
+  ASSERT_EQ(cache_refresh_rpc_count, 3);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -120,7 +120,7 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
     }
   }
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 7);
+  ASSERT_EQ(cache_refresh_rpc_count, 6);
 }
 
 // Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary

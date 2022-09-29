@@ -67,6 +67,9 @@ public class Audit extends Model {
     @EnumValue("Alert")
     Alert,
 
+    @EnumValue("Alert Template Settings")
+    AlertTemplateSettings,
+
     @EnumValue("Alert Channel")
     AlertChannel,
 
@@ -134,7 +137,10 @@ public class Audit extends Model {
     HookScope,
 
     @EnumValue("NodeAgent")
-    NodeAgent
+    NodeAgent,
+
+    @EnumValue("CustomerLicense")
+    CustomerLicense
   }
 
   public enum ActionType {

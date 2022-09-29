@@ -636,6 +636,97 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
+  bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
+    return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+            entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+           HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
+           HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
+  }
+
+  Result<TxnSnapshotId> SuitableSnapshotId(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
+      CoarseTimePoint deadline) {
+    while (CoarseMonoClock::now() < deadline) {
+      ListSnapshotSchedulesResponsePB resp;
+      auto last_snapshot_time = HybridTime::kMin;
+
+      RETURN_NOT_OK_PREPEND(ListSnapshotSchedules(schedule_id, &resp),
+                            "Failed to list snapshot schedules");
+      if (resp.schedules().size() < 1) {
+        return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
+      }
+
+      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
+        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
+
+        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
+          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+        }
+      }
+      if (last_snapshot_time > restore_at) {
+        auto& earliest_snapshot = resp.schedules()[0].snapshots()[0];
+        return STATUS_FORMAT(
+            IllegalState, "Trying to restore to $0 which is earlier than the configured retention. "
+            "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
+            restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.id()),
+            HybridTime::FromPB(earliest_snapshot.entry().snapshot_hybrid_time()));
+      }
+
+      auto snapshot_id = CreateForSchedule(schedule_id, leader_term, deadline);
+      if (!snapshot_id.ok() &&
+          MasterError(snapshot_id.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+        continue;
+      }
+      return snapshot_id;
+    }
+
+    return STATUS_FORMAT(
+        TimedOut, "Timed out getting a suitable snapshot id from schedule $0", schedule_id);
+  }
+
+  Status RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at,
+      RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
+    auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(
+        schedule_id, restore_at, leader_term, deadline));
+
+    bool suitable_snapshot_is_complete = false;
+    while (CoarseMonoClock::now() < deadline) {
+      ListSnapshotsResponsePB resp;
+
+      RETURN_NOT_OK_PREPEND(ListSnapshots(snapshot_id, false, {}, &resp),
+                            "Failed to list snapshots");
+      if (resp.snapshots().size() != 1) {
+        return STATUS_FORMAT(
+            IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
+      }
+
+      if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+        if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
+          suitable_snapshot_is_complete = true;
+          break;
+        }
+        return STATUS_FORMAT(
+            IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
+      }
+      std::this_thread::sleep_for(100ms);
+    }
+
+    if (!suitable_snapshot_is_complete) {
+      return STATUS_FORMAT(
+          TimedOut, "Timed out completing a snapshot $0", snapshot_id);
+    }
+
+    TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
+        snapshot_id, restore_at, leader_term));
+
+    resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+    resp->set_restoration_id(restoration_id.data(), restoration_id.size());
+
+    return Status::OK();
+  }
+
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto* out = resp->mutable_snapshots_info();
@@ -1899,6 +1990,12 @@ Result<SnapshotScheduleInfoPB> MasterSnapshotCoordinator::EditSnapshotSchedule(
     const EditSnapshotScheduleRequestPB& req,
     int64_t leader_term, CoarseTimePoint deadline) {
   return impl_->EditSnapshotSchedule(id, req, leader_term, deadline);
+}
+
+Status MasterSnapshotCoordinator::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at,
+    RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->RestoreSnapshotSchedule(schedule_id, restore_at, resp, leader_term, deadline);
 }
 
 Status MasterSnapshotCoordinator::Load(tablet::Tablet* tablet) {

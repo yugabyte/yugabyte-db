@@ -652,15 +652,15 @@ BACKUP_STORAGE_ABSTRACTIONS = {
 
 
 class KubernetesDetails():
-    def __init__(self, server_fqdn, config_map):
-        self.namespace = server_fqdn.split('.')[2]
-        self.pod_name = server_fqdn.split('.')[0]
+    def __init__(self, server_ip, config_map):
+        self.pod_name = config_map[server_ip]["podName"]
+        self.namespace = config_map[server_ip]["namespace"]
         # The pod names are <helm fullname>yb-<master|tserver>-n where
         # n is the pod number. <helm fullname> can be blank. And
         # yb-master/yb-tserver are the container names.
         self.container = "yb-master" if self.pod_name.find("master") > 0 else "yb-tserver"
         self.env_config = os.environ.copy()
-        self.env_config["KUBECONFIG"] = config_map[server_fqdn]
+        self.env_config["KUBECONFIG"] = config_map[server_ip]["KUBECONFIG"]
 
 
 def get_instance_profile_credentials():
@@ -992,7 +992,7 @@ class YBBackup:
         self.live_tserver_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
-        self.k8s_pod_fqdn_to_cfg = {}
+        self.k8s_pod_addr_to_cfg = {}
         self.timer = BackupTimer()
         self.ts_cfgs = {}
         self.ip_to_ssh_key_map = {}
@@ -1287,8 +1287,8 @@ class YBBackup:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
         if self.is_k8s():
-            self.k8s_pod_fqdn_to_cfg = json.loads(self.args.k8s_config)
-            if self.k8s_pod_fqdn_to_cfg is None:
+            self.k8s_pod_addr_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_pod_addr_to_cfg is None:
                 raise BackupException("Couldn't load k8s configs")
 
         if self.args.storage_type == 'nfs':
@@ -1943,7 +1943,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -1993,7 +1993,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -2064,7 +2064,7 @@ class YBBackup:
             cmd = "{} {}".format(bash_env_args, cmd)
 
         if self.is_k8s():
-            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_addr_to_cfg)
             return self.run_program([
                 'kubectl',
                 'exec',
@@ -2377,7 +2377,7 @@ class YBBackup:
             try:
                 host_ip = self.get_main_host_ip()
                 if self.is_k8s():
-                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
+                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_addr_to_cfg)
                     return self.run_program([
                         'kubectl',
                         'exec',
