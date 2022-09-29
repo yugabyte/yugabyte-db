@@ -34,7 +34,7 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 Use the following procedure to upgrade a YB-Master:
 
-1. Stop the older version of the yb-master process, as follows:
+1. Stop the older version of the YB-Master process, as follows:
 
     ```sh
     pkill yb-master
@@ -46,7 +46,7 @@ Use the following procedure to upgrade a YB-Master:
     cd /home/yugabyte/softwareyb-$VER/
     ```
 
-1. Start the newer version of the YB-Master process.
+1. Start the newer version of the YB-Master process. For more information, see [Restart a node](../../admin/yb-ctl/#restart-a-node).
 
 1. Verify in `http://<any-yb-master>:7000/` that all YB-Masters are alive.
 
