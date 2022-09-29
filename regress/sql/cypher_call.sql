@@ -66,6 +66,10 @@ SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD squirt RETURN sqrt $$
 
 /* CALL YIELD WHERE RETURN */
 SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 RETURN sqrt $$) as (a agtype);
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt = 1 RETURN sqrt $$) as (a agtype);
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 RETURN sqrt $$) as (a agtype);
+/* should fail */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE a = 8 RETURN sqrt $$) as (a agtype);
 
 /* MATCH CALL RETURN, should fail */
 SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) RETURN sqrt $$) as (sqrt agtype);
@@ -77,11 +81,17 @@ SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt RETURN
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 CREATE ({n:'c'}) $$) as (a agtype);
 SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE a.n = 'c' DELETE (a) $$) as (a agtype);
 SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE a.n = 'c' RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE sqrt = 1 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE b = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
 
 /* CALL MATCH YIELD WHERE UPDATE/RETURN */
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 CREATE ({n:'c'}) $$) as (a agtype);
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE a.n = 'c' DELETE (a) $$) as (a agtype);
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE a.n = 'c' RETURN a $$) as (a agtype);
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE sqrt = 1 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE sqrt = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 MATCH (a) RETURN a, sqrt $$) as (a agtype, sqrt agtype);
 
 /* Multiple Calls: CALL YIELD CALL YIELD... RETURN */
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL agtype_sum(2,2) YIELD agtype_sum RETURN sqrt, agtype_sum $$) as (sqrt agtype, agtype_sum agtype);

@@ -2181,7 +2181,7 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
 
         query->rtable = pstate->p_rtable;
 
-        if (is_ag_node(clause, cypher_call))
+        if (is_ag_node(clause->self, cypher_call))
         {
             cypher_call *call = (cypher_call *)clause->self;
 

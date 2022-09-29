@@ -109,6 +109,22 @@ SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 RE
  8.0
 (1 row)
 
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt = 1 RETURN sqrt $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 RETURN sqrt $$) as (a agtype);
+  a  
+-----
+ 8.0
+(1 row)
+
+/* should fail */
+SELECT * FROM cypher('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE a = 8 RETURN sqrt $$) as (a agtype);
+ERROR:  could not find rte for a
+LINE 2: ...r('cypher_call', $$CALL sqrt(64) YIELD sqrt WHERE a = 8 RETU...
+                                                             ^
 /* MATCH CALL RETURN, should fail */
 SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) RETURN sqrt $$) as (sqrt agtype);
 ERROR:  Procedure call inside a query does not support naming results implicitly
@@ -139,6 +155,22 @@ SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE 
 ---
 (0 rows)
 
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE sqrt = 1 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+ a | sqrt 
+---+------
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+                                   a                                    | sqrt 
+------------------------------------------------------------------------+------
+ {"id": 281474976710657, "label": "", "properties": {"n": "a"}}::vertex | 8.0
+ {"id": 281474976710658, "label": "", "properties": {"n": "b"}}::vertex | 8.0
+(2 rows)
+
+SELECT * FROM cypher('cypher_call', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE b = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+ERROR:  could not find rte for b
+LINE 1: ...all', $$ MATCH (a) CALL sqrt(64) YIELD sqrt WHERE b = 8 RETU...
+                                                             ^
 /* CALL MATCH YIELD WHERE UPDATE/RETURN */
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt > 1 CREATE ({n:'c'}) $$) as (a agtype);
  a 
@@ -154,6 +186,25 @@ SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE 
  a 
 ---
 (0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE sqrt = 1 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+ a | sqrt 
+---+------
+(0 rows)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt MATCH (a) WHERE sqrt = 8 RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+                                   a                                    | sqrt 
+------------------------------------------------------------------------+------
+ {"id": 281474976710657, "label": "", "properties": {"n": "a"}}::vertex | 8.0
+ {"id": 281474976710658, "label": "", "properties": {"n": "b"}}::vertex | 8.0
+(2 rows)
+
+SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt WHERE sqrt = 8 MATCH (a) RETURN a, sqrt $$) as (a agtype, sqrt agtype);
+                                   a                                    | sqrt 
+------------------------------------------------------------------------+------
+ {"id": 281474976710657, "label": "", "properties": {"n": "a"}}::vertex | 8.0
+ {"id": 281474976710658, "label": "", "properties": {"n": "b"}}::vertex | 8.0
+(2 rows)
 
 /* Multiple Calls: CALL YIELD CALL YIELD... RETURN */
 SELECT * FROM cypher('cypher_call', $$ CALL sqrt(64) YIELD sqrt CALL agtype_sum(2,2) YIELD agtype_sum RETURN sqrt, agtype_sum $$) as (sqrt agtype, agtype_sum agtype);
