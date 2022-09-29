@@ -56,6 +56,32 @@ YB_DEFINE_ENUM(MonitoredTaskState,
   (kScheduling) // RPC is being scheduled.
 );
 
+YB_DEFINE_ENUM(MonitoredTaskType,
+  (kAddServer)
+  (kAddTableToTablet)
+  (kAlterTable)
+  (kBackfillDone)
+  (kBackfillTable)
+  (kBackfillTabletChunk)
+  (kChangeConfig)
+  (kCopartitionTable)
+  (kCreateReplica)
+  (kDeleteReplica)
+  (kFlushTablets)
+  (kGetSafeTime)
+  (kGetTabletSplitKey)
+  (kPrepareDeleteTransactionTablet)
+  (kRemoveServer)
+  (kRemoveTableFromTablet)
+  (kSnapshotOp)
+  (kSplitTablet)
+  (kStartElection)
+  (kTestRetry)
+  (kTruncateTablet)
+  (kTryStepDown)
+  (kUpdateTransactionTablesVersion)
+);
+
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
   virtual ~MonitoredTask() {}
@@ -67,31 +93,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   // Task State.
   virtual MonitoredTaskState state() const = 0;
 
-  enum Type {
-    ASYNC_CREATE_REPLICA,
-    ASYNC_DELETE_REPLICA,
-    ASYNC_ALTER_TABLE,
-    ASYNC_TRUNCATE_TABLET,
-    ASYNC_CHANGE_CONFIG,
-    ASYNC_ADD_SERVER,
-    ASYNC_REMOVE_SERVER,
-    ASYNC_TRY_STEP_DOWN,
-    ASYNC_SNAPSHOT_OP,
-    ASYNC_COPARTITION_TABLE,
-    ASYNC_FLUSH_TABLETS,
-    ASYNC_ADD_TABLE_TO_TABLET,
-    ASYNC_REMOVE_TABLE_FROM_TABLET,
-    ASYNC_GET_SAFE_TIME,
-    ASYNC_BACKFILL_TABLET_CHUNK,
-    ASYNC_BACKFILL_DONE,
-    BACKFILL_TABLE,
-    ASYNC_SPLIT_TABLET,
-    START_ELECTION,
-    ASYNC_GET_TABLET_SPLIT_KEY,
-    ASYNC_TEST_RETRY
-  };
-
-  virtual Type type() const = 0;
+  virtual MonitoredTaskType type() const = 0;
 
   // Task Type Identifier.
   virtual std::string type_name() const = 0;

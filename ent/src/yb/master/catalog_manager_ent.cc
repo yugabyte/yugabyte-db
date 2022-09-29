@@ -2007,7 +2007,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse);
+    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse, KeepData::kFalse);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2727,8 +2727,10 @@ void CatalogManager::CleanupHiddenTablets(
   }
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
-    WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
-                "Failed to cleanup hidden tablets");
+    WARN_NOT_OK(DeleteTabletListAndSendRequests(
+        tablets_to_delete, "Cleanup hidden tablets", {} /* retained_by_snapshot_schedules */,
+        false /* transaction_status_tablets */),
+        "Failed to cleanup hidden tablets");
   }
 
   if (!tablets_to_remove_from_hidden.empty()) {
