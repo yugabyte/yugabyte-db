@@ -916,7 +916,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				return handles;
 		}
 	}
-	Oid relationId = RelationGetRelid(rel);
+	Oid relationId = YbGetStorageRelid(rel);
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:
@@ -1252,7 +1252,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				HandleYBStatus(
 					YBCPgNewAlterTable(
 						YBCGetDatabaseOidByRelid(relationId),
-						relationId,
+						YbGetStorageRelid(dependent_rel),
 						&alter_cmd_handle));
 				HandleYBStatus(
 					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
@@ -1290,7 +1290,7 @@ YBCPrepareAlterTable(List** subcmds,
 	List *handles = NIL;
 	YBCPgStatement db_handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(YBCGetDatabaseOidByRelid(relationId),
-									  relationId,
+									  YbGetStorageRelid(rel),
 									  &db_handle));
 	handles = lappend(handles, db_handle);
 	ListCell *lcmd;
@@ -1334,9 +1334,18 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 	YBCPgStatement	handle     = NULL;
 	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
 	char		   *db_name	   = get_database_name(databaseId);
+	Relation		rel;
 
 	switch (stmt->renameType)
 	{
+		case OBJECT_MATVIEW:
+			rel = RelationIdGetRelation(relationId);
+			HandleYBStatus(YBCPgNewAlterTable(databaseId,
+											  YbGetStorageRelid(rel),
+											  &handle));
+			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname));
+			RelationClose(rel);
+			break;
 		case OBJECT_INDEX:
 		case OBJECT_TABLE:
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
@@ -1347,12 +1356,13 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 
 		case OBJECT_COLUMN:
 		case OBJECT_ATTRIBUTE:
-
+			rel = RelationIdGetRelation(relationId);
 			HandleYBStatus(YBCPgNewAlterTable(databaseId,
-											  relationId,
+											  YbGetStorageRelid(rel),
 											  &handle));
 
 			HandleYBStatus(YBCPgAlterTableRenameColumn(handle, stmt->subname, stmt->newname));
+			RelationClose(rel);
 			break;
 
 		default:
