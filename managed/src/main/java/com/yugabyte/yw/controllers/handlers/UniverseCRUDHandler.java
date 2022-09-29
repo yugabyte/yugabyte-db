@@ -499,13 +499,6 @@ public class UniverseCRUDHandler {
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
-    if (taskParams.enableYbc) {
-      taskParams.ybcSoftwareVersion =
-          StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
-              ? taskParams.ybcSoftwareVersion
-              : ybcManager.getStableYbcVersion();
-    }
-
     Universe universe = null;
     TaskType taskType = TaskType.CreateUniverse;
 
@@ -527,10 +520,26 @@ public class UniverseCRUDHandler {
 
       Cluster primaryCluster = taskParams.getPrimaryCluster();
 
+      if (taskParams.enableYbc) {
+        taskParams.ybcSoftwareVersion =
+            StringUtils.isNotBlank(taskParams.ybcSoftwareVersion)
+                ? taskParams.ybcSoftwareVersion
+                : ybcManager.getStableYbcVersion();
+      }
+
       if (primaryCluster != null) {
         UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
         primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+        if (taskParams.enableYbc
+            && Util.compareYbVersions(
+                    primaryIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+                < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot install universe with DB version lower than "
+                  + Util.YBC_COMPATIBLE_DB_VERSION);
+        }
         if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
           taskType = TaskType.CreateKubernetesUniverse;
           universe.updateConfig(
