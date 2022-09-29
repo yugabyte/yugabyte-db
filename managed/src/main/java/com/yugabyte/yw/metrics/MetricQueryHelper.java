@@ -227,17 +227,8 @@ public class MetricQueryHelper {
           Set<String> pvcNames = new HashSet<>();
           Set<String> namespaces = new HashSet<>();
           for (NodeDetails node : nodesToFilter) {
-            String podFQDN = node.cloudInfo.private_ip;
-            if (StringUtils.isBlank(podFQDN)) {
-              throw new PlatformServiceException(
-                  INTERNAL_SERVER_ERROR, node.getNodeName() + " has a blank FQDN");
-            }
-
-            String podName = podFQDN.split("\\.")[0];
-            String namespace = podFQDN.split("\\.")[2];
-            // The pod name is of the format
-            // <helm_prefix>-yb-<server>-<replica_num> and we just need
-            // the container, which is yb-<server>.
+            String podName = node.getK8sPodName();
+            String namespace = node.getK8sNamespace();
             String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
             String pvcName = String.format("(.*)-%s", podName);
             podNames.add(podName);

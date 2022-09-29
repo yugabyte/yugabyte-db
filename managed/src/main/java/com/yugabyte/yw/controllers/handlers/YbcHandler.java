@@ -4,12 +4,11 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.util.UUID;
-
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -18,6 +17,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,6 +134,15 @@ public class YbcHandler {
     String targetYbcVersion = ybcManager.getStableYbcVersion();
     if (!StringUtils.isEmpty(ybcVersion)) {
       targetYbcVersion = ybcVersion;
+    }
+
+    if (Util.compareYbVersions(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            Util.YBC_COMPATIBLE_DB_VERSION,
+            true)
+        < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot install universe with DB version lower than 2.14.0.0-b1");
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();

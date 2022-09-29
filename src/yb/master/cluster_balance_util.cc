@@ -73,9 +73,11 @@ bool PerTableLoadState::LeaderLoadComparator::operator()(
     const TabletServerId& a, const TabletServerId& b) {
   // Primary criteria: whether tserver is leader blacklisted.
   auto a_leader_blacklisted =
-    state_->leader_blacklisted_servers_.find(a) != state_->leader_blacklisted_servers_.end();
+      global_state_->leader_blacklisted_servers_.find(a) !=
+          global_state_->leader_blacklisted_servers_.end();
   auto b_leader_blacklisted =
-    state_->leader_blacklisted_servers_.find(b) != state_->leader_blacklisted_servers_.end();
+      global_state_->leader_blacklisted_servers_.find(b) !=
+          global_state_->leader_blacklisted_servers_.end();
   if (a_leader_blacklisted != b_leader_blacklisted) {
     return !a_leader_blacklisted;
   }
@@ -189,7 +191,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
     if (check_ts_liveness_ && !meta_ts.descriptor->IsLiveAndHasReported()) {
-      if (!blacklisted_servers_.count(ts_uuid)) {
+      if (!global_state_->blacklisted_servers_.count(ts_uuid)) {
         if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
           allow_only_leader_balancing_ = true;
           YB_LOG_EVERY_N_SECS(INFO, 30)
@@ -244,13 +246,13 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
 
     // If this replica is blacklisted, we want to keep track of these specially, so we can
     // prioritize accordingly.
-    if (blacklisted_servers_.count(ts_uuid)) {
+    if (global_state_->blacklisted_servers_.count(ts_uuid)) {
       tablet_meta.blacklisted_tablet_servers.insert(ts_uuid);
     }
 
     // If this replica has blacklisted leader, we want to keep track of these specially, so we can
     // prioritize accordingly.
-    if (leader_blacklisted_servers_.count(ts_uuid)) {
+    if (global_state_->leader_blacklisted_servers_.count(ts_uuid)) {
       tablet_meta.leader_blacklisted_tablet_servers.insert(ts_uuid);
     }
   }
@@ -348,35 +350,9 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
   // Also insert into per_ts_global_meta_ if we have yet to.
   global_state_->per_ts_global_meta_.emplace(ts_uuid, CBTabletServerLoadCounts());
 
-  // Mark as blacklisted if it matches.
-  bool is_blacklisted = false;
-  for (const auto& hp : global_state_->blacklist_.hosts()) {
-    if (ts_meta.descriptor->IsRunningOn(hp)) {
-      blacklisted_servers_.insert(ts_uuid);
-      is_blacklisted = true;
-      break;
-    }
-  }
-
-  // Mark as blacklisted if ts has faulty drive.
-  if (!is_blacklisted && ts_meta.descriptor->has_faulty_drive()) {
-    blacklisted_servers_.insert(ts_uuid);
-    is_blacklisted = true;
-  }
-
-  // Mark as blacklisted leader if it matches.
-  bool is_leader_blacklisted = false;
-  for (const auto& hp : global_state_->leader_blacklist_.hosts()) {
-    if (ts_meta.descriptor->IsRunningOn(hp)) {
-      leader_blacklisted_servers_.insert(ts_uuid);
-      is_leader_blacklisted = true;
-      break;
-    }
-  }
-
-  if (ts_desc->HasTabletDeletePending()) {
-    servers_with_pending_deletes_.insert(ts_uuid);
-  }
+  // Set as blacklisted if it matches.
+  bool is_blacklisted = (global_state_->blacklisted_servers_.count(ts_uuid) != 0);
+  bool is_leader_blacklisted = (global_state_->leader_blacklisted_servers_.count(ts_uuid) != 0);
 
   // If the TS is perceived as DEAD then ignore it.
   // check_ts_liveness_ is an artifact of cluster_balance_mocked.h
@@ -457,7 +433,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
   // We do not add load to blacklisted servers.
-  if (blacklisted_servers_.count(to_ts)) {
+  if (global_state_->blacklisted_servers_.count(to_ts)) {
     return false;
   }
   // We cannot add a tablet to a tablet server if it is already serving it.
@@ -471,7 +447,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
     return false;
   }
   // If this server has a pending tablet delete, don't use it.
-  if (servers_with_pending_deletes_.count(to_ts)) {
+  if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
     LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
               << "Not allowing it to take more tablets";
     return false;
@@ -667,7 +643,7 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
 
 void PerTableLoadState::SortLeaderLoad() {
   for (auto& leader_set : sorted_leader_load_) {
-    sort(leader_set.begin(), leader_set.end(), LeaderLoadComparator(this));
+    sort(leader_set.begin(), leader_set.end(), LeaderLoadComparator(this, global_state_));
   }
 
   if (global_state_->drive_aware_) {
@@ -734,7 +710,8 @@ void PerTableLoadState::LogSortedLeaderLoad() {
   std::string blacklisted;
   for (const auto& leader_set : sorted_leader_load_) {
     for (const auto& ts_uuid : leader_set) {
-      if (leader_blacklisted_servers_.find(ts_uuid) != leader_blacklisted_servers_.end()) {
+      if (global_state_->leader_blacklisted_servers_.find(ts_uuid) !=
+          global_state_->leader_blacklisted_servers_.end()) {
         blacklisted += strings::Substitute(" $0[$1]", ts_uuid, GetLeaderLoad(ts_uuid));
       } else {
         s += strings::Substitute(" $0[$1]", ts_uuid, GetLeaderLoad(ts_uuid));

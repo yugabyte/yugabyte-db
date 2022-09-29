@@ -67,12 +67,12 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -101,6 +101,7 @@ DECLARE_int32(ns_replication_sync_backoff_secs);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_bool(TEST_disable_cleanup_applied_transactions);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
 
 namespace yb {
 
@@ -185,6 +186,8 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
       yb_tables.push_back(consumer_table);
     }
+
+    RETURN_NOT_OK(WaitForLoadBalancersToStabilize());
 
     return yb_tables;
   }
@@ -326,6 +329,48 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       return false;
     }, MonoDelta::FromSeconds(30), "Commited transaction"));
     return txn_status_resp.status_hybrid_time(0);
+  }
+
+  Status WaitForTransactionCleanedUp(YBClient* client, const TransactionId& txn_id) {
+    auto transaction_status_table = client::YBTableName(
+          YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    std::vector<TabletId> tablet_uuids;
+    // Read from the transaction status table
+    RETURN_NOT_OK(client->GetTablets(
+        transaction_status_table, 0 /* max_tablets */, &tablet_uuids, nullptr));
+    if(static_cast<int>(tablet_uuids.size()) != FLAGS_transaction_table_num_tablets) {
+      return STATUS(InvalidArgument, "Could not fetch txn status tablets");
+    }
+    tserver::GetTransactionStatusResponsePB txn_status_resp;
+    return WaitFor([&]() {
+      for (const auto& uuid : tablet_uuids) {
+        tserver::GetTransactionStatusRequestPB req;
+        req.set_tablet_id(uuid);
+        req.add_transaction_id()->assign(pointer_cast<const char*>(txn_id.data()), txn_id.size());
+        rpc::Rpcs rpcs;
+        auto status_future = rpc::WrapRpcFuture<tserver::GetTransactionStatusResponsePB>(
+            client::GetTransactionStatus, &rpcs)(
+                CoarseMonoClock::Now() + MonoDelta::FromSeconds(30), nullptr /* tablet */,
+                client, &req);
+        if (!status_future.valid()) {
+          return false;
+        }
+        if (status_future.wait_for(NonTsanVsTsan(3s, 10s)) != std::future_status::ready) {
+          return false;
+        }
+        auto resp = status_future.get();
+        if (!resp.ok()) {
+          return false;
+        }
+        if (resp->status().size() != 1) {
+          return false;
+        }
+        if (resp->status(0) != TransactionStatus::ABORTED) {
+          return false;
+        }
+      }
+      return true;
+    }, MonoDelta::FromSeconds(30), "Cleaned up transaction");
   }
  private:
   server::ClockPtr clock_{new server::HybridClock()};
@@ -894,6 +939,8 @@ TEST_P(TwoDCTest, BootstrapAndSetupLargeTableCount) {
         producer_tables.push_back(producer_table);
       }
 
+      ASSERT_OK(WaitForLoadBalancersToStabilize());
+
       // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
       FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = rpc_delay_ms;
       FLAGS_rpc_throttle_threshold_bytes = 200;
@@ -1169,6 +1216,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
             // TODO(tablet splitting + xCluster): After splitting integration is working (+ metrics
             // support), then set this to kTrue.
             master::IncludeInactive::kFalse,
+            master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {
@@ -1349,8 +1397,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) 
   FLAGS_TEST_disable_cleanup_applied_transactions = true;
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
-  auto tables = ASSERT_RESULT(SetUpWithParams(
-      {kNumTablets}, {kNumTablets}, replication_factor));
+  auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
   ASSERT_OK(SetupUniverseReplication(
@@ -1363,6 +1410,31 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) 
   auto commit_ht_producer = ASSERT_RESULT(GetCommitTimeOfTransaction(producer_client(), txn_id));
   auto commit_ht_consumer = ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
   ASSERT_EQ(commit_ht_producer, commit_ht_consumer);
+
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+}
+
+TEST_P(TwoDCTestWithEnableIntentsReplication, OnlyApplyTransactionOnCaughtUpTablet) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  FLAGS_TEST_disable_apply_committed_transactions = true;
+  constexpr int kNumTablets = 1;
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables = {tables[0]};
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(),
+                                      kUniverseId, &resp));
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
+  ASSERT_OK(txn.second->CommitFuture().get());
+  auto txn_id = txn.second->id();
+  ASSERT_RESULT(GetCommitTimeOfTransaction(consumer_client(), txn_id));
+  FLAGS_TEST_disable_apply_committed_transactions = false;
+  ASSERT_OK(WaitForTransactionCleanedUp(consumer_client(), txn_id));
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
 TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithoutApply) {
@@ -2102,7 +2174,7 @@ TEST_P(TwoDCTest, TestProducerUniverseExpansion) {
 }
 
 TEST_P(TwoDCTest, TestAlterDDLBasic) {
-  FLAGS_xcluster_wait_on_ddl_alter = true;
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 1;
   // Use just one tablet here to more easily catch lower-level write issues with this test.
@@ -2193,7 +2265,7 @@ TEST_P(TwoDCTest, TestAlterDDLBasic) {
 }
 
 TEST_P(TwoDCTest, TestAlterDDLWithRestarts) {
-  FLAGS_xcluster_wait_on_ddl_alter = true;
+  SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
 
   uint32_t replication_factor = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor, 2, 3));

@@ -23,6 +23,8 @@ import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -71,6 +73,8 @@ public class HookScopeControllerTest extends WithApplication {
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 

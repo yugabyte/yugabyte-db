@@ -309,7 +309,8 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
       tablet::TABLET_DATA_TOMBSTONED,
       tablet::ShouldAbortActiveTransactions::kFalse,
       cas_config_opid_index_less_or_equal,
-      false,
+      false /* hide_only */,
+      false /* keep_data */,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -324,7 +325,8 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
                                           tablet::TABLET_DATA_DELETED,
                                           tablet::ShouldAbortActiveTransactions::kFalse,
                                           cas_config_opid_index_less_or_equal,
-                                          false,
+                                          false /* hide_only */,
+                                          false /* keep_data */,
                                           &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);

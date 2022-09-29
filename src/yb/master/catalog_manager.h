@@ -140,8 +140,6 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-YB_STRONGLY_TYPED_BOOL(HideOnly);
-
 typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // Map[NamespaceId]:xClusterSafeTime
@@ -323,6 +321,9 @@ class CatalogManager :
   Status LaunchBackfillIndexForTable(const LaunchBackfillIndexForTableRequestPB* req,
                                              LaunchBackfillIndexForTableResponsePB* resp,
                                              rpc::RpcContext* rpc);
+
+  // Schedules a table deletion to run as a background task.
+  Status ScheduleDeleteTable(const scoped_refptr<TableInfo>& table);
 
   // Delete the specified table.
   //
@@ -514,6 +515,8 @@ class CatalogManager :
       const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion);
+
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
@@ -558,6 +561,8 @@ class CatalogManager :
   Status IncrementTransactionTablesVersion();
 
   uint64_t GetTransactionTablesVersion() override;
+
+  Status WaitForTransactionTableVersionUpdateToPropagate();
 
   virtual Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
@@ -636,13 +641,18 @@ class CatalogManager :
   bool IsUserCreatedTable(const TableInfo& table) const override;
   bool IsUserCreatedTableUnlocked(const TableInfo& table) const REQUIRES_SHARED(mutex_);
 
+  // Let the catalog manager know that we have received a response for a prepare delete
+  // transaction tablet request. This will trigger delete tablet requests on all replicas.
+  void NotifyPrepareDeleteTransactionTabletFinished(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only) override;
+
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
   //
   // Async tasks should call this when they finish. The last such tablet peer notification will
   // trigger trying to transition the table from DELETING to DELETED state.
   void NotifyTabletDeleteFinished(
-      const TabletServerId& tserver_uuid, const TableId& table_id,
+      const TabletServerId& tserver_uuid, const TabletId& tablet_id,
       const TableInfoPtr& table) override;
 
   // For a DeleteTable, we first mark tables as DELETING then move them to DELETED once all
@@ -763,6 +773,8 @@ class CatalogManager :
   // API to check if all the live tservers have similar tablet workload.
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp) override;
+
+  MonoTime LastLoadBalancerRunTime() const;
 
   Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                     IsLoadBalancerIdleResponsePB* resp);
@@ -1306,7 +1318,8 @@ class CatalogManager :
       rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, HideOnly hide_only);
+  void DeleteTabletReplicas(
+      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data) override;
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1322,7 +1335,13 @@ class CatalogManager :
   // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
   Status DeleteTabletListAndSendRequests(
       const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-      const RepeatedBytes& retained_by_snapshot_schedules);
+      const RepeatedBytes& retained_by_snapshot_schedules, bool transaction_status_tablets);
+
+  // Sends a prepare delete transaction tablet request to the leader of the status tablet.
+  // This will be followed by delete tablet requests to each replica.
+  Status SendPrepareDeleteTransactionTabletRequest(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& leader_uuid,
+      const std::string& reason, HideOnly hide_only);
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1332,7 +1351,8 @@ class CatalogManager :
                                const scoped_refptr<TableInfo>& table,
                                TSDescriptor* ts_desc,
                                const std::string& reason,
-                               bool hide_only = false);
+                               HideOnly hide_only = HideOnly::kFalse,
+                               KeepData keep_data = KeepData::kFalse);
 
   // Start a task to request the specified tablet leader to step down and optionally to remove
   // the server that is over-replicated. A new tablet server can be specified to start an election

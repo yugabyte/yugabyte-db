@@ -24,11 +24,11 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/integration-tests/twodc_test_base.h"
@@ -39,11 +39,7 @@ using namespace std::chrono_literals;
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(enable_ysql);
 DECLARE_bool(xcluster_consistent_reads);
-DECLARE_bool(master_auto_run_initdb);
-DECLARE_bool(hide_pg_catalog_table_creation_logs);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_int32(cdc_max_apply_batch_num_records);
@@ -258,11 +254,6 @@ string GetCompleteTableName(const YBTableName& table) {
 class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
  public:
   void SetUp() override {
-    FLAGS_enable_ysql = true;
-    FLAGS_master_auto_run_initdb = true;
-    FLAGS_hide_pg_catalog_table_creation_logs = true;
-    FLAGS_pggate_rpc_timeout_secs = 120;
-
     // Disable LB as we dont want tablets moving during the test
     FLAGS_enable_load_balancing = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
@@ -270,15 +261,11 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
         FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
     FLAGS_xcluster_consistent_reads = true;
 
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
     TwoDCTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
     opts.num_tablet_servers = kTServerCount;
-    ASSERT_OK(InitClusters(opts));
-
-    ASSERT_OK(InitPostgres(&producer_cluster_));
-    ASSERT_OK(InitPostgres(&consumer_cluster_));
+    ASSERT_OK(InitClusters(opts, true /* init_postgres */));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(

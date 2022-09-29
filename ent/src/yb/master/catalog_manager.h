@@ -80,6 +80,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       EditSnapshotScheduleResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status RestoreSnapshotSchedule(
+      const RestoreSnapshotScheduleRequestPB* req,
+      RestoreSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                               ChangeEncryptionInfoResponsePB* resp) override;
 
@@ -274,6 +279,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void PrepareRestore() override;
 
   void EnableTabletSplitting(const std::string& feature) override;
+
+  Status RunXClusterBgTasks();
 
   void StartXClusterParentTabletDeletionTaskIfStopped();
 

@@ -11,6 +11,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
@@ -2535,16 +2536,17 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Returns a map of pod FQDN to KUBECONFIG string for all pods in the nodeDetailsSet. This method
-   * is useful for both new and old naming styles, as we are not using namespace as key.
+   * Returns a map of pod private_ip to configuration for all pods in the nodeDetailsSet. The
+   * configuration is a map with keys "podName", "namespace", and "KUBECONFIG". This method is
+   * useful for both new and old naming styles, as we are not using namespace as key.
    *
    * <p>In new naming style, all the AZ deployments are in the same namespace. These AZs can be in
    * different Kubernetes clusters, and will have same namespace name across all of them. This
    * requires different kubeconfig per cluster/pod to access them.
    */
-  public static Map<String, String> getKubernetesConfigPerPod(
+  public static Map<String, Map<String, String>> getKubernetesConfigPerPod(
       PlacementInfo pi, Set<NodeDetails> nodeDetailsSet) {
-    Map<String, String> podToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podToConfig = new HashMap<>();
     Map<UUID, String> azToKubeconfig = new HashMap<>();
     Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -2560,7 +2562,15 @@ public class PlacementInfoUtil {
       if (kubeconfig == null) {
         throw new NullPointerException("Couldn't find a kubeconfig for AZ " + nd.azUuid);
       }
-      podToConfig.put(nd.cloudInfo.private_ip, kubeconfig);
+      podToConfig.put(
+          nd.cloudInfo.private_ip,
+          ImmutableMap.of(
+              "podName",
+              nd.getK8sPodName(),
+              "namespace",
+              nd.getK8sNamespace(),
+              "KUBECONFIG",
+              kubeconfig));
     }
     return podToConfig;
   }
@@ -2572,7 +2582,8 @@ public class PlacementInfoUtil {
       String nodePrefix,
       Provider provider,
       int masterRpcPort,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      String podAddressTemplate) {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     boolean isMultiAZ = isMultiAZ(provider);
@@ -2590,11 +2601,14 @@ public class PlacementInfoUtil {
       String helmFullName =
           getHelmFullNameWithSuffix(isMultiAZ, nodePrefix, az.code, newNamingStyle, false);
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        String master =
-            String.format(
-                "%syb-master-%d.%syb-masters.%s.%s:%d",
-                helmFullName, idx, helmFullName, namespace, domain, masterRpcPort);
-        masters.add(master);
+        String masterIP =
+            formatPodAddress(
+                podAddressTemplate,
+                String.format("%syb-master-%d", helmFullName, idx),
+                helmFullName + "yb-masters",
+                namespace,
+                domain);
+        masters.add(String.format("%s:%d", masterIP, masterRpcPort));
       }
     }
 
@@ -2608,9 +2622,9 @@ public class PlacementInfoUtil {
         for (PlacementAZ pa : pr.azList) {
           Map<String, String> config = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
           if (config.containsKey("KUBE_DOMAIN")) {
-            azToDomain.put(pa.uuid, String.format("%s.%s", "svc", config.get("KUBE_DOMAIN")));
+            azToDomain.put(pa.uuid, config.get("KUBE_DOMAIN"));
           } else {
-            azToDomain.put(pa.uuid, "svc.cluster.local");
+            azToDomain.put(pa.uuid, "cluster.local");
           }
         }
       }
@@ -2658,6 +2672,25 @@ public class PlacementInfoUtil {
       releaseName = releaseName.substring(0, 43);
     }
     return releaseName + "-";
+  }
+
+  /**
+   * Replaces the placeholders from the template with given values and return the resultant string.
+   *
+   * <p>Currently supported placeholders are: {pod_name}, {service_name}, {namespace}, and
+   * {cluster_domain}
+   */
+  public static String formatPodAddress(
+      String template, String podName, String serviceName, String namespace, String clusterDomain) {
+    template = template.replace("{pod_name}", podName);
+    template = template.replace("{service_name}", serviceName);
+    template = template.replace("{namespace}", namespace);
+    template = template.replace("{cluster_domain}", clusterDomain);
+    if (!Util.isValidDNSAddress(template)) {
+      throw new RuntimeException(
+          "Pod address template generated an invalid DNS, check if placeholders are correct.");
+    }
+    return template;
   }
 
   // Returns the start index for provisioning new nodes based on the current maximum node index

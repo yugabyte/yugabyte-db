@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
@@ -1189,7 +1190,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-              || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+              || cluster.userIntent.azOverrides != null
+                  && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
         } else { // During edit universe, overrides can't be changed.
@@ -1197,25 +1199,48 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
-            Map<String, String> curAZOverrides =
-                HelmUtils.flattenMap(
-                    HelmUtils.convertYamlToMap(univCluster.userIntent.azOverrides));
+            Map<String, String> curAZsOverrides = univCluster.userIntent.azOverrides;
+            Map<String, String> newAZsOverrides = cluster.userIntent.azOverrides;
+            if (curAZsOverrides == null) curAZsOverrides = new HashMap<>();
+            if (newAZsOverrides == null) newAZsOverrides = new HashMap<>();
+            if (curAZsOverrides.size() != newAZsOverrides.size()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
+            if (!Sets.difference(curAZsOverrides.keySet(), newAZsOverrides.keySet()).isEmpty()
+                || !Sets.difference(newAZsOverrides.keySet(), curAZsOverrides.keySet()).isEmpty()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
             Map<String, String> newUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(cluster.userIntent.universeOverrides));
-            Map<String, String> newAZOverrides =
-                HelmUtils.flattenMap(HelmUtils.convertYamlToMap(cluster.userIntent.azOverrides));
-            if (!(curUnivOverrides.equals(newUnivOverrides)
-                && curAZOverrides.equals(newAZOverrides))) {
+            if (!curUnivOverrides.equals(newUnivOverrides)) {
               throw new IllegalArgumentException(
-                  "Universe overrides can't be modified during the edit operation.");
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+            for (String az : curAZsOverrides.keySet()) {
+              String curAZOverridesStr = curAZsOverrides.get(az);
+              Map<String, Object> curAZOverrides = HelmUtils.convertYamlToMap(curAZOverridesStr);
+              String newAZOverridesStr = newAZsOverrides.get(az);
+              Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
+              if (!curAZOverrides.equals(newAZOverrides)) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "Kubernetes overrides can't be modified during the edit operation. "
+                            + "For AZ %s, previous overrides: %s, new overrides: %s",
+                        az, curAZOverridesStr, newAZOverridesStr));
+              }
             }
           }
         }
       } else {
         // Non k8s universes should not have kubernetes overrides.
         if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-            || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+            || cluster.userIntent.azOverrides != null
+                && cluster.userIntent.azOverrides.size() != 0) {
           throw new IllegalArgumentException(
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
@@ -1311,9 +1336,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+  protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.universeUUID = taskParams().universeUUID;
     params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
@@ -1322,6 +1345,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.rootCA = taskParams().rootCA;
     params.clientRootCA = taskParams().clientRootCA;
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    return params;
+  }
+
+  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);

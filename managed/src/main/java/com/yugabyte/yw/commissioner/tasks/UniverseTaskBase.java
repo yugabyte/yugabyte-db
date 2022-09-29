@@ -1084,12 +1084,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTask(
-      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      NodeDetails node,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
-    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0, paramsCustomizer));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createServerControlTask(
+      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTask(node, processType, command, params -> {});
   }
 
   /**
@@ -1147,21 +1155,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTasks(
-      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      List<NodeDetails> nodes,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+      subTaskGroup.addSubTask(
+          getServerControlTask(node, processType, command, 0, paramsCustomizer));
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  // NO-OP that won't customize params.
+  public SubTaskGroup createServerControlTasks(
+      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTasks(nodes, processType, command, params -> {});
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
       NodeDetails node,
       UniverseDefinitionTaskBase.ServerType processType,
       String command,
-      int sleepAfterCmdMillis) {
+      int sleepAfterCmdMillis,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Add the node name.
     params.nodeName = node.nodeName;
@@ -1182,6 +1201,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
+    paramsCustomizer.accept(params);
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1647,6 +1667,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1659,6 +1680,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      // Start universe with systemd
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);

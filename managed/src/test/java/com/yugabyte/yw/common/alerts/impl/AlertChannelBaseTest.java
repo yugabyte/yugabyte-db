@@ -102,7 +102,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
@@ -111,7 +111,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
     AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
     assertEquals(
-        substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE) + "\n\n" + alert.getMessage(),
+        substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
         channelBase.getNotificationText(alert, channel));
   }
 

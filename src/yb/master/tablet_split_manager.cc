@@ -647,8 +647,8 @@ void TabletSplitManager::DoSplitting(
     VLOG(3) << "Processing ongoing split tasks for table " << table->id();
     for (const auto& task : table->GetTasks()) {
       // These tasks will retry automatically until they succeed or fail.
-      if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-          task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+      if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
+          task->type() == server::MonitoredTaskType::kSplitTablet) {
         const TabletId tablet_id = static_cast<AsyncTabletLeaderTask*>(task.get())->tablet_id();
         auto tablet_info_it = tablet_info_map.find(tablet_id);
         if (tablet_info_it != tablet_info_map.end()) {
@@ -786,8 +786,8 @@ bool TabletSplitManager::IsTabletSplittingComplete(
     return true;
   }
   for (const auto& task : table.GetTasks()) {
-    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+    if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
+        task->type() == server::MonitoredTaskType::kSplitTablet) {
       YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
                                     << " has outstanding splitting tasks";
       return false;

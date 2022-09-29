@@ -63,6 +63,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -90,6 +91,7 @@ DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(enable_single_record_update);
 DECLARE_bool(enable_delete_truncate_cdcsdk_table);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -827,12 +829,25 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx);
     }
 
-    RpcController get_changes_rpc;
-    RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &get_changes_rpc));
+    // Retry only on LeaderNotReadyToServe errors
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController get_changes_rpc;
+          auto status = cdc_proxy_->GetChanges(change_req, &change_resp, &get_changes_rpc);
 
-    if (change_resp.has_error()) {
-      return StatusFromPB(change_resp.error().status());
-    }
+          if (status.ok() && change_resp.has_error()) {
+            status = StatusFromPB(change_resp.error().status());
+          }
+
+          if (status.IsLeaderNotReadyToServe()) {
+            return false;
+          }
+
+          RETURN_NOT_OK(status);
+          return true;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "GetChanges timed out waiting for Leader to get ready"));
 
     return change_resp;
   }
@@ -1127,6 +1142,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id) {
+    CHECK(!FLAGS_enable_load_balancing);
+
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
     argv.push_back(tool_path);
@@ -2677,8 +2694,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodesRestart)) {
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_update_metrics_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -2711,7 +2730,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  SleepFor(MonoDelta::FromSeconds(10));
   // Call get changes.
   GetChangesResponsePB change_resp_2 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
@@ -2719,17 +2737,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
   ASSERT_GT(record_size, 100);
   LOG(INFO) << "Total records read by second GetChanges call: " << record_size;
 
-  SleepFor(MonoDelta::FromSeconds(60));
-  std::map<const std::string, OpId> tablet_peer_to_cdc_min_checkpoint_op_id_map;
-  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
-    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
-      if (peer->tablet_id() == tablets[0].tablet_id()) {
-        tablet_peer_to_cdc_min_checkpoint_op_id_map[peer->permanent_uuid()] =
-            peer->cdc_sdk_min_checkpoint_op_id();
-      }
-    }
-  }
-  LOG(INFO) << "Stored min checkpoint OpId for each tablet peer";
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  LOG(INFO) << "Checkpoint after final GetChanges: " << checkpoints[0];
 
   // Restart all the nodes.
   SleepFor(MonoDelta::FromSeconds(1));
@@ -2739,20 +2748,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
+  EnableCDCServiceInAllTserver(3);
 
   // Check the checkpoint info for all tservers - it should be valid.
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
       if (peer->tablet_id() == tablets[0].tablet_id()) {
-        // Checkpoint persisted in the RAFT logs should be same as in memory transaction
-        // participant tablet peer.
-        ASSERT_EQ(
-            peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
-        // The cdc_sdk_min_checkpoint_op_id should be the same as before restart.
-        ASSERT_EQ(
-            tablet_peer_to_cdc_min_checkpoint_op_id_map[peer->permanent_uuid()],
-            peer->cdc_sdk_min_checkpoint_op_id());
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              // Checkpoint persisted in the RAFT logs should be same as in memory transaction
+              // participant tablet peer.
+              if (peer->cdc_sdk_min_checkpoint_op_id() !=
+                      peer->tablet()->transaction_participant()->GetRetainOpId() ||
+                  checkpoints[0] != peer->cdc_sdk_min_checkpoint_op_id()) {
+                return false;
+              }
+              return true;
+            },
+            MonoDelta::FromSeconds(60),
+            "Checkpoints are not as expected"));
       }
     }
   }
@@ -2886,6 +2900,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestHighIntentCountPersistencyAll
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstrap)) {
+  // Disable lb as we move tablets around
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_update_metrics_interval_ms = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
@@ -3812,6 +3828,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCreateStreamAfterSetCheckpoin
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderChange)) {
+  // Disable lb as we move tablets around
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_cdc_intent_retention_ms = 10000;
@@ -3871,6 +3889,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderChange))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)) {
+  // Disable lb as we move tablets around
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_update_metrics_interval_ms = 1000;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -3961,6 +3981,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderReElect)
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)) {
+  // Disable lb as we move tablets around
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   const int num_tservers = 3;
@@ -4087,6 +4109,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKCacheWithLeaderRestart)
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWithCDCStateTable)) {
+  // Disable lb as we move tablets around
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_update_metrics_interval_ms = 1000;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
@@ -4267,9 +4291,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
 
   int expected_key1 = 0;
   int expected_key2 = 0;
+  int ddl_count = 0;
+  std::unordered_set<string> ddl_tables;
   for (uint32_t i = 0; i < record_size; ++i) {
     const auto record = change_resp.cdc_sdk_proto_records(i);
-    LOG(INFO) << "Record found: " << record.ShortDebugString();
     if (record.row_message().op() == RowMessage::INSERT) {
       if (record.row_message().table() == "test1") {
         ASSERT_EQ(expected_key1, record.row_message().new_tuple(0).datum_int32());
@@ -4278,11 +4303,18 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColocation)) {
         ASSERT_EQ(std::to_string(expected_key2), record.row_message().new_tuple(0).datum_string());
         expected_key2++;
       }
+    } else if (record.row_message().op() == RowMessage::DDL) {
+      ddl_tables.insert(record.row_message().table());
+      ddl_count++;
     }
   }
 
+  ASSERT_TRUE(ddl_tables.contains("test1"));
+  ASSERT_TRUE(ddl_tables.contains("test2"));
+
   ASSERT_EQ(insert_count, expected_key1);
   ASSERT_EQ(insert_count, expected_key2);
+  ASSERT_EQ(ddl_count, 3);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {

@@ -90,16 +90,14 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  Status InitClusters(const MiniClusterOptions& opts);
-
-  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
-  // is not safe to run in parallel.
-  Status InitPostgres(Cluster* cluster);
+  Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
 
   void TearDown() override;
 
   Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
+
+  Status WaitForLoadBalancersToStabilize();
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
@@ -222,6 +220,11 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+
+ private:
+  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
+  // is not safe to run in parallel.
+  Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 };
 
 } // namespace enterprise

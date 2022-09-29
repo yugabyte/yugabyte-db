@@ -100,6 +100,8 @@ class ClusterLoadBalancer {
 
   void ReportMetrics();
 
+  MonoTime LastRunTime() const;
+
   Status IsIdle() const;
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
@@ -325,6 +327,10 @@ class ClusterLoadBalancer {
 
   virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
 
+  void AddTSIfBlacklisted(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const BlacklistPB& blacklist,
+      const bool leader_blacklist);
+
   //
   // Generic load information methods.
   //
@@ -379,7 +385,7 @@ class ClusterLoadBalancer {
       TabletServerId* to_ts,
       std::string* to_ts_path);
 
-  virtual void SetBlacklist() const;
+  virtual void SetBlacklistAndPendingDeleteTS();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
@@ -427,6 +433,8 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  std::atomic<MonoTime> last_load_balance_run_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

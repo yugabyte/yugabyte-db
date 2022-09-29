@@ -3,7 +3,9 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -12,18 +14,25 @@ import io.fabric8.kubernetes.api.model.PodStatus;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 
 public abstract class KubernetesManager {
 
@@ -39,6 +48,8 @@ public abstract class KubernetesManager {
 
   private static final long DEFAULT_TIMEOUT_SECS = 300;
 
+  private static final long DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS = 1;
+
   /* helm interface */
 
   public void helmInstall(
@@ -47,48 +58,25 @@ public abstract class KubernetesManager {
       UUID providerUUID,
       String universePrefix,
       String namespace,
-      String overridesFile,
-      Map<String, Object> universeOverrides,
-      Map<String, Object> azOverrides) {
+      String overridesFile) {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-
-    List<String> commandArrayList =
-        new ArrayList<>(
-            Arrays.asList(
-                "helm",
-                "install",
-                helmReleaseName,
-                helmPackagePath,
-                "--namespace",
-                namespace,
-                "-f",
-                overridesFile,
-                "--timeout",
-                getTimeout(),
-                "--wait"));
-    LOG.info("After Overrides excluded - {}" + String.join(" ", commandArrayList));
-    if (universeOverrides != null) {
-      commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(universeOverrides)));
-    }
-    if (azOverrides != null) {
-      commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(azOverrides)));
-    }
-    // TODO gflags we need to add here. Don't know the order yet.
-
-    List<String> unmodifiableList = Collections.unmodifiableList(commandArrayList);
-    ShellResponse response = execCommand(config, unmodifiableList);
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "install",
+            helmReleaseName,
+            helmPackagePath,
+            "--namespace",
+            namespace,
+            "-f",
+            overridesFile,
+            "--timeout",
+            getTimeout(),
+            "--wait");
+    ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, universePrefix, namespace, response);
-  }
-
-  private List<String> setOverrides(Map<String, String> overrides) {
-    List<String> res = new ArrayList<>();
-    for (Map.Entry<String, String> entry : overrides.entrySet()) {
-      res.add("--set");
-      res.add(String.format("%s=%s", entry.getKey(), entry.getValue()));
-    }
-    return res;
   }
 
   public void helmUpgrade(
@@ -96,34 +84,23 @@ public abstract class KubernetesManager {
       Map<String, String> config,
       String universePrefix,
       String namespace,
-      String overridesFile,
-      Map<String, Object> universeOverrides,
-      Map<String, Object> azOverrides) {
-
+      String overridesFile) {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-
-    List<String> commandArrayList =
-        new ArrayList<>(
-            Arrays.asList(
-                "helm",
-                "upgrade",
-                helmReleaseName,
-                helmPackagePath,
-                "-f",
-                overridesFile,
-                "--namespace",
-                namespace,
-                "--timeout",
-                getTimeout(),
-                "--wait"));
-    LOG.info("After Overrides excluded - " + String.join(" ", commandArrayList));
-    commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(universeOverrides)));
-    commandArrayList.addAll(setOverrides(HelmUtils.flattenMap(azOverrides)));
-    // TODO gflags we need to add here. Don't know the order yet.
-
-    List<String> unmodifiableList = Collections.unmodifiableList(commandArrayList);
-    ShellResponse response = execCommand(config, unmodifiableList);
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            helmReleaseName,
+            helmPackagePath,
+            "-f",
+            overridesFile,
+            "--namespace",
+            namespace,
+            "--timeout",
+            getTimeout(),
+            "--wait");
+    ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, universePrefix, namespace, response);
   }
 
@@ -147,7 +124,130 @@ public abstract class KubernetesManager {
     return null;
   }
 
+  // userMap - flattened user provided yaml. valuesMap - flattened chart's values yaml.
+  // Return userMap keys which are not in valuesMap.
+  // It doesn't check if returnred keys are actually not present in chart templates.
+  private Set<String> getUknownKeys(Map<String, String> userMap, Map<String, String> valuesMap) {
+    return Sets.difference(userMap.keySet(), valuesMap.keySet());
+  }
+
+  private Set<String> getNullValueKeys(Map<String, String> userMap) {
+    return userMap
+        .entrySet()
+        .stream()
+        .filter(e -> e.getValue() == null)
+        .map(Map.Entry::getKey)
+        .collect(Collectors.toSet());
+  }
+
+  // Checks if override keys are present in values.yaml in the chart.
+  // Runs helm template.
+  // Returns K8sOverridesResponse = {universeOverridesErrors, azOverridesErrors,
+  // helmTemplateErrors}.
+  public Set<String> validateOverrides(
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String namespace,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      String azCode) {
+    Set<String> errorsSet = new HashSet<>();
+    // TODO optimise this step. It is called for every AZ.
+    String helmPackagePath, helmValuesStr;
+    try {
+      helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+      helmValuesStr = helmShowValues(ybSoftwareVersion, null);
+    } catch (Exception e) {
+      String errMsg = String.format("Helm package/values fetch failed: %s", e.getMessage());
+      LOG.error("Error during validation : failed to get helm package path: ", e);
+      errorsSet.add(errMsg);
+      return errorsSet;
+    }
+    Map<String, String> flatHelmValues =
+        HelmUtils.flattenMap(HelmUtils.convertYamlToMap(helmValuesStr));
+    Map<String, String> flatUnivOverrides = HelmUtils.flattenMap(universeOverrides);
+    Map<String, String> flatAZOverrides = HelmUtils.flattenMap(azOverrides);
+
+    Set<String> universeOverridesUnknownKeys = getUknownKeys(flatUnivOverrides, flatHelmValues);
+    Set<String> universeOverridesNullValueKeys = getNullValueKeys(flatUnivOverrides);
+    Set<String> azOverridesUnknownKeys = getUknownKeys(flatAZOverrides, flatHelmValues);
+    Set<String> azOverridesNullValueKeys = getNullValueKeys(flatAZOverrides);
+
+    if (universeOverridesUnknownKeys.size() != 0) {
+      errorsSet.add(
+          String.format(
+              "Unknown keys found in universe overrides: %s.", universeOverridesUnknownKeys));
+    }
+    if (universeOverridesNullValueKeys.size() != 0) {
+      errorsSet.add(
+          String.format(
+              "Found null values in universe overrides, "
+                  + "please double check if this is intentional: %s.",
+              universeOverridesNullValueKeys));
+    }
+
+    if (azOverridesUnknownKeys.size() != 0) {
+      errorsSet.add(
+          String.format(
+              "%s: Unknown keys found in az overrides: %s.", azCode, azOverridesUnknownKeys));
+    }
+    if (azOverridesNullValueKeys.size() != 0) {
+      errorsSet.add(
+          String.format(
+              "%s: Found null values in az overrides, "
+                  + "please double check if this is intentional: %s.",
+              azCode, azOverridesNullValueKeys));
+    }
+
+    HelmUtils.mergeYaml(azOverrides, universeOverrides);
+    String mergedOverrides = createTempFile(azOverrides);
+
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "template",
+            "yb-validate-k8soverrides" /* dummy name */,
+            helmPackagePath,
+            "-f",
+            mergedOverrides,
+            "--namespace",
+            namespace,
+            "--timeout",
+            String.valueOf(DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS) + "s",
+            "--wait");
+    // TODO some gflags have precedence over overrides. We need to add them here. Don't know the
+    // order yet.
+    ShellResponse response = execCommand(config, commandList);
+    if (!response.isSuccess()) {
+      // result.extractRunCommandOutput() is not working. We always get "Invalid command output"
+      String helmError = response.message;
+      // Most helm errors start with "Error:""
+      String helmErrorPrefix = "Error:";
+      int errorIndex = helmError.indexOf(helmErrorPrefix);
+      if (errorIndex != -1) {
+        errorsSet.add(helmError.substring(errorIndex + helmErrorPrefix.length()));
+      } else {
+        errorsSet.add(String.format("%s: %s", azCode, response.message));
+      }
+    }
+    return errorsSet;
+  }
+
   /* helm helpers */
+
+  private String createTempFile(Map<String, Object> valuesMap) {
+    Path tempFile;
+    try {
+      tempFile = Files.createTempFile("values", ".yml");
+      try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
+        new Yaml().dump(valuesMap, bw);
+        return tempFile.toAbsolutePath().toString();
+      }
+    } catch (IOException e) {
+      LOG.error(e.getMessage());
+      throw new RuntimeException("Error writing values map to temp file!");
+    }
+  }
 
   private void processHelmResponse(
       Map<String, String> config, String universePrefix, String namespace, ShellResponse response) {

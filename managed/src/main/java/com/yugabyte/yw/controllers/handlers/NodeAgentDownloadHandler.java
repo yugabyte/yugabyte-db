@@ -5,27 +5,35 @@ import com.cronutils.utils.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.utils.FileUtils;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
-
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.EnumUtils;
 import play.mvc.Http;
+import play.mvc.Http.Status;
 
 @Slf4j
 @Singleton
 public class NodeAgentDownloadHandler {
-  private final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
+  private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
+  private static final String NODE_AGENT_TGZ_FILE_FORMAT = "node_agent-%s-%s-%s.tar.gz";
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
@@ -58,6 +66,26 @@ public class NodeAgentDownloadHandler {
     AMD64;
   }
 
+  private static byte[] getInstallerScript(String filepath) {
+    try (TarArchiveInputStream tarInput =
+        new TarArchiveInputStream(new GzipCompressorInputStream(new FileInputStream(filepath)))) {
+      TarArchiveEntry currEntry;
+      while ((currEntry = tarInput.getNextTarEntry()) != null) {
+        if (!currEntry.isFile() || !currEntry.getName().endsWith(NODE_AGENT_INSTALLER_FILE)) {
+          continue;
+        }
+        BufferedInputStream in = new BufferedInputStream(tarInput);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        IOUtils.copy(in, out);
+        return out.toByteArray();
+      }
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          Status.INTERNAL_SERVER_ERROR, "Error in reading the node-agent installer.");
+    }
+    throw new PlatformServiceException(Status.NOT_FOUND, "Node-agent installer does not exist.");
+  }
+
   @VisibleForTesting
   void validateDownloadType(DownloadType downloadType, OS osType, Arch archType) {
     if (downloadType == null) {
@@ -84,26 +112,30 @@ public class NodeAgentDownloadHandler {
     OS osType = EnumUtils.getEnumIgnoreCase(OS.class, os);
     Arch archType = EnumUtils.getEnumIgnoreCase(Arch.class, arch);
     validateDownloadType(downloadType, osType, archType);
-    Path nodeAgentsBuildPath =
-        Paths.get(appConfig.getString("yb.storage.path"), "node-agents", "build");
-    InputStream is;
-
+    Path nodeAgentsReleasesPath =
+        Paths.get(appConfig.getString("yb.storage.path"), "node-agent", "releases");
+    String softwareVersion =
+        Objects.requireNonNull(
+            (String)
+                configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
     if (downloadType == DownloadType.PACKAGE) {
-      String softwareVersion =
-          Objects.requireNonNull(
-              (String)
-                  configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version"));
       // An example from build job is node_agent-2.15.3.0-b1372-darwin-amd64.tar.gz.
       String buildPkgFile =
           String.format(
-              "node_agent-%s-%s-%s.tar.gz",
-              softwareVersion, osType.name().toLowerCase(), archType.name().toLowerCase());
-      File buildZip = new File(nodeAgentsBuildPath.toString(), buildPkgFile);
-      is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
+              NODE_AGENT_TGZ_FILE_FORMAT,
+              softwareVersion,
+              osType.name().toLowerCase(),
+              archType.name().toLowerCase());
+      File buildZip = new File(nodeAgentsReleasesPath.toString(), buildPkgFile);
+      InputStream is = com.yugabyte.yw.common.utils.FileUtils.getInputStreamOrFail(buildZip);
       return new NodeAgentDownloadFile("application/gzip", is, buildPkgFile);
     }
-    File installerFile = new File(nodeAgentsBuildPath.toString(), NODE_AGENT_INSTALLER_FILE);
-    is = FileUtils.getInputStreamOrFail(installerFile);
-    return new NodeAgentDownloadFile("application/x-sh", is, NODE_AGENT_INSTALLER_FILE);
+    // Look for the installer script in any of the tgz file.
+    // This makes distribution of the installer more convenient.
+    String defaultPkgFile =
+        String.format(NODE_AGENT_TGZ_FILE_FORMAT, softwareVersion, "linux", "amd64");
+    byte[] contents = getInstallerScript(nodeAgentsReleasesPath.resolve(defaultPkgFile).toString());
+    return new NodeAgentDownloadFile(
+        "application/x-sh", new ByteArrayInputStream(contents), NODE_AGENT_INSTALLER_FILE);
   }
 }

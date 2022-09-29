@@ -79,6 +79,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
@@ -88,7 +89,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT
@@ -1617,8 +1617,8 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplitsPerTserver
   int num_split_tasks = 0;
   for (const auto& task : table_info->GetTasks()) {
     // These tasks will retry automatically until they succeed or fail.
-    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+    if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
+        task->type() == server::MonitoredTaskType::kSplitTablet) {
       ++num_split_tasks;
     }
   }
