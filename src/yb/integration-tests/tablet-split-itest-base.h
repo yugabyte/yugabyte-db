@@ -202,6 +202,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   Status CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
 
+  Status WaitForTableNumActiveLeadersPeers(size_t expected_leaders);
+
  protected:
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
