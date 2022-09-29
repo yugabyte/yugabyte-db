@@ -179,7 +179,8 @@ class TransactionState {
       : context_(*context),
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
-        last_touch_(last_touch) {
+        last_touch_(last_touch),
+        is_external_(false) {
   }
 
   ~TransactionState() {
@@ -718,6 +719,7 @@ class TransactionState {
     commit_time_ = data.hybrid_time;
     // TODO(dtxn) Not yet implemented
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
+    is_external_ = data.state.has_external_commit_ht();
     // TODO(savepoints) Savepoints with sealed transactions is not yet tested
     aborted_ = data.state.aborted();
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
