@@ -18,7 +18,15 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
+import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
+import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import io.ebean.annotation.Transactional;
+import io.grpc.ManagedChannel;
+import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.ByteArrayInputStream;
@@ -41,6 +49,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import javax.net.ssl.SSLException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -60,6 +69,7 @@ public class NodeAgentHandler {
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
   public static final String UPGRADE_CHECK_INTERVAL_PROPERTY =
       "yb.node_agent.upgrade_check_interval";
+  public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
   public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
 
   public static final int CERT_EXPIRY_YEARS = 5;
@@ -70,6 +80,8 @@ public class NodeAgentHandler {
   private final Config appConfig;
   private final PlatformScheduler platformScheduler;
   private final ConfigHelper configHelper;
+
+  private boolean validateConnection = true;
 
   @Inject
   public NodeAgentHandler(
@@ -137,6 +149,15 @@ public class NodeAgentHandler {
     Path certDirPath = getNodeAgentBaseCertDirectory(nodeAgent).resolve(certDir);
     log.info("Creating node agent cert directory {}", certDirPath);
     return Util.getOrCreateDir(certDirPath);
+  }
+
+  private Path getCertFilePath(NodeAgent nodeAgent, String certName) {
+    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isBlank(certDirPath)) {
+      throw new IllegalArgumentException(
+          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+    }
+    return Paths.get(certDirPath, certName);
   }
 
   // Certs are created in each directory <base-cert-dir>/<index>/.
@@ -318,6 +339,45 @@ public class NodeAgentHandler {
         .compact();
   }
 
+  // TODO add caching of channels later.
+  private ManagedChannel createRpcChannel(NodeAgent nodeAgent, boolean enableTls) {
+    NettyChannelBuilder channelBuilder =
+        NettyChannelBuilder.forAddress(nodeAgent.ip, nodeAgent.port);
+    if (enableTls) {
+      Path caCertPath = getCertFilePath(nodeAgent, NodeAgent.ROOT_CA_CERT_NAME);
+      SslContext sslcontext;
+      try {
+        sslcontext = GrpcSslContexts.forClient().trustManager(caCertPath.toFile()).build();
+        channelBuilder = channelBuilder.sslContext(sslcontext);
+      } catch (SSLException e) {
+        throw new RuntimeException("SSL context creation for gRPC client failed", e);
+      }
+    } else {
+      channelBuilder = channelBuilder.usePlaintext();
+    }
+    Duration connectTimeout = appConfig.getDuration(NODE_AGENT_CONNECT_TIMEOUT_PROPERTY);
+    channelBuilder.withOption(
+        ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) connectTimeout.toMillis());
+    return channelBuilder.build();
+  }
+
+  private void validateConnection(NodeAgent nodeAgent) {
+    ManagedChannel channel = createRpcChannel(nodeAgent, false);
+    try {
+      NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+      stub.ping(PingRequest.newBuilder().setData("test").build());
+    } catch (Exception e) {
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Ping failed " + e.getMessage());
+    } finally {
+      channel.shutdownNow();
+    }
+  }
+
+  @VisibleForTesting
+  public void enableConnectionValidation(boolean enable) {
+    validateConnection = enable;
+  }
+
   /**
    * Registers the node agent to platform to set up the authentication keys.
    *
@@ -335,6 +395,9 @@ public class NodeAgentHandler {
           Status.BAD_REQUEST, "Node agent version must be specified");
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
+    if (validateConnection) {
+      validateConnection(nodeAgent);
+    }
     // Save within the transaction to get DB generated column values.
     nodeAgent.saveState(State.REGISTERING);
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);

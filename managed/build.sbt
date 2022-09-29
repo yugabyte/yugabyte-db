@@ -91,6 +91,7 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
+lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -284,6 +285,8 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
+(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+
 (Compile / compilePlatform) := {
   ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
@@ -323,7 +326,13 @@ buildUI := {
 
 buildModules := {
   ybLog("Building modules...")
-  val status = Process("mvn install -f parent.xml").!
+  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  status
+}
+
+buildDependentArtifacts := {
+  ybLog("Building dependencies...")
+  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -341,7 +350,7 @@ cleanUI := {
 
 cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("mvn clean -f parent.xml").!
+  val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -387,7 +396,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
