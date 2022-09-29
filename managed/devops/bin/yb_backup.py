@@ -1803,9 +1803,15 @@ class YBBackup:
                             if data['database_type'] == 'YQL_DATABASE_PGSQL' else ''
                         keyspaces[object_id] = keyspace_prefix + data['name']
                     elif object_type == 'TABLE':
-                        snapshot_keyspaces.append(keyspaces[data['namespace_id']])
-                        snapshot_tables.append(data['name'])
-                        snapshot_table_uuids.append(object_id)
+                        # If a table is colocated, it will share its backing tablets with other
+                        # tables.  To avoid repeated work in getting the list of backing tablets for
+                        # all tables just add a single table from each colocation group to the table
+                        # list.
+                        if (not data.get('colocated', False)
+                                or is_parent_colocated_table_name(data['name'])):
+                            snapshot_keyspaces.append(keyspaces[data['namespace_id']])
+                            snapshot_tables.append(data['name'])
+                            snapshot_table_uuids.append(object_id)
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))
@@ -1845,10 +1851,6 @@ class YBBackup:
             tablet_leaders = []
 
             for i in range(0, len(self.args.table)):
-                # Don't call list_tablets on a parent colocated table.
-                if is_parent_colocated_table_name(self.args.table[i]):
-                    continue
-
                 if self.args.table_uuid:
                     yb_admin_args = ['list_tablets', 'tableid.' + self.args.table_uuid[i], '0']
                 else:
