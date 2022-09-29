@@ -161,6 +161,11 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         }
         createTServerTaskForNode(currentNode, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+        if (universe.isYbcEnabled()) {
+          createStopYbControllerTasks(new HashSet<>(Arrays.asList(currentNode)))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
       }
 
       // Remove master status (even when it does not exists or is not reachable).
