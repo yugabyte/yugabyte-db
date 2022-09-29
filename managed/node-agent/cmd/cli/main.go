@@ -21,6 +21,14 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
+	_, err = config.CompareAndUpdate(util.RequestTimeoutKey, "", "20")
+	if err != nil {
+		panic(err)
+	}
+	_, err = config.CompareAndUpdate(util.NodePingIntervalKey, "", "20")
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Entry for CLI.
