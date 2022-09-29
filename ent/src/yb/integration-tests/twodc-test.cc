@@ -1216,6 +1216,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
             // TODO(tablet splitting + xCluster): After splitting integration is working (+ metrics
             // support), then set this to kTrue.
             master::IncludeInactive::kFalse,
+            master::IncludeDeleted::kFalse,
             CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {

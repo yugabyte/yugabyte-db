@@ -190,12 +190,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
+  // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
       bool hide_only,
+      bool keep_data,
       boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.

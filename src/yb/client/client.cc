@@ -594,6 +594,16 @@ Status YBClient::WaitForCreateTableToFinish(
   return data_->WaitForCreateTableToFinish(this, empty_table_name, table_id, deadline);
 }
 
+Status YBClient::WaitForDeleteTableToFinish(const string& table_id) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForDeleteTableToFinish(table_id, deadline);
+}
+
+Status YBClient::WaitForDeleteTableToFinish(
+    const string& table_id, const CoarseTimePoint& deadline) {
+  return data_->WaitForDeleteTableToFinish(this, table_id, deadline);
+}
+
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
   return TruncateTables({table_id}, wait);
 }
@@ -1936,11 +1946,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
                                 master::IncludeInactive include_inactive,
+                                master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
+      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      use_cache);
 }
 
 void YBClient::LookupAllTablets(const std::shared_ptr<YBTable>& table,

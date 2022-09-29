@@ -2047,6 +2047,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
       /* table =*/ nullptr,
       // In case this is a split parent tablet, it will be hidden so we need this flag to access it.
       master::IncludeInactive::kTrue,
+      master::IncludeDeleted::kFalse,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback,
       GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) ? client::UseCache::kTrue
