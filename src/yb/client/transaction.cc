@@ -1367,6 +1367,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -1727,6 +1728,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
         std::bind(
             &Impl::LookupTabletForTransactionStatusLocationUpdateDone, this, _1, weak_transaction,

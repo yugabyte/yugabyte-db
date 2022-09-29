@@ -698,7 +698,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   {
     const auto tasks = master_leader->catalog_manager().GetRecentTasks();
     for (const auto& task : tasks) {
-      ASSERT_NE(task->type(), server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) << task;
+      ASSERT_NE(task->type(), server::MonitoredTaskType::kTruncateTablet) << task;
     }
   }
 
@@ -748,7 +748,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
         // a second truncate task appears later, but that is less easy to check for and less likely
         // to happen, so don't bother.
         for (const auto& task : tasks) {
-          if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) {
+          if (task->type() == server::MonitoredTaskType::kTruncateTablet) {
             // Check whether truncate_task is already loaded.  All truncate tasks should have
             // refcount at least one because tasks tracker holds a reference even after the task is
             // complete.  The task could lose all refcounts when master leadership changes, but that
@@ -828,7 +828,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   bool found = false;
   auto tasks = master_leader->catalog_manager().GetRecentTasks();
   for (const auto& task : tasks) {
-    if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET &&
+    if (task->type() == server::MonitoredTaskType::kTruncateTablet &&
         task == truncate_task.lock()) {
       found = true;
     }

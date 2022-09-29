@@ -90,6 +90,9 @@
     LOG_THROTTLER.TooMany() ? BOOST_PP_CAT(google::GLOG_, severity2) \
                             : BOOST_PP_CAT(google::GLOG_, severity1)).stream()
 
+#define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
+    YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
+
 namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 } // namespace yb

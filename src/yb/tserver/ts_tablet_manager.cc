@@ -1273,6 +1273,7 @@ Status TSTabletManager::DeleteTablet(
     tablet::ShouldAbortActiveTransactions should_abort_active_txns,
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     bool hide_only,
+    bool keep_data,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1347,20 +1348,22 @@ Status TSTabletManager::DeleteTablet(
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
-  Status s = DeleteTabletData(meta,
-                              delete_type,
-                              fs_manager_->uuid(),
-                              last_logged_opid,
-                              this);
-  if (PREDICT_FALSE(!s.ok())) {
-    s = s.CloneAndPrepend(Substitute("Unable to delete on-disk data from tablet $0",
-                                     tablet_id));
-    LOG(WARNING) << s.ToString();
-    tablet_peer->SetFailed(s);
-    return s;
-  }
+  if (!keep_data) {
+    Status s = DeleteTabletData(meta,
+                                delete_type,
+                                fs_manager_->uuid(),
+                                last_logged_opid,
+                                this);
+    if (PREDICT_FALSE(!s.ok())) {
+      s = s.CloneAndPrepend(Substitute("Unable to delete on-disk data from tablet $0",
+                                       tablet_id));
+      LOG(WARNING) << s.ToString();
+      tablet_peer->SetFailed(s);
+      return s;
+    }
 
-  tablet_peer->status_listener()->StatusMessage("Deleted tablet blocks from disk");
+    tablet_peer->status_listener()->StatusMessage("Deleted tablet blocks from disk");
+  }
 
   // We only remove DELETED tablets from the tablet map.
   if (delete_type == TABLET_DATA_DELETED) {

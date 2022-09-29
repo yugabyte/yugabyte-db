@@ -92,6 +92,9 @@ class LookupRpc;
 class LookupByKeyRpc;
 class LookupByIdRpc;
 
+using ProcessedTablesMap =
+    std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;
+
 // The information cached about a given tablet server in the cluster.
 //
 // A RemoteTabletServer could be the local tablet server.
@@ -527,6 +530,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
                         master::IncludeInactive include_inactive,
+                        master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
@@ -579,7 +583,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       const TableId& table_id,
       const VersionedPartitionStartKey& partition_key) REQUIRES_SHARED(mutex_);
 
-  RemoteTabletPtr LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id)
+  std::optional<RemoteTabletPtr> LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id)
       REQUIRES_SHARED(mutex_);
 
   // Update our information about the given tablet server.
@@ -600,6 +604,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
       master::IncludeInactive include_inactive,
+      master::IncludeDeleted include_deleted,
       const boost::optional<PartitionListVersion>& response_partition_list_version,
       int64_t request_no,
       const Status& status);
@@ -653,6 +658,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
       master::IncludeInactive include_inactive,
+      master::IncludeDeleted include_deleted,
       CoarseTimePoint deadline,
       UseCache use_cache,
       LookupTabletCallback* callback);
@@ -665,6 +671,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   template <class Func, class Callback>
   void RefreshTablePartitions(
       Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
+
+  Result<RemoteTabletPtr> ProcessTabletLocation(
+      const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,
+      const boost::optional<PartitionListVersion>& table_partition_list_version,
+      LookupRpc* lookup_rpc) REQUIRES(mutex_);
 
   YBClient* const client_;
 
@@ -683,13 +694,15 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   RemoteTabletServer* local_tserver_ = nullptr;
 
   // Cache of tablets, keyed by table ID, then by start partition key.
-
   std::unordered_map<TableId, TableData> tables_ GUARDED_BY(mutex_);
 
   // Cache of tablets, keyed by tablet ID.
   std::unordered_map<TabletId, RemoteTabletPtr> tablets_by_id_ GUARDED_BY(mutex_);
 
   std::unordered_map<TabletId, LookupDataGroup> tablet_lookups_by_id_ GUARDED_BY(mutex_);
+
+  // Cache of deleted tablets.
+  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.

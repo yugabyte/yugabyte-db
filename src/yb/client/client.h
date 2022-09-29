@@ -241,6 +241,11 @@ class YBClient {
   Status WaitForCreateTableToFinish(const string& table_id,
                                             const CoarseTimePoint& deadline);
 
+  // Wait for delete table to finish.
+  Status WaitForDeleteTableToFinish(const string& table_id);
+  Status WaitForDeleteTableToFinish(const string& table_id,
+                                    const CoarseTimePoint& deadline);
+
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   Status TruncateTable(const std::string& table_id, bool wait = true);
@@ -742,6 +747,7 @@ class YBClient {
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
                         master::IncludeInactive include_inactive,
+                        master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);

@@ -2560,8 +2560,8 @@ Status Executor::ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec
           }
           if (PREDICT_FALSE(!s.ok() && !NeedsRestart(s))) {
             // YBOperation returns not-found error when the tablet is not found.
-            const auto errcode = s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND
-                                                : ErrorCode::EXEC_ERROR;
+            const auto errcode =
+                s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::EXEC_ERROR;
             s = exec_context->Error(tnode, s, errcode);
           }
           if (s.ok()) {
