@@ -15,14 +15,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link ">
+    <a href="../ebean/" class="nav-link ">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link active">
+    <a href="../hibernate/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Hibernate ORM
     </a>
@@ -232,4 +232,4 @@ Query returned: name=John, age=35, language: Java
 
 ## Next Steps
 
-Explore [Scaling Java Applications](/preview/explore/linear-scalability) with YugabyteDB.
+Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.

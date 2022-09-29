@@ -192,9 +192,6 @@ DEFINE_test_flag(bool, pause_apply_tablet_split, false,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
-DEFINE_test_flag(bool, skip_post_split_compaction, false,
-                 "Skip processing post split compaction.");
-
 DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
@@ -235,10 +232,12 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
-DEFINE_bool(enable_pessimistic_locking, false,
+DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
             "If true, use pessimistic locking behavior in conflict resolution.");
-TAG_FLAG(enable_pessimistic_locking, evolving);
-TAG_FLAG(enable_pessimistic_locking, hidden);
+TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
+TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
+
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -289,7 +288,8 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_apply, "Split Apply",
                         MetricUnit::kOperations,
                         "Number of split operations successfully applied in Raft.");
 
-METRIC_DEFINE_gauge_uint64(server, ts_split_compaction_added, "Post-Split Compaction Submitted",
+METRIC_DEFINE_gauge_uint64(server, ts_post_split_compaction_added,
+                        "Post-Split Compaction Submitted",
                         MetricUnit::kRequests,
                         "Number of post-split compaction requests submitted.");
 
@@ -413,19 +413,19 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_metrics(std::move(read_metrics))
                .Build(&read_pool_));
   CHECK_OK(ThreadPoolBuilder("tablet-split-compaction")
-              .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
-              .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
-              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
-                  server_->metric_entity(), post_split_trigger_compaction_pool))
-              .Build(&post_split_trigger_compaction_pool_));
+               .set_max_threads(FLAGS_post_split_trigger_compaction_pool_max_threads)
+               .set_max_queue_size(FLAGS_post_split_trigger_compaction_pool_max_queue_size)
+               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                   server_->metric_entity(), post_split_trigger_compaction_pool))
+               .Build(&post_split_trigger_compaction_pool_));
   CHECK_OK(ThreadPoolBuilder("admin-compaction")
-              .set_max_threads(std::max(docdb::GetGlobalRocksDBPriorityThreadPoolSize(), 0))
-              .set_metrics(THREAD_POOL_METRICS_INSTANCE(
-                  server_->metric_entity(), admin_triggered_compaction_pool))
-              .Build(&admin_triggered_compaction_pool_));
+               .set_max_threads(std::max(docdb::GetGlobalRocksDBPriorityThreadPoolSize(), 0))
+               .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                   server_->metric_entity(), admin_triggered_compaction_pool))
+               .Build(&admin_triggered_compaction_pool_));
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
-  ts_split_compaction_added_ =
-      METRIC_ts_split_compaction_added.Instantiate(server_->metric_entity(), 0);
+  ts_post_split_compaction_added_ =
+      METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -487,9 +487,15 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
-  if (FLAGS_enable_pessimistic_locking) {
-    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
-        client_future(), scoped_refptr<server::Clock>(server_->clock()));
+  if (FLAGS_enable_wait_queue_based_pessimistic_locking) {
+    if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
+      LOG(WARNING) << "Ignoring enable_wait_queue_based_pessimistic_locking=true since "
+                   << "auto_promote_nonlocal_transactions_to_global is enabled. These two features "
+                   << "are not yet supported together.";
+    } else {
+      waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+          client_future(), scoped_refptr<server::Clock>(server_->clock()));
+    }
   }
 
   deque<RaftGroupMetadataPtr> metas;
@@ -1480,6 +1486,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         return server->TransactionManager();
       },
       .waiting_txn_registry = waiting_txn_registry_.get(),
+      .post_split_compaction_pool = post_split_trigger_compaction_pool_.get(),
+      .post_split_compaction_added = ts_post_split_compaction_added_
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1541,20 +1549,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
-    auto status =
-        tablet->TriggerPostSplitCompactionIfNeeded([&]() {
-          return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-        });
-    if (status.ok()) {
-      ts_split_compaction_added_->Increment();
-    } else {
-      LOG_WITH_PREFIX(WARNING) << "Failed to submit compaction for post-split tablet:"
-          << status.ToString();
-    }
-  } else {
-    LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
-  }
+  tablet->TriggerPostSplitCompactionIfNeeded();
 
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard<RWMutex> lock(mutex_);
@@ -1789,12 +1784,7 @@ TabletPeerPtr TSTabletManager::LookupTabletUnlocked(const Key& tablet_id) const 
 template <class Key>
 Result<TabletPeerPtr> TSTabletManager::DoGetServingTablet(const Key& tablet_id) const {
   auto tablet = VERIFY_RESULT(GetTablet(tablet_id));
-  TabletDataState data_state = tablet->tablet_metadata()->tablet_data_state();
-  if (!CanServeTabletData(data_state)) {
-    return STATUS_FORMAT(
-        IllegalState, "Tablet $0 data state not ready: $1", tablet_id,
-        TabletDataState_Name(data_state));
-  }
+  RETURN_NOT_OK(CheckCanServeTabletData(*tablet->tablet_metadata()));
   return tablet;
 }
 

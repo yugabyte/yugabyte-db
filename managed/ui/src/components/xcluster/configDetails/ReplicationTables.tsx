@@ -9,8 +9,7 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   editXClusterTables,
   fetchTablesInUniverse,
-  fetchTaskUntilItCompletes,
-  getUniverseInfo
+  fetchTaskUntilItCompletes
 } from '../../../actions/xClusterReplication';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
@@ -19,14 +18,16 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
+import { api } from '../../../redesign/helpers/api';
+import { XClusterModalName } from '../constants';
 
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { Replication, ReplicationTable } from '../XClusterTypes';
+import { XClusterConfig, YBTable } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
 
 interface props {
-  replication: Replication;
+  replication: XClusterConfig;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -36,11 +37,11 @@ export function ReplicationTables({ replication }: props) {
   const queryClient = useQueryClient();
   const { visibleModal } = useSelector((state: any) => state.modal);
 
-  const [deleteTableDetails, setDeleteTableDetails] = useState<ReplicationTable>();
-  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<ReplicationTable>();
+  const [deleteTableDetails, setDeleteTableDetails] = useState<YBTable>();
+  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<YBTable>();
 
   const showAddTablesToClusterModal = () => {
-    dispatch(openDialog('addTablesToClusterModal'));
+    dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
@@ -50,11 +51,11 @@ export function ReplicationTables({ replication }: props) {
 
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', replication.sourceUniverseUUID],
-    () => getUniverseInfo(replication.sourceUniverseUUID)
+    () => api.fetchUniverse(replication.sourceUniverseUUID)
   );
 
   const removeTableFromXCluster = useMutation(
-    (replication: Replication) => {
+    (replication: XClusterConfig) => {
       return editXClusterTables(replication);
     },
     {
@@ -88,13 +89,13 @@ export function ReplicationTables({ replication }: props) {
   }
 
   const tablesInReplication = tablesInSourceUniverse
-    ?.map((tables: ReplicationTable) => {
+    ?.map((tables: YBTable) => {
       return {
         ...tables,
         tableUUID: tables.tableUUID.replaceAll('-', '')
       };
     })
-    .filter((table: ReplicationTable) => replication.tables.includes(table.tableUUID));
+    .filter((table: YBTable) => replication.tables.includes(table.tableUUID));
 
   const isActiveTab = window.location.search === '?tab=tables';
 
@@ -121,9 +122,7 @@ export function ReplicationTables({ replication }: props) {
           <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
-            dataFormat={(cell: string, row: ReplicationTable) =>
-              formatSchemaName(row.tableType, cell)
-            }
+            dataFormat={(cell: string, row: YBTable) => formatSchemaName(row.tableType, cell)}
           >
             Schema Name
           </TableHeaderColumn>
@@ -143,7 +142,7 @@ export function ReplicationTables({ replication }: props) {
                 <GetCurrentLagForTable
                   replicationUUID={replication.uuid}
                   tableUUID={row.tableUUID}
-                  nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
+                  nodePrefix={universeInfo?.universeDetails.nodePrefix}
                   enabled={isActiveTab}
                   sourceUniverseUUID={replication.sourceUniverseUUID}
                 />
@@ -163,7 +162,7 @@ export function ReplicationTables({ replication }: props) {
                   btnIcon="fa fa-line-chart"
                   onClick={(e: any) => {
                     setOpenTableLagGraphDetails(row);
-                    dispatch(openDialog('replicationLagGraphModal'));
+                    dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
                     e.currentTarget.blur();
                   }}
                 />
@@ -175,7 +174,7 @@ export function ReplicationTables({ replication }: props) {
                     <MenuItem
                       onClick={() => {
                         setDeleteTableDetails(row);
-                        dispatch(openDialog('DeleteReplicationTableModal'));
+                        dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
                       }}
                     >
                       <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
@@ -193,10 +192,10 @@ export function ReplicationTables({ replication }: props) {
         <ReplicationLagGraphModal
           tableDetails={openTableLagGraphDetails}
           replicationUUID={replication.uuid}
-          universeUUID={universeInfo.data.universeUUID}
-          nodePrefix={universeInfo.data.universeDetails.nodePrefix}
+          universeUUID={universeInfo.universeUUID}
+          nodePrefix={universeInfo.universeDetails.nodePrefix}
           queryEnabled={isActiveTab}
-          visible={visibleModal === 'replicationLagGraphModal'}
+          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
           onHide={() => {
             dispatch(closeDialog());
           }}

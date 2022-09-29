@@ -35,6 +35,7 @@ class MemTracker;
 namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
+using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {
  public:

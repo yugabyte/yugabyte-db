@@ -19,10 +19,12 @@ const initialStateFeatureInTest = {
   topNodeMetrics: false,
   enableYbc: false,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false,
-  enableAzuKMS: false,
+  enableGcpKMS: true,
+  enableAzuKMS: true,
   allowOptionalAuth: false,
-  enablePITR: false
+  enablePITR: false,
+  enableDedicatedNodes: false,
+  enableNotificationTemplates: false
 };
 
 const initialStateFeatureReleased = {
@@ -44,10 +46,12 @@ const initialStateFeatureReleased = {
   topNodeMetrics: false,
   enableYbc: false,
   enableMultiRegionConfig: false,
-  enableGcpKMS: false,
-  enableAzuKMS: false,
+  enableGcpKMS: true,
+  enableAzuKMS: true,
   allowOptionalAuth: false,
-  enablePITR: false
+  enablePITR: false,
+  enableDedicatedNodes: false,
+  enableNotificationTemplates: false
 };
 
 export const FeatureFlag = (

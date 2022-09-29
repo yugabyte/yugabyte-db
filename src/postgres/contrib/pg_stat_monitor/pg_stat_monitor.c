@@ -52,10 +52,6 @@ do                                                      \
 void _PG_init(void);
 void _PG_fini(void);
 
-/*---- Initicalization Function Declarations ----*/
-void _PG_init(void);
-void _PG_fini(void);
-
 /*---- Local variables ----*/
 
 /* Current nesting depth of ExecutorRun+ProcessUtility calls */
@@ -1890,6 +1886,13 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(var->varno);
 				APP_JUMB(var->varattno);
 				APP_JUMB(var->varlevelsup);
+			}
+			break;
+		case T_YbBatchedExpr:
+			{
+				YbBatchedExpr	*bexpr = (YbBatchedExpr *) node;
+
+				JumbleExpr(jstate, (Node *) bexpr->orig_expr);
 			}
 			break;
 		case T_Const:

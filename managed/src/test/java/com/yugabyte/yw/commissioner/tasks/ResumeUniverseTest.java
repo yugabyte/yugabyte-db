@@ -100,6 +100,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> RESUME_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.ResumeServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.UniverseSetTlsParams,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl,
@@ -112,6 +116,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.ResumeServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
+          TaskType.UniverseSetTlsParams,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetActiveUniverseKeys,
@@ -125,6 +133,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
@@ -136,6 +148,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),

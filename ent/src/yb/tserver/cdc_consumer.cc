@@ -18,6 +18,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_defaults.h"
@@ -111,7 +113,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
 
   local_client->client->SetLocalTabletServer(tserver->permanent_uuid(), tserver->proxy(), tserver);
   auto cdc_consumer = std::make_unique<CDCConsumer>(std::move(is_leader_for_tablet), proxy_cache,
-      tserver->permanent_uuid(), std::move(local_client));
+      tserver->permanent_uuid(), std::move(local_client), &tserver->TransactionManager());
 
   // TODO(NIC): Unify cdc_consumer thread_pool & remote_client_ threadpools
   RETURN_NOT_OK(yb::Thread::Create(
@@ -122,19 +124,22 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
   }
   RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&cdc_consumer->thread_pool_));
+
   return cdc_consumer;
 }
 
 CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
                          rpc::ProxyCache* proxy_cache,
                          const string& ts_uuid,
-                         std::unique_ptr<CDCClient> local_client) :
+                         std::unique_ptr<CDCClient> local_client,
+                         client::TransactionManager* transaction_manager) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   rpcs_(new rpc::Rpcs),
   log_prefix_(Format("[TS $0]: ", ts_uuid)),
   local_client_(std::move(local_client)),
   last_safe_time_published_at_(MonoTime::Now()),
-  xcluster_safe_time_table_ready_(false) {}
+  xcluster_safe_time_table_ready_(false),
+  transaction_manager_(transaction_manager) {}
 
 CDCConsumer::~CDCConsumer() {
   Shutdown();
@@ -228,6 +233,22 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     return;
   }
 
+  if (consumer_registry->enable_replicate_transaction_status_table() &&
+      !global_transaction_status_table_) {
+    auto global_transaction_status_table_name = client::YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    auto global_transaction_status_table_res =
+        local_client_->client->OpenTable(global_transaction_status_table_name);
+    if (!global_transaction_status_table_res.ok()) {
+      // We could not open the transaction status table, so return without setting any in-memory
+      // state.
+      LOG(WARNING) << global_transaction_status_table_res.status();
+      cond_.notify_all();
+      return;
+    }
+    global_transaction_status_table_ = std::move(*global_transaction_status_table_res);
+  }
+
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
   decltype(uuid_master_addrs_) old_uuid_master_addrs;
@@ -243,6 +264,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   streams_with_local_tserver_optimization_.clear();
   stream_to_schema_version_.clear();
+
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {
@@ -279,24 +301,47 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
               {producer_map.first, stream_entry.first, producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
-          producer_consumer_tablet_map_from_master_[producer_tablet_info] = consumer_tablet_info;
+          auto xCluster_tablet_info = cdc::XClusterTabletInfo {
+            .producer_tablet_info = producer_tablet_info,
+            .consumer_tablet_info = consumer_tablet_info
+          };
+          producer_consumer_tablet_map_from_master_.emplace(xCluster_tablet_info);
         }
       }
     }
   }
+  enable_replicate_transaction_status_table_ =
+      consumer_registry->enable_replicate_transaction_status_table();
   cond_.notify_all();
+}
+
+Result<cdc::ConsumerTabletInfo> CDCConsumer::GetConsumerTableInfo(
+    const TabletId& producer_tablet_id) {
+  SharedLock<rw_spinlock> lock(master_data_mutex_);
+  const auto& index_by_tablet = producer_consumer_tablet_map_from_master_.get<TabletTag>();
+  auto count = index_by_tablet.count(producer_tablet_id);
+  if (count != 1) {
+    return STATUS(IllegalState, Format("For producer tablet $0, found $1 entries when exactly 1 "
+                                       "expected for transactional workloads.", producer_tablet_id,
+                                       count));
+  }
+  auto it = index_by_tablet.find(producer_tablet_id);
+  return it->consumer_tablet_info;
 }
 
 void CDCConsumer::TriggerPollForNewTablets() {
   std::lock_guard<rw_spinlock> write_lock_master(master_data_mutex_);
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
-    auto uuid = entry.first.universe_uuid;
+    const auto& producer_tablet_info = entry.producer_tablet_info;
+    const auto& consumer_tablet_info = entry.consumer_tablet_info;
+    auto uuid = producer_tablet_info.universe_uuid;
     bool start_polling;
     {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
-      start_polling = producer_pollers_map_.find(entry.first) == producer_pollers_map_.end() &&
-                      is_leader_for_tablet_(entry.second.tablet_id);
+      start_polling =
+          producer_pollers_map_.find(producer_tablet_info) == producer_pollers_map_.end() &&
+          is_leader_for_tablet_(entry.consumer_tablet_info.tablet_id);
 
       // Update the Master Addresses, if altered after setup.
       if (ContainsKey(remote_clients_, uuid) && changed_master_addrs_.count(uuid) > 0) {
@@ -313,8 +358,9 @@ void CDCConsumer::TriggerPollForNewTablets() {
       std::lock_guard <rw_spinlock> write_lock_pollers(producer_pollers_map_mutex_);
 
       // Check again, since we unlocked.
-      start_polling = producer_pollers_map_.find(entry.first) == producer_pollers_map_.end() &&
-          is_leader_for_tablet_(entry.second.tablet_id);
+      start_polling =
+          producer_pollers_map_.find(producer_tablet_info) == producer_pollers_map_.end() &&
+          is_leader_for_tablet_(consumer_tablet_info.tablet_id);
       if (start_polling) {
         // This is a new tablet, trigger a poll.
         // See if we need to create a new client connection
@@ -366,28 +412,31 @@ void CDCConsumer::TriggerPollForNewTablets() {
 
         // now create the poller
         bool use_local_tserver =
-            streams_with_local_tserver_optimization_.find(entry.first.stream_id) !=
+            streams_with_local_tserver_optimization_.find(producer_tablet_info.stream_id) !=
             streams_with_local_tserver_optimization_.end();
         auto cdc_poller = std::make_shared<CDCPoller>(
-            entry.first, entry.second,
-            std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first, entry.second),
-            std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
+            producer_tablet_info, consumer_tablet_info,
+            std::bind(&CDCConsumer::ShouldContinuePolling, this, producer_tablet_info,
+                      consumer_tablet_info),
+            std::bind(&CDCConsumer::RemoveFromPollersMap, this, producer_tablet_info),
             thread_pool_.get(),
             rpcs_.get(),
             local_client_,
             remote_clients_[uuid],
             this,
-            use_local_tserver);
+            use_local_tserver,
+            global_transaction_status_table_,
+            enable_replicate_transaction_status_table_);
         LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
-            entry.first.tablet_id);
-        producer_pollers_map_[entry.first] = cdc_poller;
+            producer_tablet_info.tablet_id);
+        producer_pollers_map_[producer_tablet_info] = cdc_poller;
         cdc_poller->Poll();
       }
     }
-    auto schema_version_iter = stream_to_schema_version_.find(entry.first.stream_id);
+    auto schema_version_iter = stream_to_schema_version_.find(producer_tablet_info.stream_id);
     if (schema_version_iter != stream_to_schema_version_.end()) {
       SharedLock<rw_spinlock> read_lock_pollers(producer_pollers_map_mutex_);
-      auto cdc_poller_iter = producer_pollers_map_.find(entry.first);
+      auto cdc_poller_iter = producer_pollers_map_.find(producer_tablet_info);
       if (cdc_poller_iter != producer_pollers_map_.end()) {
         cdc_poller_iter->second->SetSchemaVersion(schema_version_iter->second);
       }
@@ -433,11 +482,11 @@ bool CDCConsumer::ShouldContinuePolling(
   // We either no longer need to poll for this tablet, or a different tablet should be polling
   // for it now instead of this one (due to a local tablet split).
   if (it == producer_consumer_tablet_map_from_master_.end() ||
-      it->second.tablet_id != consumer_tablet_info.tablet_id) {
+      it->consumer_tablet_info.tablet_id != consumer_tablet_info.tablet_id) {
     // We no longer care about this tablet, abort the cycle.
     return false;
   }
-  return is_leader_for_tablet_(it->second.tablet_id);
+  return is_leader_for_tablet_(it->consumer_tablet_info.tablet_id);
 }
 
 std::string CDCConsumer::LogPrefix() {
@@ -446,6 +495,10 @@ std::string CDCConsumer::LogPrefix() {
 
 int32_t CDCConsumer::cluster_config_version() const {
   return cluster_config_version_.load(std::memory_order_acquire);
+}
+
+client::TransactionManager* CDCConsumer::TransactionManager() {
+  return transaction_manager_;
 }
 
 Status CDCConsumer::ReloadCertificates() {

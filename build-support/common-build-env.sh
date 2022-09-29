@@ -347,7 +347,8 @@ decide_whether_to_use_linuxbrew() {
     elif [[ -n ${YB_LINUXBREW_DIR:-} ||
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" ) ]]; then
+              "$( uname -m )" == "x86_64" &&
+              ${OSTYPE} =~ ^linux.*$ ) ]]; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -498,10 +499,14 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(debug|fastdebug|release|prof_(gen|use))$ &&
-            ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        YB_COMPILER_TYPE=clang13
+      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
+        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
+          YB_COMPILER_TYPE=clang14
+        else
+          YB_COMPILER_TYPE=clang13
+        fi
       else
+        # https://github.com/yugabyte/yugabyte-db/issues/12603
         YB_COMPILER_TYPE=clang12
       fi
     else
@@ -509,12 +514,6 @@ set_default_compiler_type() {
     fi
     export YB_COMPILER_TYPE
     readonly YB_COMPILER_TYPE
-  else
-    if is_mac; then
-      if [[ $YB_COMPILER_TYPE != "clang" ]]; then
-        fatal "YB_COMPILER_TYPE is $YB_COMPILER_TYPE on macOS, but only 'clang' is supported"
-      fi
-    fi
   fi
 }
 
@@ -1249,7 +1248,7 @@ download_toolchain() {
     toolchain_urls+=( "$linuxbrew_url" )
   fi
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
-        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]] && is_linux; then
+        ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
     YB_LLVM_TOOLCHAIN_URL=$(
       activate_virtualenv &>/dev/null
       python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
@@ -1313,6 +1312,10 @@ download_toolchain() {
       save_llvm_toolchain_info_to_build_dir
     fi
   done
+
+  if [[ -n ${YB_LLVM_TOOLCHAIN_DIR:-} && ! -e ${BUILD_ROOT}/toolchain ]]; then
+    ln -s "${YB_LLVM_TOOLCHAIN_DIR}" "${BUILD_ROOT}/toolchain"
+  fi
 }
 
 # -------------------------------------------------------------------------------------------------

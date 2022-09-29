@@ -127,7 +127,7 @@ public class NodeAgentHandler {
   private Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
         appConfig.getString("yb.storage.path"),
-        "node-agents",
+        "node-agent",
         "certs",
         nodeAgent.customerUuid.toString(),
         nodeAgent.uuid.toString());
@@ -331,7 +331,8 @@ public class NodeAgentHandler {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent is already registered");
     }
     if (StringUtils.isBlank(payload.version)) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Node agent version must be specified");
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
     // Save within the transaction to get DB generated column values.
@@ -378,12 +379,14 @@ public class NodeAgentHandler {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
     nodeAgent.validateStateTransition(payload.state);
     if (!UPDATABLE_STATES_BY_NODE_AGENT.contains(payload.state)) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Invalid state " + payload.state);
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Invalid node agent state " + payload.state);
     }
     nodeAgent.state = payload.state;
     if (nodeAgent.state == State.UPGRADED) {
       if (StringUtils.isBlank(payload.version)) {
-        throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Node agent version must be specified");
       }
       // Node agent is ready after an upgrade.
       nodeAgent.version = payload.version;

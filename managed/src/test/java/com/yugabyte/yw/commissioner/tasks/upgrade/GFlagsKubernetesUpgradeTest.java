@@ -177,9 +177,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
         .getPodStatus(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
@@ -225,9 +223,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
         .getPodStatus(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

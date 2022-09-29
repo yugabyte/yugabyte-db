@@ -226,6 +226,11 @@ class CatalogManager :
                                                       const TablespaceId* tablespace_id,
                                                       const ReplicationInfoPB* replication_info);
 
+  // Add a tablet to a transaction status table.
+  Status AddTransactionStatusTablet(const AddTransactionStatusTabletRequestPB* req,
+                                    AddTransactionStatusTabletResponsePB* resp,
+                                    rpc::RpcContext* rpc);
+
   // Check if there is a transaction table whose tablespace id matches the given tablespace id.
   bool DoesTransactionTableExistForTablespace(
       const TablespaceId& tablespace_id) EXCLUDES(mutex_);
@@ -509,6 +514,8 @@ class CatalogManager :
       const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion);
+
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
@@ -759,6 +766,8 @@ class CatalogManager :
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp) override;
 
+  MonoTime LastLoadBalancerRunTime() const;
+
   Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                     IsLoadBalancerIdleResponsePB* resp);
 
@@ -941,7 +950,7 @@ class CatalogManager :
 
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
-  bool ShouldSplitValidCandidate(
+  Status ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
   Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
@@ -954,6 +963,10 @@ class CatalogManager :
   // in the cluster.
   Status CheckIfPitrActive(
     const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp);
+
+  // Get the parent table id for a colocated table. The table parameter must be colocated and
+  // not satisfy IsColocationParentTableId.
+  Result<TableId> GetParentTableIdForColocatedTable(const scoped_refptr<TableInfo>& table);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
@@ -1171,6 +1184,7 @@ class CatalogManager :
   static void CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
                                              const consensus::ConsensusStatePB* consensus_state,
                                              const ReportedTabletPB& report,
+                                             const tablet::RaftGroupStatePB& state,
                                              TabletReplica* new_replica);
 
   // Extract the set of tablets that can be deleted and the set of tablets
@@ -1466,6 +1480,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsCdcSdkEnabled(const TableInfo& table_info) {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override {
     // Default value.
     return false;
@@ -1594,7 +1613,7 @@ class CatalogManager :
   scoped_refptr<SysConfigInfo> transaction_tables_config_ =
       nullptr; // No GUARD, only write on Load.
 
-  Master *master_;
+  Master* const master_;
   Atomic32 closing_;
 
   std::unique_ptr<SysCatalogTable> sys_catalog_;
@@ -1760,7 +1779,7 @@ class CatalogManager :
       const TableDescription& table_description,
       CollectFlags flags,
       std::vector<TableDescription>* all_tables,
-      std::unordered_set<NamespaceId>* parent_colocated_table_ids);
+      std::unordered_set<TableId>* parent_colocated_table_ids);
 
   Status SplitTablet(const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split);
 

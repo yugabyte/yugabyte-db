@@ -32,10 +32,10 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(flush_rocksdb_on_shutdown);

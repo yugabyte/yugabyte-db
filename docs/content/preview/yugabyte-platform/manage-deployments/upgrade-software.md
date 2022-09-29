@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The YugabyteDB release that is powering a universe can be upgraded to get the new features and fixes included in the release.
+The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
 
 Before you start the upgrade, you might want to import a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
@@ -48,3 +48,9 @@ You can perform a rolling upgrade on a live universe deployment as follows:
     To trigger an upgrade that involves downtime, deselect **Rolling Upgrade**.
 
 For information on how rolling upgrades are performed in YugabyteDB, see [Upgrade a deployment](../../../manage/upgrade-deployment/). 
+
+{{< note title="Note" >}}
+
+Currently, you cannot downgrade a universe to an older YugabyteDB release. For assistance with downgrades, contact Yugabyte Support. 
+
+{{< /note >}}

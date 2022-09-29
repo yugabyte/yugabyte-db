@@ -211,7 +211,10 @@ public class RotateAccessKey extends UniverseTaskBase {
               + " cannot run access key rotation. Retry with access key "
               + newAccessKey.getKeyCode()
               + " after resuming it!");
-    } else if (!universe.allNodesLive()) {
+    } else if (!universe.allNodesLive() && !universe.getUniverseDetails().updateInProgress) {
+      // Throw Runtime Exception for non-live nodes when the nodes are actually down,
+      // & not undergoing any other ops, during other ops nodes states can be
+      // stopping/starting, etc.
       setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "

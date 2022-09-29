@@ -665,15 +665,6 @@ static bool
 YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
                                AttrNumber attnum, ScanKey key)
 {
-	if (IsSystemRelation(relation))
-	{
-		/*
-		 * Only support eq operators for system tables.
-		 * TODO: we can probably allow ineq conditions for system tables now.
-		 */
-		return YbIsBasicOpSearch(key) && key->sk_strategy == BTEqualStrategyNumber;
-	}
-
 	if (YbIsBasicOpSearch(key))
 	{
 		/* Eq strategy for hash key, eq + ineq for range key. */
@@ -894,28 +885,6 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 								  &ybScan->prepare_params,
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
-
-	if (IsSystemRelation(relation))
-	{
-		/* Bind the scan keys */
-		for (int i = 0; i < ybScan->nkeys; i++)
-		{
-			int bind_key_attnum = scan_plan->bind_key_attnums[i];
-			int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
-			if (bms_is_member(idx, scan_plan->sk_cols))
-			{
-				ScanKey key = ybScan->keys[i];
-				bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
-
-				Assert(YbCheckScanTypes(ybScan, scan_plan, i));
-
-				YbBindColumn(ybScan, scan_plan->bind_desc,
-				             scan_plan->bind_key_attnums[i],
-				             key->sk_argument, is_null);
-			}
-		}
-		return true;
-	}
 
 	/*
 	 * Set up the arrays to store the search intervals for each PG/YSQL
@@ -2312,6 +2281,7 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
 static double ybcIndexEvalClauseSelectivity(Relation index,
+											double reltuples,
 											Bitmapset *qual_cols,
 											bool is_unique_idx,
                                             Bitmapset *hash_key,
@@ -2333,8 +2303,11 @@ static double ybcIndexEvalClauseSelectivity(Relation index,
 	if (bms_is_subset(primary_key, qual_cols))
 	{
 		/* For unique indexes full key guarantees single row. */
-		return is_unique_idx ? YBC_SINGLE_ROW_SELECTIVITY
-						     : YBC_SINGLE_KEY_SELECTIVITY;
+		if (is_unique_idx)
+			return (reltuples == 0) ? YBC_SINGLE_ROW_SELECTIVITY : 
+									 (double)(1.0 / reltuples);
+		else
+			return YBC_SINGLE_KEY_SELECTIVITY;
 	}
 
 	return YBC_HASH_SCAN_SELECTIVITY;
@@ -2432,6 +2405,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		else
 		{
 			*selectivity = ybcIndexEvalClauseSelectivity(index,
+														baserel->tuples,
 														scan_plan.sk_cols,
 														is_unique,
 														scan_plan.hash_key,
@@ -2466,6 +2440,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
 		 */
 		double const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
+																	  baserel->tuples,
 																	  const_quals,
 																	  is_unique,
 																	  scan_plan.hash_key,

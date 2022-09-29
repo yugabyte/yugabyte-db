@@ -1,4 +1,50 @@
 {
   "translation": {
+    "clusterDetail": {
+      "performance": {
+        "advisor": {
+          "Recommendation": "Recommendation",
+          "Separator": ": ",
+          "NoPerformanceIssues": "Performance Advisor didn't find any performance issues",
+          "ReviewLoadBalancing": "If you are load balancing in your application or client, review your implementation.",
+          "RebalanceAndTroubleshoot": "Rebalance and troubleshoot the cluster. ",
+          "LearnPerformanceAdvisor": "Learn more about Performance Advisor",
+          "LearnHow": "Learn How",
+          "ScanCluster": "Scan the cluster for performance tuning recommendations",
+          "RunWorkload": "For meaningful results, run your workload for at least 1 hour before doing a scan.",
+          "IndexPerformanceTuning": "Learn more about index performance tuning",
+          "OpenSupportTicket": "Open a support ticket",
+          "DropIndex": "Connect to the database and use DROP INDEX to delete the unused indexes.",
+          "RangeSharding": "Recreate the indexes using range sharding",
+          "AllDatabases": "All Databases",
+          "ScanBtn": "Scan",
+          "ReScanBtn": "Re-Scan",
+          "Hurray": "Hurray",
+          "ScanTime": "Current Scan"
+        },
+        "typeTag": {
+          "IndexSuggestion": "INDEX SUGGESTION",
+          "SchemaSuggestion": "SCHEMA SUGGESTION",
+          "ConnectionSkew": "CONNECTION SKEW",
+          "QueryLoadSkew": "QUERY LOAD SKEW",
+          "CpuSkew": "CPU SKEW",
+          "CpuUsage": "CPU USAGE"
+        },
+        "suggestionTypes": {
+          "All": "All recommendation types",
+          "CpuSkew": "CPU Skew",
+          "CpuUsage": "CPU Usage",
+          "SchemaSuggestion": "Schema Suggestion",
+          "ConnectionSkew": "Connection Skew",
+          "QueryLoadSkew": "Query Load Skew",
+          "IndexSuggestion": "Index Suggestion"
+        },
+        "chartTitle": {
+          "CpuUsagePercentage": "CPU Usage (Percentage)",
+          "Connections": "Connections",
+          "Queries": "Queries"
+        }
+      }
+    }
   }
 }

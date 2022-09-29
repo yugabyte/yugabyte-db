@@ -2214,6 +2214,8 @@ calc_non_nestloop_required_outer(Path *outer_path, Path *inner_path)
 	return required_outer;
 }
 
+extern int yb_bnl_batch_size;
+
 /*
  * create_nestloop_path
  *	  Creates a pathnode corresponding to a nestloop join between two
@@ -2253,7 +2255,18 @@ create_nestloop_path(PlannerInfo *root,
 	 * because the restrict_clauses list can affect the size and cost
 	 * estimates for this path.
 	 */
-	if (bms_overlap(inner_req_outer, outer_path->parent->relids))
+	 ParamPathInfo *param_info = inner_path->param_info;
+	 Relids inner_req_batched = param_info == NULL
+		? NULL : param_info->yb_ppi_req_outer_batched;
+	 
+	 Relids outer_req_unbatched = outer_path->param_info ?
+	 	outer_path->param_info->yb_ppi_req_outer_unbatched :
+		NULL;
+
+	 bool is_batched = bms_overlap(inner_req_batched,
+	 							   outer_path->parent->relids) &&
+					   !bms_overlap(outer_req_unbatched, inner_req_batched);
+	if (!is_batched && bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
 		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
 												inner_req_outer);
@@ -2270,6 +2283,12 @@ create_nestloop_path(PlannerInfo *root,
 				jclauses = lappend(jclauses, rinfo);
 		}
 		restrict_clauses = jclauses;
+	}
+
+	if (is_batched)
+	{
+		Assert(yb_bnl_batch_size > 1);
+		pathkeys = NIL;
 	}
 
 	pathnode->path.pathtype = T_NestLoop;

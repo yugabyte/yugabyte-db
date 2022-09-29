@@ -12,7 +12,6 @@ package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -21,6 +20,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.MaintenanceWindow.State;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
@@ -63,6 +63,8 @@ public class AlertConfigurationWriter {
 
   private final AlertConfigurationService alertConfigurationService;
 
+  private final AlertTemplateSettingsService alertTemplateSettingsService;
+
   private final SwamperHelper swamperHelper;
 
   private final MetricQueryHelper metricQueryHelper;
@@ -77,6 +79,7 @@ public class AlertConfigurationWriter {
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
       AlertConfigurationService alertConfigurationService,
+      AlertTemplateSettingsService alertTemplateSettingsService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory,
@@ -85,6 +88,7 @@ public class AlertConfigurationWriter {
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
     this.alertConfigurationService = alertConfigurationService;
+    this.alertTemplateSettingsService = alertTemplateSettingsService;
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
@@ -127,7 +131,10 @@ public class AlertConfigurationWriter {
         log.info("Alert definition {} has config in sync", definitionUuid);
         return SyncResult.IN_SYNC;
       }
-      swamperHelper.writeAlertDefinition(configuration, definition);
+      AlertTemplateSettings templateSettings =
+          alertTemplateSettingsService.get(
+              configuration.getCustomerUUID(), configuration.getTemplate().name());
+      swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
       definition.setConfigWritten(true);
       alertDefinitionService.save(definition);
       requiresReload.set(true);

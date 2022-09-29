@@ -78,6 +78,9 @@ struct TableInfo {
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
+  // namespace_id is currently used on the xcluster path to determine safe time on the apply
+  // transaction path.
+  NamespaceId namespace_id;
   std::string table_name;
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
@@ -231,8 +234,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
+  Result<TableInfoPtr> GetTableInfo(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const
+      REQUIRES(data_mutex_);
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -257,15 +263,20 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the name, type, schema, index map, schema, etc of the table.
   std::string namespace_name(const TableId& table_id = "") const;
 
-  std::string table_name(const TableId& table_id = "") const;
+  NamespaceId namespace_id() const;
+
+  std::string table_name(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   TableType table_type(const TableId& table_id = "") const;
 
-  yb::SchemaPtr schema(const TableId& table_id = "") const;
+  yb::SchemaPtr schema(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
@@ -295,6 +306,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
   const std::string& wal_dir() const { return wal_dir_; }
+
+  Status set_namespace_id(const NamespaceId& namespace_id);
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);
@@ -614,6 +627,8 @@ inline bool CanServeTabletData(TabletDataState state) {
   return state == TabletDataState::TABLET_DATA_READY ||
          state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
 }
+
+Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
 } // namespace tablet
 } // namespace yb

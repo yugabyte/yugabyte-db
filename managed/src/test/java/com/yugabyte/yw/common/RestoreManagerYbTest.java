@@ -323,12 +323,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   private List<String> getExpectedRestoreBackupCommand(
       RestoreBackupParams restoreParams, ActionType actionType, String storageType) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      podFQDNToConfig =
+      podAddrToConfig =
           PlacementInfoUtil.getKubernetesConfigPerPod(
               pi, testUniverse.getUniverseDetails().nodeDetailsSet);
     }
@@ -365,7 +365,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
-      cmd.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());

@@ -2100,6 +2100,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** Run a process, returning output lines. */
+  protected List<String> runProcess(List<String> args) throws Exception {
+    return runProcess(new ProcessBuilder(args));
+  }
+
+  /** Run a process, returning output lines. */
   protected List<String> runProcess(ProcessBuilder procBuilder) throws Exception {
     Process proc = procBuilder.start();
     int code = proc.waitFor();

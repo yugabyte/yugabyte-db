@@ -2,12 +2,12 @@ import React from 'react';
 import clsx from 'clsx';
 
 import { ReplicationStatus } from './constants';
-import { Replication } from './XClusterTypes';
+import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigStatusLabel.module.scss';
 
 interface XClusterConfigStatusProps {
-  xClusterConfig: Replication;
+  xClusterConfig: XClusterConfig;
 }
 
 export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStatusProps) => {
@@ -41,9 +41,9 @@ export const XClusterConfigStatusLabel = ({ xClusterConfig }: XClusterConfigStat
       );
     case ReplicationStatus.DELETION_FAILED:
       return (
-        <span className={clsx(styles.label, styles.deleted)}>
+        <span className={clsx(styles.label, styles.deletionFailed)}>
           <i className="fa fa-close" />
-          Deleted
+          Deletion Failed
         </span>
       );
     case ReplicationStatus.DELETED_UNIVERSE: {

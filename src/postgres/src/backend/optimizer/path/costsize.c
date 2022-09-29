@@ -147,6 +147,8 @@ bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
 bool		yb_enable_geolocation_costing = true;
 
+extern int yb_bnl_batch_size;
+
 typedef struct
 {
 	PlannerInfo *root;
@@ -789,6 +791,13 @@ extract_nonindex_conditions(List *qual_clauses, List *indexquals)
 			continue;			/* simple duplicate */
 		if (is_redundant_derived_clause(rinfo, indexquals))
 			continue;			/* derived from same EquivalenceClass */
+		
+		Assert(list_length(rinfo->yb_batched_rinfo) <= 2);
+		if (rinfo->yb_batched_rinfo &&
+			(list_member_ptr(indexquals, linitial(rinfo->yb_batched_rinfo)) ||
+			 (list_length(rinfo->yb_batched_rinfo) >= 2 &&
+			   list_member_ptr(indexquals, lsecond(rinfo->yb_batched_rinfo)))))
+			continue;
 		/* ... skip the predicate proof attempt createplan.c will try ... */
 		result = lappend(result, rinfo);
 	}

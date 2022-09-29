@@ -185,6 +185,22 @@ DEFINE_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
              "during the import snapshot metadata phase of restore.");
 TAG_FLAG(import_snapshot_max_concurrent_create_table_requests, runtime);
 
+DEFINE_int32(inflight_splits_completion_timeout_secs, 600,
+             "Total time to wait for all inflight splits to complete during Restore.");
+TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
+TAG_FLAG(inflight_splits_completion_timeout_secs, runtime);
+
+DEFINE_int32(pitr_max_restore_duration_secs, 600,
+             "Maximum amount of time to complete a PITR restore.");
+TAG_FLAG(pitr_max_restore_duration_secs, advanced);
+TAG_FLAG(pitr_max_restore_duration_secs, runtime);
+
+DEFINE_int32(pitr_split_disable_check_freq_ms, 500,
+             "Delay before retrying to see if inflight tablet split operations have completed "
+             "after which PITR restore can be performed.");
+TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
+TAG_FLAG(pitr_split_disable_check_freq_ms, runtime);
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -850,7 +866,6 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
 Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
   SharedLock lock(mutex_);
   TRACE("Acquired catalog manager lock");
-  const string kNotFoundErrorStr = "Not found or invalid relnamespace oid for table oid ";
 
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
@@ -884,7 +899,8 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
             // happen due to a bug with the async nature of drops in PG with docdb.
             // If this occurs don't block the entire backup, instead skip this table(see gh #13361).
             if (res.status().IsNotFound() &&
-                res.status().message().ToBuffer().find(kNotFoundErrorStr) != string::npos) {
+                res.status().message().ToBuffer().find(kRelnamespaceNotFoundErrorStr)
+                    != string::npos) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
               snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets always
@@ -3042,20 +3058,6 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
                                               rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
 
-  ListNamespacesRequestPB list_namespace_req;
-  list_namespace_req.set_database_type(YQL_DATABASE_PGSQL);
-  ListNamespacesResponsePB list_namespace_resp;
-  RETURN_NOT_OK(ListNamespaces(&list_namespace_req, &list_namespace_resp));
-  for (const auto& ns : list_namespace_resp.namespaces()) {
-    ListTablegroupsRequestPB tablegroup_req;
-    tablegroup_req.set_namespace_id(ns.id());
-    ListTablegroupsResponsePB tablegroup_resp;
-    RETURN_NOT_OK(ListTablegroups(&tablegroup_req, &tablegroup_resp, rpc));
-    if (tablegroup_resp.has_error() || tablegroup_resp.tablegroups_size() > 0) {
-      return STATUS(NotSupported, "Not allowed to create snapshot schedule "
-                                  "when one or more tablegroups exist on the cluster");
-    }
-  }
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
       *req, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
@@ -3087,6 +3089,40 @@ Status CatalogManager::EditSnapshotSchedule(
   *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
       id, *req, leader_ready_term(), rpc->GetClientDeadline()));
   return Status::OK();
+}
+
+Status CatalogManager::RestoreSnapshotSchedule(
+    const RestoreSnapshotScheduleRequestPB* req,
+    RestoreSnapshotScheduleResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
+  HybridTime ht = HybridTime(req->restore_ht());
+  auto deadline = rpc->GetClientDeadline();
+
+  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
+      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
+  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
+
+  // Disable splitting and then wait for all pending splits to complete before starting restoration.
+  DisableTabletSplittingInternal(disable_duration_ms, "PITR");
+
+  bool inflight_splits_finished = false;
+  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
+    // Wait for existing split operations to complete.
+    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */)) {
+      inflight_splits_finished = true;
+      break;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
+  }
+
+  if (!inflight_splits_finished) {
+    EnableTabletSplitting("PITR");
+    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
+  }
+
+  return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, leader_ready_term(), deadline);
 }
 
 void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
@@ -5408,7 +5444,10 @@ Status CatalogManager::InitCDCConsumer(
 
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
-  auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
+  consumer_registry->set_enable_replicate_transaction_status_table(
+       GetAtomicFlag(&FLAGS_enable_replicate_transaction_status_table));
+  auto* producer_map = consumer_registry->mutable_producer_map();
   auto it = producer_map->find(producer_universe_uuid);
   if (it != producer_map->end()) {
     return STATUS(InvalidArgument, "Already created a consumer for this universe");
@@ -6776,6 +6815,26 @@ bool CatalogManager::IsCdcEnabled(
     const TableInfo& table_info) const {
   SharedLock lock(mutex_);
   return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
+}
+
+// This function will be replaced with IsTablePartOfCDCSDK when PR for
+// tablet split will be merged: https://phabricator.dev.yugabyte.com/D18638
+bool CatalogManager::IsCdcSdkEnabled(const TableInfo& table_info) {
+  master::ListCDCStreamsRequestPB list_req;
+  master::ListCDCStreamsResponsePB list_resp;
+  list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
+  list_req.set_namespace_id(table_info.namespace_id());
+  RETURN_NOT_OK_RET(ListCDCStreams(&list_req, &list_resp), false);
+  if (list_resp.streams().size() != 0) {
+    for (auto stream : list_resp.streams()) {
+      for (auto table_id : stream.table_id()) {
+        if (table_id == table_info.id()) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {

@@ -60,7 +60,8 @@ class WaitQueue {
       const std::string& permanent_uuid,
       WaitingTxnRegistry* waiting_txn_registry,
       const std::shared_future<client::YBClient*>& client_future,
-      const server::ClockPtr& clock);
+      const server::ClockPtr& clock,
+      const MetricEntityPtr& metrics);
 
   ~WaitQueue();
 

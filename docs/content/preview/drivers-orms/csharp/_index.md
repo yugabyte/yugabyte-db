@@ -26,8 +26,8 @@ The following projects can be used to implement C# applications using the Yugaby
 
 <!-- | Project | Type | Support | Examples |
 | :------ | :--- | :-------| :------- |
-| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](/preview/develop/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
-| [EntityFramework](entityframework) | ORM |  Full | [Hello World](/preview/develop/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
+| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](../../develop/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
+| [EntityFramework](entityframework) | ORM |  Full | [Hello World](../../develop/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
@@ -54,8 +54,3 @@ To develop C# applications for YugabyteDB, you need the following:
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
-
-## Next steps
-
-- Learn how to build C# applications using [Entity Framework ORM](entityframework/).
-- Learn how to use [Entity Framework core](../../integrations/entity-framework/) with YugabyteDB.

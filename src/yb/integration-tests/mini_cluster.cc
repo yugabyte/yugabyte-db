@@ -46,6 +46,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
@@ -72,6 +73,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
@@ -692,6 +694,25 @@ void MiniCluster::EnsurePortsAllocated(size_t new_num_masters, size_t new_num_ts
   }
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
+}
+
+Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
+  auto master_leader = VERIFY_RESULT(GetLeaderMiniMaster())->master();
+  const auto start_time = MonoTime::Now();
+  const auto deadline = start_time + timeout;
+  RETURN_NOT_OK(Wait(
+      [&]() -> Result<bool> {
+        return master_leader->catalog_manager_impl()->LastLoadBalancerRunTime() > start_time;
+      },
+      deadline, "LoadBalancer did not evaluate the cluster load"));
+
+  master::IsLoadBalancerIdleRequestPB req;
+  master::IsLoadBalancerIdleResponsePB resp;
+  return Wait(
+      [&]() -> Result<bool> {
+        return master_leader->catalog_manager_impl()->IsLoadBalancerIdle(&req, &resp).ok();
+      },
+      deadline, "IsLoadBalancerIdle");
 }
 
 server::SkewedClockDeltaChanger JumpClock(

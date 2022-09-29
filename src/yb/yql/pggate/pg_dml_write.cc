@@ -122,7 +122,7 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
   if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
-    RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+    rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
 
     // Save the number of rows affected by the op.
     rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());

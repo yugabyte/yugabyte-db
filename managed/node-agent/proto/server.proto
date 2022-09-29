@@ -1,4 +1,16 @@
 syntax = "proto3";
-package main;
+package nodeagent.server;
 
 option go_package = "./service";
+
+service NodeAgent {
+    rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+    string data = 1;
+}
+
+message PingResponse {
+    string data = 1;
+}

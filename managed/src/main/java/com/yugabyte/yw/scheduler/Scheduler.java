@@ -25,9 +25,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -47,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -163,6 +165,13 @@ public class Scheduler {
           }
 
           boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
+          UUID baseBackupUUID = null;
+          if (!shouldRunTask && ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
+            baseBackupUUID = fetchBaseBackupUUIDIfIncrementalBackupRequired(schedule);
+            if (baseBackupUUID != null) {
+              shouldRunTask = true;
+            }
+          }
 
           if (shouldRunTask || backlogStatus) {
             switch (taskType) {
@@ -176,7 +185,7 @@ public class Scheduler {
                 this.runExternalScriptTask(schedule, alreadyRunning);
                 break;
               case CreateBackup:
-                this.runCreateBackupTask(schedule, alreadyRunning);
+                this.runCreateBackupTask(schedule, alreadyRunning, baseBackupUUID);
                 break;
               case CreateAndRotateAccessKey:
                 this.runAccessKeyRotation(schedule, alreadyRunning);
@@ -202,6 +211,32 @@ public class Scheduler {
     } catch (Exception e) {
       log.error("Error Running scheduler thread", e);
     }
+  }
+
+  private UUID fetchBaseBackupUUIDIfIncrementalBackupRequired(Schedule schedule) {
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    long incrementalBackupFrequency = params.incrementalBackupFrequency;
+    ScheduleTask scheduleTask =
+        ScheduleTask.getLastSuccessfulTask(schedule.getScheduleUUID()).orElse(null);
+    if (scheduleTask == null) {
+      return null;
+    }
+    Backup backup =
+        Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
+            .stream()
+            .filter(bkp -> bkp.state.equals(BackupState.Completed))
+            .findFirst()
+            .orElse(null);
+    if (backup == null) {
+      return null;
+    }
+    Date todaysDate = new Date();
+    Date expectedTaskExecutionTime =
+        new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);
+    if (todaysDate.after(expectedTaskExecutionTime)) {
+      return backup.baseBackupUUID;
+    }
+    return null;
   }
 
   private void deleteExpiredBackupsForCustomer(Customer customer, List<Backup> expiredBackups) {
@@ -266,9 +301,9 @@ public class Scheduler {
     multiTableBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
   }
 
-  private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning) {
+  private void runCreateBackupTask(Schedule schedule, boolean alreadyRunning, UUID baseBackupUUID) {
     CreateBackup createBackup = AbstractTaskBase.createTask(CreateBackup.class);
-    createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning);
+    createBackup.runScheduledBackup(schedule, commissioner, alreadyRunning, baseBackupUUID);
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {

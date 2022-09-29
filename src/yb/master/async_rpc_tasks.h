@@ -345,7 +345,8 @@ class AsyncStartElection : public RetrySpecificTSRpcTask {
   AsyncStartElection(Master *master,
                      ThreadPool *callback_pool,
                      const std::string& permanent_uuid,
-                     const scoped_refptr<TabletInfo>& tablet);
+                     const scoped_refptr<TabletInfo>& tablet,
+                     bool initial_election);
 
   Type type() const override { return START_ELECTION; }
 

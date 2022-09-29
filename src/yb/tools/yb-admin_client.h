@@ -282,6 +282,8 @@ class ClusterAdminClient {
 
   Status CreateTransactionsStatusTable(const std::string& table_name);
 
+  Status AddTransactionStatusTablet(const TableId& table_id);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
@@ -293,7 +295,7 @@ class ClusterAdminClient {
   // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
   // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
   //       look like this workflow is a good fit there.
-  Status UpgradeYsql();
+  Status UpgradeYsql(bool use_single_connection);
 
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(

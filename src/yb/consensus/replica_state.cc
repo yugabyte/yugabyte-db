@@ -1040,8 +1040,12 @@ void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpIdPB& op_id) {
       << ", Trace:" << std::endl << (trace ? trace->DumpToString(true) : "No trace found");
 
   last_received_op_id_ = yb::OpId::FromPB(op_id);
-  last_received_op_id_current_leader_ = last_received_op_id_;
-  next_index_ = op_id.index() + 1;
+  UpdateLastReceivedOpIdFromCurrentLeaderUnlocked(last_received_op_id_);
+}
+
+void ReplicaState::UpdateLastReceivedOpIdFromCurrentLeaderUnlocked(const OpId& op_id) {
+  last_received_op_id_current_leader_ = op_id;
+  next_index_ = op_id.index + 1;
 }
 
 const yb::OpId& ReplicaState::GetLastReceivedOpIdUnlocked() const {

@@ -80,6 +80,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       EditSnapshotScheduleResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status RestoreSnapshotSchedule(
+      const RestoreSnapshotScheduleRequestPB* req,
+      RestoreSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                               ChangeEncryptionInfoResponsePB* resp) override;
 
@@ -251,6 +256,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
+
+  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
 
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
 

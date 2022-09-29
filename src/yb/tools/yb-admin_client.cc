@@ -1992,7 +1992,7 @@ Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
   return result;
 }
 
-Status ClusterAdminClient::UpgradeYsql() {
+Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
   {
     master::IsInitDbDoneRequestPB req;
     auto res = InvokeRpc(
@@ -2036,6 +2036,7 @@ Status ClusterAdminClient::UpgradeYsql() {
   TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
 
   UpgradeYsqlRequestPB req;
+  req.set_use_single_connection(use_single_connection);
   const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
                                      ts_admin_proxy, req);
   if (!resp_result.ok()) {
@@ -2141,6 +2142,10 @@ Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deleti
 
 Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
   return yb_client_->CreateTransactionsStatusTable(table_name);
+}
+
+Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
+  return yb_client_->AddTransactionStatusTablet(table_id);
 }
 
 template<class Response, class Request, class Object>

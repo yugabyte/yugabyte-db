@@ -51,6 +51,11 @@ message InstanceMetadataPB {
   // initialized.
   required string format_stamp = 2;
 
+  // For all newly created clusters after this field is set, initialize this variable to true.
+  // For existing clusters this will be false. This will be used on the sys catalog restore path
+  // to indicate whether we want to run initdb.
+  optional bool initdb_done_set_after_sys_catalog_restore = 3;
+
   // TODO: add a "node type" (TS/Master?)
 }
 

@@ -247,7 +247,7 @@ class TestLoadBalancerBase {
  protected:
   Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
     cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
-    cb_->SetBlacklist();
+    cb_->SetBlacklistAndPendingDeleteTS();
 
     const auto& replication_info =
         VERIFY_RESULT(cb_->GetTableReplicationInfo(table_map_[cur_table_uuid_]));
@@ -276,7 +276,7 @@ class TestLoadBalancerBase {
 
   void ClearLeaderBlacklist() {
     leader_blacklist_.Clear();
-    cb_->state_->leader_blacklisted_servers_.clear();
+    cb_->global_state_->leader_blacklisted_servers_.clear();
   }
 
   Result<bool> HandleLeaderMoves(

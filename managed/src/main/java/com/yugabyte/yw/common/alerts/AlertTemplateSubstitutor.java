@@ -18,7 +18,8 @@ public class AlertTemplateSubstitutor<T extends AlertLabelsProvider>
 
   private static final Logger LOG = LoggerFactory.getLogger(AlertTemplateSubstitutor.class);
 
-  private static final String LABELS_PREFIX = "$labels.";
+  public static final String LABELS_PREFIX = "$labels.";
+  public static final String ANNOTATIONS_PREFIX = "$annotations.";
 
   public AlertTemplateSubstitutor(T instance) {
     super(
@@ -32,6 +33,16 @@ public class AlertTemplateSubstitutor<T extends AlertLabelsProvider>
             }
 
             return labelValue;
+          }
+          if (key.startsWith(ANNOTATIONS_PREFIX)) {
+            String annotationName = key.replace(ANNOTATIONS_PREFIX, "");
+            String annotationValue = instance.getAnnotationValue(annotationName);
+            if (annotationValue == null) {
+              LOG.trace("Annotation {} not found in object {}", annotationName, instance.getUuid());
+              return "{{ " + key + " }}";
+            }
+
+            return annotationValue;
           }
           LOG.trace("Unexpected placeholder {} in object {}", key, instance.getUuid());
           return "{{ " + key + " }}";

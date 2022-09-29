@@ -56,6 +56,8 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -67,6 +69,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_string(vmodule);
 DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
@@ -400,6 +403,7 @@ TabletSplitITest::TabletSplitITest() = default;
 TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
+  EnableVerboseLoggingForModule("tablet_split_manager", 2);
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
   FLAGS_TEST_validate_all_tablet_candidates = true;
@@ -803,6 +807,17 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     }
   }
   return Status::OK();
+}
+
+Status TabletSplitITest::WaitForTableNumActiveLeadersPeers(size_t expected_leaders) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+        LOG(INFO) << "Check number of leaders: " << peers.size();
+        return peers.size() == expected_leaders;
+      },
+      20s * kTimeMultiplier,
+      Format("Waiting table $0 to have $1 leaders ...", table_->id(), expected_leaders));
 }
 
 //
