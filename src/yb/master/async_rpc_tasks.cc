@@ -79,6 +79,7 @@ using std::shared_ptr;
 using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
+using server::MonitoredTaskType;
 using tserver::TabletServerErrorPB;
 
 void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
@@ -315,7 +316,7 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive() && type() == ASYNC_DELETE_REPLICA) {
+    if (!target_ts_desc_->IsLive() && type() == MonitoredTaskType::kDeleteReplica) {
       LOG_WITH_PREFIX(WARNING)
           << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
           << tablet_id() << ". TS is DEAD. No further retry.";
@@ -695,6 +696,90 @@ bool AsyncStartElection::SendRequest(int attempt) {
 }
 
 // ============================================================================
+//  Class AsyncPrepareDeleteTransactionTablet.
+// ============================================================================
+AsyncPrepareDeleteTransactionTablet::AsyncPrepareDeleteTransactionTablet(
+    Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+    const scoped_refptr<TableInfo>& table, const scoped_refptr<TabletInfo>& tablet,
+    const std::string& msg, HideOnly hide_only)
+    : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, table,
+                             /* async_task_throttler */ nullptr),
+      tablet_(tablet), msg_(msg), hide_only_(hide_only) {}
+
+void AsyncPrepareDeleteTransactionTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    // Do not retry on a fatal error
+    TabletServerErrorPB::Code code = resp_.error().code();
+    switch (code) {
+      case TabletServerErrorPB::TABLET_NOT_FOUND:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " because the tablet was not found. No further retry: "
+            << status.ToString();
+        TransitionToCompleteState();
+        break;
+      case TabletServerErrorPB::WRONG_SERVER_UUID:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " due to an incorrect UUID. No further retry: "
+            << status.ToString();
+        TransitionToCompleteState();
+        break;
+      default:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " with error code " << TabletServerErrorPB::Code_Name(code)
+            << ": " << status.ToString();
+        break;
+    }
+  } else {
+    if (table_) {
+      LOG_WITH_PREFIX(INFO)
+          << "TS " << permanent_uuid_ << ": tablet " << tablet_id()
+          << " (table " << table_->ToString() << ") successfully done";
+    } else {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << permanent_uuid_ << ": tablet " << tablet_id()
+          << " did not belong to a known table, but was prepared for deletion";
+    }
+    TransitionToCompleteState();
+    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id();
+  }
+}
+
+std::string AsyncPrepareDeleteTransactionTablet::description() const {
+  return Format("PrepareDeleteTransactionTablet RPC for tablet $0 ($1) on TS=$2",
+                tablet_id(), table_name(), permanent_uuid_);
+}
+
+TabletId AsyncPrepareDeleteTransactionTablet::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+bool AsyncPrepareDeleteTransactionTablet::SendRequest(int attempt) {
+  tserver::PrepareDeleteTransactionTabletRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_tablet_id(tablet_id());
+
+  ts_admin_proxy_->PrepareDeleteTransactionTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Send prepare delete transaction tablet request for "
+                      << tablet_id() << " to " << permanent_uuid_
+                      << " (attempt " << attempt << "):\n"
+                      << req.DebugString();
+  return true;
+}
+
+void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
+  // Only notify if we are in a success state.
+  if (state() == MonitoredTaskState::kComplete) {
+    master_->catalog_manager()->NotifyPrepareDeleteTransactionTabletFinished(
+        tablet_, msg_, hide_only_);
+  }
+}
+
+// ============================================================================
 //  Class AsyncDeleteReplica.
 // ============================================================================
 void AsyncDeleteReplica::HandleResponse(int attempt) {
@@ -758,6 +843,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   req.set_delete_type(delete_type_);
   if (hide_only_) {
     req.set_hide_only(hide_only_);
+  }
+  if (keep_data_) {
+    req.set_keep_data(keep_data_);
   }
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
@@ -1476,6 +1564,47 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
       << req_.DebugString();
   return true;
 }
+
+
+AsyncUpdateTransactionTablesVersion::AsyncUpdateTransactionTablesVersion(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletServerId& ts_uuid,
+    uint64_t version,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table */ nullptr,
+                             /* async_task_throttler */ nullptr),
+      version_(version),
+      callback_(std::move(callback)) {}
+
+std::string AsyncUpdateTransactionTablesVersion::description() const {
+  return "Update transaction tables version RPC";
+}
+
+void AsyncUpdateTransactionTablesVersion::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    LOG(WARNING) << "Updating transaction tables version on TS " << permanent_uuid_ << "failed: "
+                 << status;
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncUpdateTransactionTablesVersion::SendRequest(int attempt) {
+  tserver::UpdateTransactionTablesVersionRequestPB req;
+  req.set_version(version_);
+  ts_admin_proxy_->UpdateTransactionTablesVersionAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Send transaction tables version update to " << permanent_uuid_;
+  return true;
+}
+
+void AsyncUpdateTransactionTablesVersion::Finished(const Status& status) {
+  callback_(status);
+}
+
 
 AsyncTestRetry::AsyncTestRetry(
     Master* master,

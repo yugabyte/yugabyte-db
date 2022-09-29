@@ -81,6 +81,9 @@ message TabletLocationsPB {
 
   // Number of expected read replicas.
   optional int32 expected_read_replicas = 11;
+
+  // Whether or not this tablet has been deleted.
+  optional bool is_deleted = 14;
 }
 
 message GetTabletLocationsRequestPB {
@@ -92,6 +95,10 @@ message GetTabletLocationsRequestPB {
 
   // If true, then return any hidden tablets as well. Does not work with partition key ranges.
   optional bool include_inactive = 3;
+
+  // If true, then return any deleted tablets as well (marked with is_deleted in the returned
+  // tablet locations).
+  optional bool include_deleted = 4;
 }
 
 message GetTabletLocationsResponsePB {
