@@ -29,11 +29,11 @@
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
@@ -478,7 +478,7 @@ TEST_F_EX(CqlTest, CompactRanges, CqlRF1Test) {
     expr += Format(", v$0", column);
   }
   expr += ") VALUES (?, ?";
-  for (auto column [[maybe_unused]] : Range(kColumns)) {
+  for (auto column [[maybe_unused]] : Range(kColumns)) { // NOLINT(whitespace/braces)
     expr += ", ?";
   }
   expr += ")";

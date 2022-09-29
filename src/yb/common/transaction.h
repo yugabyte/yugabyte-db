@@ -324,6 +324,8 @@ struct TransactionMetadata {
   // Former transaction status tablet that the transaction was using prior to a move.
   TabletId old_status_tablet;
 
+  bool external_transaction = false;
+
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
   void ToPB(TransactionMetadataPB* dest) const;

@@ -25,7 +25,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -278,6 +280,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
     // Now roll all the old pods that haven't been removed and aren't newly added.
     // This will update the master addresses as well as the instance type changes.
     if (restartAllPods) {
@@ -288,8 +295,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.MASTER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
-          primaryCluster.userIntent.universeOverrides,
-          primaryCluster.userIntent.azOverrides,
+          universeOverrides,
+          azOverrides,
           true,
           true,
           newNamingStyle,
@@ -303,8 +310,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
-          primaryCluster.userIntent.universeOverrides,
-          primaryCluster.userIntent.azOverrides,
+          universeOverrides,
+          azOverrides,
           false,
           true,
           newNamingStyle,

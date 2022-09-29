@@ -63,6 +63,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -2693,8 +2694,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestActiveAndInActiveStreamOnSame
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodesRestart)) {
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_update_metrics_interval_ms = 1;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -2727,7 +2730,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  SleepFor(MonoDelta::FromSeconds(10));
   // Call get changes.
   GetChangesResponsePB change_resp_2 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
@@ -2735,17 +2737,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
   ASSERT_GT(record_size, 100);
   LOG(INFO) << "Total records read by second GetChanges call: " << record_size;
 
-  SleepFor(MonoDelta::FromSeconds(60));
-  std::map<const std::string, OpId> tablet_peer_to_cdc_min_checkpoint_op_id_map;
-  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
-    for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
-      if (peer->tablet_id() == tablets[0].tablet_id()) {
-        tablet_peer_to_cdc_min_checkpoint_op_id_map[peer->permanent_uuid()] =
-            peer->cdc_sdk_min_checkpoint_op_id();
-      }
-    }
-  }
-  LOG(INFO) << "Stored min checkpoint OpId for each tablet peer";
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  LOG(INFO) << "Checkpoint after final GetChanges: " << checkpoints[0];
 
   // Restart all the nodes.
   SleepFor(MonoDelta::FromSeconds(1));
@@ -2755,20 +2748,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyAllNodes
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
   }
   LOG(INFO) << "All nodes restarted";
+  EnableCDCServiceInAllTserver(3);
 
   // Check the checkpoint info for all tservers - it should be valid.
   for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
     for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
       if (peer->tablet_id() == tablets[0].tablet_id()) {
-        // Checkpoint persisted in the RAFT logs should be same as in memory transaction
-        // participant tablet peer.
-        ASSERT_EQ(
-            peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
-        // The cdc_sdk_min_checkpoint_op_id should be the same as before restart.
-        ASSERT_EQ(
-            tablet_peer_to_cdc_min_checkpoint_op_id_map[peer->permanent_uuid()],
-            peer->cdc_sdk_min_checkpoint_op_id());
+        ASSERT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              // Checkpoint persisted in the RAFT logs should be same as in memory transaction
+              // participant tablet peer.
+              if (peer->cdc_sdk_min_checkpoint_op_id() !=
+                      peer->tablet()->transaction_participant()->GetRetainOpId() ||
+                  checkpoints[0] != peer->cdc_sdk_min_checkpoint_op_id()) {
+                return false;
+              }
+              return true;
+            },
+            MonoDelta::FromSeconds(60),
+            "Checkpoints are not as expected"));
       }
     }
   }

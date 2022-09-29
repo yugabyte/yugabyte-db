@@ -27,6 +27,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/string_util.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"

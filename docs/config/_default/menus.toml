@@ -1,28 +1,28 @@
 ########## Top header menu
 
-[[top_nav]]
-  name = "Register for DSS 2022"
-  weight = 1
-  url = "https://distributedsql.org/"
-  [top_nav.params]
-    newTab = true
-    classes = "gradient-link"
+# [[top_nav]]
+#   name = "Register for DSS 2022"
+#   weight = 1
+#   url = "https://distributedsql.org/"
+#   [top_nav.params]
+#     newTab = true
+#     classes = "gradient-link"
 
 [[top_nav]]
   name = "Join us on"
-  weight = 2
+  weight = 1
   url = "https://communityinviter.com/apps/yugabyte-db/register"
   post = "<img id='slack-logo' width='80' height='30' src='/images/slack-logo-full.svg' alt='YugabyteDB Community Slack' />"
   [top_nav.params]
     newTab = true
 
-# [[top_nav]]
-#   name = "Star us on"
-#   weight = 2
-#   url = "https://github.com/yugabyte/yugabyte-db"
-#   post = "<i class='fab fa-github'></i>"
-#   [top_nav.params]
-#     newTab = true
+[[top_nav]]
+  name = "Star us on"
+  weight = 2
+  url = "https://github.com/yugabyte/yugabyte-db"
+  post = "<i class='fab fa-github'></i>"
+  [top_nav.params]
+    newTab = true
 
 [[top_nav]]
   name = "Start Now"

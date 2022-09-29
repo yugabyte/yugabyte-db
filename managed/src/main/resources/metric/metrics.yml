@@ -64,6 +64,9 @@ cpu_usage:
     xaxis:
       type: "date"
     yaxis:
+      alias:
+        "user": "User"
+        "system": "System"
       ticksuffix: "&nbsp;%"
 
 disk_iops:
@@ -113,9 +116,9 @@ memory_usage:
       type: "date"
     yaxis:
       alias:
-        "node_memory_Cached_bytes": "cached"
-        "node_memory_Buffers_bytes": "buffered"
-        "node_memory_MemFree_bytes": "free"
+        "node_memory_Cached_bytes": "Cached"
+        "node_memory_Buffers_bytes": "Buffered"
+        "node_memory_MemFree_bytes": "Free"
       ticksuffix: "&nbsp;GB"
 
 
@@ -1038,7 +1041,7 @@ tserver_remote_bootstraps:
       type: "date"
     yaxis:
       alias:
-        rpc_latency_count: "remote bootstraps"
+        rpc_latency_count: "Remote Bootstraps"
 
 tserver_consensus_rpcs_latency:
   metric: "rpc_latency.avg"
@@ -1927,6 +1930,9 @@ cql_yb_rpc_connections:
     title: "Inbound RPC Connections Alive"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections Alive"
 
 cql_yb_local_vs_remote:
   metric: "rpc_irate_rps"
@@ -2065,6 +2071,7 @@ tserver_rpc_queue_size_tserver:
         "rpcs_in_queue_yb_tserver_TabletServerBackupService": "Backups"
         "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
         "rpcs_in_queue_yb_cdc_CDCService": "CDC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
 
 tserver_rpc_queue_size_cql:
   metric: ""
@@ -2367,9 +2374,8 @@ master_cpu_util_secs:
       type: "date"
     yaxis:
       alias:
-        "useInstanceName": "True"
-        "cpu_utime_irate": "cpu_utime"
-        "cpu_stime_irate": "cpu_stime"
+        "cpu_utime_irate": "User"
+        "cpu_stime_irate": "System"
 
 tserver_cpu_util_secs:
   metric: ""
@@ -2387,8 +2393,8 @@ tserver_cpu_util_secs:
       type: "date"
     yaxis:
       alias:
-        "cpu_utime_irate": "cpu_utime"
-        "cpu_stime_irate": "cpu_stime"
+        "cpu_utime_irate": "User"
+        "cpu_stime_irate": "System"
 
 redis_yb_rpc_connections:
   metric: "rpc_connections_alive"
@@ -2400,6 +2406,9 @@ redis_yb_rpc_connections:
     title: "Inbound RPC Connections Alive"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections Alive"
 
 tserver_yb_rpc_connections:
   metric: "rpc_connections_alive"
@@ -2411,6 +2420,9 @@ tserver_yb_rpc_connections:
     title: "Inbound RPC Connections Alive"
     xaxis:
       type: "date"
+    yaxis:
+      alias:
+        "rpc_connections_alive": "Connections Alive"
 
 master_yb_rpc_connections:
   metric: "rpc_connections_alive"

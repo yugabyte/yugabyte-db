@@ -148,7 +148,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           responseJson.put("error", queryResponse.error);
           break;
         } else {
-          output.addAll(queryResponse.getGraphData(metric, config.getLayout()));
+          output.addAll(queryResponse.getGraphData(metric, config.getLayout(), metricSettings));
         }
       }
       if (isRecharts) {

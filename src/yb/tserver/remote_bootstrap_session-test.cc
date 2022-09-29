@@ -31,6 +31,8 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
+
 namespace yb {
 namespace tserver {
 

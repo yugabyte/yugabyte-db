@@ -249,6 +249,10 @@ $(document).ready(() => {
       return;
     }
 
+    if ($(event.currentTarget).hasClass('nav-link') && $(event.currentTarget).attr('role') === 'tab') {
+      return;
+    }
+
     window.location.hash = linkHref;
     if ($(window).width() > 767) {
       $('html, body').scrollTop(($(linkHref).offset().top) - 70);

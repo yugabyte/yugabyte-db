@@ -163,7 +163,6 @@ struct BootstrapTabletData {
   ThreadPool* allocation_pool = nullptr;
   ThreadPool* log_sync_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
-
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
 };
 

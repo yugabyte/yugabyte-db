@@ -134,35 +134,6 @@ using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
 
-Status RetryFunc(
-    CoarseTimePoint deadline,
-    const string& retry_msg,
-    const string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait) {
-  DCHECK(deadline != CoarseTimePoint());
-
-  CoarseBackoffWaiter waiter(deadline, max_wait);
-
-  if (waiter.ExpiredNow()) {
-    return STATUS(TimedOut, timeout_msg);
-  }
-  for (;;) {
-    bool retry = true;
-    Status s = func(deadline, &retry);
-    if (!retry) {
-      return s;
-    }
-
-    VLOG(1) << retry_msg << " attempt=" << waiter.attempt() << " status=" << s.ToString();
-    if (!waiter.Wait()) {
-      break;
-    }
-  }
-
-  return STATUS(TimedOut, timeout_msg);
-}
-
 template<class ProxyClass, class RespClass>
 class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
  public:

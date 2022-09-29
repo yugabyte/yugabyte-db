@@ -17,6 +17,8 @@
 
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
+
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
 DECLARE_int32(load_balancer_max_concurrent_adds);
