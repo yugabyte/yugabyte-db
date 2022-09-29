@@ -52,7 +52,7 @@ You can configure the active instance as follows:
 
 1. Click **Create**.
 
-1. Optionally, if HTTPS is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of the other node.
+1. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
 
 1. Switch to **Instance Configuration**.
 
@@ -74,6 +74,8 @@ Once the active instance has been configured, you can configure one or more stan
 
 1. Paste the shared authentication key from the active instance into the **Shared Authentication Key** field.
 
+1. Click **Create**.
+
 1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443, and then click **Continue** on the **Add Standby Instance** dialog.
 
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the high-availability cluster should now appear in the list of instances.
@@ -86,7 +88,7 @@ You can make a standby instance active as follows:
 
 1. Open **Replication Configuration** of the standby instance that you wish to promote to active and click **Make Active**.
 
-1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup in the vast majority of cases) and enable **Confirm promotion**.
+1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
 
 1. Click **Continue**.<br>
 The restore take a few seconds, after which expect to be logged out.
