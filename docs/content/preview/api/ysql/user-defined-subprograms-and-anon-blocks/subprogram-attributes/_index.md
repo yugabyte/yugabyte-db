@@ -120,7 +120,7 @@ The _schema_ and the _name_ of a subprogram are set using dedicated explicit syn
 
 As it happens, and just for PostgreSQL-historical reasons, if you want to specify the _extension_ on which a new subprogram depends you can do this only by _first_ creating the subprogram and _then_ specifying the name of the _extension_ using the subprogram-specific `alter` statement.
 
-See the section [The semantics of the "depends on extension" subprogram attribute](../depends-on-extension-semantics/) for more information about this attribute.
+See the section [The semantics of the "depends on extension" subprogram attribute](depends-on-extension-semantics/) for more information about this attribute.
 
 ## Alterable subprogram attributes
 
