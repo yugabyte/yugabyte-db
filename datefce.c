@@ -1,6 +1,16 @@
 #include "postgres.h"
 #include "access/xact.h"
+
+#if PG_VERSION_NUM >=  160000
+
+#include "utils/guc_hooks.h"
+
+#else
+
 #include "commands/variable.h"
+
+#endif
+
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
@@ -322,8 +332,7 @@ months_between(PG_FUNCTION_ARGS)
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
 
-	PG_RETURN_NUMERIC(
-		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
+	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
 }
 
 /********************************************************************

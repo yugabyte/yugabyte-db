@@ -5,7 +5,6 @@
 
 #include "postgres.h"
 
-#include "parser/gramparse.h"
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
 #include "parser/scansup.h"

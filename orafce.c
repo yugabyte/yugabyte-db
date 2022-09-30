@@ -2,7 +2,16 @@
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/guc.h"
+
+#if PG_VERSION_NUM >=  160000
+
+#include "utils/guc_hooks.h"
+
+#else
+
 #include "commands/variable.h"
+
+#endif
 
 #include "orafce.h"
 #include "builtins.h"
