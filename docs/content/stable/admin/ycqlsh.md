@@ -94,7 +94,7 @@ Where
 | `--connect-timeout` | | 2 | Specify the connection timeout in seconds. |
 | `--request-timeout` | | 10 | Specify the request timeout in seconds. |
 | `--tty`  | `-t` | | Force tty mode (command prompt). |
-| `--refresh_on_describe` | `-r` | | Force refreshing of the schema metadata on [DESCRIBE](#describe). |
+| `--refresh_on_describe` | `-r` | | Force a refresh of the schema metadata on [DESCRIBE](#describe). |
 
 ### Save YCQL output to a file
 
