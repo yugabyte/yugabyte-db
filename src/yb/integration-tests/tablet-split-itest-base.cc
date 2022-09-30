@@ -289,11 +289,17 @@ Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
 
 Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-    RETURN_NOT_OK(WaitFor(
-        [&]() {
-          return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
-        },
-        30s, "Did not apply write transactions from intents db in time."));
+      RETURN_NOT_OK(WaitFor([&]() {
+        // This tablet might has been shut down or in the process of shutting down.
+        // Thus, we need to check whether shared_tablet is nullptr or not
+        // TEST_CountIntent return non ok status also means shutdown has started.
+        const auto shared_tablet = peer->shared_tablet();
+        if (!shared_tablet) {
+          return true;
+        }
+        auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+        return !result.ok() || result->first == 0;
+      }, 30s, "Did not apply write transactions from intents db in time."));
   }
   return Status::OK();
 }

@@ -240,7 +240,7 @@ class TransactionParticipant::Impl
     });
   }
 
-  std::pair<size_t, size_t> TEST_CountIntents() {
+  Result<std::pair<size_t, size_t>> TEST_CountIntents() {
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
@@ -248,6 +248,15 @@ class TransactionParticipant::Impl
     }
 
     std::pair<size_t, size_t> result(0, 0);
+    // There is possibility that a shutdown race could happen during this iterating
+    // operation in RocksDB. To prevent the race, we should increase the pending_op_counter_
+    // before the operation, then shutdown will be delayed if it detects there is still
+    // operation hasn't finished yet. In another case, if RocksDB has already been shutted down,
+    // the operation will have NOT_OK status.
+    ScopedRWOperation operation(pending_op_counter_);
+    if (!operation.ok()) {
+      return STATUS(NotFound, "RocksDB has been shut down.");
+    }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
                                              key_bounds_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -1762,7 +1771,7 @@ boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
   return impl_->LocalTxnData(id);
 }
 
-std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
+Result<std::pair<size_t, size_t>> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
 
