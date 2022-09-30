@@ -893,9 +893,10 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	YbBatchedNestLoop   *newnode = makeNode(YbBatchedNestLoop);
 
 	/*
-	 * copy NestLoop field
+	 * copy node superclass fields
 	 */
-	COPY_SCALAR_FIELD(nl);
+	CopyJoinFields((const Join *) from, (Join *) newnode);
+	COPY_NODE_FIELD(nl.nestParams);
 
 	/*
 	 * copy remainder of node
