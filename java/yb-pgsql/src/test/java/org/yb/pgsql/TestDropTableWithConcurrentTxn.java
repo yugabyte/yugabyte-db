@@ -60,10 +60,6 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
           String indexName = tableName + "_index";
           statement.execute("CREATE INDEX " + indexName + " ON " + tableName + " (b)");
           statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo')");
-
-          // Wait for the table alterations to complete.
-          Thread.sleep(5000);
-
           break;
         }
         case VIEW: {

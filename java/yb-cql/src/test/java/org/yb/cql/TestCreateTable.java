@@ -171,8 +171,7 @@ public class TestCreateTable extends BaseCQLTest {
                     "WITH transactions = { 'enabled' : true };");
     session.execute("CREATE INDEX ON test_create_keyword_reg(" + keyword + ");");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("test_create_keyword_reg");
 
     session.execute("SELECT c1, " + keyword + ", c2 FROM test_create_keyword_reg;");
     session.execute("UPDATE test_create_keyword_reg SET " + keyword + " = 3 WHERE c1 = 2;");
@@ -230,8 +229,7 @@ public class TestCreateTable extends BaseCQLTest {
     // Test index table with tablets table property set.
     session.execute("CREATE INDEX on test_num_tablets_3 (id) WITH tablets = 5;");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("test_num_tablets_3");
 
     ids =
       miniCluster.getClient().getTabletUUIDs(DEFAULT_TEST_KEYSPACE, "test_num_tablets_3_id_idx");
