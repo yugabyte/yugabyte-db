@@ -896,7 +896,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
   LOG(INFO) << "Restarting cluster";
   ASSERT_OK(RestartCluster());
 
-  ASSERT_OK(WaitFor([this, &conn, &key, &kTableName] {
+  ASSERT_OK(WaitFor([this, &key, &kTableName] {
     auto intents_count = CountIntents(cluster_.get());
     LOG(INFO) << "Intents count: " << intents_count;
 
@@ -908,10 +908,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
     // happens.
     // So we could get into situation when intents of the last transactions are not cleaned.
     // To avoid such scenario in this test we write one more row to allow cleanup.
-    EXPECT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 VALUES ($1, '$2')", kTableName, ++key,
-        RandomHumanReadableString(kValueSize)));
-
+    // As the previous connection might have been dead (from the cluster restart), do the insert
+    // from a new connection.
+    auto new_conn = EXPECT_RESULT(Connect());
+    EXPECT_OK(new_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, '$2')",
+              kTableName, ++key, RandomHumanReadableString(kValueSize)));
     return false;
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
