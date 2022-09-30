@@ -235,11 +235,7 @@ Default: `false`
 
 ### Raft flags
 
-{{< note title="Note" >}}
-
-Ensure that values used for Raft and the write ahead log (WAL) in `yb-tserver` configurations match the values in `yb-master` configurations.
-
-{{< /note >}}
+For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
