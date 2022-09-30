@@ -163,7 +163,7 @@ Following are some steps that can be verified to ensure that the migration was s
 
 ### Run count query in YCQL
 
-In YCQL, the count() query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
+In YCQL, the `count()` query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
 
 The tool uses the exposed `hash_partition` function in order to execute smaller, more manageable queries which are individually less resource intensive, and so they don't time out.
 

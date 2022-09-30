@@ -194,7 +194,7 @@ Run a `COUNT(*)` command to verify that the total number of rows match between t
 
 Use a PLPGSQL function to do the following:
 
-**Step 1.** Create the following function to print the number of rows in a single table.
+**Step 1.** Create the following function to print the number of rows in a single table:
 
 ```sql
 create function
@@ -255,7 +255,7 @@ example=# SELECT cnt_rows(table_schema, table_name)
 (14 rows)
 ```
 
-The COUNT(*) query may time out in case of large tables. The following two options are recommended for such use cases.
+The `COUNT(*)` query may time out in case of large tables. The following two options are recommended for such use cases:
 
 **Option 1.** : Create a function and execute the query using the function which uses an implicit cursor.
 
@@ -281,9 +281,9 @@ In this case, the query would be:
 select count(*) from row_count('tablename');
 ```
 
-Note that this query may take sometime to complete. You can also increase the client side timeout to something higher, maybe 10 minutes using the YB-TServer gflag: `--client_read_write_timeout_ms=600000`.
+Note that this query may take some time to complete. You can also increase the client-side timeout to something higher, maybe 10 minutes using the YB-TServer gflag: `--client_read_write_timeout_ms=600000`.
 
-The following example is another workaround for running COUNT(*) in ysqlsh:
+The following example is another workaround for running `COUNT(*)` in ysqlsh:
 
 ```sql
 create table test (id int primary key, fname text);
@@ -303,6 +303,6 @@ explain select count(*) from test cross join dual;
                ->  Seq Scan on dual  (cost=0.00..100.00 rows=1000 width=0)
 ```
 
-**Option 2.** : Use [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table, and control the parallelism at the application level.
+**Option 2.** : Use [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table and control the parallelism at the application level.
 
-Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running COUNT(*) on tables using yb_hash_code().
+Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running `COUNT(*)` on tables using `yb_hash_code()`.
