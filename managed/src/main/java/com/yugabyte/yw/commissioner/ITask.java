@@ -50,6 +50,13 @@ public interface ITask extends Runnable {
   JsonNode getTaskDetails();
 
   /**
+   * Sets the UUID info of the task. E.g subtask UUID. It is invoked by the task executor.
+   *
+   * @param taskUUID the task UUID.
+   */
+  void setTaskUUID(UUID taskUUID);
+
+  /**
    * Set the user-facing top-level task for the Task tree that this Task belongs to. E.g.
    * CreateUniverse, EditUniverse, etc.
    *
