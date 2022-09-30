@@ -30,7 +30,7 @@ type: docs
   <li >
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Go Driver for YCQL
+      YugabyteDB Go Driver
     </a>
   </li>
 </ul>

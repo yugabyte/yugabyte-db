@@ -28,7 +28,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="../ycql/" class="nav-link">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YugabyteDB Python Driver
     </a>
@@ -53,7 +53,7 @@ The flag `--no-cython` is necessary on MacOS Catalina and further MacOS releases
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../../quick-start/).
 
 ### Write the sample Python application
 

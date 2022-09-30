@@ -28,7 +28,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="../yugabyte-node-driver/" class="nav-link">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YugabyteDB Node.js Driver
     </a>

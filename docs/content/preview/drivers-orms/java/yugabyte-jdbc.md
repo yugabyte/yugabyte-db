@@ -102,7 +102,7 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | load-balance | Enables uniform load balancing | true
-| topology_keys | enables topology-aware load balancing | true
+| topology-keys | enables topology-aware load balancing | true
 
 The following is an example JDBC URL for connecting to YugabyteDB.
 
