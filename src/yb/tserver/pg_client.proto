@@ -351,6 +351,7 @@ message PgPerformOptionsPB {
   bool use_catalog_session = 12;
   bool force_global_transaction = 13;
   string namespace_id = 14;
+  bool use_xcluster_database_consistency = 15;
 }
 
 message PgPerformRequestPB {
