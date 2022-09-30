@@ -147,7 +147,7 @@ type NodeInstanceValidationResponse struct {
 }
 
 func (p Provider) ToString() string {
-	return fmt.Sprintf("Provder ID: %s, Provider Name: %s", p.Uuid, p.Name)
+	return fmt.Sprintf("Provider ID: %s, Provider Name: %s", p.Uuid, p.Name)
 }
 
 func (i NodeInstanceType) ToString() string {
