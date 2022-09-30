@@ -2007,7 +2007,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse);
+    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse, KeepData::kFalse);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2727,8 +2727,10 @@ void CatalogManager::CleanupHiddenTablets(
   }
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
-    WARN_NOT_OK(DeleteTabletListAndSendRequests(tablets_to_delete, "Cleanup hidden tablets", {}),
-                "Failed to cleanup hidden tablets");
+    WARN_NOT_OK(DeleteTabletListAndSendRequests(
+        tablets_to_delete, "Cleanup hidden tablets", {} /* retained_by_snapshot_schedules */,
+        false /* transaction_status_tablets */),
+        "Failed to cleanup hidden tablets");
   }
 
   if (!tablets_to_remove_from_hidden.empty()) {
@@ -3950,6 +3952,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
         auto* condition = update_req->mutable_if_expr()->mutable_condition();
         condition->set_op(QL_OP_EXISTS);
         session->Apply(update_op);
+        stream_ops.push_back(std::make_pair(stream->id(), update_op));
         LOG(INFO) << "Setting checkpoint to OpId::Max() for stream " << stream->id()
                   << " and tablet " << tablet_id << " with request "
                   << update_req->ShortDebugString();
@@ -6396,13 +6399,11 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  if (!FLAGS_xcluster_wait_on_ddl_alter) {
+  if (!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter)) {
     resp->set_should_wait(false);
     return Status::OK();
   }
 
-  auto& producer_meta_pb = req->producer_change_metadata_request();
-  auto& producer_schema_pb = producer_meta_pb.schema();
   auto u_id = req->producer_id();
   auto stream_id = req->stream_id();
 
@@ -6441,9 +6442,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     auto schema_cached = stream_entry->mutable_producer_schema();
     auto version_validated = schema_cached->validated_schema_version();
 
-    // Grab the local Consumer schema and compare it to the Producer's schema.
-    Schema consumer_schema, producer_schema;
-    RETURN_NOT_OK(SchemaFromPB(producer_schema_pb, &producer_schema));
+    auto& producer_meta_pb = req->producer_change_metadata_request();
     auto version_received =  producer_meta_pb.schema_version();
 
     if (version_validated > 0 && version_received <= version_validated) {
@@ -6451,38 +6450,52 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       resp->set_should_wait(false);
       return Status::OK();
     }
-    RETURN_NOT_OK(table->GetSchema(&consumer_schema));
 
-    if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
-      resp->set_should_wait(false);
-      LOG(INFO) << "Received Compatible Producer schema version: " << version_received;
-      // Update the schema version if we're functionally equivalent.
-      if (version_received > version_validated) {
-        DCHECK(!schema_cached->has_pending_schema());
-        schema_cached->set_validated_schema_version(version_received);
+    // If we have a full schema, then we can do a schema comparison.
+    if (producer_meta_pb.has_schema()) {
+      // Grab the local Consumer schema and compare it to the Producer's schema.
+      auto& producer_schema_pb = producer_meta_pb.schema();
+      Schema consumer_schema, producer_schema;
+      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb, &producer_schema));
+      RETURN_NOT_OK(table->GetSchema(&consumer_schema));
+
+      if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
+        resp->set_should_wait(false);
+        LOG(INFO) << "Received Compatible Producer schema version: " << version_received;
+        // Update the schema version if we're functionally equivalent.
+        if (version_received > version_validated) {
+          DCHECK(!schema_cached->has_pending_schema());
+          schema_cached->set_validated_schema_version(version_received);
+        } else {
+          // Nothing to modify.  Don't write to sys catalog.
+          return Status::OK();
+        }
       } else {
-        // Nothing to modify.  Don't write to sys catalog.
-        return Status::OK();
+        resp->set_should_wait(true);
+        LOG(WARNING) << Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
+            consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
+
+        // Incompatible schema: store, wait for all tablet reports, then make the DDL change.
+        auto producer_schema = stream_entry->mutable_producer_schema();
+        if (!producer_schema->has_pending_schema()) {
+          // Copy the schema.
+          producer_schema->mutable_pending_schema()->CopyFrom(producer_schema_pb);
+          producer_schema->set_pending_schema_version(version_received);
+        } else {
+          // Why would we be getting different schema versions across tablets? Partial apply?
+          DCHECK_EQ(version_received, producer_schema->pending_schema_version());
+        }
       }
+
+      RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+          "Updating cluster config in sys-catalog"));
+      l.Commit();
     } else {
-      LOG(WARNING) << Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
-          consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
-
-      // Incompatible schema: store, wait for all tablet reports, then make the DDL change.
-      auto producer_schema = stream_entry->mutable_producer_schema();
-      if (!producer_schema->has_pending_schema()) {
-        // Copy the schema.
-        producer_schema->mutable_pending_schema()->CopyFrom(producer_schema_pb);
-        producer_schema->set_pending_schema_version(version_received);
-      } else {
-        // Why would we be getting different schema versions across tablets? Partial apply?
-        DCHECK_EQ(version_received, producer_schema->pending_schema_version());
-      }
+      resp->set_should_wait(false);
+      // TODO (#14234): Support colocated tables / tablegroups.
+      // Need producer_meta_pb.has_add_table(), add_multiple_tables(),
+      //                       remove_table_id(), alter_table_id().
     }
-
-    RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-        "Updating cluster config in sys-catalog"));
-    l.Commit();
   }
 
   return Status::OK();
@@ -6896,7 +6909,7 @@ Status CatalogManager::ValidateNewSchemaWithCdc(const TableInfo& table_info,
 }
 
 Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
-  if (PREDICT_FALSE(!FLAGS_xcluster_wait_on_ddl_alter)) {
+  if (PREDICT_FALSE(!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter))) {
     return Status::OK();
   }
 
@@ -6994,6 +7007,69 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   auto uuid = VERIFY_RESULT(placement_uuid());
   master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, uuid, blacklist);
   return ts_descs.size();
+}
+
+Status CatalogManager::RunXClusterBgTasks() {
+  // Clean up Deleted CDC Streams on the Producer.
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  WARN_NOT_OK(FindCDCStreamsMarkedAsDeleting(&streams), "Failed Finding Deleting CDC Streams");
+  if (!streams.empty()) {
+    WARN_NOT_OK(CleanUpDeletedCDCStreams(streams), "Failed Cleaning Deleted CDC Streams");
+  }
+
+  // Clean up Failed Universes on the Consumer.
+  WARN_NOT_OK(ClearFailedUniverse(), "Failed Clearing Failed Universe");
+
+  // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
+  // cache as well as from the system catalog for the drop table scenario.
+  std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
+  WARN_NOT_OK(FindCDCStreamsMarkedForMetadataDeletion(&cdcsdk_streams,
+              SysCDCStreamEntryPB::DELETING_METADATA), "Failed CDC Stream Metadata Deletion");
+  if (!cdcsdk_streams.empty()) {
+    WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
+  }
+
+  // Restart xCluster parent tablet deletion bg task.
+  StartXClusterParentTabletDeletionTaskIfStopped();
+
+  // Run periodic task for namespace-level replications.
+  ScheduleXClusterNSReplicationAddTableTask();
+
+  if (PREDICT_FALSE(!GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter))) {
+    // See if any Streams are waiting on a pending_schema.
+    bool found_pending_schema = false;
+    auto cluster_config = ClusterConfig();
+    auto cl = cluster_config->LockForWrite();
+    auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    // For each user entry.
+    for (auto& producer_id_and_entry : *producer_map) {
+      // For each CDC stream in that Universe.
+      for (auto& stream_id_and_entry : *producer_id_and_entry.second.mutable_stream_map()) {
+        auto& stream_entry = stream_id_and_entry.second;
+        if (stream_entry.has_producer_schema() &&
+            stream_entry.producer_schema().has_pending_schema()) {
+          // Force resume this stream.
+          auto schema = stream_entry.mutable_producer_schema();
+          schema->set_validated_schema_version(
+              std::max(schema->validated_schema_version(), schema->pending_schema_version()));
+          schema->clear_pending_schema();
+
+          found_pending_schema = true;
+          LOG(INFO) << "Force Resume Consumer schema: " << stream_id_and_entry.first
+                    << " @ schema version " << schema->pending_schema_version();
+        }
+      }
+    }
+
+    if (found_pending_schema) {
+      // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
+      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
+      RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+                    "updating cluster config after Schema for CDC"));
+      cl.Commit();
+    }
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::ClearFailedUniverse() {

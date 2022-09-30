@@ -18,13 +18,21 @@ If you need to edit syntax diagrams, see [Edit syntax diagrams](../syntax-diagra
 
 ## Edit an existing page
 
-1. In your local copy of your yugabyte-db fork, make a branch.
+1. In your local copy of your `yugabyte-db` fork, make sure your local `master` branch is up to date, and send any changes to GitHub's copy of your fork.
+
+    ```sh
+    git checkout master
+    git pull upstream master  # get up to date with the Yugabyte GitHub repo
+    git push origin           # send any changes to your fork on GitHub
+    ```
+
+1. Next, make a branch.
 
     ```sh
     git checkout -b my-branch-name
     ```
 
-1. Find your file in `docs/content/<version>/` and edit it as required.
+1. Find your file(s) in `docs/content/<version>/...` and edit as required.
 
 1. Verify that your changes look good in the live-reload server.
 
@@ -64,16 +72,16 @@ Preview builds take 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
-Add a line in your PR's description to tag the Netlify bot and tell it where to launch the preview:
+Add a line in your pull request's description to tag the Netlify bot and tell it where to launch the preview:
 
 `@netlify /preview/quick-start/`
 
 ### Run a link checker
 
-https://linkchecker.github.io/linkchecker/
+<https://linkchecker.github.io/linkchecker/>
 
 ### Ask for a review
 
-**Internal contributors**, please tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
+**Internal contributors**, please add the `area/documentation` label to your pull request, tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
 
 **External contributors**, please add the `area/documentation` label to your pull request, and let us know about it [in Slack](https://www.yugabyte.com/slack/).

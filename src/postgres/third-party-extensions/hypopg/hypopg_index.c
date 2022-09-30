@@ -1056,21 +1056,17 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 #endif
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
-
-#if PG_VERSION_NUM >= 90500
-	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
-#endif
+	index->indexcollations = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opfamily = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opcintype = (Oid *) palloc(sizeof(int) * nkeycolumns);
 
 	if ((index->relam == BTREE_AM_OID) || entry->amcanorder)
 	{
 		if (index->relam != BTREE_AM_OID)
-			index->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+			index->sortopfamily = palloc0(sizeof(Oid) * nkeycolumns);
 
-		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+		index->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+		index->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
 	}
 	else
 	{
@@ -1078,6 +1074,10 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		index->reverse_sort = NULL;
 		index->nulls_first = NULL;
 	}
+
+#if PG_VERSION_NUM >= 90500
+	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
+#endif
 
 	for (i = 0; i < ncolumns; i++)
 	{
@@ -1089,9 +1089,9 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < nkeycolumns; i++)
 	{
+		index->indexcollations[i] = entry->indexcollations[i];
 		index->opfamily[i] = entry->opfamily[i];
 		index->opcintype[i] = entry->opcintype[i];
-		index->indexcollations[i] = entry->indexcollations[i];
 	}
 
 	/*
@@ -1107,7 +1107,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		 */
 		index->sortopfamily = index->opfamily;
 
-		for (i = 0; i < ncolumns; i++)
+		for (i = 0; i < nkeycolumns; i++)
 		{
 			index->reverse_sort[i] = entry->reverse_sort[i];
 			index->nulls_first[i] = entry->nulls_first[i];
@@ -1117,7 +1117,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	{
 		if (entry->sortopfamily)
 		{
-			for (i = 0; i < ncolumns; i++)
+			for (i = 0; i < nkeycolumns; i++)
 			{
 				index->sortopfamily[i] = entry->sortopfamily[i];
 				index->reverse_sort[i] = entry->reverse_sort[i];

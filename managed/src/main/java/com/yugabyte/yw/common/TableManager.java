@@ -428,7 +428,10 @@ public class TableManager extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
-    if (backupTableParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (backupTableParams.useTablespaces) {

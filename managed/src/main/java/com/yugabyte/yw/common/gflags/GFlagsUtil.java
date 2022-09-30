@@ -247,7 +247,6 @@ public class GFlagsUtil {
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
-    ybcFlags.put("v", "1");
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);

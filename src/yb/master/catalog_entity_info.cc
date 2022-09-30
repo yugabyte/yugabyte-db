@@ -686,7 +686,7 @@ bool TableInfo::HasTasks() const {
   return !pending_tasks_.empty();
 }
 
-bool TableInfo::HasTasks(server::MonitoredTask::Type type) const {
+bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
   SharedLock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {

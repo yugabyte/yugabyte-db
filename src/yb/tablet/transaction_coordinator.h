@@ -129,6 +129,12 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
+  // Prepares tablet for deletion. This waits until the transaction coordinator has stopped
+  // accepting new transactions, all running transactions have finished, and all intents
+  // for committed transactions have been applied. This does not ensure that all aborted
+  // transactions' intents have been cleaned up.
+  Status PrepareForDeletion(const CoarseTimePoint& deadline);
+
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);

@@ -282,7 +282,10 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
-    if (restoreBackupParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (restoreBackupParams.useTablespaces) {

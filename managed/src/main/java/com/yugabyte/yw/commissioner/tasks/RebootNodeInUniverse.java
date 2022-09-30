@@ -17,7 +17,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class RebootNodeInUniverse extends UniverseTaskBase {
+public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Inject
   protected RebootNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -68,6 +68,12 @@ public class RebootNodeInUniverse extends UniverseTaskBase {
       createTServerTaskForNode(currentNode, "stop")
           .setSubTaskGroupType(SubTaskGroupType.RebootingNode);
 
+      // Stop Yb-controller on this node.
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(Arrays.asList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
+
       // Stop the master process on this node.
       if (hasMaster) {
         createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
@@ -106,6 +112,12 @@ public class RebootNodeInUniverse extends UniverseTaskBase {
       createWaitForServerReady(
               currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
           .setSubTaskGroupType(SubTaskGroupType.RebootingNode);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcProcessTasks(
+            new HashSet<NodeDetails>(Arrays.asList(currentNode)),
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+      }
 
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)

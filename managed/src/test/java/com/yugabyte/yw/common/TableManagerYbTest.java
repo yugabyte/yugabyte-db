@@ -245,7 +245,9 @@ public class TableManagerYbTest extends FakeDBApplication {
               ? K8S_CERT_PATH
               : testProvider.getYbHome() + VM_CERT_DIR);
     }
-    if (backupTableParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        mockruntimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     cmd.add(backupTableParams.actionType.name().toLowerCase());

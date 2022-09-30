@@ -1801,16 +1801,20 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if (!get_stream_metadata.ok()) {
       LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
                    << get_stream_metadata.status();
-      // Read stream_id from cdc_state table not found in the master cache, it mean's stream
-      // is deleted. To update the corresponding tablet PEERs, give an entry in
+      // The stream_id present in the cdc_state table was not found in the master cache, it means
+      // that the stream is deleted. To update the corresponding tablet PEERs, give an entry in
       // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
-      // OpId::Max()(i.e no need to retain the intents.)
-      if (!tablet_min_checkpoint_map.contains(tablet_id) &&
-          get_stream_metadata.status().IsNotFound()) {
+      // OpId::Max()(i.e no need to retain the intents.). And also mark the row to be deleted.
+      if (!tablet_min_checkpoint_map.contains(tablet_id)) {
         VLOG(2) << "We could not get the metadata for the stream: " << stream_id;
         auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
         tablet_info.cdc_op_id = OpId::Max();
         tablet_info.cdc_sdk_op_id = OpId::Max();
+      }
+      if (get_stream_metadata.status().IsNotFound()) {
+        VLOG(2) << "We will remove the entry for the stream: " << stream_id
+                << ", from cdc_state table.";
+        tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
       }
       continue;
     }
@@ -2047,6 +2051,7 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
       /* table =*/ nullptr,
       // In case this is a split parent tablet, it will be hidden so we need this flag to access it.
       master::IncludeInactive::kTrue,
+      master::IncludeDeleted::kFalse,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback,
       GetAtomicFlag(&FLAGS_enable_cdc_client_tablet_caching) ? client::UseCache::kTrue
