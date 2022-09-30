@@ -51,9 +51,6 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DEFINE_bool(xcluster_consistent_reads, false, "Atomic reads for xcluster");
-TAG_FLAG(xcluster_consistent_reads, experimental);
-TAG_FLAG(xcluster_consistent_reads, runtime);
 
 namespace yb {
 namespace tserver {
@@ -676,7 +673,7 @@ Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
   // Early exit if namespace not provided or atomic reads not enabled
   if (options.namespace_id().empty() || !xcluster_safe_time_map_ ||
-      !GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+      !options.use_xcluster_database_consistency()) {
     return Status::OK();
   }
 

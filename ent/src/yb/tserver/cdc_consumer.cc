@@ -53,12 +53,28 @@ DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
              "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
-DEFINE_int32(xcluster_safe_time_update_interval_secs, 5,
+DEFINE_bool(xcluster_consistent_reads, false,
+    "Enable database level consistent reads in xCluster replicated databases");
+TAG_FLAG(xcluster_consistent_reads, runtime);
+TAG_FLAG(xcluster_consistent_reads, experimental);
+
+DEFINE_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
-    "seen when performing xcluster atomic reads. If there is any additional lag in the "
-    "replication, then it will add to the overall staleness of the data. Setting this to 0 will "
-    "disable xcluster atomic reads.");
+    "seen when performing database level xcluster consistent reads. If there is any additional lag "
+    "in the replication, then it will add to the overall staleness of the data.");
 TAG_FLAG(xcluster_safe_time_update_interval_secs, runtime);
+
+static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 value) {
+  if (value <= 0) {
+    fprintf(stderr, "Invalid value for --%s: %d, must be greater than 0\n", flagname, value);
+    return false;
+  }
+  return true;
+}
+
+static const bool FLAGS_xcluster_safe_time_update_interval_secs_dummy __attribute__((unused)) =
+    google::RegisterFlagValidator(
+        &FLAGS_xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -532,6 +548,10 @@ Status CDCConsumer::PublishXClusterSafeTime() {
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
 
   std::lock_guard<std::mutex> l(safe_time_update_mutex_);
+
+  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+    return Status::OK();
+  }
 
   int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {

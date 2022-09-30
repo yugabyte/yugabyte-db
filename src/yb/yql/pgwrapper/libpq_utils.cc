@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -193,16 +194,23 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
                                CoarseTimePoint deadline,
                                bool simple_query_protocol,
                                const std::string& explicit_conn_str_for_log) {
+  PGConnPtr result;
+  ConnStatusType status;
   const auto& conn_str_for_log = explicit_conn_str_for_log.empty()
       ? conn_str
       : explicit_conn_str_for_log;
+  CoarseBackoffWaiter waiter(deadline, std::chrono::milliseconds(kDefaultMaxWaitDelayMs));
   auto start = CoarseMonoClock::now();
-  for (;;) {
-    PGConnPtr result(PQconnectdb(conn_str.c_str()));
+  if (waiter.ExpiredNow()) {
+    return STATUS_FORMAT(
+        TimedOut, "Reached deadline before attempting connection: $0", conn_str_for_log);
+  }
+  do {
+    result = PGConnPtr(PQconnectdb(conn_str.c_str()));
     if (!result) {
       return STATUS(NetworkError, "Failed to connect to DB");
     }
-    auto status = PQstatus(result.get());
+    status = PQstatus(result.get());
     if (status == CONNECTION_OK) {
       LOG(INFO) << "Connected to PG ("
                 << conn_str_for_log
@@ -210,19 +218,16 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
                 << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
-    auto now = CoarseMonoClock::now();
-    if (now >= deadline) {
-      const auto msg = status == CONNECTION_BAD
-          ? GetPQErrorMessage(result.get())
-          : std::string();
-      const MonoDelta duration(now - start);
-      LOG(INFO) << "Connect with \"" << conn_str_for_log << "\" failed: "
-                << (msg.empty() ? AsString(status) : msg) << ", time taken: " << duration;
-      return STATUS(NetworkError,
-                    Format("Connect failed: $0, passed: $1", msg, duration),
-                    AuxilaryMessage(msg));
-    }
-  }
+  } while (waiter.Wait());
+  const MonoDelta duration(CoarseMonoClock::now() - start);
+  const auto msg = status == CONNECTION_BAD
+      ? GetPQErrorMessage(result.get())
+      : std::string();
+  LOG(INFO) << "Connect with \"" << conn_str_for_log << "\" failed: "
+            << (msg.empty() ? AsString(status) : msg) << ", time taken: " << duration;
+  return STATUS(NetworkError,
+                Format("Connect failed: $0, passed: $1", msg, duration),
+                AuxilaryMessage(msg));
 }
 
 PGConn::PGConn(PGConnPtr ptr, bool simple_query_protocol)
@@ -611,10 +616,19 @@ bool HasTryAgain(const Status& status) {
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
     : conn_str_(BuildConnectionString(settings)),
-      conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)) {
+      conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)),
+      connect_timeout_(settings.connect_timeout) {
 }
 
 Result<PGConn> PGConnBuilder::Connect(bool simple_query_protocol) const {
+  // If connect_timeout is specified, also set it as the total deadline among connection attempts
+  // because that is likely what the caller intended.  There is logic in connectDBComplete to make
+  // connect_timeout of 1 effectively mean 2, but don't bother with that conversion for this
+  // deadline since the caller likely intended a deadline of 1.
+  if (connect_timeout_) {
+    const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(connect_timeout_);
+    return PGConn::Connect(conn_str_, deadline, simple_query_protocol, conn_str_for_log_);
+  }
   return PGConn::Connect(conn_str_, simple_query_protocol, conn_str_for_log_);
 }
 

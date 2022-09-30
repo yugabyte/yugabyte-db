@@ -37,6 +37,8 @@ TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
+DECLARE_bool(xcluster_consistent_reads);
+
 namespace yb {
 using OK = Status::OK;
 
@@ -111,8 +113,14 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
     return;
   }
 
+  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_consistent_reads flag";
+    return;
+  }
+
   auto wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0) {
+    // Can only happen in tests
     VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_safe_time_update_interval_secs flag";
     return;
   }

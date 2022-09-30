@@ -337,11 +337,11 @@ public class NodeInstanceController extends AuthenticatedController {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
+    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
         || nodeAction == NodeActionType.STOP) {
-      taskParams.clusters = universe.getUniverseDetails().clusters;
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
       taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
