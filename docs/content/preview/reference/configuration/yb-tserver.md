@@ -842,9 +842,9 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
   Default: `102400`
 
-##### --stream_truncate_record
+##### --enable_delete_truncate_cdcsdk_table
 
-  Enable streaming of TRUNCATE record for a table on which CDC is active.
+  By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
 
   Default: `false`
 
