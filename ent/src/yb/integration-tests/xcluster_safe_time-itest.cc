@@ -39,10 +39,11 @@ using namespace std::chrono_literals;
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(xcluster_consistent_reads);
+DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_bool(xcluster_consistent_reads);
 
 namespace yb {
 using client::YBSchema;
@@ -62,8 +63,9 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test
+    FLAGS_xcluster_consistent_reads = true;
     FLAGS_enable_load_balancing = false;
-    SetAtomicFlag(1, &FLAGS_xcluster_safe_time_update_interval_secs);
+    FLAGS_xcluster_safe_time_update_interval_secs = 1;
     safe_time_propagation_timeout_ =
         FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
 
@@ -254,12 +256,13 @@ string GetCompleteTableName(const YBTableName& table) {
 class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
  public:
   void SetUp() override {
+    FLAGS_xcluster_consistent_reads = true;
     // Disable LB as we dont want tablets moving during the test
     FLAGS_enable_load_balancing = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
     safe_time_propagation_timeout_ =
         FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
-    FLAGS_xcluster_consistent_reads = true;
+    FLAGS_ysql_yb_xcluster_consistency_level = "database";
 
     TwoDCTestBase::SetUp();
     MiniClusterOptions opts;
@@ -380,10 +383,27 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 
   Result<pgwrapper::PGResultPtr> ScanToStrings(const YBTableName& table_name, Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
-    std::string table_name_str = GetCompleteTableName(table_name);
+    const std::string table_name_str = GetCompleteTableName(table_name);
     auto result = VERIFY_RESULT(
         conn.FetchFormat("SELECT * FROM $0 ORDER BY $1", table_name_str, kKeyColumnName));
     return result;
+  }
+
+  Result<int> GetRowCount(
+      const YBTableName& table_name, Cluster* cluster, bool read_latest = false) {
+    auto conn = VERIFY_RESULT(
+        cluster->ConnectToDB(table_name.namespace_name(), true /*simple_query_protocol*/));
+    if (read_latest) {
+      auto setting_res = VERIFY_RESULT(
+          conn.FetchRowAsString("UPDATE pg_settings SET setting = 'tablet' WHERE name = "
+                                "'yb_xcluster_consistency_level'"));
+      SCHECK_EQ(
+          setting_res, "tablet", IllegalState,
+          "Failed to set yb_xcluster_consistency_level to tablet.");
+    }
+    std::string table_name_str = GetCompleteTableName(table_name);
+    auto results = VERIFY_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name_str));
+    return PQntuples(results.get());
   }
 
   Status WaitForValidSafeTimeOnAllTServers() {
@@ -411,12 +431,12 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto results = ScanToStrings(table_name, &consumer_cluster_);
-          if (!results) {
-            LOG(INFO) << results.status().ToString();
+          auto result = GetRowCount(table_name, &consumer_cluster_);
+          if (!result) {
+            LOG(INFO) << result.status().ToString();
             return false;
           }
-          last_row_count = PQntuples(results->get());
+          last_row_count = result.get();
           if (allow_greater) {
             return last_row_count >= row_count;
           }
@@ -433,9 +453,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
   Status ValidateConsumerRows(const YBTableName& table_name, int row_count) {
     auto results = VERIFY_RESULT(ScanToStrings(table_name, &consumer_cluster_));
     auto actual_row_count = PQntuples(results.get());
-    SCHECK(
-        row_count == actual_row_count,
-        Corruption,
+    SCHECK_EQ(
+        row_count, actual_row_count, Corruption,
         Format("Expected $0 rows but got $1 rows", row_count, actual_row_count));
 
     int result;
@@ -540,6 +559,12 @@ TEST_F(XClusterSafeTimeYsqlTest, TestConsistentReads) {
   // 2 tablets of table 1 and 1 tablet from table2 should still contain the rows
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
   ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), num_records_written));
+
+  // Reading latest data should return a subset of the rows but not all rows
+  const auto latest_row_count =
+      ASSERT_RESULT(GetRowCount(consumer_table_->name(), &consumer_cluster_, true /*read_latest*/));
+  ASSERT_GT(latest_row_count, num_records_written);
+  ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
 
   // Resume replication and verify all data is written on the consumer
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);

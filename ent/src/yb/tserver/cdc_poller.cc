@@ -181,9 +181,9 @@ void CDCPoller::DoPoll() {
 
   const auto xcluster_simulated_lag_ms = GetAtomicFlag(&FLAGS_TEST_xcluster_simulated_lag_ms);
   if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {
-  ANNOTATE_IGNORE_READS_BEGIN();
-    const auto tablet_filter = FLAGS_TEST_xcluster_simulated_lag_tablet_filter;
-  ANNOTATE_IGNORE_READS_END();
+    auto flag_info =
+        gflags::GetCommandLineFlagInfoOrDie("TEST_xcluster_simulated_lag_tablet_filter");
+    const auto& tablet_filter = flag_info.current_value;
     const auto tablet_filter_list = strings::Split(tablet_filter, ",");
     if (tablet_filter.empty() || std::find(
                                      tablet_filter_list.begin(), tablet_filter_list.end(),

@@ -134,6 +134,26 @@ DEFINE_pg_flag(int32, yb_index_state_flags_update_delay, 1000,
                "Set high to give online transactions more time to complete.");
 TAG_FLAG(ysql_yb_index_state_flags_update_delay, runtime);
 
+DEFINE_pg_flag(
+    string, yb_xcluster_consistency_level, "database",
+    "Controls the consistency level of xCluster replicated databases. Valid values are "
+    "\"database\" and \"tablet\".");
+TAG_FLAG(ysql_yb_xcluster_consistency_level, runtime);
+
+static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
+  if (value != "database" && value != "tablet") {
+    fprintf(
+        stderr, "Invalid value for --%s: %s, must be 'database' or 'tablet'\n", flagname,
+        value.c_str());
+    return false;
+  }
+  return true;
+}
+
+static const bool FLAGS_ysql_yb_xcluster_consistency_level_dummy __attribute__((unused)) =
+    google::RegisterFlagValidator(
+        &FLAGS_ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
