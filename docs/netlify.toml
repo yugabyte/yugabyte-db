@@ -412,6 +412,19 @@
   from = "preview/develop/build-apps/go/ycql/"
   to = "/preview//drivers-orms/go/ycql/"
 
+[[redirects]]
+  from = "preview/develop/build-apps/python/ycql/"
+  to = "/preview//drivers-orms/python/ycql/"
+
+[[redirects]]
+  from = "preview/develop/build-apps/nodejs/ycql/"
+  to = "/preview//drivers-orms/nodejs/ycql/"
+
+[[redirects]]
+  from = "preview/develop/build-apps/csharp/ycql/"
+  to = "/preview//drivers-orms/csharp/ycql/"
+
+
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 

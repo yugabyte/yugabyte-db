@@ -29,11 +29,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
       YugabyteDB Java Driver for YCQL (3.10)
     </a>
   </li>
    <li >
     <a href="../ycql-4.6/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
       YugabyteDB Java Driver for YCQL (4.6)
     </a>
   </li>

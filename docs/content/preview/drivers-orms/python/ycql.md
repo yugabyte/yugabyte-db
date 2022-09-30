@@ -26,6 +26,15 @@ type: docs
   </ul>
 </div>
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+   <li >
+    <a href="../ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YugabyteDB Python Driver
+    </a>
+  </li>
+</ul>
+
 ## Install the Yugabyte Python Driver for YCQL
 
 To install the [Yugabyte Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver), run the following command:

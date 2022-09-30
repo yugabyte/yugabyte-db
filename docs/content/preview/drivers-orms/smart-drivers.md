@@ -12,6 +12,16 @@ menu:
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../smart-drivers" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Rust Smart Driver
+    </a>
+  </li>
+
+</ul>
 In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports **smart drivers**, which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
 
 - **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.

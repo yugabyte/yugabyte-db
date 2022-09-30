@@ -30,7 +30,8 @@ type: docs
 
   <li >
     <a href="../ycql/" class="nav-link active">
-      YugabyteDB C# Driver for YCQL
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YugabyteDB C# Driver
     </a>
   </li>
 

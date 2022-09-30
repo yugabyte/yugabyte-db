@@ -25,11 +25,6 @@ The following projects can be used to implement C# applications using the Yugaby
 | ------- | ------------------------ | ------------ |
 | Entity Framework ORM | [Documentation](entityframework) | [Hello World App](../../develop/build-apps/csharp/ysql-entity-framework/) |
 
-<!-- | Project | Type | Support | Examples |
-| :------ | :--- | :-------| :------- |
-| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](../../develop/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
-| [EntityFramework](entityframework) | ORM |  Full | [Hello World](../../develop/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
-
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.

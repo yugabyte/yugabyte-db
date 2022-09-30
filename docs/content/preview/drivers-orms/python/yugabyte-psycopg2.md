@@ -30,7 +30,7 @@ type: docs
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
