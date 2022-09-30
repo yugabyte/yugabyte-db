@@ -568,8 +568,7 @@ public class TestAudit extends BaseCQLTest {
         + " WITH transactions = { 'enabled': true }");
     session.execute("CREATE UNIQUE INDEX ON t (v)");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("t");
 
     session.execute("INSERT INTO t (id, v) VALUES (1, 1)");
     auditRecords.discard();

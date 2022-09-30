@@ -173,6 +173,7 @@ public class TestReturnsClause extends BaseCQLTest {
                         "v1 int, v2 varchar, primary key (h, r)) " +
                         "WITH transactions = { 'enabled' : true };");
     session.execute("CREATE UNIQUE INDEX test_rs_idx ON test_rs_trans(v1) INCLUDE (v2)");
+    waitForReadPermsOnAllIndexes("test_rs_trans");
 
     Map<String, String> columns = new LinkedHashMap<>();
     columns.put("h", "int");
@@ -377,12 +378,14 @@ public class TestReturnsClause extends BaseCQLTest {
   }
 
   @Test
-  public void testBatchDMLWithSecondaryIndex() {
+  public void testBatchDMLWithSecondaryIndex() throws Exception {
     // Test batch DMLs on a table with secondary index.
     session.execute("CREATE TABLE test_rs_batch_trans (h int, r bigint, v1 int, v2 varchar, " +
                     "primary key (h, r)) with transactions = { 'enabled' : true };");
     session.execute(
         "CREATE UNIQUE INDEX test_rs_batch_trans_idx ON test_rs_batch_trans (v1) INCLUDE (v2);");
+
+    waitForReadPermsOnAllIndexes("test_rs_batch_trans");
 
     session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (1, 1, 1, 'a');");
     session.execute("INSERT INTO test_rs_batch_trans (h, r, v1, v2) VALUES (1, 2, 2, 'b');");
@@ -430,8 +433,7 @@ public class TestReturnsClause extends BaseCQLTest {
                     "with transactions = { 'enabled' : true };");
     session.execute("CREATE UNIQUE INDEX test_unique_idx ON test_unique (v);");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("test_unique");
 
     final int KEY_COUNT = 50;
     HashSet<Integer> allKeys = new HashSet<>();
