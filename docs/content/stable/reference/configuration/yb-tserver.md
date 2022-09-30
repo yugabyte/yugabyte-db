@@ -221,11 +221,7 @@ Default: `false`
 
 ### Raft flags
 
-{{< note title="Note" >}}
-
-Ensure that values used for Raft and the write ahead log (WAL) in `yb-tserver` configurations match the values in `yb-master` configurations.
-
-{{< /note >}}
+For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
 
 ##### --follower_unavailable_considered_failed_sec
 
@@ -246,6 +242,16 @@ The maximum heartbeat periods that the leader can fail to heartbeat in before th
 For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
+
+##### --leader_lease_duration_ms
+
+The leader lease duration, in milliseconds. A leader keeps establishing a new lease or extending the existing one with every consensus update. A new server is not allowed to serve as a leader (that is, serve up-to-date read requests or acknowledge write requests) until a lease of this duration has definitely expired on the old leader's side, or the old leader has explicitly acknowledged the new leader's lease.
+
+This lease allows the leader to safely serve reads for the duration of its lease, even during a network partition. For more information, refer to [Leader leases](../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition).
+
+Leader lease duration should be longer than the heartbeat interval, and less than the multiple of `--leader_failure_max_missed_heartbeat_periods` multiplied by `--raft_heartbeat_interval_ms`.
+
+Default: `2000`
 
 ##### --max_stale_read_bound_time_ms
 

@@ -112,7 +112,7 @@ public class CertificateHelper {
     USER_NODE_CERT,
 
     @EnumValue("USER_CLIENT_CERT")
-    USER_CLIENT_CERT
+    USER_CLIENT_CERT;
   }
 
   public static String getClientCertPath(Config config, UUID customerUUID, UUID clientRootCA) {
@@ -317,7 +317,7 @@ public class CertificateHelper {
 
   public static String extractIPsFromGeneralNamesAsString(Map<String, Integer> subjectAltNames) {
     InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
-    StringBuilder ipAddrs = new StringBuilder();
+    String ipAddrs = "";
 
     if (subjectAltNames == null) return null;
 
@@ -331,29 +331,28 @@ public class CertificateHelper {
           throw new IllegalArgumentException(
               String.format("IP %s invalid for SAN entry.", entry.getKey()));
         }
-        ipAddrs.append(entry.getKey()).append(",");
+        ipAddrs += entry.getKey() + ",";
       }
     }
 
-    if (!Strings.isNullOrEmpty(ipAddrs.toString()))
-      return ipAddrs.substring(0, ipAddrs.length() - 1);
+    if (!Strings.isNullOrEmpty(ipAddrs)) return ipAddrs.substring(0, ipAddrs.length() - 1);
 
     return "";
   }
 
   public static String extractHostNamesFromGeneralNamesAsString(
       Map<String, Integer> subjectAltNames) {
-    StringBuilder names = new StringBuilder();
+    String names = "";
 
     if (subjectAltNames == null) return null;
 
     for (Map.Entry<String, Integer> entry : subjectAltNames.entrySet()) {
       if (entry.getValue() == GeneralName.dNSName) {
-        names.append(entry.getKey()).append(",");
+        names += entry.getKey() + ",";
       }
     }
 
-    if (!Strings.isNullOrEmpty(names.toString())) return names.substring(0, names.length() - 1);
+    if (!Strings.isNullOrEmpty(names)) return names.substring(0, names.length() - 1);
     return "";
   }
 
@@ -569,8 +568,8 @@ public class CertificateHelper {
     try {
       CertificateInfo cer1 = CertificateInfo.get(cert1);
       CertificateInfo cer2 = CertificateInfo.get(cert2);
-      FileInputStream is1 = new FileInputStream(cer1.certificate);
-      FileInputStream is2 = new FileInputStream(cer2.certificate);
+      FileInputStream is1 = new FileInputStream(new File(cer1.certificate));
+      FileInputStream is2 = new FileInputStream(new File(cer2.certificate));
       CertificateFactory fact = CertificateFactory.getInstance("X.509");
       X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
       X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
@@ -637,11 +636,11 @@ public class CertificateHelper {
   public static List<X509Certificate> convertStringToX509CertList(String certContent) {
     java.security.Security.addProvider(new BouncyCastleProvider());
     try {
-      InputStream in;
+      InputStream in = null;
       byte[] certEntryBytes = certContent.getBytes();
       in = new ByteArrayInputStream(certEntryBytes);
       CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
-      return (List<X509Certificate>) certFactory.generateCertificates(in);
+      return (List<X509Certificate>) (List<?>) certFactory.generateCertificates(in);
     } catch (CertificateException e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Unable to get cert Objects");
@@ -680,7 +679,7 @@ public class CertificateHelper {
   }
 
   public static PrivateKey getPrivateKey(String keyContent) {
-    try (PemReader pemReader = new PemReader(new StringReader(keyContent))) {
+    try (PemReader pemReader = new PemReader(new StringReader(new String(keyContent)))) {
       PemObject pemObject = pemReader.readPemObject();
       byte[] bytes = pemObject.getContent();
       PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
@@ -718,7 +717,7 @@ public class CertificateHelper {
     File certfile = new File(certPath);
     // Create directory to store the certFile.
     certfile.getParentFile().mkdirs();
-    LOG.info("Dumping certs at path: {}", certPath);
+    LOG.info("Dumpting certs at path: {}", certPath);
     try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certfile))) {
       for (X509Certificate cert : certs) {
         LOG.info(getCertificateProperties(cert));
@@ -861,7 +860,7 @@ public class CertificateHelper {
 
   public static String getAsPemString(Object certObj) {
     try (StringWriter certOutput = new StringWriter();
-        JcaPEMWriter certWriter = new JcaPEMWriter(certOutput)) {
+        JcaPEMWriter certWriter = new JcaPEMWriter(certOutput); ) {
       certWriter.writeObject(certObj);
       certWriter.flush();
       return certOutput.toString();
@@ -887,19 +886,23 @@ public class CertificateHelper {
   // Verify that each certificate in the root chain has been signed by
   // another cert present in the uploaded file.
   private static void verifyCertValidity(List<X509Certificate> certs) {
-    certs.forEach(
-        cert -> {
-          if (certs
-              .stream()
-              .noneMatch(potentialRootCert -> verifyCertValidity(cert, potentialRootCert))) {
-            X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
-            RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Certificate with CN = " + cn.getFirst().getValue() + " has no associated root");
-          }
-          verifyCertDateValidity(cert);
-        });
+    certs
+        .stream()
+        .forEach(
+            cert -> {
+              if (!certs
+                  .stream()
+                  .anyMatch(potentialRootCert -> verifyCertValidity(cert, potentialRootCert))) {
+                X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
+                RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    "Certificate with CN = "
+                        + cn.getFirst().getValue()
+                        + " has no associated root");
+              }
+              verifyCertDateValidity(cert);
+            });
   }
 
   // Verify that certificate is currently valid and valid for 1 day
@@ -936,18 +939,21 @@ public class CertificateHelper {
       // If the first certificate is not the right one, maybe the user has entered the
       // certificates in the wrong order. Check and update the customer with the right
       // message.
-      x509Certificates.forEach(
-          x509Certificate -> {
-            if (verifySignature(x509Certificate, keyContent)) {
-              X500Name x500Name = new X500Name(x509Certificate.getSubjectX500Principal().getName());
-              RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
-              throw new PlatformServiceException(
-                  BAD_REQUEST,
-                  "Certificate with CN = "
-                      + cn.getFirst().getValue()
-                      + "should be the first entry in the file.");
-            }
-          });
+      x509Certificates
+          .stream()
+          .forEach(
+              x509Certificate -> {
+                if (verifySignature(x509Certificate, keyContent)) {
+                  X500Name x500Name =
+                      new X500Name(x509Certificate.getSubjectX500Principal().getName());
+                  RDN cn = x500Name.getRDNs(BCStyle.CN)[0];
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      "Certificate with CN = "
+                          + cn.getFirst().getValue()
+                          + "should be the first entry in the file.");
+                }
+              });
       throw new PlatformServiceException(BAD_REQUEST, "Certificate and key don't match.");
     }
     return true;

@@ -71,12 +71,13 @@ class TwoDCTestBase : public YBTest {
       return ConnectToDB(std::string() /* dbname */);
     }
 
-    Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, bool simple_query_protocol = false) {
       return pgwrapper::PGConnBuilder({
         .host = pg_host_port_.host(),
         .port = pg_host_port_.port(),
         .dbname = dbname
-      }).Connect();
+      }).Connect(simple_query_protocol);
     }
   };
 
