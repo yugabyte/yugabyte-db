@@ -669,6 +669,14 @@ YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the b
 
 {{< /warning >}}
 
+##### Ignoring tombstone events
+
+It can be controlled whether the connector emits tombstone events. Depending on your data pipeline, you might want to set the `tombstones.on.delete` property for a connector so ot does not emit tombstone events.
+
+Whether you enable the connector to emit tombstones depends on how topics are consumed in your environment and by the characteristics of the sink consumer. Some sink connectors rely on tombstone events to remove records from downstream data stores. In cases where sink connectors rely on tombstone records to indicate when to delete records in downstream data stores, configure the connector to emit them.
+
+By default, the `tombstones.on.delete` property for a connector is set to `true` so that the connector generates a tombstone after each delete event. If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the absence of tombstone records might lead to unintended consequences. Kafka relies on tombstone during log compaction to remove records that are related to a deleted key.
+
 ## Datatype mappings
 
 The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
@@ -1005,6 +1013,7 @@ Advanced connector configuration properties:
 | max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
 | connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
 | ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
+| tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br><br> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br><br> `false` - only a delete event is emitted.<br><br> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 
 ## Troubleshooting
 
