@@ -51,13 +51,11 @@ using client::TransactionTestBase;
 using client::WriteOpType;
 using rpc::RpcController;
 
-class CDCServiceTxnTest : public TransactionTestBase<MiniCluster>,
-                          public testing::WithParamInterface<bool /* enable_intents */> {
+class CDCServiceTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     mini_cluster_opt_.num_masters = 1;
     mini_cluster_opt_.num_tablet_servers = 1;
-    SetAtomicFlag(GetParam(), &FLAGS_cdc_enable_replicate_intents);
     create_table_ = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     SetNumTablets(1);
@@ -96,8 +94,6 @@ Status CDCServiceTxnTest::GetChangesInitialSchema(GetChangesRequestPB const& req
   return Status::OK();
 }
 
-INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTest, ::testing::Bool());
-
 void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_t expected_value) {
   ASSERT_EQ(changes.size(), 1);
   const auto& value = changes.find("value");
@@ -135,7 +131,7 @@ void CheckRegularRecord(const CDCRecordPB& record, int expected_value) {
   ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
 }
 
-TEST_P(CDCServiceTxnTest, TestGetChanges) {
+TEST_F(CDCServiceTxnTest, TestGetChanges) {
   // Consider the following writes:
   // TO: WRITE K0
   // T1: WRITE K1 (TXN1)
@@ -144,7 +140,7 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
   // T4: APPLYING TXN2
   // T5: APPLYING TXN1
   // T6: WRITE K4
-  bool replicate_intents = GetParam();
+  bool replicate_intents = true;
   auto session = CreateSession();
   ASSERT_RESULT(WriteRow(session, 10000 /* key */, 10000 /* value */, WriteOpType::INSERT,
                          Flush::kTrue));
@@ -229,7 +225,7 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
   }
 }
 
-TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
+TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // If GetChanges is called in the middle of a transaction, ensure that transaction is not
   // incorrectly considered as aborted if we can't find the transaction commit record.
   // A subsequent call to GetChanges after the transaction is committed should get the
@@ -238,7 +234,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   static const int32_t kNumIntentsToWrite = 3;
   static const int32_t kStartKey = 10000;
   // Get tablet ID.
-  bool replicate_intents = GetParam();
+  bool replicate_intents = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
@@ -311,14 +307,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   }
 }
 
-// Only test 'enable_replicate_intents = true'.
-class CDCServiceTxnTestEnableReplicateIntents : public CDCServiceTxnTest {
-};
-
-INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTestEnableReplicateIntents,
-                        ::testing::Values(true /* enable_replicate_intents */));
-
-TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
+TEST_F(CDCServiceTxnTest, MetricsTest) {
   static const int32_t entry_to_add = 100;
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
