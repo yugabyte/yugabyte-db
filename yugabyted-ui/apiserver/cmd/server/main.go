@@ -1,12 +1,15 @@
 package main
 
 import (
-        "apiserver/cmd/server/handlers"
+  "apiserver/cmd/server/handlers"
   "apiserver/cmd/server/templates"
+  "apiserver/cmd/server/logger"
   "embed"
   "io/fs"
   "net/http"
   "os"
+  "strconv"
+  "time"
 
   "html/template"
 
@@ -72,6 +75,12 @@ func getStaticFiles() http.FileSystem {
 
 func main() {
 
+  // Initialize logger
+  var log logger.Logger
+  log, _ = logger.NewSugaredLogger()
+  defer log.Cleanup()
+  log.Infof("Logger initialized")
+
   serverPort := getEnv(serverPortEnv, "15433")
 
   port := ":" + serverPort
@@ -81,11 +90,57 @@ func main() {
   e := echo.New()
 
   //todo: handle the error!
-  c, _ := handlers.NewContainer()
+  c, _ := handlers.NewContainer(log)
 
   // Middleware
-  e.Use(middleware.Logger())
-  e.Use(middleware.Recover())
+  e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+    LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+      log.Errorf("[PANIC RECOVER] %v %s\n", err, stack)
+      return nil
+    },
+  }))
+  e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+    LogURI:    true,
+    LogStatus: true,
+    LogLatency: true,
+    LogMethod: true,
+    LogContentLength: true,
+    LogResponseSize: true,
+    LogUserAgent: true,
+    LogHost: true,
+    LogRemoteIP: true,
+    LogRequestID: true,
+    LogError: true,
+    LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+      bytes_in, err := strconv.ParseInt(v.ContentLength, 10, 64)
+      if err != nil {
+        bytes_in = 0
+      }
+      err = v.Error
+      errString := ""
+      if err != nil {
+        errString = err.Error()
+      }
+      log.With(
+        "time", v.StartTime.Format(time.RFC3339Nano),
+        "id", v.RequestID,
+        "remote_ip", v.RemoteIP,
+        "host", v.Host,
+        "method", v.Method,
+        "URI", v.URI,
+        "user_agent", v.UserAgent,
+        "status", v.Status,
+        "error", errString,
+        "latency", v.Latency.Nanoseconds(),
+        "latency_human", time.Duration(v.Latency.Microseconds()).String(),
+        "bytes_in", bytes_in,
+        "bytes_out", v.ResponseSize,
+      ).Infof(
+        "request",
+      )
+      return nil
+    },
+  }))
 
   // BatchInviteAccountUser - Batch add or invite user to account
   e.POST("/api/public/accounts/:accountId/users/batch", c.BatchInviteAccountUser)
