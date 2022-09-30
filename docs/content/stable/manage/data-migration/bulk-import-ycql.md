@@ -167,7 +167,7 @@ In YCQL, the count() query can be executed using the [ycrc](https://github.com/y
 
 The tool uses the exposed `hash_partition` function in order to execute smaller, more manageable queries which are individually less resource intensive, and so they don't time out.
 
-Following are the steps to set up and run the ycrc tool:
+Set up and run the ycrc tool using the following steps:
 
 1. Download the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool by compiling the source from the GitHub repository.
 
@@ -203,10 +203,10 @@ Following are the steps to set up and run the ycrc tool:
 
     ```
 
-1. Run the ycrc tool to count the rows in a given keyspace. The following example shows ycrc command to count rows in all tables in example keyspace:
+1. Run the ycrc tool to count the rows in a given keyspace using a command similar to the following:
 
     ```cql
-    ./ycrc -c 1127.0.0.1 example
+    ./ycrc -c 127.0.0.1 example
     ```
 
     ```output
