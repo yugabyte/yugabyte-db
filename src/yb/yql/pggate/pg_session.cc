@@ -537,6 +537,8 @@ Result<PerformFuture> PgSession::Perform(
     global_transaction = !(*i)->is_region_local();
   }
   options.set_force_global_transaction(global_transaction);
+  options.set_use_xcluster_database_consistency(
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
