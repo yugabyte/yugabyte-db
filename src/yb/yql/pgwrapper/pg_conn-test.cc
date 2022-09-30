@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/logging.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using namespace std::chrono_literals;
@@ -102,6 +104,17 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
   }
 }
 
+TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(PastDeadline)) {
+  const std::string conn_str = Format("host=$0 port=$1 dbname=yugabyte user=yugabyte",
+                                      pg_ts->bind_host(), pg_ts->pgsql_rpc_port());
+  Result<PGConn> res = PGConn::Connect(
+      conn_str, CoarseMonoClock::Now() - 1s, false /* simple_query_protocol */, conn_str);
+  ASSERT_NOK(res);
+  Status s = res.status();
+  ASSERT_TRUE(s.IsTimedOut()) << s;
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Reached deadline before attempting connection:");
+}
+
 void PgConnTest::TestUriAuth() {
   const std::string& host = pg_ts->bind_host();
   const uint16_t port = pg_ts->pgsql_rpc_port();
@@ -159,6 +172,34 @@ class PgConnTestAuthMd5 : public PgConnTest {
 
 TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgConnTestAuthMd5) {
   TestUriAuth();
+}
+
+class PgConnTestLimit : public PgConnTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=max_connections=1,superuser_reserved_connections=0,max_wal_senders=0");
+  }
+};
+
+TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(ConnectionLimit), PgConnTestLimit) {
+  LOG(INFO) << "First connection";
+  PGConn conn = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Second connection";
+  constexpr size_t kConnectTimeoutSec = RegularBuildVsDebugVsSanitizers(3, 5, 5);
+  constexpr size_t kMarginSec = RegularBuildVsDebugVsSanitizers(1, 3, 3);
+  const auto now = CoarseMonoClock::Now();
+  Result<PGConn> res = PGConnBuilder({
+    .host = pg_ts->bind_host(),
+    .port = pg_ts->pgsql_rpc_port(),
+    .connect_timeout = kConnectTimeoutSec,
+  }).Connect();
+  const MonoDelta time_taken = CoarseMonoClock::Now() - now;
+  ASSERT_LE(time_taken.ToMilliseconds(), (kConnectTimeoutSec + kMarginSec) * 1000);
+  ASSERT_NOK(res);
+  const Status& s = res.status();
+  ASSERT_TRUE(s.IsNetworkError()) << s;
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "sorry, too many clients already");
 }
 
 } // namespace pgwrapper

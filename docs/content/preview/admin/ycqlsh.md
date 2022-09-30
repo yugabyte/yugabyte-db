@@ -81,23 +81,24 @@ Where
 
 ### Flags
 
-| Flag               | Short Form | Default | Description                                                  |
-| ------------------- | ---------- | ------- | ------------------------------------------------------------ |
-| `--color`           | `-C`       |         | Force color output.                                          |
-| `--no-color`        |            |         | Disable color output.                                        |
-| `--browser`         |            |         | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, Firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
-| `--ssl`             |            |         | Use SSL when connecting to YugabyteDB.                      |
-| `--user`            | `-u`       |         | Username to authenticate against YugabyteDB with.           |
-| `--password`        | `-p`       |         | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user`. |
-| `--keyspace`        | `-k`       |         | Keyspace to authenticate to, should be used in conjunction with `--user`. |
-| `--file`            | `-f`       |         | Execute commands from the given file, then exit.             |
-| `--debug`           |            |         | Print additional debugging information.                      |
-| `--encoding`        |            | UTF-8   | Specify a non-default encoding for output.                   |
-| `--cqlshrc`         |            |         | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `ycqlsh`. By default this is in the user home directory at `~/.cassandra/cqlsh`. |
-| `--execute`         | `-e`       |         | Execute the given statement, then exit.                      |
-| `--connect-timeout` |            | 2       | Specify the connection timeout in seconds.                   |
-| `--request-timeout` |            | 10      | Specify the request timeout in seconds.                      |
-| `--tty`             | `-t`       |         | Force tty mode (command prompt).                             |
+| Flag | Short Form | Default | Description |
+| :------| :--------- | :------ | :-----------|
+| `--color` | `-C` | | Force color output. |
+| `--no-color` | | | Disable color output. |
+| `--browser` | | | Specify the browser to use for displaying `ycqlsh` help. This can be one of the [supported browser names](https://docs.python.org/2/library/webbrowser.html) (for example, Firefox) or a browser path followed by `%s` (for example, `/usr/bin/google-chrome-stable %s`). |
+| `--ssl`  | | | Use SSL when connecting to YugabyteDB. |
+| `--user`  | `-u` | | Username to authenticate against YugabyteDB with. |
+| `--password` | `-p` |  | Password to authenticate against YugabyteDB with, should be used in conjunction with `--user`. |
+| `--keyspace` | `-k` | | Keyspace to authenticate to, should be used in conjunction with `--user`. |
+| `--file`  | `-f` |  | Execute commands from the given file, then exit. |
+| `--debug` | | | Print additional debugging information. |
+| `--encoding` | | UTF-8   | Specify a non-default encoding for output. |
+| `--cqlshrc` | | | Specify the location for the `cqlshrc` file. The `cqlshrc` file holds configuration options for `ycqlsh`. By default this is in the user home directory at `~/.cassandra/cqlsh`. |
+| `--execute` | `-e` | | Execute the given statement, then exit. |
+| `--connect-timeout` | | 2 | Specify the connection timeout in seconds. |
+| `--request-timeout` | | 10 | Specify the request timeout in seconds. |
+| `--tty`  | `-t` | | Force tty mode (command prompt). |
+| `--refresh_on_describe` | `-r` | | Force a refresh of the schema metadata on [DESCRIBE](#describe). |
 
 ### Save YCQL output to a file
 

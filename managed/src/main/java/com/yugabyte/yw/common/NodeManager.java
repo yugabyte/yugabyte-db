@@ -109,8 +109,17 @@ public class NodeManager extends DevopsBase {
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
+  public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+
+  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
+
+  @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject ConfigHelper configHelper;
 
   @Inject ReleaseManager releaseManager;
 
@@ -154,14 +163,6 @@ public class NodeManager extends DevopsBase {
     ROTATE_CERTS,
     UPDATE_CERT_DIRS
   }
-
-  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject ConfigHelper configHelper;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -724,6 +725,11 @@ public class NodeManager extends DevopsBase {
       }
       ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      boolean enableVerbose =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(YBC_ENABLE_VERBOSE);
+      if (enableVerbose) {
+        ybcFlags.put("v", "1");
+      }
       String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
       ybcFlags.put("nfs_dirs", nfsDirs);
     }
@@ -824,7 +830,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+          } else if (processType == ServerType.CONTROLLER.toString()) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -873,7 +879,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+          } else if (processType == ServerType.CONTROLLER.toString()) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -928,7 +934,7 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+          } else if (processType == ServerType.CONTROLLER.toString()) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
@@ -1040,7 +1046,7 @@ public class NodeManager extends DevopsBase {
 
           if (processType == null) {
             throw new RuntimeException("Invalid processType: " + processType);
-          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+          } else if (processType == ServerType.CONTROLLER.toString()) {
             if (taskParam.enableYbc) {
               subcommand.add("--ybc_flags");
               subcommand.add(Json.stringify(Json.toJson(ybcFlags)));

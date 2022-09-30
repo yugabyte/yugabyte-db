@@ -71,12 +71,13 @@ class TwoDCTestBase : public YBTest {
       return ConnectToDB(std::string() /* dbname */);
     }
 
-    Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, bool simple_query_protocol = false) {
       return pgwrapper::PGConnBuilder({
         .host = pg_host_port_.host(),
         .port = pg_host_port_.port(),
         .dbname = dbname
-      }).Connect();
+      }).Connect(simple_query_protocol);
     }
   };
 
@@ -90,11 +91,7 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  Status InitClusters(const MiniClusterOptions& opts);
-
-  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
-  // is not safe to run in parallel.
-  Status InitPostgres(Cluster* cluster);
+  Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
 
   void TearDown() override;
 
@@ -224,6 +221,11 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+
+ private:
+  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
+  // is not safe to run in parallel.
+  Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 };
 
 } // namespace enterprise

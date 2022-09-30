@@ -138,7 +138,9 @@ export default class RollingUpgradeForm extends Component {
     if (!isDefinedNotNull(primaryCluster)) {
       return;
     }
-    payload.ybSoftwareVersion = values.ybSoftwareVersion;
+    if (payload.taskType !== 'VMImage') {
+      payload.ybSoftwareVersion = values.ybSoftwareVersion;
+    }
     payload.universeUUID = universeUUID;
     payload.nodePrefix = nodePrefix;
     const masterGFlagList = [];

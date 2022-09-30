@@ -2642,7 +2642,7 @@ TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersCatchingUp) {
+TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);
