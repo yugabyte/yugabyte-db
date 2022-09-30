@@ -48,7 +48,7 @@ func setUp() {
 	config.Update(NodeLoggerKey, "node_agent_test.log")
 }
 
-//Sets up a mock server to test http client calls.
+// Sets up a mock server to test http client calls.
 func MockServer() *httptest.Server {
 	r := mux.NewRouter()
 
@@ -66,7 +66,7 @@ func MockServer() *httptest.Server {
 	return httptest.NewServer(r)
 }
 
-//Todo: Create a mock request handler for state updates requests.
+// Todo: Create a mock request handler for state updates requests.
 func nodeAgentStateHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPut {
 		//Todo

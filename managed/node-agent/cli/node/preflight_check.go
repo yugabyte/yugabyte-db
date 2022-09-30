@@ -20,12 +20,15 @@ var (
 )
 
 func SetupPreflightCheckCommand(parentCmd *cobra.Command) {
+	preflightCheck.PersistentFlags().
+		BoolP("add_node", "a", false, "Add node instance to on-prem provider (default: false)")
 	parentCmd.AddCommand(preflightCheck)
 }
 
 func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	util.ConsoleLogger().Debug("Starting Pre Flight Checks")
 	util.ConsoleLogger().Debug("Fetching Config from the Platform")
+	isAddNodeInstance, _ := cmd.Flags().GetBool("add_node")
 	ctx := server.Context()
 	config := util.CurrentConfig()
 	// Pass empty API token to use JWT.
@@ -81,17 +84,20 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	if !task.OutputPreflightCheck(results) {
 		util.ConsoleLogger().Fatal("Preflight checks failed")
 	}
-	nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksData)
-	err = executor.GetInstance(ctx).ExecuteTask(
-		ctx,
-		nodeInstanceHandler.Handle,
-	)
-	if err != nil {
-		util.ConsoleLogger().Fatalf("Error in posting node instance - %s", err)
+
+	if isAddNodeInstance {
+		nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksData)
+		err = executor.GetInstance(ctx).ExecuteTask(
+			ctx,
+			nodeInstanceHandler.Handle,
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf("Error in posting node instance - %s", err)
+		}
+		nodeInstances := *nodeInstanceHandler.Result()
+		nodeUuid := nodeInstances[config.String(util.NodeIpKey)].NodeUuid
+		// Update the config with node UUID.
+		config.Update(util.NodeIdKey, nodeUuid)
+		util.ConsoleLogger().Infof("Node Instance created with Node UUID - %s", nodeUuid)
 	}
-	nodeInstances := *nodeInstanceHandler.Result()
-	nodeUuid := nodeInstances[config.String(util.NodeIpKey)].NodeUuid
-	// Update the config with node UUID.
-	config.Update(util.NodeIdKey, nodeUuid)
-	util.ConsoleLogger().Infof("Node Instance created with Node UUID - %s", nodeUuid)
 }

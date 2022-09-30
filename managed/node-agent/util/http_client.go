@@ -87,8 +87,8 @@ func (c *HttpClient) Do(
 	return res, nil
 }
 
-//Validation to check if the given http method has correct
-//signature.
+// Validation to check if the given http method has correct
+// signature.
 func validate(method string, queryParams map[string]string, data any) error {
 	if !isValidMethod(method) {
 		return fmt.Errorf("Incorrect Method passed.")
@@ -101,7 +101,7 @@ func validate(method string, queryParams map[string]string, data any) error {
 	return nil
 }
 
-//Validates the method passed.
+// Validates the method passed.
 func isValidMethod(method string) bool {
 	switch method {
 	case http.MethodGet,
