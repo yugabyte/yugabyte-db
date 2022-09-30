@@ -560,7 +560,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
-  bool HasTasks(server::MonitoredTask::Type type) const;
+  bool HasTasks(server::MonitoredTaskType type) const;
   void AddTask(std::shared_ptr<server::MonitoredTask> task);
 
   // Returns true if no running tasks left.

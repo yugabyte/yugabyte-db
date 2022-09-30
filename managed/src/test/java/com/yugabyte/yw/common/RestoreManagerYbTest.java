@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,6 +124,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
   }
 
   @Test
@@ -393,7 +395,9 @@ public class RestoreManagerYbTest extends FakeDBApplication {
       cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_DIR);
     }
     cmd.add(actionType.name().toLowerCase());
-    if (restoreParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (restoreParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     return cmd;
