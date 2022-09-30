@@ -570,6 +570,7 @@ static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
 static char *yb_effective_transaction_isolation_level_string;
+static char *yb_xcluster_consistency_level_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -4099,6 +4100,16 @@ static struct config_string ConfigureNamesString[] =
 		&yb_effective_transaction_isolation_level_string,
 		"default",
 		NULL, NULL, show_yb_effective_transaction_isolation_level
+	},
+
+	{
+		{"yb_xcluster_consistency_level", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Controls the consistency level of xCluster replicated databases."),
+			gettext_noop("Valid values are \"database\" and \"tablet\".")
+		},
+		&yb_xcluster_consistency_level_string,
+		"database",
+		check_yb_xcluster_consistency_level, assign_yb_xcluster_consistency_level, NULL
 	},
 
 	{
@@ -11645,7 +11656,7 @@ check_maxconnections(int *newval, void **extra, GucSource source)
 
 /*
  * For YB-managed (cloud), the cloud user won't be aware of superuser.
- * When YB shows max_connections, the connections reserved for superusers (and 
+ * When YB shows max_connections, the connections reserved for superusers (and
  * other backends) are hidden from cloud users.
  * The reference of the relations can be found in postmaster.c.
  */

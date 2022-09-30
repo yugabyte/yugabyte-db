@@ -2754,3 +2754,24 @@ bool YBCIsRegionLocal(Relation rel) {
 			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
 			cost <= yb_interzone_cost;
 }
+
+bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource source) {
+  int newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  if (strcmp(*newval, "tablet") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  } else if (strcmp(*newval, "database") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_DATABASE;
+  } else {
+    return false;
+  }
+
+  *extra = malloc(sizeof(int));
+  if (!*extra) return false;
+  *((int*)*extra) = newConsistency;
+
+  return true;
+}
+
+void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
+  yb_xcluster_consistency_level = *((int*)extra);
+}
