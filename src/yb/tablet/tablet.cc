@@ -3857,7 +3857,7 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
   auto files = regular_db_->GetLiveFilesMetaData();
 
   for (const auto& file : files) {
-    if (input_names.count(file.name_id)) {
+    if (input_names.count(file.name_id) || !file.smallest.user_frontier) {
       continue;
     }
     result = std::min(
