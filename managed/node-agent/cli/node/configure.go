@@ -25,7 +25,7 @@ var (
 )
 
 func SetupConfigureCommand(parentCmd *cobra.Command) {
-	configureCmd.PersistentFlags().String("api_token", "", "API Token for fetching config info.")
+	configureCmd.PersistentFlags().String("api_token", "", "API token for fetching config info.")
 	configureCmd.PersistentFlags().StringP("url", "u", "", "Platform URL")
 	configureCmd.MarkPersistentFlagRequired("api_token")
 	configureCmd.MarkPersistentFlagRequired("url")
@@ -91,7 +91,8 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 		util.ConsoleLogger().Errorf("Error while displaying providers: %s", err.Error())
 		return err
 	}
-	config.Update(util.ProviderIdKey, onpremProviders[providerNum].Uuid)
+	selectedProvider := onpremProviders[providerNum]
+	config.Update(util.ProviderIdKey, selectedProvider.Uuid)
 
 	instanceTypesHandler := task.NewGetInstanceTypesHandler(apiToken)
 	// Get Instance Types for the provider from the platform.
@@ -113,7 +114,7 @@ func interactiveConfigHandler(cmd *cobra.Command) error {
 	selectedInstanceType := instances[instanceNum]
 	config.Update(util.NodeInstanceTypeKey, selectedInstanceType.InstanceTypeCode)
 
-	regions := selectedInstanceType.Provider.Regions
+	regions := selectedProvider.Regions
 	regionNum, err := displayOptionsAndGetSelected(displayInterfaces(regions), "Region")
 	if err != nil {
 		util.ConsoleLogger().Errorf("Error while displaying regions: %s", err.Error())

@@ -293,7 +293,7 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
-          &messenger()->scheduler())));
+          &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 
   return Status::OK();
 }
@@ -303,7 +303,8 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Tasks.
   DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
-  DisplayIconTile(output, "fa-check", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
 }
 
 Status Master::StartAsync() {

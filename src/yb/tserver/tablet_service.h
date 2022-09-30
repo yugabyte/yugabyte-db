@@ -203,6 +203,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     CreateTabletResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void PrepareDeleteTransactionTablet(const PrepareDeleteTransactionTabletRequestPB* req,
+                                      PrepareDeleteTransactionTabletResponsePB* resp,
+                                      rpc::RpcContext context) override;
+
   void DeleteTablet(const DeleteTabletRequestPB* req,
                     DeleteTabletResponsePB* resp,
                     rpc::RpcContext context) override;
@@ -257,6 +261,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void UpgradeYsql(
       const UpgradeYsqlRequestPB* req,
       UpgradeYsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void UpdateTransactionTablesVersion(
+      const UpdateTransactionTablesVersionRequestPB* req,
+      UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
 
   void TestRetry(

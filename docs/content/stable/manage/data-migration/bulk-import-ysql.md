@@ -89,12 +89,12 @@ To import data that was previously exported into CSV files, use the `COPY FROM` 
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK);
 ```
 
-In the command above, the `ROWS_PER_TRANSACTION` parameter splits the load into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
+In the command above, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process. Providing `DISABLE_FK_CHECK` parameter is recommended for the initial import of the data, especially for large tables, because it reduces the total time required to import the data.
 
-Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. You can import multiple files in a single `COPY` command to further speed up the process. Following is a sample example:
+To further speed up the process, you can import multiple files in a single COPY command. Following is a sample example:
 
 ```sql
 yugabyte=# \! ls t*.txt
@@ -132,7 +132,7 @@ yugabyte=# SELECT * FROM t;
 ```
 
 ```sql
-yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', DISABLE_FK_CHECK);
 COPY 3
 ```
 
@@ -160,7 +160,7 @@ For example, to skip the first 5000 rows in a file, run the command as follows:
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK, SKIP 5000);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK, SKIP 5000);
 ```
 
 ### Import data from SQL script

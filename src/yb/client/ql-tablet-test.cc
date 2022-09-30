@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
@@ -66,6 +67,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_lock.h"

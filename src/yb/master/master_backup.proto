@@ -249,6 +249,17 @@ message EditSnapshotScheduleResponsePB {
   optional SnapshotScheduleInfoPB schedule = 2;
 }
 
+message RestoreSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+  optional fixed64 restore_ht = 2; // Absolute Timing Option: Max HybridTime, in Micros.
+}
+
+message RestoreSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes snapshot_id = 2;
+  optional bytes restoration_id = 3; // 16 bytes UUID
+}
+
 service MasterBackup {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -265,4 +276,6 @@ service MasterBackup {
   rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
       returns (DeleteSnapshotScheduleResponsePB);
   rpc EditSnapshotSchedule(EditSnapshotScheduleRequestPB) returns (EditSnapshotScheduleResponsePB);
+  rpc RestoreSnapshotSchedule(RestoreSnapshotScheduleRequestPB)
+      returns (RestoreSnapshotScheduleResponsePB);
 }

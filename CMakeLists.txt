@@ -94,34 +94,18 @@ endif()
 ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX")
 ADD_CXX_FLAGS("-DBOOST_ERROR_CODE_HEADER_ONLY")
 
-set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests" FORCE)
-set(YB_NUM_INCLUDED_TESTS "0" CACHE INTERNAL "Number of included tests" FORCE)
-set(YB_NUM_EXECUTABLES "0" CACHE INTERNAL "Number of executables" FORCE)
-set(YB_NUM_INCLUDED_EXECUTABLES "0" CACHE INTERNAL "Number of included executables" FORCE)
-set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies" FORCE)
+# CMake's INTERNAL type of cache variables implies FORCE, overwriting existing entries.
+# https://cmake.org/cmake/help/latest/command/set.html
+set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests")
+set(YB_NUM_INCLUDED_TESTS "0" CACHE INTERNAL "Number of included tests")
+set(YB_NUM_EXECUTABLES "0" CACHE INTERNAL "Number of executables")
+set(YB_NUM_INCLUDED_EXECUTABLES "0" CACHE INTERNAL "Number of included executables")
+set(YB_ALL_DEPS "" CACHE INTERNAL "All dependencies")
 
 # This is used to let the add_executable wrapper know if we're adding a test.
-set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "" FORCE)
+set(YB_ADDING_TEST_EXECUTABLE "FALSE" CACHE INTERNAL "")
 
-if(NOT "$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "")
-  if("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "1")
-    message("YB_DO_NOT_BUILD_TESTS is set to 1, will not build tests")
-    set(BUILD_TESTS OFF)
-  elseif("$ENV{YB_DO_NOT_BUILD_TESTS}" STREQUAL "0")
-    message("YB_DO_NOT_BUILD_TESTS is set to 0, will build tests")
-    set(BUILD_TESTS ON)
-  else()
-    message(FATAL_ERROR
-            "Invalid value of the YB_DO_NOT_BUILD_TESTS environment variable, expected 0 or 1 but "
-            "got '$ENV{YB_DO_NOT_BUILD_TESTS}'.")
-  endif()
-  set(BUILD_TESTS ${BUILD_TESTS} CACHE BOOL "Whether to build tests")
-elseif("$CACHE{BUILD_TESTS}" STREQUAL "")
-  set(BUILD_TESTS ON)
-  message("Will build tests by default")
-else()
-  message("BUILD_TESTS from cache: ${BUILD_TESTS} (set YB_DO_NOT_BUILD_TESTS to 0 or 1 to change)")
-endif()
+yb_disable_tests_if_necessary()
 
 parse_build_root_basename()
 if("${YB_BUILD_TYPE}" STREQUAL "")
@@ -186,34 +170,7 @@ CHECK_YB_COMPILER_PATH(${CMAKE_C_COMPILER})
 message("CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
 CHECK_YB_COMPILER_PATH(${CMAKE_CXX_COMPILER})
 
-# Provide a 'latest' symlink to this build directory if the "blessed" multi-build layout is
-# detected:
-#
-# build/
-# build/<first build directory>
-# build/<second build directory>
-# ...
-set(LATEST_BUILD_SYMLINK_PATH "${YB_BUILD_ROOT_PARENT}/latest")
-if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
-  message("LATEST SYMLINK PATH: ${LATEST_BUILD_SYMLINK_PATH}")
-  if ("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${LATEST_BUILD_SYMLINK_PATH}")
-    message(FATAL_ERROR "Should not run cmake inside the build/latest symlink. "
-            "First change directories into the destination of the symlink.")
-  endif()
-
-  # This option is needed in addition to -sf, while linking, to force the link to occur on
-  # directories. Unfortunately, Linux & MacOS differ on the option name.
-  if (NOT APPLE)
-    set(MORE_ARGS "-T")
-  else()
-    set(MORE_ARGS "-h")
-  endif()
-  add_custom_target(latest_symlink ALL
-    "${BUILD_SUPPORT_DIR}/create_latest_symlink.sh"
-    "${CMAKE_CURRENT_BINARY_DIR}"
-    "${LATEST_BUILD_SYMLINK_PATH}"
-    COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
-endif()
+add_latest_symlink_target()
 
 add_custom_target(dummy_target ALL
   COMMAND cat /dev/null
@@ -709,6 +666,8 @@ if(IS_CLANG AND NOT "$ENV{YB_CLANG_PREFIX}" STREQUAL "")
   # TODO: this works for the Linux binary clang 3.9 package, might be different on Mac OS X.
   ADD_GLOBAL_RPATH_ENTRY("$ENV{YB_CLANG_PREFIX}/lib")
 endif()
+
+configure_macos_sdk()
 
 # -------------------------------------------------------------------------------------------------
 

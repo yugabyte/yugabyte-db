@@ -28,36 +28,69 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	util.ConsoleLogger().Debug("Fetching Config from the Platform")
 	ctx := server.Context()
 	config := util.CurrentConfig()
-	platformConfigHandler := task.NewGetPlatformCurrentConfigHandler()
-	// Get Preflight checks config from platform.
-	err := executor.GetInstance(ctx).ExecuteTask(ctx, platformConfigHandler.Handle)
+	// Pass empty API token to use JWT.
+	providerHandler := task.NewGetProviderHandler()
+	// Get provider from the platform.
+	err := executor.GetInstance(ctx).ExecuteTask(ctx, providerHandler.Handle)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Failed fetching provider from the platform - %s", err)
+	}
+	provider := providerHandler.Result()
+	instanceTypeHandler := task.NewGetInstanceTypeHandler()
+	// Get instance type config from the platform.
+	err = executor.GetInstance(ctx).ExecuteTask(ctx, instanceTypeHandler.Handle)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Failed fetching instance type from the platform - %s", err)
+	}
+	instanceTypeData := instanceTypeHandler.Result()
+	util.ConsoleLogger().Info("Fetched instance type from the platform")
+
+	accessKeysHandler := task.NewGetAccessKeysHandler()
+	// Get access key from the platform.
+	err = executor.GetInstance(ctx).ExecuteTask(ctx, accessKeysHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf("Failed fetching config from the platform - %s", err)
 	}
-	data := platformConfigHandler.Result()
-	util.ConsoleLogger().Info("Fetched Config from the Platform")
+	accessKeyData := accessKeysHandler.Result()
+	util.ConsoleLogger().Info("Fetched access key from the platform")
 
+	// Prepare the preflight check input.
 	util.ConsoleLogger().Info("Running Pre-flight checks")
-	preflightCheckHandler := task.NewPreflightCheckHandler(*data)
+	preflightCheckHandler := task.NewPreflightCheckHandler(
+		provider,
+		instanceTypeData,
+		accessKeyData,
+	)
 	err = executor.GetInstance(ctx).
 		ExecuteTask(ctx, preflightCheckHandler.Handle)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Task Execution Failed - %s", err.Error())
+		util.ConsoleLogger().Fatalf("Task execution failed - %s", err.Error())
 	}
 	preflightChecksData := *preflightCheckHandler.Result()
-	task.OutputPreflightCheck(preflightChecksData)
-
-	util.ConsoleLogger().Info("Evaluating the Preflight Checks")
-	nodeCapabilityHandler := task.NewSendNodeCapabilityHandler(preflightChecksData)
+	validationHandler := task.NewValidateNodeInstanceHandler(preflightChecksData)
+	util.ConsoleLogger().Info("Evaluating the preflight checks")
 	err = executor.GetInstance(ctx).ExecuteTask(
 		ctx,
-		nodeCapabilityHandler.Handle,
+		validationHandler.Handle,
 	)
 	if err != nil {
-		util.ConsoleLogger().Fatalf("Preflight Checks Failed - %s", err)
+		util.ConsoleLogger().Fatalf("Error in validating preflight checks data - %s", err)
 	}
-	nodeCapData := *nodeCapabilityHandler.Result()
-	nodeUuid := nodeCapData[config.String(util.NodeIpKey)].NodeUuid
+	results := *validationHandler.Result()
+	util.FileLogger().Infof("Node Instance validation results: %+v", results)
+	if !task.OutputPreflightCheck(results) {
+		util.ConsoleLogger().Fatal("Preflight checks failed")
+	}
+	nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksData)
+	err = executor.GetInstance(ctx).ExecuteTask(
+		ctx,
+		nodeInstanceHandler.Handle,
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf("Error in posting node instance - %s", err)
+	}
+	nodeInstances := *nodeInstanceHandler.Result()
+	nodeUuid := nodeInstances[config.String(util.NodeIpKey)].NodeUuid
 	// Update the config with node UUID.
 	config.Update(util.NodeIdKey, nodeUuid)
 	util.ConsoleLogger().Infof("Node Instance created with Node UUID - %s", nodeUuid)

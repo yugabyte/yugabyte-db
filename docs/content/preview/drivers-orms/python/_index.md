@@ -17,8 +17,8 @@ The following projects can be used to implement Python applications using the Yu
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| Yugabyte Psycopg2 Driver (Recommended) | [Documentation](yugabyte-psycopg2) <br /> [Reference page](../../reference/drivers/python/yugabyte-psycopg2-reference/)| 2.9.3 | 2.8 and above |
-| PostgreSQL Psycopg2 | [Documentation](postgres-psycopg2) <br /> [Hello World](../../develop/build-apps/python/ysql-psycopg2) <br /> [Reference page](../../reference/drivers/python/postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
+| Yugabyte Psycopg2 Smart Driver (Recommended) | [Documentation](yugabyte-psycopg2) <br /> [Reference page](../../reference/drivers/python/yugabyte-psycopg2-reference/)| 2.9.3 | 2.8 and above |
+| PostgreSQL Psycopg2 Driver | [Documentation](postgres-psycopg2) <br /> [Hello World](../../develop/build-apps/python/ysql-psycopg2) <br /> [Reference page](../../reference/drivers/python/postgres-psycopg2-reference/) | 2.9.3 | 2.8 and above |
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
@@ -50,8 +50,3 @@ To develop Python applications for YugabyteDB, you need the following:
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
-
-## Next steps
-
-- Learn how to build Python applications using [Django ORM](django/).
-- Learn how to [use SQLAlchemy with YugabyteDB](sqlalchemy/)

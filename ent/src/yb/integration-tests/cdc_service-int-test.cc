@@ -42,6 +42,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -1783,6 +1784,8 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
     CDCServiceTest::SetUp();
   }
 };
+
+INSTANTIATE_TEST_CASE_P(EnableReplicateIntents, CDCServiceTestMinSpace, ::testing::Bool());
 
 TEST_P(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);

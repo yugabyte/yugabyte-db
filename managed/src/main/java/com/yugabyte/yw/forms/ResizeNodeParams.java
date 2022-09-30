@@ -138,6 +138,10 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return "Smart resizing is only supported for AWS / GCP, It is: "
           + currentUserIntent.providerType.toString();
     }
+    if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
+      return "Smart resize is not possible if is dedicated mode changed";
+    }
+
     List<String> errors = new ArrayList<>();
     // Checking disk.
     boolean diskChanged =

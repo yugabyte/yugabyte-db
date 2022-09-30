@@ -16,6 +16,7 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.gax.core.CredentialsProvider;
 import com.google.api.gax.core.FixedCredentialsProvider;
+import com.google.api.gax.rpc.NotFoundException;
 import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
@@ -40,8 +41,6 @@ import com.google.cloud.kms.v1.ProtectionLevel;
 import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
-import com.google.cloud.kms.v1.KeyManagementServiceClient.ListCryptoKeysPagedResponse;
-import com.google.cloud.kms.v1.KeyManagementServiceClient.ListKeyRingsPagedResponse;
 import com.google.protobuf.ByteString;
 
 import java.io.ByteArrayInputStream;
@@ -64,6 +63,15 @@ public class GcpEARServiceUtil {
   public static final String GCP_KMS_ENDPOINT_FIELDNAME = "GCP_KMS_ENDPOINT";
   public static final String KEY_RING_ID_FIELDNAME = "KEY_RING_ID";
   public static final String CRYPTO_KEY_ID_FIELDNAME = "CRYPTO_KEY_ID";
+
+  // bare minimum permissions required for using GCP KMS in YBA
+  public static final List<String> minRequiredPermissionsList =
+      Arrays.asList(
+          "cloudkms.keyRings.get",
+          "cloudkms.cryptoKeys.get",
+          "cloudkms.cryptoKeyVersions.useToEncrypt",
+          "cloudkms.cryptoKeyVersions.useToDecrypt",
+          "cloudkms.locations.generateRandomBytes");
 
   public ObjectNode getAuthConfig(UUID configUUID) {
     return EncryptionAtRestUtil.getAuthConfig(configUUID);
@@ -222,10 +230,18 @@ public class GcpEARServiceUtil {
    * @return the key ring object
    */
   public KeyRing getKeyRing(ObjectNode authConfig) {
+    KeyRing keyRing = null;
     String keyRingRN = getKeyRingRN(authConfig);
     KeyManagementServiceClient client = getKMSClient(authConfig);
-    KeyRing keyRing = client.getKeyRing(keyRingRN);
-    client.close();
+    try {
+      keyRing = client.getKeyRing(keyRingRN);
+    } catch (NotFoundException e) {
+      log.error(
+          String.format("Key Ring '%s' does not exist on the GCP KMS provider \n. ", keyRingRN)
+              + e.toString());
+    } finally {
+      client.close();
+    }
     return keyRing;
   }
 
@@ -250,10 +266,18 @@ public class GcpEARServiceUtil {
    * @return the crypto key object
    */
   public CryptoKey getCryptoKey(ObjectNode authConfig) {
+    CryptoKey cryptoKey = null;
     String CryptoKeyRN = getCryptoKeyRN(authConfig);
     KeyManagementServiceClient client = getKMSClient(authConfig);
-    CryptoKey cryptoKey = client.getCryptoKey(CryptoKeyRN);
-    client.close();
+    try {
+      cryptoKey = client.getCryptoKey(CryptoKeyRN);
+    } catch (NotFoundException e) {
+      log.error(
+          String.format("Crypto Key '%s' does not exist on the GCP KMS provider \n. ", CryptoKeyRN)
+              + e.toString());
+    } finally {
+      client.close();
+    }
     return cryptoKey;
   }
 
@@ -368,51 +392,30 @@ public class GcpEARServiceUtil {
   }
 
   /**
-   * Verifies if a key ring resource name exists for the client created with the config object.
-   * First lists all of them, then checks for a match.
+   * Verifies if a key ring exists on the GCP KMS for the client created with the config object.
    *
    * @param authConfig the gcp auth config object
-   * @param keyRingRN the key ring resource name
    * @return true if key ring exists, else false.
    */
-  public boolean checkKeyRingExists(ObjectNode authConfig, String keyRingRN) {
-    LocationName locationName = getLocationName(authConfig);
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    ListKeyRingsPagedResponse response = client.listKeyRings(locationName);
-    for (KeyRing keyRing : response.iterateAll()) {
-      if (keyRing.getName().equals(keyRingRN)) {
-        client.close();
-        return true;
-      }
-    }
-    client.close();
-    return false;
+  public boolean checkKeyRingExists(ObjectNode authConfig) {
+    return getKeyRing(authConfig) != null;
   }
 
   /**
-   * Verifies if a crypto key resource name exists for the client created with the config object.
-   * First lists all of them, then checks for a match.
+   * Verifies if a crypto key resource name exists on the GCP KMS provider for the client created
+   * with the config object.
    *
    * @param authConfig the gcp auth config object
-   * @param cryptoKeyRN the crypto key resource name
    * @return true if crypto key exists, else false.
    */
-  public boolean checkCryptoKeyExists(ObjectNode authConfig, String cryptoKeyRN) {
-    String keyRingRN = getKeyRingRN(authConfig);
-    if (!checkKeyRingExists(authConfig, keyRingRN)) {
-      log.info("Key ring doesn't exist, while checking for crypto key");
+  public boolean checkCryptoKeyExists(ObjectNode authConfig) {
+    String cryptoKeyRN = getCryptoKeyRN(authConfig);
+    if (!checkKeyRingExists(authConfig)) {
+      log.info(
+          String.format("Key ring doesn't exist, while checking for crypto key '%s'", cryptoKeyRN));
       return false;
     }
-    KeyManagementServiceClient client = getKMSClient(authConfig);
-    ListCryptoKeysPagedResponse response = client.listCryptoKeys(keyRingRN);
-    for (CryptoKey cryptoKey : response.iterateAll()) {
-      if (cryptoKey.getName().equals(cryptoKeyRN)) {
-        client.close();
-        return true;
-      }
-    }
-    client.close();
-    return false;
+    return getCryptoKey(authConfig) != null;
   }
 
   /**
@@ -420,11 +423,10 @@ public class GcpEARServiceUtil {
    * the purpose, and if it is enabled.
    *
    * @param authConfig the gcp auth config object
-   * @param cryptoKeyRN the crypto key resource name
    * @return true if all the settings of the given crypto key are valid, else false
    */
-  public boolean validateCryptoKeySettings(ObjectNode authConfig, String cryptoKeyRN) {
-    if (!checkCryptoKeyExists(authConfig, cryptoKeyRN)) {
+  public boolean validateCryptoKeySettings(ObjectNode authConfig) {
+    if (!checkCryptoKeyExists(authConfig)) {
       log.info("Crypto key doesn't exist while validating crypto key settings.");
       return false;
     }
@@ -533,13 +535,18 @@ public class GcpEARServiceUtil {
    * Create a key ring with a given ID if it doesn't already exist. Does nothing if already exists.
    *
    * @param authConfig the gcp auth config object
-   * @param keyRingId the key ring ID to be created if not already existing
+   * @throws Exception when keyring doesn't exist and no 'cloudkms.keyRings.create' permission
    */
-  public void checkOrCreateKeyRing(ObjectNode authConfig) {
-    String keyRingRN = getKeyRingRN(authConfig);
-    if (checkKeyRingExists(authConfig, keyRingRN)) {
+  public void checkOrCreateKeyRing(ObjectNode authConfig) throws Exception {
+    if (checkKeyRingExists(authConfig)) {
       return;
     } else {
+      List<String> createKeyRingPermissions = Arrays.asList("cloudkms.keyRings.create");
+      if (!testGcpPermissions(authConfig, createKeyRingPermissions)) {
+        throw new Exception(
+            "Key ring does not already exist and "
+                + "service account does not have 'cloudkms.keyRings.create' permission.");
+      }
       createKeyRing(authConfig);
     }
   }
@@ -549,14 +556,20 @@ public class GcpEARServiceUtil {
    * exist. Does nothing if crypto key already exists. Key ring ID must already exist.
    *
    * @param authConfig the gcp auth config object
+   * @throws Exception when cryptokey doesn't exist and no 'cloudkms.cryptoKeys.create' permission
    */
-  public void checkOrCreateCryptoKey(ObjectNode authConfig) {
+  public void checkOrCreateCryptoKey(ObjectNode authConfig) throws Exception {
     String cryptoKeyId = getConfigCryptoKeyId(authConfig);
     String keyRingRN = getKeyRingRN(authConfig);
-    String cryptoKeyRN = getCryptoKeyRN(authConfig);
-    if (checkCryptoKeyExists(authConfig, cryptoKeyRN)) {
+    if (checkCryptoKeyExists(authConfig)) {
       return;
     } else {
+      List<String> createCryptoKeyPermissions = Arrays.asList("cloudkms.cryptoKeys.create");
+      if (!testGcpPermissions(authConfig, createCryptoKeyPermissions)) {
+        throw new Exception(
+            "Crypto key does not already exist and "
+                + "service account does not have 'cloudkms.cryptoKeys.create' permission.");
+      }
       createCryptoKey(authConfig, keyRingRN, cryptoKeyId);
     }
   }
@@ -603,9 +616,10 @@ public class GcpEARServiceUtil {
    * Used in pre-flight validation check at the time of config creation.
    *
    * @param authConfig the config object with all details (credentials, location ID, etc.)
+   * @param permissionsList the list of permissions to check if allowed for the service acc
    * @return true if it has enough permission, else false
    */
-  public boolean testAllPermissions(ObjectNode authConfig) {
+  public boolean testGcpPermissions(ObjectNode authConfig, List<String> permissionsList) {
     String projectId = getConfigProjectId(authConfig);
 
     CloudResourceManager service = null;
@@ -616,19 +630,6 @@ public class GcpEARServiceUtil {
       return false;
     }
 
-    List<String> permissionsList =
-        Arrays.asList(
-            "cloudkms.keyRings.create",
-            "cloudkms.keyRings.get",
-            "cloudkms.keyRings.list",
-            "cloudkms.cryptoKeys.create",
-            "cloudkms.cryptoKeys.get",
-            "cloudkms.cryptoKeys.list",
-            "cloudkms.cryptoKeyVersions.useToEncrypt",
-            "cloudkms.cryptoKeyVersions.useToDecrypt",
-            "cloudkms.cryptoKeyVersions.destroy",
-            "cloudkms.locations.generateRandomBytes");
-
     TestIamPermissionsRequest requestBody =
         new TestIamPermissionsRequest().setPermissions(permissionsList);
     try {
@@ -636,14 +637,19 @@ public class GcpEARServiceUtil {
           service.projects().testIamPermissions(projectId, requestBody).execute();
 
       if (permissionsList.size() == testIamPermissionsResponse.getPermissions().size()) {
-        log.info("Verified that the user has all 10 permissions required for GCP KMS.");
+        log.info(
+            "Verified that the user has following permissions required for GCP KMS: "
+                + String.join(", ", permissionsList));
         return true;
       }
     } catch (IOException e) {
       log.error("Unable to test permissions: \n" + e.toString());
       return false;
     }
-    log.warn("The user / service account does not have all 10 permissions required for GCP KMS.");
+    log.warn(
+        "The user / service account does not have all of the "
+            + "following permissions required for GCP KMS: "
+            + String.join(", ", permissionsList));
     return false;
   }
 
@@ -710,7 +716,7 @@ public class GcpEARServiceUtil {
       String keyRingId = formData.path(KEY_RING_ID_FIELDNAME).asText();
       log.info("validateKMSProviderConfigFormData: Checked all required fields exist.");
       // If given a custom key ring, validate its permissions
-      if (testAllPermissions(formData) == false) {
+      if (testGcpPermissions(formData, minRequiredPermissionsList) == false) {
         log.info(
             "validateKMSProviderConfigFormData: Not enough permissions for key ring = "
                 + keyRingId);

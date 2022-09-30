@@ -12,11 +12,13 @@ package com.yugabyte.yw.models.common;
 import static com.yugabyte.yw.models.common.Condition.GREATER_THAN;
 import static com.yugabyte.yw.models.common.Condition.LESS_THAN;
 
+import io.swagger.annotations.ApiModel;
 import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
 @Getter
+@ApiModel
 public enum Unit {
   STATUS(
       new UnitBuilder()

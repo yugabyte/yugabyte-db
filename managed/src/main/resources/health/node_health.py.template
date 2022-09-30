@@ -1218,6 +1218,24 @@ class NodeChecker():
         metric.add_value(0 if is_error else 1)
         return e.fill_and_return_entry(errors, has_error=is_error, metrics=[metric])
 
+    def kill_spawned_postgres_workers(self):
+        postmaster_pid = self.get_process_pid_by_name(POSTMASTER)
+        if postmaster_pid is None:
+            return
+
+        cmd = "ps --no-headers -f --ppid {} -o pid= -o etimes= -o command= ".format(postmaster_pid)
+        child_processes = self._check_output(cmd).split('\n')
+        for child_process in child_processes:
+            logging.info("Checking {}".format(child_process))
+            if 'postgres: yugabyte system_platform' in child_process:
+                output_parts = child_process.strip().split()
+                worker_pid = output_parts[0].strip()
+                uptime_sec = output_parts[1].strip()
+                if worker_pid.isdigit() and uptime_sec.isdigit() \
+                    and int(uptime_sec) > CMD_TIMEOUT_SEC:
+                    logging.info("Killing {}".format(child_process))
+                    self._check_output("kill -9 {}".format(worker_pid))
+
     def check_ysqlsh_read_write(self):
         logging.info("Checking ysqlsh write and read works for node {}".format(self.node))
         e = self._new_metric_entry("Write and read through ysqlsh")
@@ -1235,20 +1253,24 @@ class NodeChecker():
 
         key = str(self.tserver_index * 100 + 1)
         output = []
-        for attempt in range(3):
-            statement = "insert into write_read_test values ({}) on conflict do nothing; \
-                         select from write_read_test where id = {}; \
-                         delete from write_read_test where id = {};".format(key, key, key)
-            cmd = "{} -c \"{}\"".format(ysqlsh_cmd, statement)
-            output = self._check_output(cmd).strip()
+        statement = "insert into write_read_test values ({}) on conflict do nothing; \
+                     select from write_read_test where id = {}; \
+                     delete from write_read_test where id = {};".format(key, key, key)
+        cmd = "{} -c \"{}\"".format(ysqlsh_cmd, statement)
+        output = self._check_output(cmd).strip()
 
-            if 'relation "write_read_test" does not exist' in output:
-                # Old system without read write table
-                # It's metric-only check, hence we do set has_error=False to avoid retries
-                return e.fill_and_return_entry(["Test table does not exist"], has_error=False)
-            if 'DELETE 1' in output:
-                metric.add_value(1)
-                return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+        if 'relation "write_read_test" does not exist' in output:
+            # Old system without read write table
+            # It's metric-only check, hence we do set has_error=False to avoid retries
+            return e.fill_and_return_entry(["Test table does not exist"], has_error=False)
+        if 'DELETE 1' in output:
+            metric.add_value(1)
+            return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+
+        # This is needed because postgres worker will live even after ysqlsh process is terminated
+        # in some cases (more than half tservers down, no master leader), which will lead to
+        # YSQL connection leak. Making sure we get rid of all spawned postgres workers.
+        self.kill_spawned_postgres_workers()
 
         metric.add_value(0)
         # It's metric-only check, hence we do set has_error=False to avoid retries -

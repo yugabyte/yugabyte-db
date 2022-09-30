@@ -73,6 +73,7 @@
 
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -80,14 +81,12 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(client_read_write_timeout_ms);
-DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
@@ -134,8 +133,6 @@ using pgwrapper::PgSupervisor;
 
 namespace enterprise {
 
-constexpr static const char* const kKeyColumnName = "key";
-
 class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
   void ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval = false,
@@ -158,7 +155,6 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
 
     RETURN_NOT_OK(InitClusters(opts));
 
-    RETURN_NOT_OK(RunOnBothClusters([](MiniCluster* cluster) { return WaitForInitDb(cluster); }));
     RETURN_NOT_OK(InitPostgres(&producer_cluster_));
     RETURN_NOT_OK(InitPostgres(&consumer_cluster_));
 
@@ -192,13 +188,13 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     std::vector<YBTableName> tables;
     std::vector<std::shared_ptr<client::YBTable>> yb_tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], &producer_cluster_,
+      RETURN_NOT_OK(CreateYsqlTable(i, num_producer_tablets[i], &producer_cluster_,
                                 &tables, tablegroup_name, colocated));
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
       yb_tables.push_back(producer_table);
 
-      RETURN_NOT_OK(CreateTable(i, num_consumer_tablets[i], &consumer_cluster_,
+      RETURN_NOT_OK(CreateYsqlTable(i, num_consumer_tablets[i], &consumer_cluster_,
                                 &tables, tablegroup_name, colocated));
       std::shared_ptr<client::YBTable> consumer_table;
       RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
@@ -206,39 +202,6 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     }
 
     return yb_tables;
-  }
-
-  Status InitPostgres(Cluster* cluster) {
-    auto pg_ts = RandomElement(cluster->mini_cluster_->mini_tablet_servers());
-    auto port = cluster->mini_cluster_->AllocateFreePort();
-    yb::pgwrapper::PgProcessConf pg_process_conf =
-        VERIFY_RESULT(yb::pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
-            yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-            pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-            pg_ts->server()->GetSharedMemoryFd()));
-    pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-    pg_process_conf.force_disable_log_file = true;
-    FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
-
-    LOG(INFO) << "Starting PostgreSQL server listening on "
-              << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
-              << pg_process_conf.data_dir
-              << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-    cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(
-        pg_process_conf, nullptr /* tserver */);
-    RETURN_NOT_OK(cluster->pg_supervisor_->Start());
-
-    cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
-    return Status::OK();
-  }
-
-  Status CreateDatabase(Cluster* cluster,
-                        const std::string& namespace_name = kNamespaceName,
-                        bool colocated = false) {
-    auto conn = EXPECT_RESULT(cluster->Connect());
-    EXPECT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1",
-                                 namespace_name, colocated ? " colocated = true" : ""));
-    return Status::OK();
   }
 
   Result<string> GetUniverseId(Cluster* cluster) {
@@ -258,122 +221,11 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     return resp.cluster_config().cluster_uuid();
   }
 
-  Result<YBTableName> CreateTable(Cluster* cluster,
-                                  const std::string& namespace_name,
-                                  const std::string& schema_name,
-                                  const std::string& table_name,
-                                  const boost::optional<std::string>& tablegroup_name,
-                                  uint32_t num_tablets,
-                                  bool colocated = false,
-                                  const ColocationId colocation_id = 0) {
-    auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
-    std::string colocation_id_string = "";
-    if (colocation_id > 0) {
-      colocation_id_string = Format("colocation_id = $0", colocation_id);
-    }
-    if (!schema_name.empty()) {
-      EXPECT_OK(conn.Execute(Format("CREATE SCHEMA IF NOT EXISTS $0;", schema_name)));
-    }
-    std::string full_table_name =
-        schema_name.empty() ? table_name
-                            : Format("$0.$1", schema_name, table_name);
-    std::string query = Format(
-        "CREATE TABLE $0($1 int PRIMARY KEY) ", full_table_name, kKeyColumnName);
-    // One cannot use tablegroup together with split into tablets.
-    if (tablegroup_name.has_value()) {
-      std::string with_clause =
-          colocation_id_string.empty() ? "" : Format("WITH ($0) ", colocation_id_string);
-      std::string tablegroup_clause = Format("TABLEGROUP $0", tablegroup_name.value());
-      query += Format("$0$1", with_clause, tablegroup_clause);
-    } else {
-      std::string colocated_clause = Format("colocated = $0", colocated);
-      std::string with_clause =
-          colocation_id_string.empty() ? colocated_clause
-                                       : Format("$0, $1", colocation_id_string, colocated_clause);
-      query += Format("WITH ($0)", with_clause);
-      if (!colocated) {
-         query += Format(" SPLIT INTO $0 TABLETS", num_tablets);
-      }
-    }
-    EXPECT_OK(conn.Execute(query));
-    return GetTable(cluster, namespace_name, schema_name, table_name,
-                    true /* verify_table_name */, !schema_name.empty() /* verify_schema_name*/);
-  }
-
-  Status CreateTable(uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-                     std::vector<YBTableName>* tables,
-                     const boost::optional<std::string>& tablegroup_name,
-                     bool colocated = false) {
-    // Generate colocation_id based on index so that we have the same colocation_id for
-    // producer/consumer.
-    const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
-    auto table = VERIFY_RESULT(CreateTable(cluster, kNamespaceName, "" /* schema_name */,
-                                           Format("test_table_$0", idx), tablegroup_name,
-                                           num_tablets, colocated, colocation_id));
-    tables->push_back(table);
-    return Status::OK();
-  }
-
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
     return table.has_pgschema_name()
         ? Format("$0.$1", table.pgschema_name(), table.table_name())
         : table.table_name();
-  }
-
-  Result<YBTableName> GetTable(Cluster* cluster,
-                               const std::string& namespace_name,
-                               const std::string& schema_name,
-                               const std::string& table_name,
-                               bool verify_table_name = true,
-                               bool verify_schema_name = false,
-                               bool exclude_system_tables = true) {
-    master::ListTablesRequestPB req;
-    master::ListTablesResponsePB resp;
-
-    req.set_name_filter(table_name);
-    req.mutable_namespace_()->set_name(namespace_name);
-    req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
-    if (!exclude_system_tables) {
-      req.set_exclude_system_tables(true);
-      req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    }
-
-    master::MasterDdlProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Failed listing tables");
-    }
-
-    // Now need to find the table and return it.
-    for (const auto& table : resp.tables()) {
-      // If !verify_table_name, just return the first table.
-      if (!verify_table_name ||
-          (table.name() == table_name && table.namespace_().name() == namespace_name)) {
-
-        // In case of a match, further check for match in schema_name.
-        if (!verify_schema_name ||
-            (!table.has_pgschema_name() && schema_name.empty()) ||
-            (table.has_pgschema_name() && table.pgschema_name() == schema_name)) {
-
-          YBTableName yb_table;
-          yb_table.set_table_id(table.id());
-          yb_table.set_table_name(table_name);
-          yb_table.set_namespace_id(table.namespace_().id());
-          yb_table.set_namespace_name(namespace_name);
-          yb_table.set_pgschema_name(table.has_pgschema_name() ? table.pgschema_name() : "");
-          return yb_table;
-        }
-      }
-    }
-    return STATUS(IllegalState,
-                  strings::Substitute("Unable to find table $0 in namespace $1",
-                                      table_name, namespace_name));
   }
 
   /*
@@ -532,7 +384,7 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
     auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
-    return GetTable(
+    return GetYsqlTable(
       cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
   }
 };
@@ -1166,7 +1018,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
   // Also create an additional non-colocated table in each database.
-  auto non_colocated_table = ASSERT_RESULT(CreateTable(&producer_cluster_,
+  auto non_colocated_table = ASSERT_RESULT(CreateYsqlTable(&producer_cluster_,
                                                        kNamespaceName,
                                                        "" /* schema_name */,
                                                        "test_table_2",
@@ -1175,7 +1027,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
                                                        false /* colocated */));
   std::shared_ptr<client::YBTable> non_colocated_producer_table;
   ASSERT_OK(producer_client()->OpenTable(non_colocated_table, &non_colocated_producer_table));
-  non_colocated_table = ASSERT_RESULT(CreateTable(&consumer_cluster_,
+  non_colocated_table = ASSERT_RESULT(CreateYsqlTable(&consumer_cluster_,
                                                   kNamespaceName,
                                                   "" /* schema_name */,
                                                   "test_table_2",
@@ -1312,7 +1164,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
 
   // Create two tables with different colocation ids.
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
-  auto table_info = ASSERT_RESULT(CreateTable(&producer_cluster_,
+  auto table_info = ASSERT_RESULT(CreateYsqlTable(&producer_cluster_,
                                               kNamespaceName,
                                               "" /* schema_name */,
                                               "test_table_0",
@@ -1320,7 +1172,7 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
                                               1 /* num_tablets */,
                                               true /* colocated */,
                                               123456 /* colocation_id */));
-  ASSERT_RESULT(CreateTable(&consumer_cluster_,
+  ASSERT_RESULT(CreateYsqlTable(&consumer_cluster_,
                             kNamespaceName,
                             "" /* schema_name */,
                             "test_table_0",
@@ -1444,11 +1296,11 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
   const uint32_t num_consumer_tables = 3;
   std::vector<YBTableName> tables;
   for (uint32_t i = 0; i < num_producer_tables; i++) {
-    ASSERT_OK(CreateTable(i, 1 /* num_tablets */, &producer_cluster_,
+    ASSERT_OK(CreateYsqlTable(i, 1 /* num_tablets */, &producer_cluster_,
                           &tables, tablegroup_name, false /* colocated */));
   }
   for (uint32_t i = 0; i < num_consumer_tables; i++) {
-    ASSERT_OK(CreateTable(i, 1 /* num_tablets */, &consumer_cluster_,
+    ASSERT_OK(CreateYsqlTable(i, 1 /* num_tablets */, &consumer_cluster_,
                           &tables, tablegroup_name, false /* colocated */));
   }
 
@@ -1543,6 +1395,8 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
                                                     NULL));
     ASSERT_GT(tablet_ids.size(), 0);
   }
+
+  ASSERT_OK(WaitForLoadBalancersToStabilize());
 
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
@@ -2232,7 +2086,7 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   producer_tables.reserve(kNumTables);
   producer_table_names.reserve(kNumTables);
   for (int i = 0; i < kNumTables; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
+    auto t = ASSERT_RESULT(CreateYsqlTable(
         &producer_cluster_, kNamespaceName, Format("test_schema_$0", i),
         "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
     producer_table_names.push_back(t);
@@ -2246,7 +2100,7 @@ TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
   std::vector<YBTableName> consumer_table_names;
   consumer_table_names.reserve(kNumTables);
   for (int i = kNumTables - 1; i >= 0; i--) {
-    auto t = ASSERT_RESULT(CreateTable(
+    auto t = ASSERT_RESULT(CreateYsqlTable(
         &consumer_cluster_, kNamespaceName, Format("test_schema_$0", i),
         "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
     consumer_table_names.push_back(t);

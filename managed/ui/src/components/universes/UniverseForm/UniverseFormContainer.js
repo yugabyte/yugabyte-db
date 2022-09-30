@@ -265,6 +265,7 @@ const formFieldNames = [
   'primary.mountPoints',
   'primary.awsArnString',
   'primary.useSystemd',
+  'primary.dedicatedNodes',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -288,6 +289,7 @@ const formFieldNames = [
   'async.throughput',
   'async.mountPoints',
   'async.useSystemd',
+  'async.dedicatedNodes',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -305,7 +307,8 @@ const portFields = [
   'yqlHttpPort',
   'yqlRpcPort',
   'ysqlHttpPort',
-  'ysqlRpcPort'
+  'ysqlRpcPort',
+  'nodeExporterPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -345,6 +348,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
     data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
+    data[clusterType].dedicatedNodes = userIntent.dedicatedNodes;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return { value: item.uuid, name: item.name, label: item.name };
@@ -418,7 +422,8 @@ function mapStateToProps(state, ownProps) {
       awsArnString: '',
       selectEncryptionAtRestConfig: null,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     },
     async: {
       universeName: '',
@@ -439,7 +444,8 @@ function mapStateToProps(state, ownProps) {
       enableNodeToNodeEncrypt: true,
       enableClientToNodeEncrypt: true,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     }
   };
 
@@ -516,8 +522,10 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.nodeExporterPort',
       'primary.useSystemd',
       'primary.ybcSoftwareVersion',
+      'primary.dedicatedNodes',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -547,6 +555,7 @@ function mapStateToProps(state, ownProps) {
       'async.mountPoints',
       'async.useTimeSync',
       'async.useSystemd',
+      'async.dedicatedNodes',
       'masterGFlags',
       'gFlags',
       'tserverGFlags',

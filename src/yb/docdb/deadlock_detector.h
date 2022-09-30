@@ -82,7 +82,8 @@ class DeadlockDetector {
   DeadlockDetector(
       const std::shared_future<client::YBClient*>& client_future,
       TransactionAbortController* controller,
-      const TabletId& status_tablet_id);
+      const TabletId& status_tablet_id,
+      const MetricEntityPtr& metrics);
 
   ~DeadlockDetector();
 

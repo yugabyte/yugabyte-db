@@ -89,12 +89,12 @@ To import data that was previously exported into CSV files, use the `COPY FROM` 
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK);
 ```
 
-In the command above, the `ROWS_PER_TRANSACTION` parameter splits the load into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
+In the command above, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process. Providing `DISABLE_FK_CHECK` parameter is recommended for the initial import of the data, especially for large tables, because it reduces the total time required to import the data.
 
-Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. You can import multiple files in a single `COPY` command to further speed up the process. Following is a sample example:
+To further speed up the process, you can import multiple files in a single COPY command. Following is a sample example:
 
 ```sql
 yugabyte=# \! ls t*.txt
@@ -132,7 +132,7 @@ yugabyte=# SELECT * FROM t;
 ```
 
 ```sql
-yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', DISABLE_FK_CHECK);
 COPY 3
 ```
 
@@ -160,7 +160,7 @@ For example, to skip the first 5000 rows in a file, run the command as follows:
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK, SKIP 5000);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK, SKIP 5000);
 ```
 
 ### Import data from SQL script
@@ -306,87 +306,3 @@ explain select count(*) from test cross join dual;
 **Option 2.** : Use [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table, and control the parallelism at the application level.
 
 Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running COUNT(*) on tables using yb_hash_code().
-
-#### Run count query in YCQL
-
-In YCQL, the count() query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
-
-The tool uses the exposed `hash_partition` function in order to execute smaller, more manageable queries which are individually less resource intensive, and so they don't time out.
-
-Following are the steps to set up and run the ycrc tool:
-
-1. Download the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool by compiling the source from the GitHub repository.
-
-1. Run `./ycrc --help` to confirm if the ycrc tool is working.
-
-    ```sh
-    ./ycrc --help
-    ```
-
-    ```output
-    YCQL Row Count (ycrc) parallelizes counting the number of rows in a table for YugabyteDB CQL, allowing count(*) on tables that otherwise would fail with query timeouts
-
-    Usage:
-
-     ycrc <keyspace> [flags]
-
-    Flags:
-
-     -d, --debug  Verbose logging
-     -h, --help  help for ycrc
-     -c, --hosts strings  Cluster to connect to (default [127.0.0.1])
-     -p, --parallel int  Number of concurrent tasks (default 16)
-     --password string  user password
-     -s, --scale int  Scaling factor of tasks per table, an int between 1 and 10 (default 6)
-     --sslca string  SSL root ca path
-     --sslcert string  SSL cert path
-     --sslkey string  SSL key path
-     --tables strings  List of tables inside of the keyspace - default to all
-     -t, --timeout int  Timeout of a single query, in ms (default 1500)
-     -u, --user string  database user (default "cassandra")
-     --verify  Strictly verify SSL host (off by default)
-     -v, --version  version for ycrc
-
-    ```
-
-1. Run the ycrc tool to count the rows in a given keyspace. The following example shows ycrc command to count rows in all tables in example keyspace:
-
-    ```cql
-    ./ycrc -c 1127.0.0.1 example
-    ```
-
-    ```output
-    Checking table row counts for keyspace: example
-    Checking row counts for: example.sensordata
-    Partitioning columns for example.sensordata:(customer_name,device_id)
-
-    Performing 4096 checks for example.sensordata with 16 parallel tasks
-
-    Total time: 261 ms
-
-    ==========
-    Total Row Count example.sensordata = 60
-    Checking row counts for: example.emp
-    Partitioning columns for example.emp:(emp_id)
-
-    Performing 4096 checks for example.emp with 16 parallel tasks
-
-    Total time: 250 ms
-
-    ==========
-    Total Row Count example.emp = 3
-    ```
-
-    The following is an example with additional flags on the keyspace `example`:
-
-    ```sh
-    ./ycrc example \
-          -c 127.0.0.1 \                         # Cluster to connect to (default [127.0.0.1])
-          -u test \                              # database user (default "cassandra")
-          --verify --password xxx \              # user password
-          --tables sensordata \                  # List of tables inside of the keyspace - default to all
-          -s 7 \                                 # Scaling factor of tasks per table, an int between 1 and 10 (default 6)
-          -p 32 \                                # Number of concurrent tasks (default 16)
-          -t 3000 \                              # Timeout of a single query, in ms (default 1500)
-          --sslca /opt/yugabyte/certs/tests.crt  # This flag needs to specified if client to node authentication is enabled.
-    ```

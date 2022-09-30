@@ -26,6 +26,7 @@
 
 #include "../../src/yb/master/master-test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);

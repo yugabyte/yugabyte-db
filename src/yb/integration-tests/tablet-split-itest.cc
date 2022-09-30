@@ -79,6 +79,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
@@ -88,7 +89,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT
@@ -147,6 +147,8 @@ DECLARE_bool(sort_automatic_tablet_splitting_candidates);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(index_block_restart_interval);
 DECLARE_bool(TEST_error_after_creating_single_split_tablet);
+DECLARE_bool(TEST_pause_before_send_hinted_election);
+DECLARE_bool(TEST_skip_election_when_fail_detected);
 
 namespace yb {
 class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
@@ -897,6 +899,23 @@ TEST_F(TabletSplitITest, SplitSingleTabletLongTransactions) {
   EXPECT_OK(CheckRowsCount(kNumRows));
 }
 
+TEST_F(TabletSplitITest, StartHintedElectionForChildTablets) {
+  const auto leader_failure_timeout = FLAGS_leader_failure_max_missed_heartbeat_periods *
+      FLAGS_raft_heartbeat_interval_ms;
+  CreateSingleTablet();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_send_hinted_election) = true;
+  const auto hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+  const auto tablet_id = ASSERT_RESULT(SplitSingleTablet(hash_code));
+  // Waiting for enough time for the leader failure.
+  SleepFor(MonoDelta::FromMilliseconds(leader_failure_timeout) * kTimeMultiplier);
+  // Child tablets shouldn't have leaders elected.
+  ASSERT_EQ(ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size(), 0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_send_hinted_election) = false;
+  // Waiting for hinted election on 2 child tablets.
+  ASSERT_OK(WaitForTableNumActiveLeadersPeers(/* expected_leaders = */ 2));
+}
+
 class TabletSplitYedisTableTest : public integration_tests::RedisTableTestBase {
  protected:
   int num_tablets() override { return 1; }
@@ -1598,8 +1617,8 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplitsPerTserver
   int num_split_tasks = 0;
   for (const auto& task : table_info->GetTasks()) {
     // These tasks will retry automatically until they succeed or fail.
-    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+    if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
+        task->type() == server::MonitoredTaskType::kSplitTablet) {
       ++num_split_tasks;
     }
   }
@@ -1905,7 +1924,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Fail to split because tablet is doing RBS and under replication.
-  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+  ASSERT_NOK(master::CheckLiveReplicasForSplit(
       tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
   ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
 
@@ -1938,7 +1957,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitOverReplicatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
   // Should fail to split because of over replication.
-  ASSERT_FALSE(master::CheckLiveReplicasForSplit(
+  ASSERT_NOK(master::CheckLiveReplicasForSplit(
       tablet_id, *tablet->GetReplicaLocations(), FLAGS_replication_factor));
   ASSERT_EQ(itest::GetNumTabletsOfTableOnTS(leader_ts, table_->id()), 1);
 

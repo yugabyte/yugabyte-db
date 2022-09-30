@@ -706,6 +706,7 @@ public class CustomerControllerTest extends FakeDBApplication {
               node.nodeName = "demo-n1";
               node.cloudInfo.private_ip =
                   "yb-pod-name-az.yb-pod-service.demo-namespace.svc.cluster.local";
+              node.cloudInfo.kubernetesNamespace = "diff-ns";
               details.nodeDetailsSet.add(node);
               univ.setUniverseDetails(details);
             });
@@ -729,7 +730,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
-    assertValue(filters, "namespace", "demo-namespace");
+    assertValue(filters, "namespace", "diff-ns");
     assertValue(filters, "pod_name", "yb-pod-name-az");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));

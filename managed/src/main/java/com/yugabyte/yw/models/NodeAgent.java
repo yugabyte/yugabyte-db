@@ -3,9 +3,11 @@
 package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -28,6 +30,7 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http.Status;
 
 @Slf4j
 @Entity
@@ -137,7 +140,12 @@ public class NodeAgent extends Model {
   }
 
   public static NodeAgent getOrBadRequest(UUID customerUuid, UUID nodeAgentUuid) {
-    return finder.query().where().eq("customer_uuid", customerUuid).idEq(nodeAgentUuid).findOne();
+    NodeAgent nodeAgent =
+        finder.query().where().eq("customer_uuid", customerUuid).idEq(nodeAgentUuid).findOne();
+    if (nodeAgent == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find node agent " + nodeAgentUuid);
+    }
+    return nodeAgent;
   }
 
   public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
@@ -160,14 +168,16 @@ public class NodeAgent extends Model {
 
   public void ensureState(State expectedState) {
     if (state != expectedState) {
-      throw new IllegalStateException(
-          String.format("Invalid current state %s, expected state %s", state, expectedState));
+      throw new PlatformServiceException(
+          Status.CONFLICT,
+          String.format(
+              "Invalid current node agent state %s, expected state %s", state, expectedState));
     }
   }
 
   public void validateStateTransition(State nextState) {
     if (state == null) {
-      throw new IllegalStateException("State is null");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent state must be set");
     }
     state.validateTransition(nextState);
   }

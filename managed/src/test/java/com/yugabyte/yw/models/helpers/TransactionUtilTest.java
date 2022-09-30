@@ -13,6 +13,8 @@ import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -46,6 +48,8 @@ public class TransactionUtilTest extends PlatformGuiceApplicationBaseTest {
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 

@@ -158,7 +158,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   // Setup the tablet info.
   std::vector<TableId> table_ids;
   std::vector<TableId> existing_table_ids;
-  std::map<ColocationId, TableId> tablet_colocation_map;
+  std::map<ColocationId, TableInfoPtr> tablet_colocation_map;
   bool tablet_deleted;
   bool listed_as_hidden;
   TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
@@ -257,7 +257,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       }
 
       if (is_colocated) {
-        auto emplace_result = tablet_colocation_map.emplace(colocation_id, table_id);
+        auto emplace_result = tablet_colocation_map.emplace(colocation_id, table);
         if (!emplace_result.second) {
           return STATUS_FORMAT(Corruption,
               "Cannot add a table $0 (ColocationId: $1) to a colocation group for tablet $2: "
@@ -294,18 +294,25 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
   // Add the tablet to tablegroup_manager_ if the tablet is for a tablegroup.
   if (first_table->IsTablegroupParentTable()) {
-    const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
+    auto lock = first_table->LockForRead();
+    if (!lock->started_hiding() && !lock->started_deleting()) {
+      const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
 
-    auto* tablegroup =
-        VERIFY_RESULT(catalog_manager_->tablegroup_manager_->Add(
-            first_table->namespace_id(),
-            tablegroup_id,
-            catalog_manager_->tablet_map_->find(tablet_id)->second));
+      auto* tablegroup =
+          VERIFY_RESULT(catalog_manager_->tablegroup_manager_->Add(
+              first_table->namespace_id(),
+              tablegroup_id,
+              catalog_manager_->tablet_map_->find(tablet_id)->second));
 
-    // Loop through tablet_colocation_map to add child tables to our tablegroup info.
-    for (const auto& colocation_info : tablet_colocation_map) {
-      if (!IsTablegroupParentTableId(colocation_info.second)) {
-        RETURN_NOT_OK(tablegroup->AddChildTable(colocation_info.second, colocation_info.first));
+      // Loop through tablet_colocation_map to add child tables to our tablegroup info.
+      for (const auto& colocation_info : tablet_colocation_map) {
+        if (!IsTablegroupParentTableId(colocation_info.second->id())) {
+          auto child_table_lock = colocation_info.second->LockForRead();
+          if (!child_table_lock->started_hiding() && !child_table_lock->started_deleting()) {
+            RETURN_NOT_OK(tablegroup->AddChildTable(colocation_info.second->id(),
+                colocation_info.first));
+          }
+        }
       }
     }
   }

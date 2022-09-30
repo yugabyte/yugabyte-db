@@ -20,9 +20,7 @@
 #
 # Author: Konstantin Lepa <konstantin.lepa@gmail.com>
 #
-# Find the Google Mock Framework, heavily cribbed from FindGTest.cmake.
-# gmock ships a copy of gtest and bundles it in its libraries, so this also
-# finds the gtest headers.
+# Find the Google Test Framework, heavily cribbed from FindGTest.cmake.
 #
 # This module defines
 # GMOCK_INCLUDE_DIR, where to find gmock include files, etc.
@@ -66,7 +64,18 @@ find_library(GMOCK_STATIC_LIBRARY libgmock.a
              NO_CMAKE_SYSTEM_PATH
              NO_SYSTEM_ENVIRONMENT_PATH)
 
+find_library(GTEST_SHARED_LIBRARY gtest
+             DOC   "Google's framework for writing C++ tests (gtest)"
+             NO_CMAKE_SYSTEM_PATH
+             NO_SYSTEM_ENVIRONMENT_PATH)
+
+find_library(GTEST_STATIC_LIBRARY libgtest.a
+             DOC   "Google's framework for writing C++ tests (gtest) static"
+             NO_CMAKE_SYSTEM_PATH
+             NO_SYSTEM_ENVIRONMENT_PATH)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(GMOCK REQUIRED_VARS
-  GMOCK_SHARED_LIBRARY GMOCK_STATIC_LIBRARY GMOCK_INCLUDE_DIR GTEST_INCLUDE_DIR)
+find_package_handle_standard_args(GTEST REQUIRED_VARS
+  GTEST_SHARED_LIBRARY GTEST_STATIC_LIBRARY
+  GMOCK_SHARED_LIBRARY GMOCK_STATIC_LIBRARY
+  GMOCK_INCLUDE_DIR GTEST_INCLUDE_DIR)

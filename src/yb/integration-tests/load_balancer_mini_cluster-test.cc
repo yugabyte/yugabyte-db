@@ -32,6 +32,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 

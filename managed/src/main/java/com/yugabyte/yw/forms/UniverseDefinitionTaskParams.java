@@ -419,7 +419,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public String universeOverrides;
 
     // AZ level overrides for kubernetes universes.
-    @ApiModelProperty public String azOverrides;
+    @ApiModelProperty public Map<String, String> azOverrides;
 
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
@@ -572,6 +572,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (masterDeviceInfo != null) {
         newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
       }
+      newUserIntent.dedicatedNodes = dedicatedNodes;
       return newUserIntent;
     }
 
@@ -615,6 +616,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
+          && dedicatedNodes == other.dedicatedNodes
           && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
@@ -635,6 +637,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
+          && dedicatedNodes == other.dedicatedNodes
           && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }

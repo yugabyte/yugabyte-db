@@ -48,7 +48,7 @@ There are two JSON data types supported in YSQL: `json` and `jsonb`.
 
 
 {{< tip title="Tip" >}}
-**When to use `jbonb` vs `json`?** In general, most applications should prefer to store JSON data as `jsonb`, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
+**When to use `jsonb` vs `json`?** In general, most applications should prefer to store JSON data as `jsonb`, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
 
 They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
 * The `json` data type stores an exact copy of the input text, which processing functions must reparse on each execution

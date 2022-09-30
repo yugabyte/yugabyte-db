@@ -35,6 +35,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 
 #include "yb/util/metrics.h"

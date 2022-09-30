@@ -96,9 +96,19 @@ func ExtractBaseURL(value string) (string, error) {
 	return baseUrl, nil
 }
 
-// Returns the platform endpoint for fetching Providers.
+// Returns the platform endpoint for fetching providers.
 func PlatformGetProvidersEndpoint(cuuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers", cuuid)
+}
+
+// Returns the platform endpoint for fetching the provider.
+func PlatformGetProviderEndpoint(cuuid, puuid string) string {
+	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
+}
+
+// Returns the platform endpoint for fetching access keys for a provider.
+func PlatformGetAccessKeysEndpoint(cuuid, puuid string) string {
+	return fmt.Sprintf("/api/customers/%s/providers/%s/access_keys", cuuid, puuid)
 }
 
 // Returns the platform endpoint for fetching Users.
@@ -147,7 +157,7 @@ func PlatformPutAgentEndpoint(cuuid string, nuuid string) string {
 }
 
 // Returns the platform endpoint for fetching instance_type details.
-func PlatformGetConfigEndpoint(cuuid string, puuid string, instance_type string) string {
+func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instance_type string) string {
 	return fmt.Sprintf(
 		"/api/customers/%s/providers/%s/instance_types/%s",
 		cuuid,
@@ -156,10 +166,15 @@ func PlatformGetConfigEndpoint(cuuid string, puuid string, instance_type string)
 	)
 }
 
-// Returns the platform endpoint for posting the node capabilites
+// Returns the platform endpoint for posting the node instances.
 // and adding node instane to the platform.
-func PlatformPostNodeCapabilitiesEndpoint(cuuid string, azid string) string {
+func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes", cuuid, azid)
+}
+
+// Returns the platform endpoint for validating the node configs.
+func PlatformValidateNodeInstanceEndpoint(cuuid string, azid string) string {
+	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes/validate", cuuid, azid)
 }
 
 // Returns the home directory.
@@ -214,5 +229,18 @@ func InstallScriptPath() string {
 }
 
 func VersionFile() string {
-	return MustGetHomeDirectory() + "/pkg/version.txt"
+	return MustGetHomeDirectory() + "/pkg/version_metadata.json"
+}
+
+func IsDigits(str string) bool {
+	if str == "" {
+		return false
+	}
+	runes := []rune(str)
+	for _, r := range runes {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

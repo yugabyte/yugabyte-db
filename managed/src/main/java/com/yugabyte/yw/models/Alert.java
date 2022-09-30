@@ -53,6 +53,8 @@ import org.apache.commons.lang3.StringUtils;
 @ApiModel(description = "Alert definition. Used to send an alert notification.")
 public class Alert extends Model implements AlertLabelsProvider {
 
+  private static final String MESSAGE_ANNOTATION = "message";
+
   public enum State {
     ACTIVE("firing", true),
     ACKNOWLEDGED("acknowledged", true),
@@ -240,6 +242,18 @@ public class Alert extends Model implements AlertLabelsProvider {
         .map(AlertLabel::getValue)
         .findFirst()
         .orElse(null);
+  }
+
+  @Override
+  public String getAnnotationValue(String name) {
+    if (name.equals(MESSAGE_ANNOTATION)) {
+      if (state != State.RESOLVED) {
+        return message;
+      } else {
+        return StringUtils.EMPTY;
+      }
+    }
+    return null;
   }
 
   public Alert setLabel(KnownAlertLabels label, String value) {

@@ -243,17 +243,11 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
-                                 rpc::RpcContext* context,
-                                 const std::shared_ptr<tablet::TabletPeer>& peer);
+                                 rpc::RpcContext* context);
 
   void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
-
-  Status TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
-                                         IsBootstrapRequiredResponsePB* resp,
-                                         rpc::RpcContext* context,
-                                         const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);

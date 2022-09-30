@@ -24,6 +24,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
+
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(ycql_use_local_transaction_tables);
 DECLARE_bool(TEST_track_last_transaction);

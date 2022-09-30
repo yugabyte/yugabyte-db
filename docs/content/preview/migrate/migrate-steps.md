@@ -57,7 +57,6 @@ Prepare your source database by creating a new database user, and provide it wit
 {{< note title="Note" >}}
 
 - For PostgreSQL, yb-voyager supports migrating _all_ schemas of the source database. It does not support migrating _only a subset_ of the schemas.
-
 - For Oracle, you can migrate only one schema at a time.
 
 {{< /note >}}
@@ -137,6 +136,13 @@ Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.o
 <!-- To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../yb-voyager/yb-voyager-cli/#data-modeling). -->
 
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
+
+{{< note title="Renaming index names for MySQL" >}}
+
+YugabyteDB Voyager renames the indexes for MySQL migrations while exporting the schema.
+MySQL supports two or more indexes to have the same name in the same database, provided they are for different tables. Similarly to PostgreSQL, YugabyteDB does not support duplicate index names in the same schema. To avoid index name conflicts during export schema, yb-voyager prefixes each index name with the associated table name.
+
+{{< /note >}}
 
 An example invocation of the command is as follows:
 

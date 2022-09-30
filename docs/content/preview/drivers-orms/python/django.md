@@ -13,14 +13,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/python/django/" class="nav-link active">
+    <a href="../django/" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
       Django ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/python/sqlalchemy/" class="nav-link">
+    <a href="../sqlalchemy/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       SQLAlchemy ORM
     </a>
@@ -32,7 +32,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/python/ysql-django/) page.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/python/ysql-django/).
 
 The following sections demonstrate how to perform common tasks required for Python application development using the Django ORM.
 

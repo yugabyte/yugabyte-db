@@ -142,9 +142,6 @@ namespace client {
 
 namespace internal {
 
-using ProcessedTablesMap =
-    std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;
-
 namespace {
 
 // We join tablet partitions to groups, so tablet state info in one group requested with single
@@ -947,116 +944,10 @@ Status MetaCache::ProcessTabletLocations(
     ProcessedTablesMap processed_tables;
 
     for (const TabletLocationsPB& loc : locations) {
-      const std::string& tablet_id = loc.tablet_id();
-      // Next, update the tablet caches.
-      RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_id);
+      auto remote = VERIFY_RESULT(ProcessTabletLocation(
+          loc, &processed_tables, table_partition_list_version, lookup_rpc));
 
-      // First, update the tserver cache, needed for the Refresh calls below.
-      for (const TabletLocationsPB_ReplicaPB& r : loc.replicas()) {
-        UpdateTabletServerUnlocked(r.ts_info());
-      }
-
-      VersionedTablePartitionListPtr colocated_table_partition_list;
-      if (loc.table_ids_size() > 1 && lookup_rpc && lookup_rpc->table()) {
-        // When table_ids_size() == 1 we only receive info for the single table from the master
-        // and we already have TableData initialized for it (this is done before sending an RPC to
-        // the master). And when table_ids_size() > 1, it means we got response for lookup RPC for
-        // co-located table and we can re-use TableData::partition_list from the table that was
-        // requested by MetaCache::LookupTabletByKey caller for other tables co-located with this
-        // one (since all co-located tables sharing the same set of tablets have the same table
-        // partition list and now we have list of them returned by the master).
-        const auto lookup_table_it = tables_.find(lookup_rpc->table()->id());
-        if (lookup_table_it != tables_.end()) {
-          colocated_table_partition_list = lookup_table_it->second.partition_list;
-        } else {
-          // We don't want to crash the server in that case for production, since this is not a
-          // correctness issue, but gives some performance degradation on first lookups for
-          // co-located tables.
-          // But we do want it to crash in debug, so we can more reliably catch this if it happens.
-          LOG_WITH_PREFIX(DFATAL) << Format(
-              "Internal error: got response for lookup RPC for co-located table, but MetaCache "
-              "table data wasn't initialized with partition list for this table. RPC: $0",
-              AsString(lookup_rpc));
-        }
-      }
-
-      for (const std::string& table_id : loc.table_ids()) {
-        auto& processed_table = processed_tables[table_id];
-        std::map<PartitionKey, RemoteTabletPtr>* tablets_by_key = nullptr;
-
-        auto table_it = tables_.find(table_id);
-        if (table_it == tables_.end() && loc.table_ids_size() > 1 &&
-            colocated_table_partition_list) {
-          table_it = InitTableDataUnlocked(table_id, colocated_table_partition_list);
-        }
-        if (table_it != tables_.end()) {
-          auto& table_data = table_it->second;
-
-          const auto msg_formatter = [&] {
-            return Format(
-                "Received table $0 partitions version: $1, MetaCache's table partitions version: "
-                "$2",
-                table_id, table_partition_list_version, table_data.partition_list->version);
-          };
-          VLOG_WITH_PREFIX_AND_FUNC(4) << msg_formatter();
-          if (table_partition_list_version.has_value()) {
-            if (table_partition_list_version.get() != table_data.partition_list->version) {
-              return STATUS(
-                  TryAgain, msg_formatter(),
-                  ClientError(ClientErrorCode::kTablePartitionListIsStale));
-            }
-            // We need to guarantee that table_data.tablets_by_partition cache corresponds to
-            // table_data.partition_list (see comments for TableData::partitions).
-            // So, we don't update tablets_by_partition cache if we don't know table partitions
-            // version for both response and TableData.
-            // This only can happen for those LookupTabletById requests that don't specify table,
-            // because they don't care about partitions changing.
-            tablets_by_key = &table_data.tablets_by_partition;
-          }
-        }
-
-        if (remote) {
-          // Partition should not have changed.
-          DCHECK_EQ(loc.partition().partition_key_start(),
-                    remote->partition().partition_key_start());
-          DCHECK_EQ(loc.partition().partition_key_end(),
-                    remote->partition().partition_key_end());
-
-          // For colocated tables, RemoteTablet already exists because it was processed
-          // in a previous iteration of the for loop (for loc.table_ids()).
-          // We need to add this tablet to the current table's tablets_by_key map.
-          if (tablets_by_key) {
-            (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
-          }
-
-          VLOG_WITH_PREFIX(5) << "Refreshing tablet " << tablet_id << ": "
-                              << loc.ShortDebugString();
-        } else {
-          VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": " << loc.ShortDebugString();
-
-          Partition partition;
-          Partition::FromPB(loc.partition(), &partition);
-          remote = new RemoteTablet(
-              tablet_id, partition, table_partition_list_version, loc.split_depth(),
-              loc.split_parent_tablet_id());
-
-          CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-          if (tablets_by_key) {
-            (*tablets_by_key)[partition.partition_key_start()] = remote;
-          }
-          MaybeUpdateClientRequests(*remote);
-        }
-        remote->Refresh(ts_cache_, loc.replicas());
-        remote->SetExpectedReplicas(loc.expected_live_replicas(), loc.expected_read_replicas());
-        if (table_partition_list_version.has_value()) {
-          remote->MakeLastKnownPartitionListVersionAtLeast(*table_partition_list_version);
-        }
-        if (lookup_rpc) {
-          lookup_rpc->UpdateProcessedTable(loc, remote, &processed_table);
-        }
-      }
-
-      auto it = tablet_lookups_by_id_.find(tablet_id);
+      auto it = tablet_lookups_by_id_.find(loc.tablet_id());
       if (it != tablet_lookups_by_id_.end()) {
         while (auto* lookup = it->second.lookups.Pop()) {
           to_notify.emplace_back(std::move(lookup->callback),
@@ -1076,6 +967,133 @@ Status MetaCache::ProcessTabletLocations(
   }
 
   return Status::OK();
+}
+
+Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
+    const TabletLocationsPB& location, ProcessedTablesMap* processed_tables,
+    const boost::optional<PartitionListVersion>& table_partition_list_version,
+    LookupRpc* lookup_rpc) {
+  const std::string& tablet_id = location.tablet_id();
+
+  RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_id);
+
+  // First, update the tserver cache, needed for the Refresh calls below.
+  for (const TabletLocationsPB_ReplicaPB& r : location.replicas()) {
+    UpdateTabletServerUnlocked(r.ts_info());
+  }
+
+  VersionedTablePartitionListPtr colocated_table_partition_list;
+  if (location.table_ids_size() > 1 && lookup_rpc && lookup_rpc->table()) {
+    // When table_ids_size() == 1 we only receive info for the single table from the master
+    // and we already have TableData initialized for it (this is done before sending an RPC to
+    // the master). And when table_ids_size() > 1, it means we got response for lookup RPC for
+    // co-located table and we can re-use TableData::partition_list from the table that was
+    // requested by MetaCache::LookupTabletByKey caller for other tables co-located with this
+    // one (since all co-located tables sharing the same set of tablets have the same table
+    // partition list and now we have list of them returned by the master).
+    const auto lookup_table_it = tables_.find(lookup_rpc->table()->id());
+    if (lookup_table_it != tables_.end()) {
+      colocated_table_partition_list = lookup_table_it->second.partition_list;
+    } else {
+      // We don't want to crash the server in that case for production, since this is not a
+      // correctness issue, but gives some performance degradation on first lookups for
+      // co-located tables.
+      // But we do want it to crash in debug, so we can more reliably catch this if it happens.
+      LOG_WITH_PREFIX(DFATAL) << Format(
+          "Internal error: got response for lookup RPC for co-located table, but MetaCache "
+          "table data wasn't initialized with partition list for this table. RPC: $0",
+          AsString(lookup_rpc));
+    }
+  }
+
+  for (const std::string& table_id : location.table_ids()) {
+    auto& processed_table = (*processed_tables)[table_id];
+    std::map<PartitionKey, RemoteTabletPtr>* tablets_by_key = nullptr;
+
+    auto table_it = tables_.find(table_id);
+    if (table_it == tables_.end() && location.table_ids_size() > 1 &&
+        colocated_table_partition_list) {
+      table_it = InitTableDataUnlocked(table_id, colocated_table_partition_list);
+    }
+    if (table_it != tables_.end()) {
+      auto& table_data = table_it->second;
+
+      const auto msg_formatter = [&] {
+        return Format(
+            "Received table $0 partitions version: $1, MetaCache's table partitions version: "
+            "$2",
+            table_id, table_partition_list_version, table_data.partition_list->version);
+      };
+      VLOG_WITH_PREFIX_AND_FUNC(4) << msg_formatter();
+      if (table_partition_list_version.has_value()) {
+        if (table_partition_list_version.get() != table_data.partition_list->version) {
+          return STATUS(
+              TryAgain, msg_formatter(),
+              ClientError(ClientErrorCode::kTablePartitionListIsStale));
+        }
+        // We need to guarantee that table_data.tablets_by_partition cache corresponds to
+        // table_data.partition_list (see comments for TableData::partitions).
+        // So, we don't update tablets_by_partition cache if we don't know table partitions
+        // version for both response and TableData.
+        // This only can happen for those LookupTabletById requests that don't specify table,
+        // because they don't care about partitions changing.
+        tablets_by_key = &table_data.tablets_by_partition;
+      }
+    }
+
+    // Next, update the tablet caches.
+    if (location.is_deleted()) {
+      VLOG_WITH_PREFIX(5) << "Marking tablet " << tablet_id << " as deleted";
+
+      tablet_lookups_by_id_.erase(tablet_id);
+      tablets_by_id_.erase(tablet_id);
+      deleted_tablets_.insert(tablet_id);
+      return RemoteTabletPtr();
+    }
+
+    if (remote) {
+      // Partition should not have changed.
+      DCHECK_EQ(location.partition().partition_key_start(),
+                remote->partition().partition_key_start());
+      DCHECK_EQ(location.partition().partition_key_end(),
+                remote->partition().partition_key_end());
+
+      // For colocated tables, RemoteTablet already exists because it was processed
+      // in a previous iteration of the for loop (for location.table_ids()).
+      // We need to add this tablet to the current table's tablets_by_key map.
+      if (tablets_by_key) {
+        (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
+      }
+
+      VLOG_WITH_PREFIX(5) << "Refreshing tablet " << tablet_id << ": "
+                          << location.ShortDebugString();
+    } else {
+      VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": " << location.ShortDebugString();
+
+      Partition partition;
+      Partition::FromPB(location.partition(), &partition);
+      remote = new RemoteTablet(
+          tablet_id, partition, table_partition_list_version, location.split_depth(),
+          location.split_parent_tablet_id());
+
+      CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
+      if (tablets_by_key) {
+        (*tablets_by_key)[partition.partition_key_start()] = remote;
+      }
+      MaybeUpdateClientRequests(*remote);
+    }
+    remote->Refresh(ts_cache_, location.replicas());
+    remote->SetExpectedReplicas(location.expected_live_replicas(),
+                                location.expected_read_replicas());
+    if (table_partition_list_version.has_value()) {
+      remote->MakeLastKnownPartitionListVersionAtLeast(*table_partition_list_version);
+    }
+    if (lookup_rpc) {
+      lookup_rpc->UpdateProcessedTable(location, remote, &processed_table);
+    }
+  }
+
+  return remote;
 }
 
 void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
@@ -1257,12 +1275,14 @@ class LookupByIdRpc : public LookupRpc {
                 const TabletId& tablet_id,
                 const std::shared_ptr<const YBTable>& table,
                 master::IncludeInactive include_inactive,
+                master::IncludeDeleted include_deleted,
                 int64_t request_no,
                 CoarseTimePoint deadline,
                 int64_t lookups_without_new_replicas)
       : LookupRpc(meta_cache, table, request_no, deadline),
         tablet_id_(tablet_id),
-        include_inactive_(include_inactive) {
+        include_inactive_(include_inactive),
+        include_deleted_(include_deleted) {
     if (lookups_without_new_replicas != 0) {
       send_delay_ = std::min(
           lookups_without_new_replicas * FLAGS_meta_cache_lookup_throttling_step_ms,
@@ -1296,6 +1316,7 @@ class LookupByIdRpc : public LookupRpc {
       req_.set_table_id(table()->id());
     }
     req_.set_include_inactive(include_inactive_);
+    req_.set_include_deleted(include_deleted_);
 
     master_client_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
@@ -1339,7 +1360,7 @@ class LookupByIdRpc : public LookupRpc {
 
   void NotifyFailure(const Status& status) override {
     meta_cache()->LookupByIdFailed(
-        tablet_id_, table(), include_inactive_,
+        tablet_id_, table(), include_inactive_, include_deleted_,
         GetPartitionListVersion(resp_), request_no(), status);
   }
 
@@ -1355,6 +1376,9 @@ class LookupByIdRpc : public LookupRpc {
 
   // Whether or not to lookup inactive (hidden) tablets.
   master::IncludeInactive include_inactive_;
+
+  // Whether or not to return deleted tablets.
+  master::IncludeDeleted include_deleted_;
 
   // Request body.
   master::GetTabletLocationsRequestPB req_;
@@ -1718,6 +1742,7 @@ void MetaCache::LookupByIdFailed(
     const TabletId& tablet_id,
     const std::shared_ptr<const YBTable>& table,
     master::IncludeInactive include_inactive,
+    master::IncludeDeleted include_deleted,
     const boost::optional<PartitionListVersion>& response_partition_list_version,
     int64_t request_no,
     const Status& status) {
@@ -1729,9 +1754,9 @@ void MetaCache::LookupByIdFailed(
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (status.IsNotFound() && response_partition_list_version.has_value()) {
       auto tablet = LookupTabletByIdFastPathUnlocked(tablet_id);
-      if (tablet) {
+      if (tablet && *tablet) {
         const auto tablet_last_known_table_partition_list_version =
-            tablet->GetLastKnownPartitionListVersion();
+            (*tablet)->GetLastKnownPartitionListVersion();
         if (tablet_last_known_table_partition_list_version <
             response_partition_list_version.value()) {
           const auto msg_formatter = [&] {
@@ -1758,7 +1783,7 @@ void MetaCache::LookupByIdFailed(
 
   if (max_deadline != CoarseTimePoint()) {
     auto rpc = std::make_shared<LookupByIdRpc>(
-        this, tablet_id, table, include_inactive, request_no, max_deadline, 0);
+        this, tablet_id, table, include_inactive, include_deleted, request_no, max_deadline, 0);
     client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
@@ -2046,12 +2071,16 @@ void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
       << "Full table lookup was not started for table " << table->ToString();
 }
 
-RemoteTabletPtr MetaCache::LookupTabletByIdFastPathUnlocked(const TabletId& tablet_id) {
+std::optional<RemoteTabletPtr> MetaCache::LookupTabletByIdFastPathUnlocked(
+    const TabletId& tablet_id) {
   auto it = tablets_by_id_.find(tablet_id);
   if (it != tablets_by_id_.end()) {
     return it->second;
   }
-  return nullptr;
+  if (deleted_tablets_.contains(tablet_id)) {
+    return nullptr;
+  }
+  return std::nullopt;
 }
 
 template <class Lock>
@@ -2059,13 +2088,14 @@ bool MetaCache::DoLookupTabletById(
     const TabletId& tablet_id,
     const std::shared_ptr<const YBTable>& table,
     master::IncludeInactive include_inactive,
+    master::IncludeDeleted include_deleted,
     CoarseTimePoint deadline,
     UseCache use_cache,
     LookupTabletCallback* callback) {
-  RemoteTabletPtr tablet;
+  std::optional<RemoteTabletPtr> tablet = std::nullopt;
   auto scope_exit = ScopeExit([callback, &tablet] {
     if (tablet) {
-      (*callback)(tablet);
+      (*callback)(*tablet);
     }
   });
   int64_t request_no;
@@ -2076,15 +2106,27 @@ bool MetaCache::DoLookupTabletById(
     // Fast path: lookup in the cache.
     tablet = LookupTabletByIdFastPathUnlocked(tablet_id);
     if (tablet) {
-      VLOG_WITH_PREFIX(5) << "Fast lookup: candidate tablet " << AsString(tablet);
-      if (use_cache && tablet->HasLeader()) {
-        // tablet->HasLeader() check makes MetaCache send RPC to master in case of no tablet with
-        // tablet_id is found on all replicas.
-        VLOG_WITH_PREFIX(5) << "Fast lookup: found tablet " << tablet->tablet_id();
-        return true;
+      if (!*tablet) {
+        VLOG_WITH_PREFIX(5) << "Fast lookup: tablet deleted";
+        if (use_cache) {
+          if (!include_deleted) {
+            tablet = std::nullopt;
+            (*callback)(STATUS(NotFound, "Tablet deleted"));
+          }
+          return true;
+        }
+      } else {
+        VLOG_WITH_PREFIX(5) << "Fast lookup: candidate tablet " << AsString(*tablet);
+        if (use_cache && (*tablet)->HasLeader()) {
+          // tablet->HasLeader() check makes MetaCache send RPC to master in case of no tablet with
+          // tablet_id is found on all replicas.
+          VLOG_WITH_PREFIX(5) << "Fast lookup: found tablet " << (*tablet)->tablet_id();
+          return true;
+        }
+        lookups_without_new_replicas = (*tablet)->lookups_without_new_replicas();
       }
-      lookups_without_new_replicas = tablet->lookups_without_new_replicas();
-      tablet = nullptr;
+
+      tablet = std::nullopt;
     }
 
     LookupDataGroup* lookup;
@@ -2112,7 +2154,8 @@ bool MetaCache::DoLookupTabletById(
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Start lookup for tablet " << tablet_id << ": " << request_no;
 
   auto rpc = std::make_shared<LookupByIdRpc>(
-      this, tablet_id, table, include_inactive, request_no, deadline, lookups_without_new_replicas);
+      this, tablet_id, table, include_inactive, include_deleted, request_no, deadline,
+      lookups_without_new_replicas);
   client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
@@ -2120,18 +2163,19 @@ bool MetaCache::DoLookupTabletById(
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const std::shared_ptr<const YBTable>& table,
                                  master::IncludeInactive include_inactive,
+                                 master::IncludeDeleted include_deleted,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
                                  UseCache use_cache) {
   VLOG_WITH_PREFIX_AND_FUNC(5) << "(" << tablet_id << ", " << use_cache << ")";
 
   if (DoLookupTabletById<SharedLock<decltype(mutex_)>>(
-          tablet_id, table, include_inactive, deadline, use_cache, &callback)) {
+          tablet_id, table, include_inactive, include_deleted, deadline, use_cache, &callback)) {
     return;
   }
 
   auto result = DoLookupTabletById<std::lock_guard<decltype(mutex_)>>(
-      tablet_id, table, include_inactive, deadline, use_cache, &callback);
+      tablet_id, table, include_inactive, include_deleted, deadline, use_cache, &callback);
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 

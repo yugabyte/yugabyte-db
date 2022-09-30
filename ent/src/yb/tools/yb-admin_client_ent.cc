@@ -464,7 +464,7 @@ Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint dead
   return Status::OK();
 }
 
-Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotScheduleDeprecated(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
@@ -517,6 +517,44 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     return StatusFromPB(resp.error().status());
   }
 
+  auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
+  AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  master::RestoreSnapshotScheduleRequestPB req;
+  master::RestoreSnapshotScheduleResponsePB resp;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_restore_ht(restore_at.ToUint64());
+
+  Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
+  if (!s.ok()) {
+    if (s.IsRemoteError() &&
+        rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      cout << "WARNING: fallback to RestoreSnapshotScheduleDeprecated." << endl;
+      return RestoreSnapshotScheduleDeprecated(schedule_id, restore_at);
+    }
+    RETURN_NOT_OK_PREPEND(s, Format("Failed to restore snapshot from schedule: $0",
+        schedule_id.ToString()));
+  }
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
   auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
 
   rapidjson::Document document;

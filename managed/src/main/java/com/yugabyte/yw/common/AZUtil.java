@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 @Slf4j
@@ -77,11 +80,11 @@ public class AZUtil implements CloudUtil {
   // Returns a map for <container_url, SAS token>
   private Map<String, String> getContainerTokenMap(CustomerConfigStorageAzureData azData) {
     Map<String, String> containerTokenMap = new HashMap<>();
-    containerTokenMap.put(azData.backupLocation, azData.azureSasToken);
+    containerTokenMap.put(StringUtils.removeEnd(azData.backupLocation, "/"), azData.azureSasToken);
     if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
       azData.regionLocations.forEach(
           (rL) -> {
-            containerTokenMap.put(rL.location, rL.azureSasToken);
+            containerTokenMap.put(StringUtils.removeEnd(rL.location, "/"), rL.azureSasToken);
           });
     }
     return containerTokenMap;
@@ -94,14 +97,14 @@ public class AZUtil implements CloudUtil {
     }
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
-    for (String configLocation : locations) {
-      String[] splitLocation = getSplitLocationValue(configLocation);
+    for (String location : locations) {
+      String[] splitLocation = getSplitLocationValue(location);
       String azureUrl = "https://" + splitLocation[0];
       String container = splitLocation.length > 1 ? splitLocation[1] : "";
       String containerEndpoint = String.format("%s/%s", azureUrl, container);
       String sasToken = containerTokenMap.get(containerEndpoint);
       if (StringUtils.isEmpty(sasToken)) {
-        log.error("No SAS token for given location {}", configLocation);
+        log.error("No SAS token for given location {}", location);
         return false;
       }
       try {
@@ -112,8 +115,7 @@ public class AZUtil implements CloudUtil {
       } catch (Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s",
-                configLocation),
+                "Credential cannot list objects in the specified backup location %s", location),
             e);
         return false;
       }
@@ -185,17 +187,47 @@ public class AZUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
+    String cloudDir = BackupUtil.appendSlash(commonDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      String[] splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 2 ? BackupUtil.appendSlash(splitValues[2]) : previousCloudDir;
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(
+        pair.getFirst(), cloudDir, previousCloudDir, pair.getSecond(), Util.AZ);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
+    if (isDsm) {
+      String[] splitValues = getSplitLocationValue(storageLocation);
+      String location = BackupUtil.appendSlash(splitValues[2]);
+      return YbcBackupUtil.buildCloudStoreSpec(
+          pair.getFirst(), location, "", pair.getSecond(), Util.AZ);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(
+        pair.getFirst(), cloudDir, "", pair.getSecond(), Util.AZ);
+  }
+
+  private Pair<String, Map<String, String>> getContainerCredsMapPair(
+      CustomerConfigData configData, String storageLocation) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String azureUrl = "https://" + splitValues[0];
-    String container = splitValues.length > 1 ? splitValues[1] : "";
-    String cloudDir = commonDir.endsWith("/") ? commonDir : commonDir + "/";
+    String container = splitValues[1];
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     String containerEndpoint = String.format("%s/%s", azureUrl, container);
     String azureSasToken = containerTokenMap.get(containerEndpoint);
     Map<String, String> azCredsMap = createCredsMapYbc(azureSasToken, azureUrl);
-    return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
+    return new Pair(container, azCredsMap);
   }
 
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
