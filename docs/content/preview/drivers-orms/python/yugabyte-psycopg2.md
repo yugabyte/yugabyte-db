@@ -71,12 +71,6 @@ $ python setup.py build
 $ sudo python setup.py install
 ```
 
-Then import the psycopg2 package.
-
-```python
-import psycopg2
-```
-
 ### Step 2: Set up the database connection
 
 The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.

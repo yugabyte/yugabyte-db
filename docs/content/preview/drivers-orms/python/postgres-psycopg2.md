@@ -77,12 +77,6 @@ pip install psycopg2-binary
 
 The binary package is a practical choice for development and testing, but in production it is recommended to use the package built from sources.
 
-Then import the psycopg2 package.
-
-```python
-import psycopg2
-```
-
 ### Step 2: Connect to your cluster
 
 The following table describes the connection parameters required to connect.
