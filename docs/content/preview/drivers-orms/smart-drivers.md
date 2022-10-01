@@ -114,5 +114,5 @@ YugabyteDB Managed requires TLS/SSL. For more information on using TLS/SSL in Yu
 
 ## Learn more
 
-- [Smart driver FAQ](../drivers-orms-faq/)
+- [Smart driver FAQ](../smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
