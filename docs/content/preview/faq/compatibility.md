@@ -16,7 +16,7 @@ type: docs
 
 ## What does API compatibility exactly mean?
 
-API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), [IDE integrations](../../tools/), and other [ecosystem integrations](../../integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 
 {{< note title="Note" >}}
 The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.
@@ -40,6 +40,8 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 - Transactions: ABORT, ROLLBACK, BEGIN, END, and COMMIT
 - Expressions: Rich set of PostgreSQL built-in functions and operators
 - Other Features: VIEWs, EXPLAIN, PREPARE-BIND-EXECUTE, and JDBC support
+
+For more information, refer to [SQL features](../../explore/ysql-language-features).
 
 YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
 
