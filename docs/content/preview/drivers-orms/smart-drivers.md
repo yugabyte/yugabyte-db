@@ -61,18 +61,18 @@ Smart drivers offer the following advantages over a PostgreSQL driver:
 
 Developers can use smart driver connection load balancing in two configurations:
 
-- Cluster aware, using the **load balance** connection parameter
-- Topology aware, using the **topology keys** connection parameter
+- Cluster-aware, using the **load balance** connection parameter
+- Topology-aware, using the **topology keys** connection parameter
 
 ### Cluster-aware connection load balancing
 
 With cluster-aware connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
-For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Smart driver.
+For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the smart driver.
 
 To enable cluster-aware load balancing, you set the load balance connection parameter to true in the connection URL or the connection string (DSN style).
 
-For example, using the Go driver, you would set the parameter as follows:
+For example, using the Go smart driver, you would turn on load balancing as follows:
 
 ```go
 "postgres://username:password@localhost:5433/database_name?load_balance=true"
