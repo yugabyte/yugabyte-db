@@ -1,4 +1,4 @@
-/* orafce--3.18.sql */
+/* orafce--3.25.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
@@ -307,33 +307,54 @@ RETURNS text AS $$
 SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.mod(SMALLINT, SMALLINT)
+CREATE OR REPLACE FUNCTION oracle.mod(smallint, smallint)
 RETURNS SMALLINT AS $$
 SELECT CASE $2 WHEN 0 THEN $1 ELSE pg_catalog.MOD($1, $2) END;
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.mod(INT, INT)
+CREATE OR REPLACE FUNCTION oracle.mod(int, int)
 RETURNS INT AS $$
    SELECT CASE $2 WHEN 0 THEN $1 ELSE pg_catalog.MOD($1, $2) END;
 $$ LANGUAGE SQL  IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.mod(BIGINT, BIGINT)
+CREATE OR REPLACE FUNCTION oracle.mod(bigint, bigint)
 RETURNS BIGINT AS $$
 SELECT CASE $2 WHEN 0 THEN $1 ELSE pg_catalog.MOD($1, $2) END;
 $$ LANGUAGE sql IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION oracle.mod(NUMERIC, NUMERIC)
+CREATE OR REPLACE FUNCTION oracle.mod(numeric, numeric)
 RETURNS NUMERIC AS $$
 SELECT CASE $2 WHEN 0 THEN $1 ELSE pg_catalog.MOD($1, $2) END;
 $$ LANGUAGE sql IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION oracle.remainder(smallint, smallint)
+RETURNS smallint AS 'MODULE_PATHNAME','orafce_reminder_smallint'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.remainder(int, int)
+RETURNS int AS 'MODULE_PATHNAME','orafce_reminder_int'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.remainder(bigint, bigint)
+RETURNS bigint AS 'MODULE_PATHNAME','orafce_reminder_bigint'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.remainder(numeric, numeric)
+RETURNS numeric AS 'MODULE_PATHNAME','orafce_reminder_numeric'
+LANGUAGE C IMMUTABLE;
+
 DO $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 90600) THEN
-    EXECUTE $_$ALTER FUNCTION oracle.mod(SMALLINT, SMALLINT) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(INT, INT) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(BIGINT, BIGINT) PARALLEL SAFE$_$;
-    EXECUTE $_$ALTER FUNCTION oracle.mod(NUMERIC, NUMERIC) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(smallint, smallint) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(int, int) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(bigint, bigint) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.mod(numeric, numeric) PARALLEL SAFE$_$;
+
+    EXECUTE $_$ALTER FUNCTION oracle.remainder(smallint, smallint) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.remainder(int, int) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.remainder(bigint, bigint) PARALLEL SAFE$_$;
+    EXECUTE $_$ALTER FUNCTION oracle.remainder(numeric, numeric) PARALLEL SAFE$_$;
   END IF;
 END;
 $$;
