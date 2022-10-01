@@ -1,5 +1,5 @@
 ---
-title: Smart drivers FAQ
+title: Smart driver FAQ
 linkTitle: FAQ
 description: YugabyteDB smart drivers frequently asked questions
 headcontent: Frequently asked questions about YugabyteDB smart drivers
