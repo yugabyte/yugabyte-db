@@ -1,6 +1,12 @@
 #include "postgres.h"
+
+#include <math.h>
+
 #include "funcapi.h"
 #include "fmgr.h"
+#include "utils/numeric.h"
+#include "utils/builtins.h"
+
 
 #include "orafce.h"
 #include "builtins.h"
@@ -17,6 +23,23 @@ PG_FUNCTION_INFO_V1(orafce_reminder_numeric);
 Datum
 orafce_reminder_smallint(PG_FUNCTION_ARGS)
 {
+	int16		arg1 = PG_GETARG_INT16(0);
+	int16		arg2 = PG_GETARG_INT16(1);
+
+	if (unlikely(arg2 == 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero")));
+		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		PG_RETURN_NULL();
+	}
+
+	if (arg2 == -1)
+		PG_RETURN_INT16(0);
+
+	PG_RETURN_INT16(arg1 - ((int16) round(((double) arg1) / ((double) arg2)) * arg2));
+
 	PG_RETURN_NULL();
 }
 
@@ -27,7 +50,22 @@ orafce_reminder_smallint(PG_FUNCTION_ARGS)
 Datum
 orafce_reminder_int(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	int32		arg1 = PG_GETARG_INT32(0);
+	int32		arg2 = PG_GETARG_INT32(1);
+
+	if (unlikely(arg2 == 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero")));
+		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		PG_RETURN_NULL();
+	}
+
+	if (arg2 == -1)
+		PG_RETURN_INT32(0);
+
+	PG_RETURN_INT32(arg1 - ((int32) round(((double) arg1) / ((double) arg2)) * arg2));
 }
 
 /*
@@ -37,7 +75,35 @@ orafce_reminder_int(PG_FUNCTION_ARGS)
 Datum
 orafce_reminder_bigint(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	int64		arg1 = PG_GETARG_INT64(0);
+	int64		arg2 = PG_GETARG_INT64(1);
+
+	if (unlikely(arg2 == 0))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero")));
+		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
+		PG_RETURN_NULL();
+	}
+
+	if (arg2 == -1)
+		PG_RETURN_INT32(0);
+
+	PG_RETURN_INT64(arg1 - ((int64) round(((long double) arg1) / ((long double) arg2)) * arg2));
+}
+
+/*
+ * This will handle NaN and Infinity cases
+ */
+static Numeric
+duplicate_numeric(Numeric num)
+{
+	Numeric		res;
+
+	res = (Numeric) palloc(VARSIZE(num));
+	memcpy(res, num, VARSIZE(num));
+	return res;
 }
 
 /*
@@ -47,5 +113,44 @@ orafce_reminder_bigint(PG_FUNCTION_ARGS)
 Datum
 orafce_reminder_numeric(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	Numeric		num1 = PG_GETARG_NUMERIC(0);
+	Numeric		num2 = PG_GETARG_NUMERIC(1);
+	Numeric		result;
+	float8		val2;
+
+	if (numeric_is_nan(num1))
+		duplicate_numeric(num1);
+	if (numeric_is_nan(num2))
+		duplicate_numeric(num2);
+
+	val2 = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num2)));
+
+	if (val2 == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DIVISION_BY_ZERO),
+				 errmsg("division by zero")));
+
+	if (numeric_is_inf(num1))
+		PG_RETURN_DATUM(DirectFunctionCall3(numeric_in,
+											CStringGetDatum("NaN"),
+											ObjectIdGetDatum(0),
+											Int32GetDatum(-1)));
+
+	if (numeric_is_inf(num2))
+		duplicate_numeric(num1);
+
+	result = numeric_sub_opt_error(
+				num1,
+				numeric_mul_opt_error(
+					DatumGetNumeric(
+						DirectFunctionCall2(
+							numeric_round,
+							NumericGetDatum(
+								numeric_div_opt_error(num1, num2,NULL)),
+							Int32GetDatum(0))),
+					num2,
+					NULL),
+				NULL);
+
+	PG_RETURN_NUMERIC(result);
 }
