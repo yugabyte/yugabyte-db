@@ -26,13 +26,11 @@ orafce_reminder_smallint(PG_FUNCTION_ARGS)
 	int16		arg1 = PG_GETARG_INT16(0);
 	int16		arg2 = PG_GETARG_INT16(1);
 
-	if (unlikely(arg2 == 0))
+	if (arg2 == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
-		PG_RETURN_NULL();
 	}
 
 	if (arg2 == -1)
@@ -53,13 +51,11 @@ orafce_reminder_int(PG_FUNCTION_ARGS)
 	int32		arg1 = PG_GETARG_INT32(0);
 	int32		arg2 = PG_GETARG_INT32(1);
 
-	if (unlikely(arg2 == 0))
+	if (arg2 == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
-		PG_RETURN_NULL();
 	}
 
 	if (arg2 == -1)
@@ -78,13 +74,11 @@ orafce_reminder_bigint(PG_FUNCTION_ARGS)
 	int64		arg1 = PG_GETARG_INT64(0);
 	int64		arg2 = PG_GETARG_INT64(1);
 
-	if (unlikely(arg2 == 0))
+	if (arg2 == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
-		/* ensure compiler realizes we mustn't reach the division (gcc bug) */
-		PG_RETURN_NULL();
 	}
 
 	if (arg2 == -1)
@@ -104,6 +98,45 @@ duplicate_numeric(Numeric num)
 	res = (Numeric) palloc(VARSIZE(num));
 	memcpy(res, num, VARSIZE(num));
 	return res;
+}
+
+static Numeric
+get_numeric_in(const char *str)
+{
+	return DatumGetNumeric(
+			  DirectFunctionCall3(numeric_in,
+								  CStringGetDatum(str),
+								  ObjectIdGetDatum(0),
+								  Int32GetDatum(-1)));
+}
+
+static bool
+orafce_numeric_is_inf(Numeric num)
+{
+
+#if PG_VERSION_NUM >= 150000
+
+	return numeric_is_inf(num);
+
+#else
+
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+										 NumericGetDatum(num),
+										 NumericGetDatum(get_numeric_in("+Infinity")))) == 0)
+	{
+		return true;
+	}
+	else if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+										 NumericGetDatum(num),
+										 NumericGetDatum(get_numeric_in("+Infinity")))) == 0)
+	{
+		return true;
+	}
+	else
+		return false;
+
+#endif
+
 }
 
 /*
@@ -130,14 +163,13 @@ orafce_reminder_numeric(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 
-	if (numeric_is_inf(num1))
-		PG_RETURN_DATUM(DirectFunctionCall3(numeric_in,
-											CStringGetDatum("NaN"),
-											ObjectIdGetDatum(0),
-											Int32GetDatum(-1)));
+	if (orafce_numeric_is_inf(num1))
+		PG_RETURN_NUMERIC(get_numeric_in("NaN"));
 
-	if (numeric_is_inf(num2))
+	if (orafce_numeric_is_inf(num2))
 		duplicate_numeric(num1);
+
+#if PG_VERSION_NUM >= 150000
 
 	result = numeric_sub_opt_error(
 				num1,
@@ -151,6 +183,21 @@ orafce_reminder_numeric(PG_FUNCTION_ARGS)
 					num2,
 					NULL),
 				NULL);
+
+#else
+
+	result = DatumGetNumeric(
+			DirectFunctionCall2(numeric_sub,
+				NumericGetDatum(num1),
+				DirectFunctionCall2(numeric_mul,
+					DirectFunctionCall2(numeric_round,
+						DirectFunctionCall2(numeric_div,
+											NumericGetDatum(num1),
+											NumericGetDatum(num2)),
+						Int32GetDatum(0)),
+					NumericGetDatum(num2))));
+
+#endif
 
 	PG_RETURN_NUMERIC(result);
 }
