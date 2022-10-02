@@ -697,30 +697,6 @@ function(parse_build_root_basename)
   endif()
 endfunction()
 
-macro(enable_lto_if_needed)
-  if(NOT DEFINED COMPILER_FAMILY)
-    message(FATAL_ERROR "COMPILER_FAMILY not defined")
-  endif()
-  if(NOT DEFINED USING_LINUXBREW)
-    message(FATAL_ERROR "USING_LINUXBREW not defined")
-  endif()
-  if(NOT DEFINED YB_BUILD_TYPE)
-    message(FATAL_ERROR "YB_BUILD_TYPE not defined")
-  endif()
-
-  if("${YB_LINKING_TYPE}" MATCHES "^(thin|full)-lto$")
-    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
-    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
-  else()
-    message("Not enabling LTO: "
-            "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
-            "YB_LINKING_TYPE=${YB_LINKING_TYPE}, "
-            "COMPILER_FAMILY=${COMPILER_FAMILY}, "
-            "USING_LINUXBREW=${USING_LINUXBREW}, "
-            "APPLE=${APPLE}")
-  endif()
-endmacro()
-
 macro(configure_macos_sdk)
   if(APPLE AND "${YB_COMPILER_TYPE}" MATCHES "^clang[0-9]+$")
     if(NOT "${MACOS_SDK_DIR}" STREQUAL "" AND
@@ -782,4 +758,80 @@ function(add_latest_symlink_target)
       "${LATEST_BUILD_SYMLINK_PATH}"
       COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
   endif()
+endfunction()
+
+# -------------------------------------------------------------------------------------------------
+# LTO support
+# -------------------------------------------------------------------------------------------------
+
+macro(enable_lto_if_needed)
+  if(NOT DEFINED COMPILER_FAMILY)
+    message(FATAL_ERROR "COMPILER_FAMILY not defined")
+  endif()
+  if(NOT DEFINED USING_LINUXBREW)
+    message(FATAL_ERROR "USING_LINUXBREW not defined")
+  endif()
+  if(NOT DEFINED YB_BUILD_TYPE)
+    message(FATAL_ERROR "YB_BUILD_TYPE not defined")
+  endif()
+
+  set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
+  if("${YB_LINKING_TYPE}" MATCHES "^([a-z]+)-lto$")
+    message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
+    ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
+    # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
+    # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
+    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
+  else()
+    message("Not enabling LTO: "
+            "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
+            "YB_LINKING_TYPE=${YB_LINKING_TYPE}, "
+            "COMPILER_FAMILY=${COMPILER_FAMILY}, "
+            "USING_LINUXBREW=${USING_LINUXBREW}, "
+            "APPLE=${APPLE}")
+    # In non-LTO builds, yb-master / yb-tserver executables themselves are dynamically linked to
+    # other YB libraries.
+    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
+  endif()
+  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+endmacro()
+
+function(yb_add_lto_target exe_name)
+  if("${YB_LINKING_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
+  endif()
+  if("${YB_LINKING_TYPE}" STREQUAL "dynamic")
+    return()
+  endif()
+
+  if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
+    message("Skipping adding LTO target ${exe_name} because YB_SKIP_FINAL_LTO_LINK is set to 1")
+    return()
+  endif()
+  set(dynamic_exe_name "${exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  message("Adding LTO target: ${exe_name} "
+          "(the dynamically linked equivalent is ${dynamic_exe_name})")
+  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${exe_name}")
+  add_custom_command(
+    OUTPUT "${output_executable_path}"
+    COMMAND "${BUILD_SUPPORT_DIR}/dependency_graph"
+            "--build-root=${YB_BUILD_ROOT}"
+            # Use $$ to escape $.
+            "--file-regex=^.*/${dynamic_exe_name}$$"
+            # Allow LTO linking in parallel with the rest of the build.
+            --incomplete-build
+            "--lto-output-path=${output_executable_path}"
+            "--never-run-build"
+            link-whole-program
+    DEPENDS "${exe_name}"
+  )
+
+  add_custom_target("${exe_name}" ALL DEPENDS "${output_executable_path}")
+
+  if("${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
+    message(FATAL_ERROR "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} is not set")
+  endif()
+  # We need to build the corresponding non-LTO executable, such as yb-master or yb-tserver, first.
+  add_dependencies("${exe_name}" "${dynamic_exe_name}")
 endfunction()
