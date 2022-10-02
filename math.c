@@ -114,26 +114,15 @@ static bool
 orafce_numeric_is_inf(Numeric num)
 {
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 140000
 
 	return numeric_is_inf(num);
 
 #else
 
-	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-										 NumericGetDatum(num),
-										 NumericGetDatum(get_numeric_in("+Infinity")))) == 0)
-	{
-		return true;
-	}
-	else if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-										 NumericGetDatum(num),
-										 NumericGetDatum(get_numeric_in("+Infinity")))) == 0)
-	{
-		return true;
-	}
-	else
-		return false;
+	/* older releases doesn't support +-Infinitity in numeric type */
+
+	return false;
 
 #endif
 
