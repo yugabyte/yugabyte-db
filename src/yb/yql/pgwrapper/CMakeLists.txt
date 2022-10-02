@@ -120,6 +120,10 @@ set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME ${LAST_ADDED_TEST_BINARY_NAM
 set(gen_initial_sys_catalog_snapshot_cmd
     "${CMAKE_COMMAND}" -E env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
+if(NOT "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
+  list(APPEND gen_initial_sys_catalog_snapshot_cmd
+       "--external_daemon_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+endif()
 
 if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
   # Don't build the initial sys catalog snapshot target automatically in TSAN. But still create the
@@ -135,7 +139,11 @@ endif()
 
 add_dependencies(
   initial_sys_catalog_snapshot
-  ${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME} yb-master yb-tserver gen_auto_flags_json postgres)
+  "${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME}"
+  "${YB_MASTER_DYNAMIC_EXE_NAME}"
+  "${YB_TSERVER_DYNAMIC_EXE_NAME}"
+  gen_auto_flags_json
+  postgres)
 
 add_custom_target(
   update_ysql_migrations ALL

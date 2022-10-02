@@ -237,8 +237,8 @@ ADD_YB_LIBRARY(yb-tserver_util
 # yb-tserver
 #########################################
 
-add_executable(yb-tserver tablet_server_main.cc)
-target_link_libraries(yb-tserver
+add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}" tablet_server_main.cc)
+target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}"
   tserver
   yb-tserver_util
   yb-cql
@@ -250,9 +250,9 @@ target_link_libraries(yb-tserver
 # Generate tserver_flags.xml
 #########################################
 set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
-add_custom_command(TARGET yb-tserver POST_BUILD
+add_custom_command(TARGET "${YB_TSERVER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "yb-tserver"
+    "--program_name" "${YB_TSERVER_DYNAMIC_EXE_NAME}"
     "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 

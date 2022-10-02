@@ -174,7 +174,9 @@ Build options:
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --skip-test-log-rewrite
     Skip rewriting the test log.
-
+  --skip-final-lto-link
+    For LTO builds, skip the final linking step for server executables, which could take many
+    minutes.
 Linting options:
 
   --shellcheck
@@ -441,8 +443,12 @@ run_cxx_build() {
   expect_vars_to_be_set make_file
 
   # shellcheck disable=SC2154
-  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
-     ! "$force_no_run_cmake"; then
+  if [[ (
+          ${force_run_cmake} == "true" ||
+          ${cmake_only} == "true" ||
+          ! -f ${make_file}
+        ) && ${force_no_run_cmake} == "false" ]]
+  then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
     fi
@@ -466,7 +472,7 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
     )
     capture_sec_timestamp "cmake_end"
   fi
@@ -776,6 +782,9 @@ while [[ $# -gt 0 ]]; do
     repeat_unit_test_inherited_args+=( "$1" )
     shift
     continue
+  fi
+  if [[ $1 =~ ^(--[a-z_-]+)=(.*)$ ]]; then
+    set -- "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${@:2}"
   fi
 
   case ${1//_/-} in
@@ -1223,6 +1232,9 @@ while [[ $# -gt 0 ]]; do
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
     ;;
+    --skip-final-lto-link)
+      export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -1521,10 +1533,6 @@ if [[ ${verbose} == "true" ]]; then
   fi
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
-
-# -------------------------------------------------------------------------------------------------
-# End of cleaning
-# -------------------------------------------------------------------------------------------------
 
 mkdir_safe "$BUILD_ROOT"
 cd "$BUILD_ROOT"
