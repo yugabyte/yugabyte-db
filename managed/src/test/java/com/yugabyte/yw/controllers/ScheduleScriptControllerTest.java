@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,8 +73,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Users defaultUser = ModelFactory.testUser(defaultCustomer);
-    when(mockConfig.getBoolean(ScheduleScriptController.PLT_EXT_SCRIPT_ACCESS_FULL_PATH))
-        .thenReturn(true);
+    when(mockConfig.getBoolean(ExternalScriptHelper.EXT_SCRIPT_ACCESS_FULL_PATH)).thenReturn(true);
   }
 
   private Result createScriptSchedule(
@@ -185,8 +185,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
 
   @Test
   public void testInvalidAccess() {
-    when(mockConfig.getBoolean(ScheduleScriptController.PLT_EXT_SCRIPT_ACCESS_FULL_PATH))
-        .thenReturn(false);
+    when(mockConfig.getBoolean(ExternalScriptHelper.EXT_SCRIPT_ACCESS_FULL_PATH)).thenReturn(false);
     Result result =
         assertPlatformException(
             () ->
