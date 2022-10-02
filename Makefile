@@ -1,9 +1,35 @@
 MODULE_big = orafce
-OBJS= regexp.o parse_keyword.o convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o orafce.o varchar2.o nvarchar2.o charpad.o charlen.o replace_empty_string.o
+OBJS= regexp.o\
+		parse_keyword.o\
+		convert.o file.o\
+		datefce.o\
+		magic.o\
+		others.o\
+		plvstr.o\
+		plvdate.o\
+		shmmc.o\
+		plvsubst.o\
+		utility.o\
+		plvlex.o\
+		alert.o\
+		pipe.o\
+		sqlparse.o\
+		putline.o\
+		assert.o\
+		plunit.o\
+		random.o\
+		aggregate.o\
+		orafce.o\
+		varchar2.o\
+		nvarchar2.o\
+		charpad.o\
+		charlen.o\
+		replace_empty_string.o\
+		math.o
 
 EXTENSION = orafce
 
-DATA = orafce--3.24.sql\
+DATA = orafce--3.25.sql\
 		orafce--3.2--3.3.sql\
 		orafce--3.3--3.4.sql\
 		orafce--3.4--3.5.sql\
@@ -25,7 +51,8 @@ DATA = orafce--3.24.sql\
 		orafce--3.20--3.21.sql\
 		orafce--3.21--3.22.sql\
 		orafce--3.22--3.23.sql\
-		orafce--3.23--3.24.sql
+		orafce--3.23--3.24.sql\
+		orafce--3.24--3.25.sql
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 

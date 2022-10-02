@@ -1061,3 +1061,25 @@ SELECT oracle.least(1.2::double precision,2.4::double precision,2.3::double prec
 SELECT oracle.least(1.2::real,2.4::real,2.2::real,2.3::real);
 
 SELECT i, oracle.greatest(100, 24, 1234, 12, i) FROM generate_series(1,3) g(i);
+
+-- test remainder function
+CREATE TABLE testorafce_remainder(v1 int, v2 int);
+
+INSERT INTO testorafce_remainder VALUES(24, 7);
+INSERT INTO testorafce_remainder VALUES(24, 6);
+INSERT INTO testorafce_remainder VALUES(24, 5);
+INSERT INTO testorafce_remainder VALUES(-58, -10);
+INSERT INTO testorafce_remainder VALUES(58, 10);
+INSERT INTO testorafce_remainder VALUES(58, -10);
+INSERT INTO testorafce_remainder VALUES(58, 10);
+INSERT INTO testorafce_remainder VALUES(-44, -10);
+INSERT INTO testorafce_remainder VALUES(44, 10);
+INSERT INTO testorafce_remainder VALUES(44, -10);
+INSERT INTO testorafce_remainder VALUES(44, 10);
+
+SELECT v1, v2, oracle.remainder(v1, v2) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::smallint, v2::smallint) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::bigint, v2::bigint) FROM testorafce_remainder;
+SELECT v1, v2, oracle.remainder(v1::numeric, v2::numeric) FROM testorafce_remainder;
+
+DROP TABLE testorafce_remainder;
