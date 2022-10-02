@@ -47,6 +47,7 @@ from yb.common_util import (
         shlex_join,
         read_file,
         arg_str_to_bool,
+        is_lto_build_root,
 )
 from yb.command_util import mkdir_p
 from yb.source_files import (
@@ -397,28 +398,32 @@ class DependencyGraphBuilder:
         run_build = False
         for file_path in [compile_commands_path, cmake_deps_path]:
             if not os.path.exists(file_path):
-                logging.info("File %s does not exist, will re-run the build.", file_path)
+                logging.info(f"File {file_path} does not exist, will try to re-run the build.")
                 run_build = True
         if run_build:
-            # This is mostly useful during testing. We don't want to generate the list of compile
-            # commands by default because it takes a while, so only generate it on demand.
-            os.environ['YB_EXPORT_COMPILE_COMMANDS'] = '1'
-            mkdir_p(self.conf.build_root)
+            if self.conf.never_run_build:
+                logging.warning("--never-run-build specified, will NOT run the build.")
+            else:
+                # This is mostly useful during testing. We don't want to generate the list of
+                # compilation commands by default because it takes a while, so only generate it on
+                # demand.
+                os.environ['YB_EXPORT_COMPILE_COMMANDS'] = '1'
+                mkdir_p(self.conf.build_root)
 
-            build_cmd = [
-                os.path.join(self.conf.yb_src_root, 'yb_build.sh'),
-                self.conf.build_type,
-                '--cmake-only',
-                '--no-rebuild-thirdparty',
-                '--build-root', self.conf.build_root
-            ]
-            if self.conf.build_args:
-                # This is not ideal because it does not give a way to specify arguments with
-                # embedded spaces but is OK for our needs here.
-                logging.info("Running the build: %s", shlex_join(build_cmd))
-                build_cmd.extend(self.conf.build_args.strip().split())
+                build_cmd = [
+                    os.path.join(self.conf.yb_src_root, 'yb_build.sh'),
+                    self.conf.build_type,
+                    '--cmake-only',
+                    '--no-rebuild-thirdparty',
+                    '--build-root', self.conf.build_root
+                ]
+                if self.conf.build_args:
+                    # This is not ideal because it does not give a way to specify arguments with
+                    # embedded spaces but is OK for our needs here.
+                    logging.info("Running the build: %s", shlex_join(build_cmd))
+                    build_cmd.extend(self.conf.build_args.strip().split())
 
-            subprocess.check_call(build_cmd)
+                subprocess.check_call(build_cmd)
 
         logging.info("Loading compile commands from '{}'".format(compile_commands_path))
         with open(compile_commands_path) as commands_file:
@@ -447,6 +452,18 @@ class DependencyGraphTest(unittest.TestCase):
 
     # Basename -> basenames affected by it.
     affected_basenames_cache: Dict[str, Set[str]] = {}
+
+    def get_dynamic_exe_suffix(self) -> str:
+        assert self.dep_graph is not None
+        if is_lto_build_root(self.dep_graph.conf.build_root):
+            return '-dynamic'
+        return ''
+
+    def get_yb_master_target(self) -> str:
+        return 'yb-master' + self.get_dynamic_exe_suffix()
+
+    def get_yb_tserver_target(self) -> str:
+        return 'yb-tserver' + self.get_dynamic_exe_suffix()
 
     def get_affected_basenames(self, initial_basename: str) -> Set[str]:
         affected_basenames_from_cache: Optional[Set[str]] = self.affected_basenames_cache.get(
@@ -511,7 +528,7 @@ class DependencyGraphTest(unittest.TestCase):
     def test_master_main(self) -> None:
         self.assert_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
-                'yb-master'
+                self.get_yb_master_target()
             ], 'master_main.cc')
 
         self.assert_unaffected_by(['yb-tserver'], 'master_main.cc')
@@ -522,17 +539,22 @@ class DependencyGraphTest(unittest.TestCase):
                 'linked_list-test'
             ], 'tablet_server_main.cc')
 
-        self.assert_unaffected_by(['yb-master'], 'tablet_server_main.cc')
+        yb_master = self.get_yb_master_target()
+        self.assert_unaffected_by([yb_master], 'tablet_server_main.cc')
 
     def test_call_home(self) -> None:
-        self.assert_affected_by(['yb-master'], 'master_call_home.cc')
-        self.assert_unaffected_by(['yb-tserver'], 'master_call_home.cc')
-        self.assert_affected_by(['yb-tserver'], 'tserver_call_home.cc')
-        self.assert_unaffected_by(['yb-master'], 'tserver_call_home.cc')
+        yb_master = self.get_yb_master_target()
+        yb_tserver = self.get_yb_tserver_target()
+        self.assert_affected_by([yb_master], 'master_call_home.cc')
+        self.assert_unaffected_by([yb_tserver], 'master_call_home.cc')
+        self.assert_affected_by([yb_tserver], 'tserver_call_home.cc')
+        self.assert_unaffected_by([yb_master], 'tserver_call_home.cc')
 
     def test_catalog_manager(self) -> None:
-        self.assert_affected_by(['yb-master'], 'catalog_manager.cc')
-        self.assert_unaffected_by(['yb-tserver'], 'catalog_manager.cc')
+        yb_master = self.get_yb_master_target()
+        yb_tserver = self.get_yb_tserver_target()
+        self.assert_affected_by([yb_master], 'catalog_manager.cc')
+        self.assert_unaffected_by([yb_tserver], 'catalog_manager.cc')
 
     def test_bulk_load_tool(self) -> None:
         self.assert_affected_exactly_by([
@@ -617,10 +639,15 @@ def main() -> None:
                         default="-lto",
                         help='The suffix to append to LTO-enabled binaries produced by '
                              'the %s command' % Command.LINK_WHOLE_PROGRAM.value)
+    parser.add_argument('--lto-output-path',
+                        help='Override the output file path for the LTO linking step.')
     parser.add_argument('--lto-type',
                         default='full',
                         choices=['full', 'thin'],
                         help='LTO type to use')
+    parser.add_argument('--never-run-build',
+                        action='store_true',
+                        help='Never run yb_build.sh, even if the compilation database is missing.')
     parser.add_argument(
         '--run-linker',
         help='Whether to actually run the linker. Setting this to false might be useful when '
@@ -656,7 +683,8 @@ def main() -> None:
         incomplete_build=args.incomplete_build,
         file_regex=args.file_regex,
         file_name_glob=args.file_name_glob,
-        build_args=args.build_args)
+        build_args=args.build_args,
+        never_run_build=args.never_run_build)
     if conf.file_regex and args.git_diff:
         raise RuntimeError(
                 "--git-diff is incompatible with --file-{regex,name-glob}")
@@ -748,6 +776,7 @@ def main() -> None:
             link_cmd_out_file=args.link_cmd_out_file,
             run_linker=args.run_linker,
             lto_output_suffix=args.lto_output_suffix,
+            lto_output_path=args.lto_output_path,
             lto_type=args.lto_type)
         return
 

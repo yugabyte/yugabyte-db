@@ -54,11 +54,6 @@
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
 #     Skip deleting BUILD_ROOT (useful for debugging).
 #
-#   YB_TRACK_REGRESSIONS
-#   Default: 0
-#     Track regressions by re-running failed tests multiple times on the previous git commit.
-#     The implementation of this feature is unfinished.
-#
 #   YB_COMPILE_ONLY
 #   Default: 0
 #     Compile the code and build a package, but don't run tests.
@@ -111,7 +106,7 @@ build_cpp_code() {
 
   local yb_build_args=(
     "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
-    "$BUILD_TYPE"
+    "${BUILD_TYPE}"
   )
 
   if using_ninja; then
@@ -119,14 +114,14 @@ build_cpp_code() {
     log "Building a dummy target to check if Ninja re-runs CMake (it should not)."
     # The "-d explain" option will make Ninja explain why it is building a particular target.
     (
-      time "$YB_SRC_ROOT/yb_build.sh" $remote_opt \
+      time "${YB_SRC_ROOT}/yb_build.sh" ${remote_opt} \
         --make-ninja-extra-args "-d explain" \
         --target dummy_target \
         "${yb_build_args[@]}"
     )
   fi
 
-  time "$YB_SRC_ROOT/yb_build.sh" $remote_opt "${yb_build_args[@]}"
+  time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
   log "Finished building C++ code (see timing information above)"
 
@@ -137,7 +132,7 @@ build_cpp_code() {
 }
 
 cleanup() {
-  if [[ -n ${BUILD_ROOT:-} && $DONT_DELETE_BUILD_ROOT == "0" ]]; then
+  if [[ -n ${BUILD_ROOT:-} && ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
     log "Running the script to clean up build artifacts..."
     "$YB_BUILD_SUPPORT_DIR/jenkins/post-build-clean.sh"
   fi
@@ -245,14 +240,14 @@ fi
 # came from this run, and confuse us when we look at the failed build.
 
 build_root_deleted=false
-if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
-  if [[ -L $BUILD_ROOT ]]; then
+if [[ ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
+  if [[ -L ${BUILD_ROOT} ]]; then
     # If the build root is a symlink, we have to find out what it is pointing to and delete that
     # directory as well.
-    build_root_real_path=$( readlink "$BUILD_ROOT" )
-    log "BUILD_ROOT ('$BUILD_ROOT') is a symlink to '$build_root_real_path'"
-    rm -rf "$build_root_real_path"
-    unlink "$BUILD_ROOT"
+    build_root_real_path=$( readlink "${BUILD_ROOT}" )
+    log "BUILD_ROOT ('${BUILD_ROOT}') is a symlink to '${build_root_real_path}'"
+    rm -rf "${build_root_real_path}"
+    unlink "${BUILD_ROOT}"
     build_root_deleted=true
   else
     log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
@@ -261,25 +256,25 @@ if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
   fi
 fi
 
-if ! "$build_root_deleted"; then
-  log "Skipped deleting BUILD_ROOT ('$BUILD_ROOT'), only deleting $YB_TEST_LOG_ROOT_DIR."
-  rm -rf "$YB_TEST_LOG_ROOT_DIR"
+if [[ ${build_root_deleted} == "false" ]]; then
+  log "Skipped deleting BUILD_ROOT ('${BUILD_ROOT}'), only deleting ${YB_TEST_LOG_ROOT_DIR}."
+  rm -rf "${YB_TEST_LOG_ROOT_DIR}"
 fi
 
 if is_jenkins; then
   if [[ ${build_root_deleted} == "true" ]]; then
-    log "Deleting yb-test-logs from all subdirectories of $YB_BUILD_PARENT_DIR so that Jenkins " \
+    log "Deleting yb-test-logs from all subdirectories of ${YB_BUILD_PARENT_DIR} so that Jenkins " \
         "does not get confused with old JUnit-style XML files."
     ( set -x; rm -rf "$YB_BUILD_PARENT_DIR"/*/yb-test-logs )
 
-    log "Deleting old packages from '$YB_BUILD_PARENT_DIR'"
-    ( set -x; rm -rf "$YB_BUILD_PARENT_DIR/yugabyte-"*"-$build_type-"*".tar.gz" )
+    log "Deleting old packages from '${YB_BUILD_PARENT_DIR}'"
+    ( set -x; rm -rf "${YB_BUILD_PARENT_DIR}/yugabyte-"*"-$build_type-"*".tar.gz" )
   else
     log "No need to delete yb-test-logs or old packages, build root already deleted."
   fi
 fi
 
-mkdir_safe "$BUILD_ROOT"
+mkdir_safe "${BUILD_ROOT}"
 
 readonly BUILD_ROOT
 export BUILD_ROOT
@@ -288,7 +283,10 @@ export BUILD_ROOT
 # End of build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
 
-"$YB_SRC_ROOT/yb_build.sh" --cmake-unit-tests
+# We need to set this prior to the first invocation of yb_build.sh.
+export YB_SKIP_FINAL_LTO_LINK=1
+
+"${YB_SRC_ROOT}/yb_build.sh" --cmake-unit-tests
 
 find_or_download_ysql_snapshots
 find_or_download_thirdparty
@@ -312,7 +310,7 @@ if is_jenkins; then
   YB_RECREATE_VIRTUALENV=1
 fi
 
-log "Running with PATH: $PATH"
+log "Running with PATH: ${PATH}"
 
 set +e
 for python_command in python python2 python2.7 python3; do
@@ -338,20 +336,20 @@ if [[ -z ${YB_RUN_AFFECTED_TESTS_ONLY:-} ]] && is_jenkins_phabricator_build; the
   export YB_RUN_AFFECTED_TESTS_ONLY=1
 fi
 export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
-log "YB_RUN_AFFECTED_TESTS_ONLY=$YB_RUN_AFFECTED_TESTS_ONLY"
+log "YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY}"
 
 export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
-if [[ $YB_SKIP_BUILD == "1" ]]; then
+if [[ ${YB_SKIP_BUILD} == "1" ]]; then
   export NO_REBUILD_THIRDPARTY=1
 fi
 
 YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
 YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
 
-CTEST_OUTPUT_PATH="$BUILD_ROOT"/ctest.log
-CTEST_FULL_OUTPUT_PATH="$BUILD_ROOT"/ctest-full.log
+CTEST_OUTPUT_PATH="${BUILD_ROOT}"/ctest.log
+CTEST_FULL_OUTPUT_PATH="${BUILD_ROOT}"/ctest-full.log
 
-TEST_LOG_DIR="$BUILD_ROOT/test-logs"
+TEST_LOG_DIR="${BUILD_ROOT}/test-logs"
 
 # If we're running inside Jenkins (the BUILD_ID is set), then install an exit handler which will
 # clean up all of our build results.
@@ -405,19 +403,19 @@ fi
 declare -i -r MAX_CMAKE_RETRIES=3
 declare -i cmake_attempt_index=1
 while true; do
-  if "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --cmake-only --no-remote; then
+  if "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --cmake-only --no-remote; then
     log "CMake succeeded after attempt $cmake_attempt_index"
     break
   fi
-  if [[ $cmake_attempt_index -eq $MAX_CMAKE_RETRIES ]]; then
-    fatal "CMake failed after $MAX_CMAKE_RETRIES attempts, giving up."
+  if [[ $cmake_attempt_index -eq ${MAX_CMAKE_RETRIES} ]]; then
+    fatal "CMake failed after ${MAX_CMAKE_RETRIES} attempts, giving up."
   fi
   heading "CMake failed at attempt $cmake_attempt_index, re-trying"
   (( cmake_attempt_index+=1 ))
 done
 
 # Only enable test core dumps for certain build types.
-if [[ $BUILD_TYPE != "asan" ]]; then
+if [[ ${BUILD_TYPE} != "asan" ]]; then
   # TODO: actually make this take effect. The issue is that we might not be able to set ulimit
   # unless the OS configuration enables us to.
   export YB_TEST_ULIMIT_CORE=unlimited
@@ -436,7 +434,7 @@ set -e
 
 FAILURES=""
 
-if [[ $YB_BUILD_CPP == "1" ]] && ! which ctest >/dev/null; then
+if [[ ${YB_BUILD_CPP} == "1" ]] && ! which ctest >/dev/null; then
   fatal "ctest not found, won't be able to run C++ tests"
 fi
 
@@ -444,76 +442,11 @@ export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 
 # -------------------------------------------------------------------------------------------------
 # Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
+# -------------------------------------------------------------------------------------------------
 
 heading "Building C++ code"
 
-YB_TRACK_REGRESSIONS=${YB_TRACK_REGRESSIONS:-0}
-if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
-
-  cd "$YB_SRC_ROOT"
-  if ! git diff-index --quiet HEAD --; then
-    fatal "Uncommitted changes found in '$YB_SRC_ROOT', cannot proceed."
-  fi
-  get_current_git_sha1
-  git_original_commit=$current_git_sha1
-
-  # Set up a separate directory that is one commit behind and launch a C++ build there in parallel
-  # with the main C++ build.
-
-  # TODO: we can probably do this in parallel with running the first batch of tests instead of in
-  # parallel with compilation, so that we deduplicate compilation of almost identical codebases.
-
-  YB_SRC_ROOT_REGR=${YB_SRC_ROOT}_regr
-  heading "Preparing directory for regression tracking: $YB_SRC_ROOT_REGR"
-
-  if [[ -e $YB_SRC_ROOT_REGR ]]; then
-    log "Removing the existing contents of '$YB_SRC_ROOT_REGR'"
-    time rm -rf "$YB_SRC_ROOT_REGR"
-    if [[ -e $YB_SRC_ROOT_REGR ]]; then
-      log "Failed to remove '$YB_SRC_ROOT_REGR' right away"
-      sleep 0.5
-      if [[ -e $YB_SRC_ROOT_REGR ]]; then
-        fatal "Failed to remove '$YB_SRC_ROOT_REGR'"
-      fi
-    fi
-  fi
-
-  log "Cloning '$YB_SRC_ROOT' to '$YB_SRC_ROOT_REGR'"
-  time git clone "$YB_SRC_ROOT" "$YB_SRC_ROOT_REGR"
-  if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
-    log "Directory $YB_SRC_ROOT_REGR did not appear right away"
-    sleep 0.5
-    if [[ ! -d $YB_SRC_ROOT_REGR ]]; then
-      fatal "Directory ''$YB_SRC_ROOT_REGR' still does not exist"
-    fi
-  fi
-
-  cd "$YB_SRC_ROOT_REGR"
-  git checkout "$git_original_commit^"
-  git_commit_after_rollback=$( git rev-parse --abbrev-ref HEAD )
-  log "Rolling back commit '$git_commit_after_rollback', currently at '$git_original_commit'"
-  heading "Top commits in '$YB_SRC_ROOT_REGR' after reverting one commit:"
-  git log -n 2
-
-  (
-    build_cpp_code "$PWD" 2>&1 |
-      while read -r output_line; do
-        echo "[base version build] $output_line"
-      done
-  ) &
-  build_cpp_code_regr_pid=$!
-
-  cd "$YB_SRC_ROOT"
-fi
-# End of special logic for the regression tracking mode.
-
 build_cpp_code "$YB_SRC_ROOT"
-
-if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
-  log "Waiting for building C++ code one commit behind (at $git_commit_after_rollback)" \
-      "in $YB_SRC_ROOT_REGR"
-  wait "$build_cpp_code_regr_pid"
-fi
 
 log "Disk usage after C++ build:"
 show_disk_usage
@@ -521,7 +454,8 @@ show_disk_usage
 # We can grep for this line in the log to determine the stage of the build job.
 log "ALL OF YUGABYTE C++ BUILD FINISHED"
 
-# End of the C++ code build.
+# -------------------------------------------------------------------------------------------------
+# End of the C++ code build, except maybe the final LTO linking step.
 # -------------------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------------------------------
@@ -530,26 +464,26 @@ log "ALL OF YUGABYTE C++ BUILD FINISHED"
 
 export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
-if [[ $BUILD_TYPE != "tsan" ]]; then
+if [[ ${BUILD_TYPE} != "tsan" ]]; then
   declare -i initdb_attempt_index=1
   declare -i -r MAX_INITDB_ATTEMPTS=3
 
-  while [[ $initdb_attempt_index -le $MAX_INITDB_ATTEMPTS ]]; do
+  while [[ $initdb_attempt_index -le ${MAX_INITDB_ATTEMPTS} ]]; do
     log "Creating initial system catalog snapshot (attempt $initdb_attempt_index)"
-    if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
+    if ! time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" initdb --skip-java; then
       initdb_err_msg="Failed to create initial sys catalog snapshot at "
-      initdb_err_msg+="attempt $initdb_attempt_index"
-      log "$initdb_err_msg. PostgreSQL tests may take longer."
+      initdb_err_msg+="attempt ${initdb_attempt_index}"
+      log "${initdb_err_msg}. PostgreSQL tests may take longer."
       FAILURES+="$initdb_err_msg"$'\n'
       EXIT_STATUS=1
     else
-      log "Successfully created initial system catalog snapshot at attempt $initdb_attempt_index"
+      log "Successfully created initial system catalog snapshot at attempt ${initdb_attempt_index}."
       break
     fi
     (( initdb_attempt_index+=1 ))
   done
-  if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
-    fatal "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
+  if [[ ${initdb_attempt_index} -gt ${MAX_INITDB_ATTEMPTS} ]]; then
+    fatal "Failed to run create initial sys catalog snapshot after ${MAX_INITDB_ATTEMPTS} attempts."
   fi
 fi
 
@@ -559,8 +493,10 @@ fi
 
 if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
   if ! ( set -x
-         "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-           --build-root "$BUILD_ROOT" self-test --rebuild-graph ); then
+         "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
+           --build-root "${BUILD_ROOT}" \
+           self-test \
+           --rebuild-graph ); then
     # Trying to diagnose this error:
     # https://gist.githubusercontent.com/mbautin/c5c6f14714f7655c10620d8e658e1f5b/raw
     log "dependency_graph.py failed, listing all pb.{h,cc} files in the build directory"
@@ -579,18 +515,48 @@ fi
 current_git_commit=$(git rev-parse HEAD)
 
 # -------------------------------------------------------------------------------------------------
+# Final LTO linking
+# -------------------------------------------------------------------------------------------------
+
+export YB_SKIP_FINAL_LTO_LINK=0
+if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
+  yb_build_cmd_line_for_lto=(
+    "${YB_SRC_ROOT}/yb_build.sh"
+    "${BUILD_TYPE}" --skip-java --force-run-cmake
+  )
+
+  if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
+    total_mem_kb=${BASH_REMATCH[1]}
+    # LTO linking uses about 12.5 GB for building one binary. Try to avoid OOM.
+    yb_build_parallelism_for_lto=$(( total_mem_kb / (13 * 1024 * 1024) ))
+    if [[ ${yb_build_parallelism_for_lto} -lt 1 ]]; then
+      yb_build_parallelism_for_lto=1
+    fi
+    log "Total memory size: ${total_mem_kb} KB," \
+        "using LTO linking parallelism ${yb_build_parallelism_for_lto}."
+  else
+    log "Warning: could not determine total amount of memory, using parallelism of 1 for LTO."
+    yb_build_parallelism_for_lto=1
+  fi
+  yb_build_cmd_line_for_lto+=( "-j${yb_build_parallelism_for_lto}" )
+
+  log "Performing final LTO linking"
+  ( set -x; "${yb_build_cmd_line_for_lto[@]}" )
+fi
+
+# -------------------------------------------------------------------------------------------------
 # Java build
 # -------------------------------------------------------------------------------------------------
 
 export YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
 
 java_build_failed=false
-if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
+if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
   set_mvn_parameters
 
   heading "Building Java code..."
   if [[ -n ${JAVA_HOME:-} ]]; then
-    export PATH=$JAVA_HOME/bin:$PATH
+    export PATH=${JAVA_HOME}/bin:${PATH}
   fi
 
   build_yb_java_code_in_all_dirs clean
@@ -598,14 +564,14 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   heading "Java 'clean' build is complete, will now actually build Java code"
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
-    pushd "$java_project_dir"
-    heading "Building Java code in directory '$java_project_dir'"
+    pushd "${java_project_dir}"
+    heading "Building Java code in directory '${java_project_dir}'"
     if ! build_yb_java_code_with_retries -DskipTests clean install; then
       EXIT_STATUS=1
-      FAILURES+="Java build failed in directory '$java_project_dir'"$'\n'
+      FAILURES+="Java build failed in directory '${java_project_dir}'"$'\n'
       java_build_failed=true
     else
-      log "Java code build in directory '$java_project_dir' SUCCEEDED"
+      log "Java code build in directory '${java_project_dir}' SUCCEEDED"
     fi
     popd
   done
@@ -616,7 +582,7 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   heading "Running a test locally to force Maven to download all test-time dependencies"
   (
-    cd "$YB_SRC_ROOT/java"
+    cd "${YB_SRC_ROOT}/java"
     build_yb_java_code test \
                        -Dtest=org.yb.client.TestTestUtils#testDummy \
                        "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}"
@@ -633,25 +599,6 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   log "Finished building Java code (see timing information above)"
 fi
 
-# It is important to do these LTO linking steps before building the package.
-if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
-  log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
-  log "See below for the file size and linked shared libraries."
-  (
-    set -x
-    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-        --build-root "$BUILD_ROOT" \
-        --file-regex "^.*/yb-tserver$" \
-        --lto-output-suffix="" \
-        "--lto-type=${YB_LINKING_TYPE%-lto}" \
-        link-whole-program
-    ls -l "$BUILD_ROOT/bin/yb-tserver"
-    ldd "$BUILD_ROOT/bin/yb-tserver"
-  )
-else
-  log "Not using LTO: YB_LINKING_TYPE=${YB_LINKING_TYPE}"
-fi
-
 # -------------------------------------------------------------------------------------------------
 # Now that all C++ and Java code has been built, test creating a package.
 #
@@ -659,12 +606,11 @@ fi
 # (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
 
 if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
-      $build_type != "tsan" &&
-      $build_type != "asan" ]]; then
+      ! ${build_type} =~ ^(asan|tsan)$ ]]; then
   heading "Creating a distribution package"
 
-  package_path_file="$BUILD_ROOT/package_path.txt"
-  rm -f "$package_path_file"
+  package_path_file="${BUILD_ROOT}/package_path.txt"
+  rm -f "${package_path_file}"
 
   # We are passing --build_args="--skip-build" using the "=" syntax, because otherwise it would be
   # interpreted as an argument to yb_release.py, causing an error.
@@ -672,12 +618,12 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Everything has already been built by this point, so there is no need to invoke compilation at
   # all as part of building the release package.
   yb_release_cmd=(
-    "$YB_SRC_ROOT/yb_release"
-    --build "$build_type"
-    --build_root "$BUILD_ROOT"
+    "${YB_SRC_ROOT}/yb_release"
+    --build "${build_type}"
+    --build_root "${BUILD_ROOT}"
     --build_args="--skip-build"
-    --save_release_path_to_file "$package_path_file"
-    --commit "$current_git_commit"
+    --save_release_path_to_file "${package_path_file}"
+    --commit "${current_git_commit}"
     --force
   )
 
@@ -693,19 +639,19 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     time "${yb_release_cmd[@]}"
   )
 
-  YB_PACKAGE_PATH=$( cat "$package_path_file" )
-  if [[ -z $YB_PACKAGE_PATH ]]; then
-    fatal "File '$package_path_file' is empty"
+  YB_PACKAGE_PATH=$( cat "${package_path_file}" )
+  if [[ -z ${YB_PACKAGE_PATH} ]]; then
+    fatal "File '${package_path_file}' is empty"
   fi
-  if [[ ! -f $YB_PACKAGE_PATH ]]; then
-    fatal "Package path stored in '$package_path_file' does not exist: $YB_PACKAGE_PATH"
+  if [[ ! -f ${YB_PACKAGE_PATH} ]]; then
+    fatal "Package path stored in '${package_path_file}' does not exist: ${YB_PACKAGE_PATH}"
   fi
 
   # Upload the package.
   if ! is_jenkins_phabricator_build; then
     # shellcheck source=ent/build-support/upload_package.sh
-    . "$YB_SRC_ROOT/ent/build-support/upload_package.sh"
-    if ! "$package_uploaded" && ! "$package_upload_skipped"; then
+    . "${YB_SRC_ROOT}/ent/build-support/upload_package.sh"
+    if ! "${package_uploaded}" && ! "${package_upload_skipped}"; then
       FAILURES+=$'Package upload failed\n'
       EXIT_STATUS=1
     fi
@@ -722,7 +668,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
     docker run -i \
       -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=$YB_SRC_ROOT/build,target=/mnt/dir_with_package" centos:7 \
+      --mount "type=bind,source=${YB_SRC_ROOT}/build,target=/mnt/dir_with_package" centos:7 \
       bash -c '
         set -euo pipefail -x
         yum install -y libatomic
@@ -735,24 +681,24 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
         # Remove the trailing slash.
         dir_name_inside_archive=${dir_name_inside_archive%/}
         cd /tmp
-        tar xzf "$package_path"
-        cd "$dir_name_inside_archive"
+        tar xzf "${package_path}"
+        cd "${dir_name_inside_archive}"
         bin/post_install.sh
         bin/yb-ctl create
         bin/ysqlsh -c "create table t (k int primary key, v int);
                        insert into t values (1, 2);
                        select * from t;"'
   else
-    log "Not doing a quick sanity-check of the release package. OS: $OSTYPE."
+    log "Not doing a quick sanity-check of the release package. OS: ${OSTYPE}."
   fi
 else
-  log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
+  log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \
       "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
 
   # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
   # building package.
   log "Building yugabyted-ui"
-  time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" --build-yugabyted-ui --skip-java
+  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -767,30 +713,30 @@ export YB_GZIP_PER_TEST_METHOD_LOGS=1
 export YB_GZIP_TEST_LOGS=1
 export YB_DELETE_SUCCESSFUL_PER_TEST_METHOD_LOGS=1
 
-if [[ $YB_COMPILE_ONLY != "1" ]]; then
+if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
   if spark_available; then
-    if [[ $YB_BUILD_CPP == "1" || $YB_BUILD_JAVA == "1" ]]; then
+    if [[ ${YB_BUILD_CPP} == "1" || ${YB_BUILD_JAVA} == "1" ]]; then
       log "Will run tests on Spark"
       run_tests_extra_args=()
-      if [[ $YB_BUILD_JAVA == "1" ]]; then
+      if [[ ${YB_BUILD_JAVA} == "1" ]]; then
         run_tests_extra_args+=( "--java" )
       fi
-      if [[ $YB_BUILD_CPP == "1" ]]; then
+      if [[ ${YB_BUILD_CPP} == "1" ]]; then
         run_tests_extra_args+=( "--cpp" )
       fi
-      if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
-        test_conf_path="$BUILD_ROOT/test_conf.json"
+      if [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
+        test_conf_path="${BUILD_ROOT}/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
         (
           set -x
-          "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-              --build-root "$BUILD_ROOT" \
+          "${YB_SRC_ROOT}/python/yb/dependency_graph.py" \
+              --build-root "${BUILD_ROOT}" \
               --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-              --output-test-config "$test_conf_path" \
+              --output-test-config "${test_conf_path}" \
               affected
         )
-        run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
+        run_tests_extra_args+=( "--test_conf" "${test_conf_path}" )
         unset test_conf_path
       fi
       if is_linux || (is_mac && ! is_src_root_on_nfs); then
@@ -804,10 +750,10 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       fi
 
       NUM_REPETITIONS="${YB_NUM_REPETITIONS:-1}"
-      log "NUM_REPETITIONS is set to $NUM_REPETITIONS"
-      if [[ $NUM_REPETITIONS -gt 1 ]]; then
-        log "Repeating each test $NUM_REPETITIONS times"
-        run_tests_extra_args+=( "--num_repetitions" "$NUM_REPETITIONS" )
+      log "NUM_REPETITIONS is set to ${NUM_REPETITIONS}"
+      if [[ ${NUM_REPETITIONS} -gt 1 ]]; then
+        log "Repeating each test ${NUM_REPETITIONS} times"
+        run_tests_extra_args+=( "--num_repetitions" "${NUM_REPETITIONS}" )
       fi
 
       set +u  # because extra_args can be empty
@@ -825,29 +771,29 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
   else
     # A single-node way of running tests (without Spark).
 
-    if [[ $YB_BUILD_CPP == "1" ]]; then
+    if [[ ${YB_BUILD_CPP} == "1" ]]; then
       log "Run C++ tests in a non-distributed way"
-      export GTEST_OUTPUT="xml:$TEST_LOG_DIR/" # Enable JUnit-compatible XML output.
+      export GTEST_OUTPUT="xml:${TEST_LOG_DIR}/" # Enable JUnit-compatible XML output.
 
       if ! spark_available; then
         log "Did not find Spark on the system, falling back to a ctest-based way of running tests"
         set +e
         # We don't double-quote EXTRA_TEST_FLAGS on purpose, to allow specifying multiple flags.
         # shellcheck disable=SC2086
-        time ctest "-j$NUM_PARALLEL_TESTS" ${EXTRA_TEST_FLAGS:-} \
-            --output-log "$CTEST_FULL_OUTPUT_PATH" \
-            --output-on-failure 2>&1 | tee "$CTEST_OUTPUT_PATH"
+        time ctest "-j${NUM_PARALLEL_TESTS}" ${EXTRA_TEST_FLAGS:-} \
+            --output-log "${CTEST_FULL_OUTPUT_PATH}" \
+            --output-on-failure 2>&1 | tee "${CTEST_OUTPUT_PATH}"
         ctest_exit_code=$?
         set -e
         if [[ $ctest_exit_code -ne 0 ]]; then
           EXIT_STATUS=1
-          FAILURES+=$'C++ tests failed with exit code $ctest_exit_code\n'
+          FAILURES+=$'C++ tests failed with exit code ${ctest_exit_code}\n'
         fi
       fi
       log "Finished running C++ tests (see timing information above)"
     fi
 
-    if [[ $YB_BUILD_JAVA == "1" ]]; then
+    if [[ ${YB_BUILD_JAVA} == "1" ]]; then
       set_test_invocation_id
       log "Running Java tests in a non-distributed way"
       if ! time run_all_java_test_methods_separately; then
@@ -866,15 +812,15 @@ remove_latest_symlink
 
 log "Aggregating test reports"
 "$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
-      --yb-src-root "$YB_SRC_ROOT" \
-      --output-dir "$YB_SRC_ROOT" \
-      --build-type "$build_type" \
-      --compiler-type "$YB_COMPILER_TYPE" \
-      --build-root "$BUILD_ROOT"
+      --yb-src-root "${YB_SRC_ROOT}" \
+      --output-dir "${YB_SRC_ROOT}" \
+      --build-type "${build_type}" \
+      --compiler-type "${YB_COMPILER_TYPE}" \
+      --build-root "${BUILD_ROOT}"
 
-if [[ -n $FAILURES ]]; then
+if [[ -n ${FAILURES} ]]; then
   heading "Failure summary"
-  echo >&2 "$FAILURES"
+  echo >&2 "${FAILURES}"
 fi
 
-exit $EXIT_STATUS
+exit ${EXIT_STATUS}
