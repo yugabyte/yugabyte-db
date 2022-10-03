@@ -96,7 +96,9 @@ public class ReleaseManager {
     public static class PackagePaths {
       @ApiModelProperty(value = "Path to x86_64 package")
       @Constraints.Pattern(
-          message = "Must be prefixed with s3://, gs://, or http(s)://",
+          message =
+              "File path must be prefixed with s3://, gs://, or http(s)://,"
+                  + " and must contain path to package file, instead of a directory",
           value = "\\b(?:(https|s3|gs):\\/\\/).+\\b")
       public String x86_64;
 
