@@ -19,7 +19,7 @@ This page demonstrates how to deploy a GraphQL application on Hasura Cloud and Y
 
 The example has the following prerequisites:
 
-* You have created a cluster on YugabyteDB Managed. For instructions, refer to [Create a cluster](../../cloud-basics/create-clusters/).
+* You have created a cluster on YugabyteDB Managed. For instructions, refer to [Create your cluster](../../cloud-basics/create-clusters/).
 * You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Managed](../hasura-cloud/).
 
   You will also need the **Admin Secret** of your Hasura project.
@@ -29,7 +29,7 @@ The example has the following prerequisites:
 
 ### Download the Realtime Poll application
 
-The Realtime Poll application is available from the Yugabyte GraphQL Apps repository.
+The Realtime Poll application is available from the [YugabyteDB GraphQL Apps](https://github.com/YugabyteDB-Samples/yugabyte-graphql-apps) repository.
 
 ```sh
 $ git clone https://github.com/YugabyteDB-Samples/yugabyte-graphql-apps.git
