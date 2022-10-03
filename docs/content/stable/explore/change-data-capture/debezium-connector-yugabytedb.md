@@ -10,6 +10,8 @@ menu:
     identifier: debezium-connector-yugabytedb
     weight: 580
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -35,11 +37,11 @@ YugabyteDB normally purges write-ahead log (WAL) segments after some period of t
 
 The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off using the WAL position called checkpoints managed on the Kafka side as well as on the YugabyteDB cluster.
 
-{{< note title="Note" >}}
+{{< tip title="Use UTF-8 encoding" >}}
 
 Debezium supports databases with UTF-8 character encoding only. With a single-byte character encoding, it's not possible to correctly process strings that contain extended ASCII code characters.
 
-{{< /note >}}
+{{< /tip >}}
 
 ## Setup
 
@@ -123,7 +125,7 @@ Now suppose that the tables are not part of a specific schema but were created i
 
 The connector applies similar naming conventions to label its [transaction metadata topics](#transaction-metadata).
 
-If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see Debezium's documentation on [Topic routing](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html#topic-routing).
+If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html#topic-routing).
 
 ### Transaction metadata
 
@@ -233,7 +235,7 @@ The following skeleton JSON shows the basic four parts of a change event. Howeve
 | 3 | schema | The second `schema` field is part of the event value. It specifies the Kafka Connect schema that describes what is in the event value's `payload` portion. In other words, the second `schema` describes the structure of the row that was changed. Typically, this schema contains nested schemas. |
 | 4 | payload | The second `payload` field is part of the event value. It has the structure described by the previous `schema` field and it contains the actual data for the row that was changed. |
 
-{{< warning title="Warning" >}}
+{{< warning title="Naming conflicts due to invalid characters" >}}
 
 The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the [Avro schema name format](http://avro.apache.org/docs/current/spec.html#names). This means that the logical server name must start with a Latin letter or an underscore, that is, a-z, A-Z, or \_. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, a-z, A-Z, 0-9, or \_. Invalid characters are replaced with an underscore character.
 
@@ -305,7 +307,7 @@ Although the `column.exclude.list` and `column.include.list` connector configura
 
 The value in a change event is a bit more complicated than the key. Like the key, the value has a `schema` section and a `payload` section. The `schema` section contains the schema that describes the `Envelope` structure of the `payload` section, including its nested fields. Change events for operations that create, update or delete data all have a value payload with an envelope structure.
 
-### _create_ events
+### Create events
 
 For a given table, the change event has a structure that contains a field for each column of the table at the time the event was created.
 
@@ -532,9 +534,13 @@ The fields in the create event are:
 | 7 | op | Mandatory string that describes the type of operation that caused the connector to generate the event. In this example, `c` indicates that the operation created a row. Valid values are: <ul><li> `c` = create <li> `r` = read (applies to only snapshots) <li> `u` = update <li> `d` = delete</ul> |
 | 8 | ts_ms | Optional field containing the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task. <br/> In the source object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
 
-### _update_ events
+### Update events
 
 The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value's payload has the same structure. However, the event value payload contains different values in an update event. Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
+
+Note that updating the columns for a row's **primary/unique key** changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. See [Primary key updates](#primary-key-updates) on this page for details.
+
+Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
 
 ```sql
 UPDATE customers SET email = 'service@example.com' WHERE id = 1;
@@ -594,12 +600,6 @@ Currently, YugabyteDB doesn't support the `before` image of the row (in other wo
 
 {{< /note >}}
 
-{{< tip title="Tip" >}}
-
-Updating the columns for a row's primary/unique key changes the value of the row's key. When a key changes, Debezium outputs three events: a DELETE event and a [tombstone event](#tombstone-events) with the old key for the row, followed by an event with the new key for the row. Details are in the next section.
-
-{{< /note >}}
-
 ### Primary key updates
 
 An UPDATE operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an UPDATE event record, the connector sends a DELETE event record for the old key and a CREATE event record for the new (updated) key. These events have the usual structure and content, and in addition, each one has a message header related to the primary key change:
@@ -608,7 +608,7 @@ An UPDATE operation that changes a row's primary key field(s) is known as a prim
 
 * The CREATE event record has `__debezium.oldkey` as a message header. The value of this header is the previous (old) primary key for the updated row.
 
-### _delete_ events
+### Delete events
 
 The value in a _delete_ change event has the same schema portion as create and update events for the same table. The _payload_ portion in a delete event for the sample _customers_ table looks like this:
 
@@ -659,23 +659,25 @@ The fields in this event are:
 
 A `delete` change event record provides a consumer with the information it needs to process the removal of this row.
 
-#### Tombstone events
+### Tombstone events
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< warning title="Warning" >}}
+{{< warning title="DROP and ALTER table commands" >}}
 
-YugabyteDB doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands). Also, see the [limitations](../../change-data-capture/#limitations) section.
+The YugabyteDB CDC implementation doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands). Also, see the [limitations](../../change-data-capture/#limitations) section.
 
 {{< /warning >}}
 
-##### Ignoring tombstone events
+#### Suppressing tombstone events
 
-It can be controlled whether the connector emits tombstone events. Depending on your data pipeline, you might want to set the `tombstones.on.delete` property for a connector so ot does not emit tombstone events.
+You can configure whether a connector emits tombstone events using its `tombstones.on.delete` property.
 
-Whether you enable the connector to emit tombstones depends on how topics are consumed in your environment and by the characteristics of the sink consumer. Some sink connectors rely on tombstone events to remove records from downstream data stores. In cases where sink connectors rely on tombstone records to indicate when to delete records in downstream data stores, configure the connector to emit them.
+Whether you enable the connector to emit tombstones depends on how topics are consumed in your environment, and on the characteristics of the sink consumer. If your sink consumers rely on tombstone records to indicate when to delete records in downstream data stores, you should configure the connector to emit them.
 
-By default, the `tombstones.on.delete` property for a connector is set to `true` so that the connector generates a tombstone after each delete event. If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the absence of tombstone records might lead to unintended consequences. Kafka relies on tombstone during log compaction to remove records that are related to a deleted key.
+By default, a connector's `tombstones.on.delete` property is set to `true` so that the connector generates a tombstone after each delete event.
+
+If you set the property to `false` to prevent the connector from saving tombstone records to Kafka topics, the **absence of tombstone records might lead to unintended consequences**. For example, Kafka relies on tombstones during log compaction to remove records related to deleted keys.
 
 ## Datatype mappings
 
@@ -729,15 +731,15 @@ Mappings for YugabyteDB basic data types:
 
 Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
 
-* [`time.precision.mode=adaptive`](#timeprecisionmodeadaptive)
-* [`time.precision.mode=adaptive_time_microseconds`](#timeprecisionmodeadaptive_time_microseconds)
-* [`time.precision.mode=connect`](#timeprecisionmodeconnect)
+* [`time.precision.mode=adaptive`](#adaptive-mode)
+* [`time.precision.mode=adaptive_time_microseconds`](#adaptive-microseconds-mode)
+* [`time.precision.mode=connect`](#connect-mode)
 
-#### time.precision.mode=adaptive
+#### Adaptive mode
 
 When the `time.precision.mode` property is set to adaptive (the default), the connector determines the literal type and semantic type based on the column's data type definition. This ensures that events exactly represent the values in the database.
 
-Mappings when time.precision.mode is adaptive:
+Mappings when `time.precision.mode` is `adaptive`:
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
@@ -745,11 +747,11 @@ Mappings when time.precision.mode is adaptive:
 | TIME([P]) | INT32 | `io.debezium.time.Time` <br/><br/> Represents the number of milliseconds past midnight, and does not include timezone information. |
 | TIMESTAMP([P]) | INT64 | `io.debezium.time.Timestamp` <br/><br/> Represents the number of milliseconds since the epoch, and does not include timezone information. |
 
-#### time.precision.mode=adaptive_time_microseconds
+#### Adaptive (microseconds) mode
 
 When the `time.precision.mode` configuration property is set to `adaptive_time_microseconds`, the connector determines the literal type and semantic type for temporal types based on the column's data type definition. This ensures that events exactly represent the values in the database, except all `TIME` fields are captured as microseconds.
 
-Mappings when time.precision.mode is adaptive_time_microseconds:
+Mappings when `time.precision.mode` is `adaptive_time_microseconds`:
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) |
 | :------------------ | :------------------------- | :-------------------------- |
