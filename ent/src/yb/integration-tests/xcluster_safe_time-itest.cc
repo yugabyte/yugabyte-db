@@ -172,7 +172,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status) {
             CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
 
@@ -189,7 +189,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
             return true;
           }
@@ -439,7 +439,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
             auto safe_time =
-                tserver->server()->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+                tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
             if (!safe_time) {
               return false;
             }
