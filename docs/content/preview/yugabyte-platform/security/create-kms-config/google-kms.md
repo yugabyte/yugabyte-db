@@ -51,13 +51,10 @@ The Google Cloud user associated with a KMS configuration requires a custom role
 
 - `cloudkms.keyRings.create`
 - `cloudkms.keyRings.get`
-- `cloudkms.keyRings.list`
 - `cloudkms.cryptoKeys.create`
 - `cloudkms.cryptoKeys.get`
-- `cloudkms.cryptoKeys.list`
 - `cloudkms.cryptoKeyVersions.useToEncrypt`
 - `cloudkms.cryptoKeyVersions.useToDecrypt`
-- `cloudkms.cryptoKeyVersions.destroy`
 - `cloudkms.locations.generateRandomBytes`
 
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
