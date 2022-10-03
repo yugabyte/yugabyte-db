@@ -53,11 +53,7 @@ To create a project in Hasura Cloud:
 
 1. Select **Free Tier**.
 
-    <br/><br/>
-
     ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)
-
-    <br/><br/>
 
 1. Click **Create Free Project**.
 
@@ -67,15 +63,17 @@ To create a project in Hasura Cloud:
 
 ## Add the Hasura Cloud project to your Yugabyte cluster IP allow list
 
-YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to your clusters IP allow list.
+YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to the  cluster IP allow list.
 
-1. In YugabyteDB Managed, select your cluster and click **Add IP Allow List**.
+1. In YugabyteDB Managed, select your cluster, click **Actions**, and choose **Edit IP Allow List**.
 
 1. Click **Create New List and Add to Cluster**.
 
 1. Enter a name for the allow list (such as the name of your Hasura project) and the project IP address, and click **Save**.
 
 ## Connect the cluster to your Hasura Cloud project
+
+To connect your cluster:
 
 1. In the Hasura Cloud Dashboard, click **Launch Console**.
 
@@ -97,9 +95,10 @@ YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in I
     postgresql://admin:qwerty@1234%20.cloud.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
     ```
 
-    \
     ![Connect Hasura database](/images/yb-cloud/hasura-cloud-connect-database.png)
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.
 
-1. Click **View Database**. The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).
+1. Click **View Database**.
+
+The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).
