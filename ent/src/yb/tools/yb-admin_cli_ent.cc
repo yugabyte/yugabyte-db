@@ -900,6 +900,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                                          producer_uuid));
         return Status::OK();
       });
+
+  Register(
+    "get_replication_status", " [<producer_universe_uuid>]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string producer_universe_uuid = args.size() == 1 ? args[0] : "";
+      RETURN_NOT_OK_PREPEND(client->GetReplicationInfo(producer_universe_uuid),
+                            "Unable to get replication status");
+      return Status::OK();
+    });
 }  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
