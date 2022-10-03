@@ -1,8 +1,0 @@
-# Configurable parameter: overrideWarning
-
-# overrideWarning: Set this variable to true if you wish
-# to override all warning level preflight checks during the
-# Yba-installer installation (defaults to false, so both
-# critical and warning checks are performed in the normal case)
-preflight:
-   overrideWarning: true

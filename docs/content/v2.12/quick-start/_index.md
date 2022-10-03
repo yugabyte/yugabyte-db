@@ -168,13 +168,13 @@ type: docs
 1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2.12">}}/yugabyte-{{<yb-version version="v2.12" format="build">}}-darwin-x86_64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    $ tar xvfz yugabyte-{{<yb-version version="v2.12" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{<yb-version version="v2.12">}}/
     ```
 
 ## Create a local cluster
@@ -523,4 +523,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ### Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

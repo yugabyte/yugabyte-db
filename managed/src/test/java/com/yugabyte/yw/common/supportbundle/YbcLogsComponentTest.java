@@ -48,7 +48,7 @@ public class YbcLogsComponentTest extends FakeDBApplication {
 
   private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
   private final String testRegexPattern =
-      "(?:.*)(?:yb-)(controller)(?:.*)(\\d{8})-(?:\\d*)\\.(?:\\d*)(?:\\.gz|\\.zip)?";
+      "(?:.*)(?:yb-)(?:controller)(?:.*)(\\d{8})-(?:\\d*)\\.(?:\\d*)(?:\\.gz|\\.zip)?";
 
   private Universe universe;
   private Customer customer;

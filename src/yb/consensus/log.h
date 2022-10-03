@@ -80,6 +80,13 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 
 namespace log {
 
+YB_DEFINE_ENUM(
+    SyncType,
+    (kNoSync)
+    (kAsyncFsync)
+    (kForceFsync)
+);
+
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
 YB_DEFINE_ENUM(
     SegmentAllocationState,
@@ -140,6 +147,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              const scoped_refptr<MetricEntity>& tablet_metric_entity,
                              ThreadPool *append_thread_pool,
                              ThreadPool* allocation_thread_pool,
+                             ThreadPool* background_sync_threadpool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
                              CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
@@ -241,7 +249,7 @@ class Log : public RefCountedThreadSafe<Log> {
   Status GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
 
   // Returns the file system location of the currently active WAL segment.
-  const WritableLogSegment* ActiveSegmentForTests() const {
+  const WritableLogSegment* TEST_ActiveSegment() const {
     return active_segment_.get();
   }
 
@@ -349,6 +357,7 @@ class Log : public RefCountedThreadSafe<Log> {
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
+      ThreadPool* background_sync_threadpool,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
@@ -363,7 +372,7 @@ class Log : public RefCountedThreadSafe<Log> {
   Status RollOver();
 
   // Writes the footer and closes the current segment.
-  Status CloseCurrentSegment();
+  Status CloseCurrentSegment() EXCLUDES(active_segment_mutex_);
 
   // Sets 'out' to a newly created temporary file (see Env::NewTempWritableFile()) for a placeholder
   // segment. Sets 'result_path' to the fully qualified path to the unique filename created for the
@@ -374,7 +383,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Creates a new WAL segment on disk, writes the next_segment_header_ to disk as the header, and
   // sets active_segment_ to point to this new segment.
-  Status SwitchToAllocatedSegment();
+  Status SwitchToAllocatedSegment() EXCLUDES(active_segment_mutex_);
 
   // Preallocates the space for a new segment.
   Status PreAllocateNewSegment();
@@ -403,7 +412,31 @@ class Log : public RefCountedThreadSafe<Log> {
   // the same segment once properly closed.
   Status ReplaceSegmentInReaderUnlocked();
 
-  Status Sync();
+  // Returns the type of sync required to perform now based on time interval since last sync AND
+  // current unsynced data. Return value is one among kNoSync, kAsyncFsync, kForceFsync.
+  SyncType FindSyncType();
+
+  // DoSync flushes the dirty log segment data to disk by executing fsync on the current active log
+  // segment file. It is called either from the background log-sync threadpool maintained at tserver
+  // level or in-line with the critical path from ::Sync() function.
+  // fsync tasks are pushed to the background threadpool when [using ::DoSyncAndResetTaskInQueue]
+  // - time interval/unsynced data exceeds lower limits and FLAGS_log_enable_background_sync is set
+  //   time lower limit: (interval_durable_wal_write_ * FLAGS_log_background_sync_interval_fraction
+  //   data lower limit: bytes_durable_wal_write_mb_ * FLAGS_log_background_sync_data_fraction (MB)
+  // DoSync fn is called in-line when
+  // - when durable_wal_write_ is set to true
+  // - time interval/unsynced data exceeds upper limits
+  //   time upper limit: interval_durable_wal_write_
+  //   data upper limit: bytes_durable_wal_write_mb_ (MB)
+  Status DoSync() EXCLUDES(active_segment_mutex_);
+
+  // Calls ::DoSync and resets fsync_task_in_queue_.
+  void DoSyncAndResetTaskInQueue() EXCLUDES(active_segment_mutex_);
+
+  Status Sync() EXCLUDES(active_segment_mutex_);
+
+  // Updates the reader on how far it can read the active segment. Called from ::Sync()
+  Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
@@ -458,7 +491,15 @@ class Log : public RefCountedThreadSafe<Log> {
   // The schema version
   uint32_t schema_version_;
 
-  // The currently active segment being written.
+  // Mutex used to ensure mutual exclusion among the following
+  // 1. Between conucrrent fsync calls.
+  // 2. Between log segment rollover/switch and fsync call.
+  std::mutex active_segment_mutex_;
+
+  // The currently active segment being written. WritableLogSegment is not threadsafe.
+  // We are performing Sync() and WriteEntryBatch() from different threads which is safe
+  // as underlying system calls to 'fsync' and 'writev' are atomic. This assumption is
+  // true as long as append/truncate are being performed by the same thread.
   std::unique_ptr<WritableLogSegment> active_segment_;
 
   // The current (active) segment sequence number. Initialized in the Log constructor based on
@@ -513,6 +554,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // A thread pool for asynchronously pre-allocating new log segments.
   std::unique_ptr<ThreadPoolToken> allocation_token_;
 
+  // A thread pool for performing log fsync operations.
+  std::unique_ptr<ThreadPoolToken> background_sync_threadpool_token_;
+
   // If true, sync on all appends.
   bool durable_wal_write_;
 
@@ -528,8 +572,13 @@ class Log : public RefCountedThreadSafe<Log> {
   // For periodic sync, indicates if there are entries to be sync'ed.
   std::atomic<bool> periodic_sync_needed_ = {false};
 
+  // If true, implies that there is a enqueued/running ::DoSyncAndResetTaskInQueue task
+  std::atomic<bool> fsync_task_in_queue_ = false;
+
   // For periodic sync, indicates number of bytes which need to be sync'ed.
-  size_t periodic_sync_unsynced_bytes_ = 0;
+  // Needs to be atomic since it might be operated by concurrent threads
+  // when gflag log_enable_background_sync is set to true.
+  std::atomic<size_t> periodic_sync_unsynced_bytes_ = 0;
 
   // If true, ignore the 'durable_wal_write_' flags above.  This is used to disable fsync during
   // bootstrap.

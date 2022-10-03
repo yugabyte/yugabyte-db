@@ -87,6 +87,7 @@
       when: disable_requiretty
       tags: yb-prebuilt-ami
     # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
+
     - name: Fix google-cloud yum repo settings for GCP VM
       replace:
         dest: "/etc/yum.repos.d/google-cloud.repo"
@@ -94,9 +95,11 @@
         replace: 'repo_gpgcheck=0'
       when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
       tags: yb-prebuilt-ami
+
     - name: Gather package facts
       package_facts:
       tags: yb-prebuilt-ami
+
     # Needed to register custom SSH port with SELinux
     - name: Install policycoreutils-python on CentOS 7
       module_defaults:
@@ -107,13 +110,26 @@
         state: present
       when: >
         'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
-        ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
-        (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
+        (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
       tags: yb-prebuilt-ami
+
+    - name: Install policycoreutils-python-utils on CentOS 8
+      module_defaults:
+        yum:
+          lock_timeout: 600
+      package:
+        name: policycoreutils-python-utils
+        state: present
+      when: >
+        'policycoreutils-python-utils' not in ansible_facts.packages and custom_ssh_port != '22' and
+        (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8')
+      tags: yb-prebuilt-ami
+
     - name: Accept target in firewalld on Oracle Linux
       raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
       when: ansible_distribution == 'OracleLinux'
       tags: yb-prebuilt-ami
+
     # Registering custom SSH port with SELinux sometimes fails without this
     - name: clean dnf
       shell:
@@ -121,6 +137,7 @@
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
             custom_ssh_port != '22'
       tags: yb-prebuilt-ami
+
     - name: install latest version of selinux-policy
       shell:
         cmd: sudo dnf reinstall --refresh -y selinux-policy

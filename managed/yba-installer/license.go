@@ -2,14 +2,14 @@
  * Copyright (c) YugaByte, Inc.
  */
 
- package main
+package main
 
- import (
-    "fmt"
- )
+import ()
 
- func License() {
+// License prints out any licensing requirements that YBA Installer currently has
+// (none currently).
+func License() {
 
-    fmt.Println("Currently there is no licensing requirement for Ybanystaller.")
+	LogInfo("Currently there is no licensing requirement for YBA Installer.")
 
- }
+}

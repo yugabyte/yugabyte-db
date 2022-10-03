@@ -1,3 +1,6 @@
+@import "./fontawesome/scss/fontawesome.scss";
+@import "./fontawesome/scss/solid.scss";
+@import "./fontawesome/scss/brands.scss";
 @import "./_header_menu.scss";
 @import "./_left_nav.scss";
 @import "./_right_nav.scss";
@@ -11,6 +14,10 @@
 @import "./_tables.scss";
 @import "./_search.scss";
 @import "./_footer.scss";
+@import "./_yb_image.scss";
+@import "./_yb_buttons.scss";
+@import "./_yb_page_style.scss";
+@import "./_yb_resources.scss";
 
 * body {
   font-size: 15.5px;
@@ -89,6 +96,14 @@ h1 {
       opacity: 0.8;
       border: none;
     }
+  }
+}
+
+body.td-homepage {
+  p {
+    color: #4e5f6d;
+    font-size: 18px;
+    line-height: normal;
   }
 }
 
@@ -355,22 +370,41 @@ body:not(.td-home) .td-main main {
   background: #fff;
 }
 
-.td-content .highlight {
-  background: transparent !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
-  max-width: 100% !important;
-}
+.td-content {
+  .highlight {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    max-width: 100% !important;
 
-.td-content p {
-  margin-top: 1.5em;
-  margin-bottom: 0;
-}
+    + {
+      ul {
+        margin-top: 2em;
+      }
+    }
+  }
 
-.td-content p + ol,
-.td-content p + ul {
-  margin-top: 1rem;
+  li {
+    .highlight {
+      margin-bottom: 2em !important;
+    }
+  }
+
+  p {
+    margin-top: 1.5em;
+    margin-bottom: 0;
+
+    + {
+      ol {
+        margin-top: 1rem;
+      }
+
+      ul {
+        margin-top: 1rem;
+      }
+    }
+  }
 }
 
 @media (min-width: 992px) {
@@ -423,10 +457,10 @@ body:not(.td-home) .td-main main {
     margin-bottom: 0.25rem;
   }
 
+  .admonition a,
   p a,
   li:not(.nav-item) a,
-  .note a,
-  td a {
+  .note a {
     color: #3176d9;
 
     i {
@@ -436,6 +470,16 @@ body:not(.td-home) .td-main main {
 
     &:hover {
       text-decoration: underline;
+    }
+  }
+
+  td a {
+    color: #3176d9;
+    border-bottom: 1px solid transparent;
+
+    &:hover {
+      text-decoration: none;
+      border-bottom-color: #3176d9;
     }
   }
 }

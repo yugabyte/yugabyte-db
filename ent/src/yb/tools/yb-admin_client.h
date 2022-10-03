@@ -16,6 +16,7 @@
 #include "../../../../src/yb/tools/yb-admin_client.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/snapshot.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
 #include "yb/util/env_util.h"
@@ -43,12 +44,12 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
       : super(init_master_addrs, timeout) {}
 
   // Snapshot operations.
-  Status ListSnapshots(const ListSnapshotsFlags& flags);
+  Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
                                 const bool add_indexes = true,
                                 const int flush_timeout_secs = 0);
   Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
-  Result<rapidjson::Document> ListSnapshotRestorations(
+  Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
                                                      MonoDelta interval, MonoDelta retention);
@@ -56,8 +57,13 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
-  Status RestoreSnapshot(const std::string& snapshot_id,
-                                 HybridTime timestamp);
+  Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
+
+  Result<rapidjson::Document> EditSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id,
+      std::optional<MonoDelta> new_interval,
+      std::optional<MonoDelta> new_retention);
+
   Status DeleteSnapshot(const std::string& snapshot_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
@@ -131,6 +137,10 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
                                  const string& target_time);
 
+  Status SetupNSUniverseReplication(const std::string& producer_uuid,
+                                    const std::vector<std::string>& producer_addresses,
+                                    const TypedNamespaceName& producer_namespace);
+
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);
@@ -143,6 +153,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
     const std::string& producer_uuid, const Status& failure_status);
 
   Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
+
+  Result<rapidjson::Document> RestoreSnapshotScheduleDeprecated(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
 
   std::string GetDBTypeName(const master::SysNamespaceEntryPB& pb);
   // Map: Old name -> New name.

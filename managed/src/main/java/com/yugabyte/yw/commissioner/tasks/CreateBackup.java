@@ -16,24 +16,21 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.BACKUP_SUCCESS_C
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_ATTEMPT_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ScheduleUtil;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
@@ -44,23 +41,14 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
-import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
-import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 
 @Slf4j
@@ -78,6 +66,8 @@ public class CreateBackup extends UniverseTaskBase {
 
   @Inject CustomerConfigService customerConfigService;
 
+  @Inject YbcManager ybcManager;
+
   @Override
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
@@ -85,7 +75,8 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
-    boolean ybcBackup = universe.isYbcEnabled();
+    boolean ybcBackup =
+        universe.isYbcEnabled() && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
     try {
       checkUniverseVersion();
 
@@ -106,6 +97,15 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
+
+        if (universe.isYbcEnabled()
+            && !universe
+                .getUniverseDetails()
+                .ybcSoftwareVersion
+                .equals(ybcManager.getStableYbcVersion())) {
+          createUpgradeYbcTask(params().universeUUID, ybcManager.getStableYbcVersion(), true)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        }
 
         Backup backup =
             createAllBackupSubtasks(
@@ -151,6 +151,14 @@ public class CreateBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        // Ensures that backup reaches a final state
+        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+            .forEach(
+                backup -> {
+                  if (backup.state.equals(BackupState.InProgress)) {
+                    backup.transitionState(BackupState.Failed);
+                  }
+                });
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
@@ -167,17 +175,22 @@ public class CreateBackup extends UniverseTaskBase {
   }
 
   public void runScheduledBackup(
-      Schedule schedule, Commissioner commissioner, boolean alreadyRunning) {
+      Schedule schedule, Commissioner commissioner, boolean alreadyRunning, UUID baseBackupUUID) {
     UUID customerUUID = schedule.getCustomerUUID();
     Customer customer = Customer.get(customerUUID);
     JsonNode params = schedule.getTaskParams();
     BackupRequestParams taskParams = Json.fromJson(params, BackupRequestParams.class);
     taskParams.scheduleUUID = schedule.scheduleUUID;
+    taskParams.baseBackupUUID = baseBackupUUID;
     Universe universe;
     try {
       universe = Universe.getOrBadRequest(taskParams.universeUUID);
     } catch (Exception e) {
-      schedule.stopSchedule();
+      log.info(
+          "Deleting the schedule {} as the source universe {} does not exists.",
+          schedule.getScheduleUUID(),
+          taskParams.universeUUID);
+      schedule.delete();
       return;
     }
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);

@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.models.TaskInfo;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -15,43 +17,44 @@ public interface ITask extends Runnable {
   /** Annotation for a ITask class to enable/disable retryable. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
-  public @interface Retryable {
+  @interface Retryable {
     boolean enabled() default true;
   }
 
   /** Annotation for a ITask class to enable/disable abortable. */
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.TYPE)
-  public @interface Abortable {
+  @interface Abortable {
     boolean enabled() default true;
   }
 
   /** Initialize the task by reading various parameters. */
-  public void initialize(ITaskParams taskParams);
+  void initialize(ITaskParams taskParams);
+
+  default int getRetryLimit() {
+    return 1;
+  }
+
+  default void onFailure(TaskInfo taskInfo, Throwable cause) {}
 
   /** Clean up the initialization */
-  public void terminate();
+  void terminate();
 
   /** A short name representing the task. */
-  public String getName();
+  String getName();
 
   /**
    * Return a string representation (usually JSON) of the task details. This is used to describe the
    * task to a user in a read-only mode.
    */
-  public JsonNode getTaskDetails();
-
-  /** Run the task. Can throw runtime exception on errors. */
-  @Override
-  public void run();
+  JsonNode getTaskDetails();
 
   /**
-   * A friendly string representation of the task used for logging.
+   * Sets the UUID info of the task. E.g subtask UUID. It is invoked by the task executor.
    *
-   * @return string representation of the task.
+   * @param taskUUID the task UUID.
    */
-  @Override
-  public String toString();
+  void setTaskUUID(UUID taskUUID);
 
   /**
    * Set the user-facing top-level task for the Task tree that this Task belongs to. E.g.
@@ -59,5 +62,8 @@ public interface ITask extends Runnable {
    *
    * @param userTaskUUID UUID of the user-facing top-level task for this Task's Task tree.
    */
-  public void setUserTaskUUID(UUID userTaskUUID);
+  void setUserTaskUUID(UUID userTaskUUID);
+
+  /** Returns true if this task has been tried before, else false. */
+  public boolean isFirstTry();
 }

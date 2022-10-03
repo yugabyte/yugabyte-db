@@ -1,18 +1,32 @@
 ---
-title: What's new
+title: What's new in YugabyteDB Managed
 linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent: New features, cloud provider regions, and known issues
 image: /images/section_icons/index/quick_start.png
-menu:
-  preview_yugabyte-cloud:
-    identifier: cloud-release
-    parent: yugabytedb-managed
-    weight: 950
+layout: single
 type: docs
 ---
 
 ## Releases
+
+### September 19, 2022
+
+**Database**
+
+- Stable release updated to version 2.14.2 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### August 17, 2022
+
+**Database**
+
+- Stable release updated to version 2.14.1 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### July 8, 2022
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 27, 2022
 
@@ -177,15 +191,25 @@ This release includes the following features:
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
+- Honk Kong (asia-east2)
 - Tokyo (asia-northeast1)
+- Osaka (asia-northeast2)
+- Seoul (asia-northeast3)
 - Mumbai (asia-south1)
+- Delhi (asia-south2)
 - Singapore (asia-southeast1)
+- Jakarta (asia-southeast2)
 - Sydney (australia-southeast1)
+- Melbourne (australia-southeast2)
+- Warsaw (europe-central2)
+- Finland (europe-north1)
 - Belgium (europe-west1)
 - London (europe-west2)
 - Frankfurt (europe-west3)
 - Netherlands (europe-west4)
+- Zurich (europe-west6)
 - Montreal (northamerica-northeast1)
+- Toronto (northamerica-northeast2)
 - Sao Paulo (southamerica-east1)
 - Iowa (us-central1)
 - South Carolina (us-east1)
@@ -197,15 +221,22 @@ The following **GCP regions** are available:
 
 The following **AWS regions** are available:
 
+- Cape Town (af-south-1)
+- Hong Kong (ap-east-1)
 - Tokyo (ap-northeast-1)
+- Seoul (ap-northeast-2)
+- Osaka (ap-northeast-3)
 - Mumbai (ap-south-1)
 - Singapore (ap-southeast-1)
 - Sydney (ap-southeast-2)
 - Central (ca-central-1)
 - Frankfurt (eu-central-1)
+- Stockholm (eu-north-1)
+- Milan (eu-south-1)
 - Ireland (eu-west-1)
 - London (eu-west-2)
 - Paris (eu-west-3)
+- Bahrain (me-south-1)
 - Sao Paulo (sa-east-1)
 - N. Virginia (us-east-1)
 - Ohio (us-east-2)

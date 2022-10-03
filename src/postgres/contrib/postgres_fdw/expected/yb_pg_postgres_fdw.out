@@ -144,7 +144,7 @@ ALTER TABLE ft_pg_type SET WITH OIDS;
 ERROR:  ALTER TABLE SET WITH OIDS not supported yet
 LINE 1: ALTER TABLE ft_pg_type SET WITH OIDS;
                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- ===================================================================
 -- tests for validator
 -- ===================================================================
@@ -194,12 +194,12 @@ ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_na...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_na...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 ERROR:  option "column_name" provided more than once
 ALTER FOREIGN TABLE ft2 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
@@ -262,7 +262,7 @@ ALTER FOREIGN TABLE ft2 OPTIONS (use_remote_estimate 'true');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE ft2 OPTIONS (use_remote_estimate 'true')...
                                 ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- ===================================================================
 -- simple queries
 -- ===================================================================
@@ -2263,7 +2263,7 @@ ALTER VIEW v5 OWNER TO regress_view_owner;
 ERROR:  ALTER VIEW not supported yet
 LINE 1: ALTER VIEW v5 OWNER TO regress_view_owner;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1131. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1131. React with thumbs up to raise its priority
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;  -- can't be pushed down, different view owners
 --SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN v5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
@@ -6771,7 +6771,7 @@ ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE base_tbl SET (autovacuum_enabled = 'false');
                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 CREATE FOREIGN TABLE foreign_tbl (a int, b int)
   SERVER loopback OPTIONS(table_name 'base_tbl');
 CREATE VIEW rw_view AS SELECT * FROM foreign_tbl
@@ -7353,7 +7353,7 @@ CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE FOREIGN TABLE b (bb TEXT) INHERITS (a)
                                          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 --INSERT INTO a(aa) VALUES('aaa');
 --INSERT INTO a(aa) VALUES('aaaa');
 --INSERT INTO a(aa) VALUES('aaaaa');
@@ -7783,7 +7783,7 @@ alter table loc2 set (autovacuum_enabled = 'false');
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: alter table loc2 set (autovacuum_enabled = 'false');
                          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 create foreign table rem2 (f1 int, f2 text) server loopback options(table_name 'loc2');
 -- YB note: catalog snapshot invalidated, remove pg_sleeps when issue #11554 is fixed
 select pg_sleep(1);
@@ -8316,7 +8316,7 @@ ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '60000');
 ERROR:  ALTER TABLE not supported yet
 LINE 1: ALTER FOREIGN TABLE table30000 OPTIONS ( SET fetch_size '600...
                                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 --SELECT COUNT(*)
 --FROM pg_foreign_table
 --WHERE ftrelid = 'table30000'::regclass

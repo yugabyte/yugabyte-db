@@ -23,6 +23,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -68,7 +69,10 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
       continue;
     }
     for (const auto& peer : tablets) {
-      auto participant = peer->tablet()->transaction_participant();
+      // Keep a ref to guard against Shutdown races.
+      auto tablet = peer->shared_tablet();
+      if (!tablet) continue;
+      auto participant = tablet->transaction_participant();
       if (participant) {
         auto status = Wait([participant, max_remaining_txns_per_tablet] {
               return participant->TEST_GetNumRunningTransactions() <= max_remaining_txns_per_tablet;

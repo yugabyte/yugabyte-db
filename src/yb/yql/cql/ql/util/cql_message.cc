@@ -30,6 +30,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DEFINE_bool(cql_always_return_metadata_in_execute_response, false,
+            "Force returning the table metadata in the EXECUTE request response");
+
 namespace yb {
 namespace ql {
 
@@ -734,6 +737,12 @@ ExecuteRequest::~ExecuteRequest() {
 Status ExecuteRequest::ParseBody() {
   RETURN_NOT_OK(ParseShortBytes(&query_id_));
   RETURN_NOT_OK(ParseQueryParameters(&params_));
+
+  if (FLAGS_cql_always_return_metadata_in_execute_response) {
+    // Set 'Skip_metadata' flag into 0 for the execution of the prepared statement to force
+    // adding the table metadata to the response.
+    params_.flags &= ~CQLMessage::QueryParameters::kSkipMetadataFlag;
+  }
   return Status::OK();
 }
 
@@ -1392,6 +1401,17 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
       }
       new(&udt_type) shared_ptr<const UDTType>(std::make_shared<UDTType>(
           UDTType{type->udtype_keyspace_name(), type->udtype_name(), fields}));
+      return;
+    }
+    case DataType::TUPLE: {
+      id = Id::TUPLE;
+      std::vector<std::shared_ptr<const Type>> elem_types;
+      for (size_t i = 0; i < type->params().size(); i++) {
+        auto elem_type = std::make_shared<const Type>(Type(type->param_type(i)));
+        elem_types.emplace_back(std::move(elem_type));
+      }
+      new (&tuple_component_types)
+          shared_ptr<const TupleComponentTypes>(std::make_shared<TupleComponentTypes>(elem_types));
       return;
     }
     case DataType::FROZEN: FALLTHROUGH_INTENDED;

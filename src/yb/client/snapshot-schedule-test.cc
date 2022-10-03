@@ -19,12 +19,16 @@
 
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -135,18 +139,19 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 
 TEST_F(SnapshotScheduleTest, GC) {
   FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
-  // When retention matches snapshot interval we expect at most 2 snapshots for schedule.
+  // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
-    table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval, kSnapshotInterval));
+      table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval,
+      kSnapshotInterval * 2));
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
-  while (all_snapshot_ids.size() < 4) {
+  while (all_snapshot_ids.size() < 6) {
     auto snapshots = ASSERT_RESULT(
         snapshot_util_->ListSnapshots(TxnSnapshotId::Nil(), ListDeleted::kFalse));
     for (const auto& snapshot : snapshots) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }
-    ASSERT_LE(snapshots.size(), 2);
+    ASSERT_LE(snapshots.size(), 3);
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
@@ -157,14 +162,62 @@ TEST_F(SnapshotScheduleTest, GC) {
       }
       auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());
       auto children = ASSERT_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
-      // At most 3 files (including an extra for intents).
+      // At most 4 files (including an extra for intents).
       // For e.g. [985a49e5-d7c7-491f-a95f-da8aa55a8cf9,
       // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp.intents,
       // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp].
-      ASSERT_LE(children.size(), 3) << AsString(children);
+      ASSERT_LE(children.size(), 4) << AsString(children);
     }
 
     std::this_thread::sleep_for(100ms);
+  }
+}
+
+TEST_F(SnapshotScheduleTest, TablegroupGC) {
+  NamespaceName namespace_name = "tablegroup_test_namespace_name";
+  NamespaceId namespace_id;
+  TablegroupId tablegroup_id = "11223344556677889900aabbccddeeff";
+  TablespaceId tablespace_id = "";
+  auto client_ = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     "" /* ns_id */, "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  {
+    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    for (const auto& ns : namespaces) {
+      if (ns.name() == namespace_name) {
+        namespace_id = ns.id();
+        break;
+      }
+    }
+    ASSERT_TRUE(IsIdLikeUuid(namespace_id));
+  }
+
+  // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId.
+  ASSERT_OK(client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id, tablespace_id));
+
+  // Ensure that the newly created tablegroup shows up in the list.
+  auto exist = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
+  ASSERT_TRUE(exist);
+  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
+
+  // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      nullptr, YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, WaitSnapshot::kTrue,
+      kSnapshotInterval, kSnapshotInterval * 2));
+
+  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id));
+
+  // We give 2 rounds of retention period for cleanup.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return ListTableActiveTabletPeers(cluster_.get(), parent_table_id).empty();
+  }, kSnapshotInterval * 4, "Wait for tablegroup tablets to be deleted"));
+
+  auto peers = ListTableTabletPeers(cluster_.get(), parent_table_id);
+  for (const auto& peer : peers) {
+    auto dir = peer->tablet_metadata()->rocksdb_dir();
+    ASSERT_FALSE(Env::Default()->DirExists(dir));
   }
 }
 

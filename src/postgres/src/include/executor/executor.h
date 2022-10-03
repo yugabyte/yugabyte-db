@@ -144,7 +144,8 @@ extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
 extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 				   TupleTableSlot *slot,
 				   ExprState *eqcomp,
-				   FmgrInfo *hashfunctions);
+				   FmgrInfo *hashfunctions,
+				   AttrNumber *keyColIdx);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
 
 /*

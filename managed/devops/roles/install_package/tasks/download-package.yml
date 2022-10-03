@@ -23,6 +23,7 @@
     tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
     remote_ybc_tmp_package: "/tmp/{{ ybc_dir }}.tar.gz"
   when: configure_ybc
+  tags: always
 
 - name: Download package | Download "{{ package_name }}" from AWS S3
   block:
@@ -137,58 +138,6 @@
     "{{ package_dest }}"
   when: is_yugabyte_package
   tags: yb-prebuilt-ami
-
-- name: Download ybc package | Create temporary release ybc directory
-  file:
-    path: "{{ tmp_ybc_package_location }}"
-    state: directory
-    mode: 0755
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Download ybc package | Move unpacked tarball to "{{ tmp_ybc_package_location }}"
-  copy:
-    src: "{{ remote_ybc_tmp_package }}"
-    dest: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
-    remote_src: True
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Download ybc package | Create release ybc directory
-  file:
-    path: "{{ software_ybc_package_folder }}"
-    state: directory
-    mode: 0755
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Download ybc package | Clean up temporary ybc remote downloads
-  file:
-    path: "{{ remote_ybc_tmp_package }}"
-    state: absent
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Download ybc package | Unpack package "{{ tmp_ybc_package_location }}"
-  unarchive:
-    src: "{{ tmp_ybc_package_location }}/{{ ybc_dir }}.tar.gz"
-    dest: "{{ yb_software_dir }}"
-    remote_src: yes
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Download ybc package | Remove "{{ tmp_ybc_package_location }}"
-  file:
-    path: "{{ tmp_ybc_package_location }}"
-    state: absent
-  tags: yb-prebuilt-ami
-  when: configure_ybc
 
 - name: Download package | Clean the releases directory
   file:

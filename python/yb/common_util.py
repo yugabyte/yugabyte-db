@@ -117,6 +117,17 @@ def get_build_type_from_build_root(build_root: str) -> str:
     return os.path.basename(build_root).split('-')[0]
 
 
+def is_lto_build_root(build_root: str) -> bool:
+    """
+    >>> is_lto_build_root('build/release-clang14-full-lto-ninja')
+    True
+    >>> is_lto_build_root('build/debug-clang13-dynamic-ninja')
+    False
+    """
+    build_root_base_name = os.path.basename(build_root)
+    return '-thin-lto-' in build_root_base_name or '-full-lto' in build_root_base_name
+
+
 def get_compiler_type_from_build_root(build_root: str) -> str:
     build_root_basename_components = os.path.basename(build_root).split('-')
     if len(build_root_basename_components) < 2:

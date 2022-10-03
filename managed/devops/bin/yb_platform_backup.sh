@@ -271,12 +271,16 @@ create_backup() {
   cd ${data_dir}
   if [[ "${verbose}" = true ]]; then
     find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
+              -o -path "**/data/licenses/**" \
               -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
+              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
               -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
               -o -path "${include_releases_flag}" \) -exec tar -rvf "${tar_name}" {} +
   else
     find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
+              -o -path "**/data/licenses/**" \
               -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
+              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
               -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
               -o -path "${include_releases_flag}" \) -exec tar -rf "${tar_name}" {} +
   fi
@@ -374,6 +378,8 @@ restore_backup() {
 
   name="yugaware"
 
+  if [ "$disable_version_check" != true ]
+  then
   command="cat ${m_path}"
 
   docker_aware_cmd "${name}" "${command}" > "${input_path_rel}/version_metadata.json"
@@ -399,7 +405,7 @@ restore_backup() {
   bp2=$(cat ${r_pth} | python -c 'import json,sys; print(json.load(sys.stdin)["build_number"])')
   back_plat_version=${bp1}-${bp2}
 
-  if [ ${curr_platform_version} != ${back_plat_version} ] && [ "$disable_version_check" != true ]
+  if [ ${curr_platform_version} != ${back_plat_version} ]
   then
     echo "Your backups were created on a platform of version ${back_plat_version}, and you are
     attempting to restore these backups on a platform of version ${curr_platform_version},
@@ -407,6 +413,7 @@ restore_backup() {
     ${back_plat_version} to proceed, or override this check by running the script with the
     command line argument --disable_version_check true"
     exit 1
+  fi
   fi
 
   modify_service yb-platform stop
@@ -489,7 +496,7 @@ print_restore_usage() {
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show restore help, then exit"
-  echo "  --disable_version_check         disable the backup version check (default: false)"
+  echo "  --disable_version_check        disable the backup version check (default: false)"
   echo
 }
 

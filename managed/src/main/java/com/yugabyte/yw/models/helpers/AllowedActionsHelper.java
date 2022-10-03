@@ -68,16 +68,24 @@ public class AllowedActionsHelper {
    * @return error string if the node is not allowed to perform the action otherwise null.
    */
   private String nodeActionErrOrNull(NodeActionType action) {
-    if (action == NodeActionType.STOP || action == NodeActionType.REMOVE) {
+    if (action == NodeActionType.STOP
+        || action == NodeActionType.REMOVE
+        || action == NodeActionType.REBOOT) {
       String errorMsg = removeMasterErrOrNull(action);
-      if (errorMsg != null) return errorMsg;
+      if (errorMsg != null) {
+        return errorMsg;
+      }
       errorMsg = removeSingleNodeErrOrNull(action);
-      if (errorMsg != null) return errorMsg;
+      if (errorMsg != null) {
+        return errorMsg;
+      }
     }
 
     if (action == NodeActionType.DELETE) {
       String errorMsg = deleteSingleNodeErrOrNull(action);
-      if (errorMsg != null) return errorMsg;
+      if (errorMsg != null) {
+        return errorMsg;
+      }
     }
 
     if (action == START_MASTER) {
@@ -168,6 +176,9 @@ public class AllowedActionsHelper {
     }
     if (!Util.areMastersUnderReplicated(node, universe)) {
       return errorMsg(START_MASTER, "There are already enough masters");
+    }
+    if (node.dedicatedTo != null) {
+      return errorMsg(START_MASTER, "Node is dedicated, use START instead");
     }
     return null;
   }

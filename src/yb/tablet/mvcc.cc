@@ -605,6 +605,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
     // This function could be invoked at a follower, so it has a very old ht_lease. In this case it
     // is safe to read at least at last_replicated_.
     result = std::max(result, last_replicated_);
+    VTRACE(3, "Current safe time $0. Source $1", yb::ToString(result),
+           yb::ToString(source));
 
     return result >= min_allowed;
   };
@@ -637,6 +639,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   } else {
     max_safe_time_returned_without_lease_ = { result, source };
   }
+  VTRACE(2, "Returning safe time $0. Source $1. Min requested safe time was $2",
+         yb::ToString(result), yb::ToString(source), yb::ToString(min_allowed));
   return result;
 }
 

@@ -17,10 +17,12 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/operations.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
@@ -267,6 +269,29 @@ message WaitForReplicationDrainResponsePB {
   repeated UndrainedStreamInfoPB undrained_stream_info = 2;
 }
 
+message SetupNSUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  optional string producer_ns_name = 3;
+  optional YQLDatabase producer_ns_type = 4;
+}
+
+message SetupNSUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message UpdateConsumerOnProducerMetadataRequestPB {
+  optional string producer_id = 1;
+  optional string stream_id = 2;
+  optional string consumer_tablet_id = 3;
+  optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+}
+
+message UpdateConsumerOnProducerMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool should_wait = 2 [default = true];
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -299,8 +324,12 @@ service MasterReplication {
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
+  rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
+      returns (SetupNSUniverseReplicationResponsePB);
 
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
+  rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
+      returns (UpdateConsumerOnProducerMetadataResponsePB);
 
 }

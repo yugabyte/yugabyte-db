@@ -1,13 +1,24 @@
 import React, { FC, useState } from 'react';
 import clsx from 'clsx';
 import { useRouteMatch } from 'react-router-dom';
-import { makeStyles, Box, Typography, InputAdornment, MenuItem } from '@material-ui/core';
+import {
+  makeStyles,
+  Box,
+  Typography,
+  InputAdornment,
+  MenuItem,
+  LinearProgress
+} from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { AlertVariant, YBTable, YBLoadingBox, YBButton, YBInput, YBDropdown } from '@app/components';
 import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum } from '@app/api/src';
 import { getMemorySizeUnits, useToast } from '@app/helpers';
 import SearchIcon from '@app/assets/search.svg';
 import TriangleDownIcon from '@app/assets/triangle-down.svg';
+import RefreshIcon from '@app/assets/refresh.svg';
+import { TablesWidget } from './TablesWidget';
+import type { ClusterTable } from '@app/api/src';
+
 
 const useStyles = makeStyles((theme) => ({
   icon: {
@@ -39,6 +50,11 @@ const useStyles = makeStyles((theme) => ({
   dropdown: {
     cursor: 'pointer',
     marginRight: theme.spacing(1)
+  },
+  tablesRow: {
+    display: 'flex',
+    alignItems: 'center',
+    margin: theme.spacing(2, 0)
   }
 }));
 
@@ -51,10 +67,11 @@ export const TablesTab: FC = () => {
   const [dbApi, setDbApi] = useState(GetClusterTablesApiEnum.Ysql);
   const { params } = useRouteMatch<App.RouteParams>();
   const { addToast } = useToast();
-  const { data: clusterTablesResponse } = useGetClusterTablesQuery(
-    {
+
+  const { data: clusterTablesResponseYsql, isFetching: isFetchingYsql, refetch: refetchYsql } =
+    useGetClusterTablesQuery({
       ...params,
-      api: dbApi
+      api: GetClusterTablesApiEnum.Ysql
     },
     {
       query: {
@@ -65,10 +82,35 @@ export const TablesTab: FC = () => {
       }
     }
   );
+  const { data: clusterTablesResponseYcql, isFetching: isFetchingYcql, refetch: refetchYcql } =
+    useGetClusterTablesQuery({
+      ...params,
+      api: GetClusterTablesApiEnum.Ycql
+    },
+    {
+      query: {
+        onError: (error: ApiError) => {
+          const message = error?.error?.detail ?? '';
+          addToast(AlertVariant.Error, message);
+        }
+      }
+    }
+  );
+  var ysqlTableData = clusterTablesResponseYsql?.data ?? [];
+  var ycqlTableData = clusterTablesResponseYcql?.data ?? [];
+
   const classes = useStyles();
   const { t } = useTranslation();
-  // Change me!
-  const tableRows = clusterTablesResponse?.data ?? [];
+
+  var tableRows:ClusterTable[] = [];
+  switch(dbApi) {
+    case GetClusterTablesApiEnum.Ysql:
+      tableRows = ysqlTableData;
+      break;
+    case GetClusterTablesApiEnum.Ycql:
+      tableRows = ycqlTableData;
+      break;
+  }
   const [keyspace, setKeyspace] = useState(0);
   const [searchInput, setSearchInput] = useState<string>();
 
@@ -125,12 +167,46 @@ export const TablesTab: FC = () => {
     displayedTables = displayedTables.filter((x) => x.keyspace === keyspaceOptions[keyspace].value);
   }
 
+  const getTableListing = () => {
+    let returnEl;
+    var isFetching = false;
+    switch(dbApi) {
+      case GetClusterTablesApiEnum.Ysql:
+        isFetching = isFetchingYsql;
+        break;
+      case GetClusterTablesApiEnum.Ycql:
+        isFetching = isFetchingYcql;
+      break;
+    }
+    if (isFetching) {
+      returnEl = (
+        <Box textAlign="center" mt={2.5}>
+          <LinearProgress />
+        </Box>
+      );
+    } else if (displayedTables.length) {
+      returnEl = (
+        <Box pb={4} pt={1}>
+          <YBTable data={displayedTables} columns={clusterTablesColumns}
+                   options={{ pagination: false }} />
+        </Box>
+      );
+    } else {
+      returnEl = <YBLoadingBox>{t('clusterDetail.tables.noTablesCopy')}</YBLoadingBox>;
+    }
+    return returnEl;
+  };
+
   return (
     <>
-      <Box display="flex" alignItems="center">
+      {clusterTablesResponseYsql?.data && clusterTablesResponseYcql?.data &&
+        <TablesWidget ysqlTableData={ysqlTableData ?? []} ycqlTableData={ycqlTableData ?? []} />}
+      <Box className={classes.tablesRow}>
         <>
           <YBButton
-            className={clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ysql && classes.selected)}
+            className={
+                clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ysql && classes.selected)
+            }
             onClick={() => {
               handleKeyspaceChange(0);
               setTimeout(() => {
@@ -143,7 +219,9 @@ export const TablesTab: FC = () => {
             </Typography>
           </YBButton>
           <YBButton
-            className={clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ycql && classes.selected)}
+            className={
+                clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ycql && classes.selected)
+            }
             onClick={() => {
               handleKeyspaceChange(0);
               setTimeout(() => {
@@ -196,16 +274,23 @@ export const TablesTab: FC = () => {
           />
         </Box>
       </Box>
-      <Box mt={3} mb={2}>
-        <Typography variant="h5">{t('clusterDetail.tables.numTables', { count: displayedTables.length })}</Typography>
+      <Box mt={3} mb={2} display="flex" alignItems="center" justifyContent="space-between">
+        <Typography variant="h5">
+            {t('clusterDetail.tables.numTables', { count: displayedTables.length })}
+        </Typography>
+        <YBButton
+          variant="ghost"
+          startIcon={<RefreshIcon />}
+          onClick={() =>  {
+            refetchYsql();
+            refetchYcql();
+          }}
+          data-testid="btnRefreshLiveQueries"
+        >
+          {t('clusterDetail.performance.actions.refresh')}
+        </YBButton>
       </Box>
-      {displayedTables.length ? (
-        <Box pb={4} pt={1}>
-          <YBTable data={displayedTables} columns={clusterTablesColumns} options={{ pagination: false }} />
-        </Box>
-      ) : (
-        <YBLoadingBox>{t('clusterDetail.tables.noTablesCopy')}</YBLoadingBox>
-      )}
+      {getTableListing()}
     </>
   );
 };

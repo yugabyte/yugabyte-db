@@ -253,7 +253,7 @@ yugabyte=# SELECT * FROM preferred_leader_table;
 Time: 1.052 ms
 ```
 
-Setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they we will fallback to the next preferred zone us-east2 which only has a 12ms latency.
+Setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they we will fallback to the next preferred zone us-east-2a which only has a 12ms latency.
 You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly spread across them. Zones without any values are least preferred.
 
 You can check the overall leader distribution and [cluster level leader preference](../../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).

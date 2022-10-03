@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -44,6 +45,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
@@ -290,6 +292,8 @@ class PgApiImpl {
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                        const char *newname);
 
+  Status AlterTableIncrementSchemaVersion(PgStatement *handle);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -312,6 +316,8 @@ class PgApiImpl {
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
+
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
@@ -385,10 +391,8 @@ class PgApiImpl {
                              int n_attr_values,
                              YBCPgExpr *attr_value);
 
-  Status DmlBindHashCode(PgStatement *handle, bool start_valid,
-                         bool start_inclusive, uint64_t start_hash_val,
-                         bool end_valid, bool end_inclusive,
-                         uint64_t end_hash_val);
+  Status DmlBindHashCode(
+      PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,

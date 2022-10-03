@@ -28,7 +28,8 @@
     remote_tmp_ybc_package: "/tmp/{{ ybc_package | basename }}"
     software_ybc_package_folder: "{{ yb_software_dir }}/{{ ybc_dir }}"
     ybc_symlink_dir: "{{ yb_home_dir }}/controller"
-  when: ybc_package is defined
+  when: configure_ybc
+  tags: always
 
 # Need a separate set_fact since package_folder is not available until the previous set_fact has
 # completed.
@@ -51,8 +52,7 @@
   become: yes
   become_method: sudo
   become_user: "{{ user_name }}"
-  tags:
-    - download-software
+  tags: download-software
 
 - name: Remove older releases
   shell: "ls \"{{ yb_home_dir }}/releases\" -t | \
@@ -109,32 +109,9 @@
     - yb-prebuilt-ami
   when: not is_yugabyte_package
 
-- name: Create ybc symlink folders
-  file:
-    path: "{{ ybc_symlink_dir }}"
-    state: directory
-    mode: 0755
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-  tags: yb-prebuilt-ami
-  when: configure_ybc
-
-- name: Install | Create symlink to ybc package folder
-  file:
-    src: "{{ software_ybc_package_folder }}/bin"
-    dest: "{{ ybc_symlink_dir }}/bin"
-    mode: 0755
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-    state: link
-  tags:
-    - install-software
-    - yb-prebuilt-ami
-  when: configure_ybc
-
 # doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
 - name: Remove older yb software folders
-  shell: "ls \"{{ yb_software_dir }}\" -t | \
+  shell: "ls --ignore='ybc*' \"{{ yb_software_dir }}\" -t | \
       tail -n +{{ num_releases_to_keep + 2 }} | \
       xargs -I{} --no-run-if-empty rm -rv \"{{ yb_software_dir }}/{}\" --"
   register: rm_yb_softwares_result

@@ -121,10 +121,12 @@ class PackedRowData {
 
   Status ProcessPackedRow(
       const Slice& internal_key, size_t doc_key_size,
-      const ValueControlFields& row_control_fields, const Slice& value,
+      const Slice& full_value, size_t control_fields_size,
       const DocHybridTime& row_doc_ht, size_t new_doc_key_serial) {
-    VLOG_WITH_FUNC(4) << "Key: " << internal_key.ToDebugHexString() << ", value: "
-                      << value.ToDebugHexString() << ", row_doc_ht: " << row_doc_ht;
+    VLOG_WITH_FUNC(4)
+        << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
+        << full_value.ToDebugHexString() << ", control_fields_size: " << control_fields_size
+        << ", row_doc_ht: " << row_doc_ht;
     RSTATUS_DCHECK(!active(), Corruption, Format(
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
@@ -132,11 +134,11 @@ class PackedRowData {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_ = row_control_fields;
+    control_fields_size_ = control_fields_size;
     doc_ht_ = row_doc_ht;
 
-    old_value_.Assign(value);
-    old_value_slice_ = old_value_.AsSlice();
+    old_value_.Assign(full_value);
+    old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
     old_schema_version_ = VERIFY_RESULT(ParseValueHeader(&old_value_slice_));
     if (old_schema_version_ != new_packing_.schema_version) {
       return StartRepacking();
@@ -151,7 +153,7 @@ class PackedRowData {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
-    control_fields_ = ValueControlFields();
+    control_fields_size_ = 0;
     doc_ht_ = doc_ht;
     old_value_slice_ = Slice();
     InitPacker();
@@ -168,7 +170,8 @@ class PackedRowData {
 
   // Returns true if column was processed. Otherwise caller should handle this column.
   Result<bool> ProcessColumn(
-      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
+      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht,
+      const ValueControlFields& control_fields, size_t encoded_control_fields_size) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -204,9 +207,17 @@ class PackedRowData {
       // Do not forget that we see only most recent entry to specified key.
       return true;
     }
-    // TODO(packed_row) update control fields
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
+    if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
+      auto control_fields_copy = control_fields;
+      control_fields_copy.timestamp = column_doc_ht.hybrid_time().GetPhysicalValueMicros();
+      control_fields_buffer_.clear();
+      control_fields_copy.AppendEncoded(&control_fields_buffer_);
+      return packer_->AddValue(
+          column_id, control_fields_buffer_.AsSlice(),
+          value.WithoutPrefix(encoded_control_fields_size), tail_size);
+    }
     return packer_->AddValue(column_id, value, tail_size);
   }
 
@@ -223,7 +234,8 @@ class PackedRowData {
     packing_started_ = true;
     if (!packer_) {
       packer_.emplace(
-          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit());
+          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit(),
+          old_value_.AsSlice().Prefix(control_fields_size_));
     } else {
       packer_->Restart();
     }
@@ -343,7 +355,7 @@ class PackedRowData {
   PackedRowFeed& feed_;
   SchemaPackingProvider* schema_packing_provider_; // Owned externally.
 
-  ValueControlFields control_fields_;
+  size_t control_fields_size_ = 0;
   size_t doc_key_serial_ = std::numeric_limits<size_t>::max();
   KeyBuffer key_;
   DocHybridTime doc_ht_;
@@ -352,6 +364,7 @@ class PackedRowData {
   // All old_ fields are releated to original row packing.
   // I.e. row state that had place before the compaction.
   ValueBuffer old_value_;
+  ValueBuffer control_fields_buffer_;
   Slice old_value_slice_;
   SchemaVersion old_schema_version_;
   CompactionSchemaInfo old_packing_;
@@ -449,7 +462,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       pending_row = pending_row->next;
     }
 
-    pending_rows_arena_.Reset();
+    pending_rows_arena_.Reset(ResetMode::kKeepLast);
     first_pending_row_ = nullptr;
     last_pending_row_next_ = &first_pending_row_;
     return Status::OK();
@@ -762,7 +775,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
       VLOG(4) << "Packed row active: " << packed_row_.active();
       // TODO(packed_row) remove control fields from value
-      if (!packed_row_.active() && packed_row_.can_start_packing() &&
+      if (!packed_row_.active() &&
+          packed_row_.can_start_packing() &&
+          // Don't start packing if we already passed columns for this key.
+          // Could happen because of history retention.
+          doc_key_serial_ != last_passed_doc_key_serial_ &&
           !CanHaveOtherDataBefore(ht.hybrid_time())) {
         packed_row_.StartPacking(internal_key, doc_key_size, ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);
@@ -773,7 +790,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           return Status::OK();
         }
         // Return if column was processed by packed row.
-        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value_slice, ht))) {
+        auto encoded_control_fields_size = value_slice.data() - value.data();
+        if (VERIFY_RESULT(packed_row_.ProcessColumn(
+                column_id, value, ht, control_fields, encoded_control_fields_size))) {
           return Status::OK();
         }
       }
@@ -830,7 +849,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // TODO(packed_row) combine non packed columns into packed row
   if (value_type == ValueEntryType::kPackedRow) {
     return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), control_fields, value_slice, ht, doc_key_serial_);
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(), ht,
+        doc_key_serial_);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -1017,6 +1037,20 @@ size_t CompactionSchemaInfo::pack_limit() const {
       return FLAGS_ycql_packed_row_size_limit;
     case TableType::PGSQL_TABLE_TYPE:
       return FLAGS_ysql_packed_row_size_limit;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+bool CompactionSchemaInfo::keep_write_time() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return true;
+    case TableType::PGSQL_TABLE_TYPE:
+      return false;
+    // Packed rows are not supported for table types below.
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
       return false;

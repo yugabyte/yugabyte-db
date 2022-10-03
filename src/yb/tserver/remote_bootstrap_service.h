@@ -60,7 +60,9 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
  public:
   RemoteBootstrapServiceImpl(FsManager* fs_manager,
                              TabletPeerLookupIf* tablet_peer_lookup,
-                             const scoped_refptr<MetricEntity>& metric_entity);
+                             const scoped_refptr<MetricEntity>& metric_entity,
+                             CloudInfoPB cloud_info,
+                             rpc::ProxyCache* proxy_cache);
 
   ~RemoteBootstrapServiceImpl();
 
@@ -68,9 +70,10 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
                                    BeginRemoteBootstrapSessionResponsePB* resp,
                                    rpc::RpcContext context) override;
 
-  void CheckSessionActive(const CheckRemoteBootstrapSessionActiveRequestPB* req,
-                          CheckRemoteBootstrapSessionActiveResponsePB* resp,
-                          rpc::RpcContext context) override;
+  void CheckRemoteBootstrapSessionActive(
+      const CheckRemoteBootstrapSessionActiveRequestPB* req,
+      CheckRemoteBootstrapSessionActiveResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void FetchData(const FetchDataRequestPB* req,
                  FetchDataResponsePB* resp,
@@ -80,23 +83,66 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
                                  EndRemoteBootstrapSessionResponsePB* resp,
                                  rpc::RpcContext context) override;
 
-
-  void RemoveSession(
-          const RemoveSessionRequestPB* req,
-          RemoveSessionResponsePB* resp,
-          rpc::RpcContext context) override;
+  void RemoveRemoteBootstrapSession(
+      const RemoveRemoteBootstrapSessionRequestPB* req,
+      RemoveRemoteBootstrapSessionResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void Shutdown() override;
+
+  void RegisterLogAnchor(
+      const RegisterLogAnchorRequestPB* req,
+      RegisterLogAnchorResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void UpdateLogAnchor(
+      const UpdateLogAnchorRequestPB* req,
+      UpdateLogAnchorResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void UnregisterLogAnchor(
+      const UnregisterLogAnchorRequestPB* req,
+      UnregisterLogAnchorResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void KeepLogAnchorAlive(
+      const KeepLogAnchorAliveRequestPB* req,
+      KeepLogAnchorAliveResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ChangePeerRole(
+      const ChangePeerRoleRequestPB* req,
+      ChangePeerRoleResponsePB* resp,
+      rpc::RpcContext context) override;
 
  private:
   struct SessionData {
     scoped_refptr<RemoteBootstrapSession> session;
     CoarseTimePoint expiration;
 
+    Status ResetExpiration(RemoteBootstrapErrorPB::Code* app_error);
+  };
+
+  class LogAnchorSessionData {
+   public:
+    LogAnchorSessionData(
+        const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+        const std::shared_ptr<log::LogAnchor>& log_anchor_ptr);
+
+    ~LogAnchorSessionData();
+
     void ResetExpiration();
+
+    std::shared_ptr<tablet::TabletPeer> tablet_peer_;
+
+    std::shared_ptr<log::LogAnchor> log_anchor_ptr_;
+
+    CoarseTimePoint expiration_;
   };
 
   typedef std::unordered_map<std::string, SessionData> SessionMap;
+
+  typedef std::unordered_map<std::string, std::shared_ptr<LogAnchorSessionData>> LogAnchorsMap;
 
   // Validate the data identifier in a FetchData request.
   Status ValidateFetchRequestDataId(
@@ -110,19 +156,36 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       bool session_suceeded,
       RemoteBootstrapErrorPB::Code* app_error)  REQUIRES(sessions_mutex_);
 
-  void RemoveSession(const std::string& session_id) REQUIRES(sessions_mutex_);
+  // Destroy the specified Log Anchor session.
+  Status DoEndLogAnchorSession(
+      const std::string& session_id, RemoteBootstrapErrorPB::Code* app_error)
+      REQUIRES(log_anchors_mutex_);
 
-  // The timeout thread periodically checks whether sessions are expired and
-  // removes them from the map.
+  void RemoveRemoteBootstrapSession(const std::string& session_id) REQUIRES(sessions_mutex_);
+
+  void RemoveLogAnchorSession(const std::string& session_id) REQUIRES(log_anchors_mutex_);
+
+  void EndExpiredRemoteBootstrapSessions();
+
+  void EndExpiredLogAnchorSessions();
+
+  // The timeout thread periodically checks whether RBS/LogAnchor sessions are expired and
+  // removes them from the sessions_/log_anchors_map_. Calls EndExpiredRemoteBootstrapSessions
+  // and EndExpiredLogAnchorSessions
   void EndExpiredSessions();
 
   FsManager* fs_manager_;
   TabletPeerLookupIf* tablet_peer_lookup_;
+  CloudInfoPB local_cloud_info_pb_;
+  rpc::ProxyCache* proxy_cache_;
 
   // Protects sessions_ and session_expirations_ maps.
   mutable std::mutex sessions_mutex_;
   SessionMap sessions_ GUARDED_BY(sessions_mutex_);
   std::atomic<int32> nsessions_ GUARDED_BY(sessions_mutex_) = {0};
+
+  mutable std::mutex log_anchors_mutex_;
+  LogAnchorsMap log_anchors_map_ GUARDED_BY(log_anchors_mutex_);
 
   // Session expiration thread.
   // TODO: this is a hack, replace with some kind of timer impl. See KUDU-286.

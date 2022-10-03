@@ -70,11 +70,10 @@ namespace docdb {
 class RowPacker {
  public:
   RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
-            size_t packed_size_limit);
+            size_t packed_size_limit, const ValueControlFields& control_fields);
 
-  RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair, ssize_t packed_size_limit)
-      : RowPacker(pair.first, pair.second, packed_size_limit) {
-  }
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+            size_t packed_size_limit, const Slice& control_fields);
 
   bool Empty() const {
     return idx_ == 0;
@@ -91,11 +90,16 @@ class RowPacker {
   // tail_size is added to proposed encoded size, to make decision whether encoded value fits
   // into bounds or not.
   Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
+  // Add value consisting of 2 parts - value_prefix+value_suffix.
+  Result<bool> AddValue(
+      ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
 
   Result<Slice> Complete();
 
  private:
+  void Init(SchemaVersion version);
+
   template <class Value>
   Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
 

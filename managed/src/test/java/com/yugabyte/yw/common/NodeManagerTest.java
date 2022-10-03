@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.CONTROLLER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
@@ -74,7 +75,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -99,6 +99,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -114,6 +115,7 @@ import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class NodeManagerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -526,7 +528,7 @@ public class NodeManagerTest extends FakeDBApplication {
       UserIntent userIntent,
       TestData testData,
       boolean useHostname) {
-    Map<String, String> gflags = new HashMap<>();
+    Map<String, String> gflags = new TreeMap<>();
     gflags.put("placement_cloud", configureParams.getProvider().code);
     gflags.put("placement_region", configureParams.getRegion().code);
     gflags.put("placement_zone", configureParams.getAZ().code);
@@ -829,7 +831,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
         String ybcPackage = null;
-        Map<String, String> ybcFlags = new HashMap<>();
+        Map<String, String> ybcFlags = new TreeMap<>();
 
         if (canConfigureYbc) {
           ybcFlags.put("v", "1");
@@ -874,7 +876,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("3");
         }
 
-        Map<String, String> gflags = new HashMap<>(configureParams.gflags);
+        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
           if ((configureParams.enableNodeToNodeEncrypt
@@ -917,7 +919,7 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.addAll(getCertificatePaths(userIntent, configureParams, ybHomeDir));
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
-            gflags = new HashMap<>(configureParams.gflags);
+            gflags = new TreeMap<>(configureParams.gflags);
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
@@ -945,7 +947,7 @@ public class NodeManagerTest extends FakeDBApplication {
             }
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
               .equals(subType)) {
-            gflags = new HashMap<>(configureParams.gflags);
+            gflags = new TreeMap<>(configureParams.gflags);
             if (configureParams.nodeToNodeChange > 0) {
               gflags.put("allow_insecure_connections", allowInsecureString);
             } else if (configureParams.nodeToNodeChange < 0) {
@@ -1013,7 +1015,7 @@ public class NodeManagerTest extends FakeDBApplication {
               break;
             case UPDATE_CERT_DIRS:
               {
-                Map<String, String> gflagMap = new HashMap<>();
+                Map<String, String> gflagMap = new TreeMap<>();
                 if (EncryptionInTransitUtil.isRootCARequired(configureParams)) {
                   gflagMap.put("certs_dir", certsNodeDir);
                   ybcFlags.put("certs_dir_name", certsNodeDir);
@@ -1987,7 +1989,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());
@@ -2142,6 +2144,83 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGFlagPreprocess() {
+    int idx = 0;
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
+    for (TestData t : testData) {
+      for (String serverType : ImmutableList.of(MASTER.toString(), TSERVER.toString())) {
+        AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+        buildValidParams(
+            t,
+            params,
+            Universe.saveDetails(
+                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+        params.type = GFlags;
+        params.enableYSQL = true;
+        params.enableYSQLAuth = true;
+        params.isMasterInShellMode = true;
+        params.setProperty("processType", serverType);
+        params.gflags.put(GFlagsUtil.FS_DATA_DIRS, "/some/other"); // will be removed on conflict
+        params.gflags.put(
+            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust"); // will be merged
+        params.gflags.put(GFlagsUtil.UNDEFOK, "use_private_ip"); // will be merged
+        params.gflags.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:1990"); // port replace
+        params.gflags.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3"); // port append
+        params.gflags.put(GFlagsUtil.MAX_LOG_SIZE, "65000"); // left as it is
+
+        params.deviceInfo = new DeviceInfo();
+        params.deviceInfo.numVolumes = 1;
+        params.deviceInfo.mountPoints = fakeMountPaths;
+
+        when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+
+        when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
+        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+
+        when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+
+        verify(shellProcessHandler, times(3)).run(captor.capture(), anyMap(), anyString());
+
+        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
+        assertEquals(
+            new TreeMap<>(params.gflags), new TreeMap<>(cloudGflags)); // Not processed at all.
+
+        Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
+        Map<String, String> copy = new TreeMap<>(params.gflags);
+        copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
+        copy.put(
+            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+        copy.remove(GFlagsUtil.FS_DATA_DIRS);
+        copy.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
+        copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
+        assertEquals(copy, new TreeMap<>(gflagsProcessed));
+
+        Map<String, String> gflagsNotFiltered = extractGFlags(captor.getAllValues().get(2));
+        Map<String, String> copy2 = new TreeMap<>(params.gflags);
+        copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
+        copy2.put(
+            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+        copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
+        copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
+        assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
+        Mockito.reset(shellProcessHandler);
+      }
+      idx++;
+    }
+  }
+
+  private Map<String, String> extractGFlags(List<String> command) {
+    String gflagsJson = mapKeysToValues(command).get("--gflags");
+    if (gflagsJson == null) {
+      throw new RuntimeException("QQ! " + command);
+    }
+    return Json.fromJson(Json.parse(gflagsJson), Map.class);
+  }
+
+  @Test
   public void testGFlagsUpgradeNullProcessType() {
     for (TestData t : testData) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -2184,7 +2263,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());
@@ -2827,7 +2906,7 @@ public class NodeManagerTest extends FakeDBApplication {
           UniverseDefinitionTaskBase.ServerType.values()) {
         try {
           // Master and TServer are valid process types
-          if (ImmutableList.of(MASTER, TSERVER).contains(type)) {
+          if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
             continue;
           }
           params.setProperty("processType", type.toString());
@@ -2918,7 +2997,6 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
-
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         List<String> expectedCommand = data.baseCommand;
@@ -2940,6 +3018,7 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
         assertEquals(expectedCommand, actualCommand);
       } catch (RuntimeException re) {
+        // TODO: This test seems to be broken since PLAT-2131
         assertNull(re.getMessage());
       }
       idx++;
@@ -3281,6 +3360,9 @@ public class NodeManagerTest extends FakeDBApplication {
                 CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
       }
       params.setProperty("processType", MASTER.toString());
+      params.deviceInfo = new DeviceInfo();
+      params.deviceInfo.numVolumes = 1;
+      params.deviceInfo.mountPoints = fakeMountPaths;
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -3342,7 +3424,7 @@ public class NodeManagerTest extends FakeDBApplication {
       String expected) {
     Config config = Mockito.mock(Config.class);
     Mockito.when(config.getString(any())).thenReturn(configValue);
-    final String flagName = NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG;
+    final String flagName = GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG;
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     if (inRemove) {
       params.gflagsToRemove.add(flagName);
@@ -3570,7 +3652,7 @@ public class NodeManagerTest extends FakeDBApplication {
                             .getUniverseDetails()
                             .getClusterByUuid(nodeDetails.placementUuid)
                             .userIntent;
-                    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+                    userIntent.tserverGFlags.put(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
                   });
             });
 

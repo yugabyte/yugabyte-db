@@ -19,9 +19,9 @@ The following best practices are recommended for production clusters.
 | Feature | Recommendation |
 | :--- | :--- |
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
-| [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
+| [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
-| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track.<!--<br>Use a [staging cluster](#staging-clusters) to test upgrades before upgrading your production cluster.--> |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
 
@@ -76,26 +76,38 @@ For a list of supported regions, refer to [Cloud provider regions](../../release
 
 The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
 
+- **Region level**. Includes 3 nodes spread across multiple regions with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
+
 - **Availability zone level**. Includes a minimum of 3 nodes spread across multiple availability zones with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
 
 - **Node level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
 
-- **Region level**. Yugabyte supports multi-region clusters with regional fault tolerance. Contact {{% support-cloud %}} for help configuring regional fault tolerance.
-
 Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
 
+- For Region level, you can add or remove nodes in increments of 1 per region; all regions have the same number of nodes.
 - For Availability zone level, you can add or remove nodes in increments of 3.
 - For Node level, you can add or remove nodes in increments of 1.
 
-For production clusters, Availability zone level is recommended.
+For production clusters, a minimum of Availability zone level is recommended. Whether you choose Region or Availability zone level depends on your application architecture, design, and latency requirements.
 
 For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs with 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The default configuration for YugabyteDB Managed clusters includes 4 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs with 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
 YugabyteDB Managed clusters support 10 simultaneous connections per vCPU. So a cluster with 3 nodes and 4 vCPUs per node can support 10 x 3 x 4 = 120 simultaneous connections.
+
+| Cluster size (node x vCPU) | Maximum simultaneous connections |
+| :--- | :--- |
+| 3x2 | 60 |
+| 3x4 | 120 |
+| 3x8 | 240 |
+| 6x2 | 120 |
+| 6x4 | 240 |
+| 6x8 | 360 |
+
+During an update, one node is always offline. When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. You can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
 
 YugabyteDB Managed supports both vertical and horizontal scaling. Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
@@ -112,6 +124,13 @@ You can choose to deploy your cluster using a preview release for development an
 If you need a feature from a preview release (that isn't yet available in a stable release) for a production deployment, contact {{% support-cloud %}} before you create your cluster.
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
+
+<!-- #### Staging clusters
+
+Yugabyte tests every version in the stable branch for backwards compatibility. However, it's good practice to first test database updates against your pre-production environment (aka development, testing, staging, or canary environment) to ensure compatibility before upgrading your production clusters.
+
+Create a staging cluster (this can be smaller than your production cluster) and configure your pre-production environment to connect to it. When you are notified of an upcoming maintenance event, schedule the [maintenance windows](../../cloud-clusters/cloud-maintenance/) for the staging and production cluster so that you can validate updates against your applications in your pre-production environment before updating your production cluster.
+-->
 
 ### Backups
 

@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
@@ -66,6 +67,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_lock.h"
@@ -449,11 +451,10 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
       for (size_t j = 0; j != source_infos.size(); ++j) {
-        tablet::TabletPeerPtr source_peer, dest_peer;
-        tablet_manager->LookupTablet(source_infos[j]->id(), &source_peer);
+        auto source_peer = tablet_manager->LookupTablet(source_infos[j]->id());
         EXPECT_NE(nullptr, source_peer);
         auto source_dir = source_peer->tablet()->metadata()->rocksdb_dir();
-        tablet_manager->LookupTablet(dest_infos[j]->id(), &dest_peer);
+        auto dest_peer = tablet_manager->LookupTablet(dest_infos[j]->id());
         EXPECT_NE(nullptr, dest_peer);
         auto status = dest_peer->tablet()->ImportData(source_dir);
         if (!status.ok() && !status.IsNotFound()) {
@@ -749,13 +750,14 @@ TEST_F(QLTabletTest, WaitFlush) {
     }
   }
 
-  auto deadline = std::chrono::steady_clock::now() + 20s;
-  while (std::chrono::steady_clock::now() <= deadline) {
+  auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() <= deadline) {
     for (const auto& peer : peers) {
       auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
+    SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
   for (const auto& peer : peers) {
@@ -1110,7 +1112,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
   workload.Setup();
   workload.Start();
 
-  while (workload.rows_inserted() < RegularBuildVsSanitizers(75000, 20000)) {
+  while (workload.rows_inserted() < RegularBuildVsSanitizers(60000, 20000)) {
     std::this_thread::sleep_for(10ms);
   }
 

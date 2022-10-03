@@ -208,6 +208,19 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
   return CreateMetricLabel(mem_tracker);
 }
 
+#ifdef TCMALLOC_ENABLED
+// If the mem_tracker is in Postgres backends, the default value of
+// FLAGS_mem_tracker_tcmalloc_gc_release_bytes will be overriden by a dedicated value for Postgres
+// from FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes.
+void OverrideTcmallocGcThresholdForPg() {
+  if (const auto mem_gc_threahold = std::getenv("FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes")) {
+    FLAGS_mem_tracker_tcmalloc_gc_release_bytes = strtoll(mem_gc_threahold, NULL, 10);
+    LOG(INFO) << "Overriding FLAGS_mem_tracker_tcmalloc_gc_release_bytes to "
+              << FLAGS_mem_tracker_tcmalloc_gc_release_bytes;
+  }
+}
+#endif
+
 } // namespace
 
 class MemTracker::TrackerMetrics {
@@ -254,8 +267,8 @@ void MemTracker::SetTCMallocCacheMemory() {
     const auto mem_limit = MemTracker::GetRootTracker()->limit();
     FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
         std::min(std::max(static_cast<size_t>(2.5 * mem_limit / 100), 32_MB), 2_GB);
-    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes =
-        FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
+  } else {
+    FLAGS_server_tcmalloc_max_total_thread_cache_bytes = flag_value_to_use;
   }
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: "
             << FLAGS_server_tcmalloc_max_total_thread_cache_bytes;
@@ -282,6 +295,8 @@ void MemTracker::CreateRootTracker() {
 
   #ifdef TCMALLOC_ENABLED
   consumption_functor = &MemTracker::GetTCMallocActualHeapSizeBytes;
+
+  OverrideTcmallocGcThresholdForPg();
 
   if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
     // Allocate 1% of memory to the tcmallc page heap freelist.
@@ -634,18 +649,18 @@ bool MemTracker::LimitExceeded() {
 SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
   // Did we exceed the actual limit?
   if (LimitExceeded()) {
-    return {true, consumption() * 100.0 / limit()};
+    return {ToString(), true, consumption() * 100.0 / limit()};
   }
 
   // No soft limit defined.
   if (!has_limit() || limit_ == soft_limit_) {
-    return {false, 0.0};
+    return SoftLimitExceededResult::NotExceeded();
   }
 
   // Are we under the soft limit threshold?
   int64_t usage = consumption();
   if (usage < soft_limit_) {
-    return {false, 0.0};
+    return SoftLimitExceededResult::NotExceeded();
   }
 
   // We're over the threshold; were we randomly chosen to be over the soft limit?
@@ -653,9 +668,9 @@ SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
     *score = RandomUniformReal<double>();
   }
   if (usage + (limit_ - soft_limit_) * *score > limit_ && GcMemory(soft_limit_)) {
-    return {true, usage * 100.0 / limit()};
+    return {ToString(), true, usage * 100.0 / limit()};
   }
-  return {false, 0.0};
+  return SoftLimitExceededResult::NotExceeded();
 }
 
 SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double* score) {
@@ -665,7 +680,7 @@ SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double* score) {
       return result;
     }
   }
-  return {false, 0.0};
+  return SoftLimitExceededResult::NotExceeded();
 }
 
 int64_t MemTracker::SpareCapacity() const {
@@ -900,7 +915,8 @@ bool CheckMemoryPressureWithLogging(
   }
 
   const std::string msg = StringPrintf(
-      "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
+      "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
+      soft_limit_exceeded_result.tracker_path.c_str(),
       soft_limit_exceeded_result.current_capacity_pct, score);
   if (soft_limit_exceeded_result.current_capacity_pct >=
       FLAGS_memory_limit_warn_threshold_percentage) {

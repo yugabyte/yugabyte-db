@@ -34,6 +34,7 @@ struct OutputClientResponse {
   Status status;
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
+  uint32_t wait_for_version { 0 };
 };
 
 class CDCOutputClient {

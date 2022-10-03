@@ -92,6 +92,23 @@ For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this w
 
 {{< /note >}}
 
+## Copy options
+
+### ROWS_PER_TRANSACTION
+
+The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
+
+Deafult : 20000 for YugabyteDB versions 2.14/2.15, and 1000 for older releases.
+
+For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
+
+- 1 to 1000 →  Transaction_1
+- 1001 to 2000 → Transaction_2
+- 2001 to 3000 → Transaction_3
+- 3001 to 3500 → Error
+
+First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
+
 ## Examples
 
 The examples below assume a table like this:
@@ -134,23 +151,10 @@ In the following example, the data exported in the previous examples are importe
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
-
 ### Performance tips for large tables
 
-When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
-This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
+The following copy options may help to speed up copying, or allow for faster recovery from a partial state:
 
-```plpgsql
-yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
-               WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 1000);
-```
-
-
-- If the table does not exist, errors are raised.
-- `COPY TO` can only be used with regular tables.
-- `COPY FROM` can be used with tables, foreign tables, and views.
-
-Additionally, the following copy options may help to speed up copying, or allow for faster recovery from a partial state:
 * `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
 * `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
 * `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.

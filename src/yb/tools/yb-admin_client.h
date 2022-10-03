@@ -282,6 +282,8 @@ class ClusterAdminClient {
 
   Status CreateTransactionsStatusTable(const std::string& table_name);
 
+  Status AddTransactionStatusTablet(const TableId& table_id);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
@@ -293,7 +295,7 @@ class ClusterAdminClient {
   // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
   // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
   //       look like this workflow is a good fit there.
-  Status UpgradeYsql();
+  Status UpgradeYsql(bool use_single_connection);
 
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
@@ -341,10 +343,12 @@ class ClusterAdminClient {
   Status WaitUntilMasterLeaderReady();
 
   template <class Resp, class F>
-  Status RequestMasterLeader(Resp* resp, const F& f) {
-    auto deadline = CoarseMonoClock::now() + timeout_;
+  Status RequestMasterLeader(Resp* resp, const F& f, const MonoDelta& timeout = MonoDelta::kZero) {
+    const MonoDelta local_timeout = (timeout == MonoDelta::kZero ? timeout_ : timeout);
+
+    auto deadline = CoarseMonoClock::now() + local_timeout;
     rpc::RpcController rpc;
-    rpc.set_timeout(timeout_);
+    rpc.set_timeout(local_timeout);
     for (;;) {
       resp->Clear();
       RETURN_NOT_OK(f(&rpc));
@@ -407,7 +411,6 @@ class ClusterAdminClient {
 
   Result<int> GetReadReplicaConfigFromPlacementUuid(
       master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
-
 
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
 

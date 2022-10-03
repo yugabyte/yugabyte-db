@@ -40,15 +40,16 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       CatalogManager,
+      (AddTransactionStatusTablet)
+      (CheckIfPitrActive)
       (CompactSysCatalog)
       (CreateTransactionStatusTable)
       (DdlLog)
       (DeleteNotServingTablet)
-      (FlushSysCatalog)
       (DisableTabletSplitting)
+      (FlushSysCatalog)
       (IsTabletSplittingComplete)
       (SplitTablet)
-      (CheckIfPitrActive)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

@@ -58,6 +58,7 @@ DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
+DECLARE_string(vmodule);
 
 using std::string;
 using strings::Substitute;
@@ -164,6 +165,14 @@ void OverrideFlagForSlowTests(const std::string& flag_name,
                                        google::SET_FLAG_IF_DEFAULT);
 }
 
+void EnableVerboseLoggingForModule(const std::string& module, int level) {
+  if (!FLAGS_vmodule.empty()) {
+    FLAGS_vmodule += Format(",$0=$1", module, level);
+  } else {
+    FLAGS_vmodule = Format("$0=$1", module, level);
+  }
+}
+
 int SeedRandom() {
   int seed;
   // Initialize random seed
@@ -260,87 +269,6 @@ void AssertEventually(const std::function<void(void)>& f,
   if (testing::Test::HasFatalFailure()) {
     ADD_FAILURE() << "Timed out waiting for assertion to pass.";
   }
-}
-
-Status Wait(const std::function<Result<bool>()>& condition,
-            CoarseTimePoint deadline,
-            const std::string& description,
-            MonoDelta initial_delay,
-            double delay_multiplier,
-            MonoDelta max_delay) {
-  auto start = CoarseMonoClock::Now();
-  MonoDelta delay = initial_delay;
-  for (;;) {
-    const auto current = condition();
-    if (!current.ok()) {
-      return current.status();
-    }
-    if (current.get()) {
-      break;
-    }
-    const auto now = CoarseMonoClock::Now();
-    const MonoDelta left(deadline - now);
-    if (left <= MonoDelta::kZero) {
-      return STATUS_FORMAT(TimedOut,
-                           "Operation '$0' didn't complete within $1ms",
-                           description,
-                           MonoDelta(now - start).ToMilliseconds());
-    }
-    delay = std::min(std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left),
-                     max_delay);
-    SleepFor(delay);
-  }
-  return Status::OK();
-}
-
-Status Wait(const std::function<Result<bool>()>& condition,
-            MonoTime deadline,
-            const std::string& description,
-            MonoDelta initial_delay,
-            double delay_multiplier,
-            MonoDelta max_delay) {
-  auto left = deadline - MonoTime::Now();
-  return Wait(condition, CoarseMonoClock::Now() + left, description, initial_delay,
-              delay_multiplier, max_delay);
-}
-
-Status LoggedWait(
-    const std::function<Result<bool>()>& condition,
-    CoarseTimePoint deadline,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description << " - started";
-  auto status =
-      Wait(condition, deadline, description, initial_delay, delay_multiplier, max_delay);
-  LOG(INFO) << description << " - completed: " << status;
-  return status;
-}
-
-// Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(const std::function<Result<bool>()>& condition,
-               MonoDelta timeout,
-               const string& description,
-               MonoDelta initial_delay,
-               double delay_multiplier,
-               MonoDelta max_delay) {
-  return Wait(condition, MonoTime::Now() + timeout, description, initial_delay, delay_multiplier,
-              max_delay);
-}
-
-Status LoggedWaitFor(
-    const std::function<Result<bool>()>& condition,
-    MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description << " - started";
-  auto status =
-      WaitFor(condition, timeout, description, initial_delay, delay_multiplier, max_delay);
-  LOG(INFO) << description << " - completed: " << status;
-  return status;
 }
 
 string GetToolPath(const string& rel_path, const string& tool_name) {

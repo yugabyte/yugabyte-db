@@ -1,15 +1,15 @@
 ---
 title: Synchronous replication (3+ regions) in YSQL
-headerTitle: Synchronous replication (3+ regions) in YSQL
-linkTitle: Sync replication (3+ regions)
+headerTitle: Synchronous replication (3+ regions)
+linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions in YSQL.
+headcontent: Distribute data across regions
 aliases:
   - /preview/explore/global-distribution-linux/
   - /preview/explore/global-distribution/macos
   - /preview/explore/global-distribution/linux
 menu:
   preview:
-    name: Sync replication (3+ regions)
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
     parent: explore-multi-region-deployments
     weight: 710
@@ -34,9 +34,9 @@ type: docs
 
 </ul>
 
-YugabyteDB can easily be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
+YugabyteDB can be deployed in a globally distributed manner to serve application queries from the region closest to the end users with low latencies as well as to survive any outages to ensure high availability.
 
-This tutorial will simulate AWS regions on a local machine. First, you will deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`). We will start a key-value workload against this universe. Next, you will change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
+This tutorial simulates AWS regions on a local machine. First, you deploy YugabyteDB in the `us-west-2` region across multiple availability zones (`a`, `b`, `c`) and start a key-value workload against this universe. Next, you change this setup to run across multiple geographic regions in US East (`us-east-1`) and Tokyo (`ap-northeast-1`), with the workload running uninterrupted during the entire transition.
 
 This tutorial uses the [yb-ctl](../../../admin/yb-ctl/) local cluster management utility.
 

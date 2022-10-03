@@ -45,6 +45,7 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/result.h"
@@ -53,6 +54,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/logging.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
@@ -128,8 +130,10 @@ DEFINE_int32(max_nexts_to_avoid_seek, 2,
 
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
-DEFINE_string(
-    regular_tablets_data_block_key_value_encoding, "shared_prefix",
+// Using class kExternal as this change affects the format of data in the SST files which are sent
+// to xClusters during bootstrap.
+DEFINE_AUTO_string(regular_tablets_data_block_key_value_encoding,
+    kExternal, "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 
@@ -387,7 +391,9 @@ int32_t GetMaxBackgroundFlushes() {
     constexpr auto kAutoMaxBackgroundFlushesHighLimit = 4;
     auto flushes = 1 + kNumCpus / kCpusPerFlushThread;
     auto max_flushes = std::min(flushes, kAutoMaxBackgroundFlushesHighLimit);
-    LOG(INFO) << "Overriding FLAGS_rocksdb_max_background_flushes to " << max_flushes;
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_max_background_flushes was not set, automatically configuring "
+        << max_flushes << " max background flushes";
     return max_flushes;
   } else {
     return FLAGS_rocksdb_max_background_flushes;
@@ -420,7 +426,8 @@ int32_t GetMaxBackgroundCompactions() {
   } else {
     rocksdb_max_background_compactions = 4;
   }
-  LOG(INFO) << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_rocksdb_max_background_compactions was not set, automatically configuring "
       << rocksdb_max_background_compactions << " background compactions.";
   return rocksdb_max_background_compactions;
 }
@@ -432,7 +439,8 @@ int32_t GetBaseBackgroundCompactions() {
 
   if (FLAGS_rocksdb_base_background_compactions == -1) {
     const auto base_background_compactions = GetMaxBackgroundCompactions();
-    LOG(INFO) << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
+    YB_LOG_EVERY_N_SECS(INFO, 100)
+        << "FLAGS_rocksdb_base_background_compactions was not set, automatically configuring "
         << base_background_compactions << " base background compactions.";
     return base_background_compactions;
   }
@@ -535,9 +543,9 @@ void AddSupportedFilterPolicy(
 }
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
-    static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
       GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
-    return &priority_thread_pool_for_compactions_and_flushes;
+  return &priority_thread_pool_for_compactions_and_flushes;
 }
 
 } // namespace
@@ -591,7 +599,8 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
     }
   }
 
-  LOG(INFO) << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
+  YB_LOG_EVERY_N_SECS(INFO, 100)
+      << "FLAGS_priority_thread_pool_size was not set, automatically configuring to "
       << priority_thread_pool_size << ".";
 
   return priority_thread_pool_size;
@@ -606,7 +615,8 @@ void InitRocksDBOptions(
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
-  options->disableDataSync = true;
+  // We should always sync data to ensure we can recover rocksdb from crash.
+  options->disableDataSync = false;
   options->statistics = statistics;
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
@@ -708,6 +718,8 @@ void InitRocksDBOptions(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
+
+  options->priority_thread_pool_metrics = tablet_options.priority_thread_pool_metrics;
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {

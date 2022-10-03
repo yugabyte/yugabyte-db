@@ -50,10 +50,6 @@
 
 namespace yb {
 
-using base::subtle::Acquire_CompareAndSwap;
-using base::subtle::NoBarrier_Load;
-using base::subtle::Release_Store;
-
 // Wrapper around the Google SpinLock class to adapt it to the method names
 // expected by Boost.
 class CAPABILITY("mutex") simple_spinlock {
@@ -97,7 +93,7 @@ struct padded_spinlock : public simple_spinlock {
 
 // Reader-writer lock.
 // This is functionally equivalent to rw_semaphore in rw_semaphore.h, but should be
-// used whenever the lock is expected to only be acquired on a single thread.
+// used whenever the lock is expected to be released on the same thread which acquired it.
 // It adds TSAN annotations which will detect misuse of the lock, but those
 // annotations also assume that the same thread the takes the lock will unlock it.
 //

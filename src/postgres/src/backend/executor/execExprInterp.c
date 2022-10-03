@@ -532,14 +532,28 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			int			attnum = op->d.var.attnum;
 			Datum		d;
 
-			/* these asserts must match defenses in slot_getattr */
-			Assert(scanslot->tts_tuple != NULL);
-			Assert(scanslot->tts_tuple != &(scanslot->tts_minhdr));
+			/*
+			 * The ybctid may be copied to the slot.
+			 * The heap tuple does not need to be formed in this case.
+			 */
+			if (attnum == YBTupleIdAttributeNumber && scanslot->tts_ybctid)
+			{
+				*op->resnull = false;
+				d = scanslot->tts_ybctid;
+			}
+			else
+			{
+				/* these asserts must match defenses in slot_getattr */
+				Assert(scanslot->tts_tuple != NULL);
+				Assert(scanslot->tts_tuple != &(scanslot->tts_minhdr));
 
-			/* heap_getsysattr has sufficient defenses against bad attnums */
-			d = heap_getsysattr(scanslot->tts_tuple, attnum,
-								scanslot->tts_tupleDescriptor,
-								op->resnull);
+				/*
+				 * heap_getsysattr has sufficient defenses against bad attnums
+				 */
+				d = heap_getsysattr(scanslot->tts_tuple, attnum,
+									scanslot->tts_tupleDescriptor,
+									op->resnull);
+			}
 			*op->resvalue = d;
 
 			EEO_NEXT();

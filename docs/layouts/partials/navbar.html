@@ -43,7 +43,7 @@
       <ul class="navbar-nav mt-2 mt-lg-0">
         {{ range .Site.Menus.top_nav }}
           <li class="nav-item mr-4 mb-2 mb-lg-0">
-            <a class="nav-link" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
+            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
           </li>
         {{ end }}
       </ul>

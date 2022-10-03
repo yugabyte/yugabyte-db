@@ -123,6 +123,7 @@ class RemoteBootstrapClient {
   Status Start(const std::string& bootstrap_peer_uuid,
                        rpc::ProxyCache* proxy_cache,
                        const HostPort& bootstrap_peer_addr,
+                       const ServerRegistrationPB& tablet_leader_conn_info,
                        scoped_refptr<tablet::RaftGroupMetadata>* metadata,
                        TSTabletManager* ts_manager = nullptr);
 

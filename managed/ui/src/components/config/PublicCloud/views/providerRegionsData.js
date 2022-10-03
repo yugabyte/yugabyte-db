@@ -6,10 +6,10 @@ export const regionsData = [
   },
   // This is disabled in devops, so keep it disabled here as well. Pending on fetching data from a
   // YW API: ENG-4225
-  // {
-  //   destVpcRegion: 'ap-northeast-2',
-  //   zones: ['ap-northeast-2a', 'ap-northeast-2c']
-  // },
+  {
+    destVpcRegion: 'ap-northeast-2',
+    zones: ['ap-northeast-2a', 'ap-northeast-2b', 'ap-northeast-2c', 'ap-northeast-2d']
+  },
   {
     destVpcRegion: 'ap-south-1',
     zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c']
@@ -63,3 +63,56 @@ export const regionsData = [
     zones: ['us-west-2a', 'us-west-2b', 'us-west-2c']
   }
 ];
+
+export const GCP_KMS_REGIONS = [
+  {
+    label: 'Global',
+    options: [{ value: 'global', label: 'Global' }]
+  },
+  {
+    label: 'Single Region',
+    options: [
+      { value: 'asia-east1', label: 'Taiwan (asia-east1)' },
+      { value: 'asia-east2', label: 'Hong Kong (asia-east2)' },
+      { value: 'asia-northeast1', label: 'Tokyo (asia-northeast1)' },
+      { value: 'asia-northeast2', label: 'Osaka (asia-northeast2)' },
+      { value: 'asia-northeast3', label: 'Seoul (asia-northeast3)' },
+      { value: 'asia-south1', label: 'Mumbai (asia-south1)' },
+      { value: 'asia-south2', label: 'Delhi (asia-south2)' },
+      { value: 'asia-southeast1', label: 'Singapore (asia-southeast1)' },
+      { value: 'asia-southeast2', label: 'Jakarta (asia-southeast2)' },
+      { value: 'australia-southeast1', label: 'Sydney (australia-southeast1)' },
+      { value: 'australia-southeast2', label: 'Melbourne (australia-southeast2)' },
+      { value: 'europe-central2', label: 'Warsaw (europe-central2)' },
+      { value: 'europe-north1', label: 'Finland (europe-north1)' },
+      { value: 'europe-west1', label: 'Belgium (europe-west1)' },
+      { value: 'europe-west2', label: 'London (europe-west2)' },
+      { value: 'europe-west3', label: 'Frankfurt (europe-west3)' },
+      { value: 'europe-west4', label: 'Netherlands (europe-west4)' },
+      { value: 'europe-west6', label: 'Zurich (europe-west6)' },
+      { value: 'northamerica-northeast1', label: 'Montreal (northamerica-northeast1)' },
+      { value: 'northamerica-northeast2', label: 'Toronto (northamerica-northeast2)' },
+      { value: 'southamerica-east1', label: 'Sao Paulo (southamerica-east1)' },
+      { value: 'us-central1', label: 'Iowa (us-central1)' },
+      { value: 'us-east1', label: 'South Carolina (us-east1)' },
+      { value: 'us-east4', label: 'N. Virginia (us-east4)' },
+      { value: 'us-west1', label: 'Oregon (us-west1)' },
+      { value: 'us-west2', label: 'Los Angeles (us-west2)' },
+      { value: 'us-west3', label: 'Salt Lake City (us-west3)' },
+      { value: 'us-west4', label: 'Las Vegas (us-west4)' }
+    ]
+  },
+  {
+    label: 'Multi Region',
+    options: [
+      { value: 'asia1', label: 'Tokyo, Osaka and Seoul (asia1)' },
+      { value: 'us', label: 'Multiple regions in the United States (us)' },
+      { value: 'europe', label: 'Multiple regions in the European Union (europe)' }
+    ]
+  }
+];
+
+export const GCP_KMS_REGIONS_FLATTENED = GCP_KMS_REGIONS.reduce((regionArray, region) => {
+  regionArray = [...regionArray, ...region.options];
+  return regionArray;
+}, []);

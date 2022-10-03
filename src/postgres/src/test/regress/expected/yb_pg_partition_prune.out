@@ -2806,7 +2806,7 @@ create table inh_lp1 (a int, value int, check(a = 1)) inherits (inh_lp);
 ERROR:  INHERITS not supported yet
 LINE 1: ...te table inh_lp1 (a int, value int, check(a = 1)) inherits (...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 /*
 create table inh_lp2 (a int, value int, check(a = 2)) inherits (inh_lp);
 

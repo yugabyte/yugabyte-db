@@ -19,6 +19,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/schema_packing.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -39,6 +40,12 @@ bool IsNull(const Slice& slice) {
   return slice.empty();
 }
 
+using ValuePair = std::pair<Slice, Slice>;
+
+bool IsNull(const ValuePair& value) {
+  return value.first.empty() && value.second.empty();
+}
+
 void PackValue(const QLValuePB& value, ValueBuffer* result) {
   AppendEncodedValue(value, result);
 }
@@ -55,15 +62,43 @@ size_t PackedValueSize(const Slice& value) {
   return value.size();
 }
 
+size_t PackedValueSize(const ValuePair& value) {
+  return value.first.size() + value.second.size();
+}
+
+void PackValue(const ValuePair& value, ValueBuffer* result) {
+  result->Reserve(result->size() + PackedValueSize(value));
+  result->Append(value.first);
+  result->Append(value.second);
+}
+
+size_t PackedSizeLimit(size_t value) {
+  return value ? value : make_unsigned(FLAGS_db_block_size_bytes);
+}
+
 } // namespace
 
 RowPacker::RowPacker(
     SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
-    size_t packed_size_limit)
+    size_t packed_size_limit, const ValueControlFields& control_fields)
     : packing_(packing),
-      packed_size_limit_(packed_size_limit ? packed_size_limit : FLAGS_db_block_size_bytes) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+  control_fields.AppendEncoded(&result_);
+  Init(version);
+}
+
+RowPacker::RowPacker(
+    SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+    size_t packed_size_limit, const Slice& control_fields)
+    : packing_(packing),
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+  result_.Append(control_fields);
+  Init(version);
+}
+
+void RowPacker::Init(SchemaVersion version) {
   size_t prefix_len = packing_.prefix_len();
-  result_.Reserve(1 + kMaxVarint32Length + prefix_len);
+  result_.Reserve(result_.size() + 1 + kMaxVarint32Length + prefix_len);
   result_.PushBack(ValueEntryTypeAsChar::kPackedRow);
   result_.Truncate(
       result_.size() +
@@ -89,6 +124,11 @@ Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
 
 Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
   return DoAddValue(column_id, value, tail_size);
+}
+
+Result<bool> RowPacker::AddValue(
+    ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size) {
+  return DoAddValue(column_id, ValuePair(value_prefix, value_suffix), tail_size);
 }
 
 template <class Value>

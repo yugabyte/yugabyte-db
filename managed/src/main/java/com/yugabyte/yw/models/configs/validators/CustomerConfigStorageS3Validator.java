@@ -49,44 +49,42 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
             "Aws credentials are null and IAM profile is not used.");
       }
     }
-    if (!StringUtils.isEmpty(s3data.awsAccessKeyId)) {
+    try {
+      // Disable cert checking while connecting with s3
+      // Enabling it can potentially fail when s3 compatible storages like
+      // Dell ECS are provided and custom certs are needed to connect
+      // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+
+      AmazonS3 s3Client = null;
+      String exceptionMsg = null;
       try {
-        // Disable cert checking while connecting with s3
-        // Enabling it can potentially fail when s3 compatible storages like
-        // Dell ECS are provided and custom certs are needed to connect
-        // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
-
-        AmazonS3 s3Client = null;
-        String exceptionMsg = null;
-        try {
-          s3Client = factory.createS3Client(s3data);
-        } catch (AmazonS3Exception s3Exception) {
-          exceptionMsg = s3Exception.getErrorMessage();
-          throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
-        }
-
-        validateBucket(
-            s3Client, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, s3data.backupLocation);
-        if (s3data.regionLocations != null) {
-          for (RegionLocations location : s3data.regionLocations) {
-            if (StringUtils.isEmpty(location.region)) {
-              throwBeanValidatorError(
-                  CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
-            }
-            validateUrl(
-                CustomerConfigConsts.AWS_HOST_BASE_FIELDNAME, location.awsHostBase, true, true);
-            validateUrl(
-                CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
-            validateBucket(
-                s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
-          }
-        }
-
-      } finally {
-        // Re-enable cert checking as it applies globally
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+        s3Client = factory.createS3Client(s3data);
+      } catch (AmazonS3Exception s3Exception) {
+        exceptionMsg = s3Exception.getErrorMessage();
+        throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
       }
+
+      validateBucket(
+          s3Client, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, s3data.backupLocation);
+      if (s3data.regionLocations != null) {
+        for (RegionLocations location : s3data.regionLocations) {
+          if (StringUtils.isEmpty(location.region)) {
+            throwBeanValidatorError(
+                CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
+          }
+          validateUrl(
+              CustomerConfigConsts.AWS_HOST_BASE_FIELDNAME, location.awsHostBase, true, true);
+          validateUrl(
+              CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
+          validateBucket(
+              s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
+        }
+      }
+
+    } finally {
+      // Re-enable cert checking as it applies globally
+      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
     }
   }
 

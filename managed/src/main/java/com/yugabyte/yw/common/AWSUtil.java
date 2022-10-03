@@ -2,54 +2,59 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
 import com.amazonaws.SdkClientException;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.InstanceProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.services.ec2.model.AmazonEC2Exception;
+import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
+import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient;
+import com.amazonaws.services.identitymanagement.model.AmazonIdentityManagementException;
+import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
+import com.amazonaws.services.identitymanagement.model.Role;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.internal.AmazonS3ExceptionBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
-import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
+import com.amazonaws.services.securitytoken.model.AssumeRoleRequest;
+import com.amazonaws.services.securitytoken.model.AssumeRoleResult;
+import com.amazonaws.services.securitytoken.model.Credentials;
+import com.amazonaws.util.EC2MetadataUtils;
+import com.amazonaws.util.EC2MetadataUtils.IAMSecurityCredential;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import java.io.InputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
-import org.yb.ybc.CloudType;
-import org.apache.http.HttpStatus;
+
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 @Slf4j
@@ -61,20 +66,23 @@ public class AWSUtil implements CloudUtil {
   private static final String AWS_STANDARD_HOST_BASE_PATTERN = "s3([.](.+)|)[.]amazonaws[.]com";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
+  public static final String AWS_DEFAULT_REGIONAL_STS_ENDPOINT = "sts.us-east-1.amazonaws.com";
 
   public static final String YBC_AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   public static final String YBC_AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
   public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
   public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
+  public static final String YBC_AWS_ACCESS_TOKEN_FIELDNAME = "AWS_ACCESS_TOKEN";
 
+  private static final String ZULU_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss'Z'";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
   // This method is a way to check if given S3 config can extract objects.
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
-    if (CollectionUtils.isEmpty(locations)
-        || ((CustomerConfigStorageS3Data) configData).isIAMInstanceProfile) {
+    if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
     for (String location : locations) {
@@ -86,7 +94,8 @@ public class AWSUtil implements CloudUtil {
         if (bucketSplit.length == 1) {
           Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
           if (!doesBucketExist) {
-            log.error("No bucket exists with name {}", bucketName);
+            throw new RuntimeException(
+                String.format("No S3 bucket found with name %s", bucketName));
           }
         } else {
           ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
@@ -97,12 +106,26 @@ public class AWSUtil implements CloudUtil {
       } catch (AmazonS3Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s", location),
+                "Credential cannot list objects in the specified backup location %s: {}", location),
             e.getErrorMessage());
         return false;
       }
     }
     return true;
+  }
+
+  @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+    // Buckets should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config bucket %s and backup location bucket %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
   }
 
   @Override
@@ -135,34 +158,119 @@ public class AWSUtil implements CloudUtil {
     return split;
   }
 
+  // Fetch temporary credentials from EC2 metadata.
+  private Credentials getTemporaryCredentialsInstanceProfile() throws Exception {
+    Map<String, IAMSecurityCredential> instanceProfileCredentials =
+        EC2MetadataUtils.getIAMSecurityCredentials();
+    Credentials credentials = null;
+    if (MapUtils.isNotEmpty(instanceProfileCredentials)
+        && instanceProfileCredentials.values().iterator().hasNext()) {
+      IAMSecurityCredential credential = instanceProfileCredentials.values().iterator().next();
+      SimpleDateFormat formatter = new SimpleDateFormat(ZULU_TIME_FORMAT);
+      formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+      Date date = formatter.parse(credential.expiration);
+      credentials =
+          new Credentials(
+              credential.accessKeyId, credential.secretAccessKey, credential.token, date);
+    }
+    return credentials;
+  }
+
+  // Fetch temporary credentials using Assume role via STS client.
+  private synchronized Credentials getTemporaryCredentialsAssumeRole() throws Exception {
+    // Create STS client to make subsequent calls.
+    EndpointConfiguration ec =
+        new EndpointConfiguration(AWS_DEFAULT_REGIONAL_STS_ENDPOINT, AWS_DEFAULT_REGION);
+    AWSSecurityTokenServiceClientBuilder stsClientBuilder = AWSSecurityTokenServiceClient.builder();
+    stsClientBuilder.withEndpointConfiguration(ec);
+    AWSCredentialsProvider creds = new InstanceProfileCredentialsProvider(false);
+    AWSSecurityTokenService stsService = stsClientBuilder.withCredentials(creds).build();
+
+    // Fetch role name for the IAM instance, should be same as instance-profile name.
+    EC2MetadataUtils.IAMInfo iamInfo = EC2MetadataUtils.getIAMInstanceProfileInfo();
+    String instanceProfileArn = iamInfo.instanceProfileArn;
+    String[] arnSplit = instanceProfileArn.split("/", 0);
+    String role = arnSplit[arnSplit.length - 1];
+
+    // Fetch max session limit for the role.
+    AmazonIdentityManagement iamClient =
+        AmazonIdentityManagementClient.builder().withCredentials(creds).build();
+    Role iamRole = iamClient.getRole(new GetRoleRequest().withRoleName(role)).getRole();
+    int maxDuration = iamRole.getMaxSessionDuration();
+
+    // Generate temporary credentials valid until the max session duration
+    // required because we are sending creds to nodes, no mechanism to fetch creds via instance
+    // there.
+    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+    AssumeRoleRequest roleRequest =
+        new AssumeRoleRequest()
+            .withDurationSeconds(maxDuration)
+            .withRoleArn(iamRole.getArn())
+            .withRoleSessionName(Long.toString(timestamp.toInstant().toEpochMilli()));
+    AssumeRoleResult roleResult = stsService.assumeRole(roleRequest);
+    Credentials temporaryCredentials = roleResult.getCredentials();
+    return temporaryCredentials;
+  }
+
+  private Credentials getTemporaryCredentials() {
+    Credentials instanceCredentials = null;
+    Credentials assumeRoleCredentials = null;
+    try {
+      assumeRoleCredentials = getTemporaryCredentialsAssumeRole();
+    } catch (Exception e) {
+      log.error("Fetching temporary credentials from STS client failed: {}", e.getMessage());
+    }
+    try {
+      instanceCredentials = getTemporaryCredentialsInstanceProfile();
+    } catch (Exception e) {
+      log.error("Fetching instance credentials failed: {}", e.getMessage());
+    }
+    if (assumeRoleCredentials != null) {
+      if (assumeRoleCredentials.getExpiration().compareTo(instanceCredentials.getExpiration())
+          >= 0) {
+        log.info(
+            "Using assume role credentials with expiry: {}",
+            assumeRoleCredentials.getExpiration().toString());
+        return assumeRoleCredentials;
+      }
+      log.info(
+          "Assume role expiry: {} is less than instance profile credentials expiry: {},"
+              + "using instance profile credentials",
+          assumeRoleCredentials.getExpiration().toString(),
+          instanceCredentials.getExpiration().toString());
+      return instanceCredentials;
+    }
+    log.info(
+        "Unable to assume Role, defaulting to intance profile credentials with expiry: {}",
+        instanceCredentials.getExpiration().toString());
+    return instanceCredentials;
+  }
+
   public static AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
       throws AmazonS3Exception {
     AmazonS3ClientBuilder s3ClientBuilder = AmazonS3Client.builder();
+    AWSCredentialsProvider creds = null;
     if (s3Data.isIAMInstanceProfile) {
-      s3ClientBuilder.withCredentials(new InstanceProfileCredentialsProvider(false));
+      // Using instance creds from ec2.services.com here
+      // since the client is used on Platform itself unlike backups.
+      creds = new InstanceProfileCredentialsProvider(false);
     } else {
       String key = s3Data.awsAccessKeyId;
       String secret = s3Data.awsSecretAccessKey;
-      boolean isPathStyleAccess = s3Data.isPathStyleAccess;
-      String endpoint = s3Data.awsHostBase;
       AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-      AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
-
-      s3ClientBuilder.withCredentials(creds).withForceGlobalBucketAccessEnabled(true);
-
-      if (isPathStyleAccess) {
-        s3ClientBuilder.withPathStyleAccessEnabled(true);
-      }
-      EndpointConfiguration endpointConfiguration = null;
-      if (StringUtils.isNotBlank(endpoint)) {
-        // Need to set default region because region-chaining may
-        // fail if correct environment variables not found.
-        endpointConfiguration = new EndpointConfiguration(endpoint, AWS_DEFAULT_REGION);
-      } else {
-        endpointConfiguration = new EndpointConfiguration(AWS_DEFAULT_ENDPOINT, AWS_DEFAULT_REGION);
-      }
-      s3ClientBuilder.withEndpointConfiguration(endpointConfiguration);
+      creds = new AWSStaticCredentialsProvider(credentials);
     }
+    s3ClientBuilder.withCredentials(creds).withForceGlobalBucketAccessEnabled(true);
+    EndpointConfiguration endpointConfiguration = null;
+    String endpoint = s3Data.awsHostBase;
+    if (StringUtils.isNotBlank(endpoint)) {
+      // Need to set default region because region-chaining may
+      // fail if correct environment variables not found.
+      endpointConfiguration = new EndpointConfiguration(endpoint, AWS_DEFAULT_REGION);
+    } else {
+      endpointConfiguration = new EndpointConfiguration(AWS_DEFAULT_ENDPOINT, AWS_DEFAULT_REGION);
+    }
+    s3ClientBuilder.withEndpointConfiguration(endpointConfiguration);
     return s3ClientBuilder.build();
   }
 
@@ -257,25 +365,56 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
-    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
-    if (StringUtils.isNotBlank(cloudDir)) {
-      cloudDir = String.format("%s/%s/", splitValues[1], commonDir);
-    } else {
-      cloudDir = commonDir.concat("/");
+    String cloudDir =
+        splitValues.length > 1
+            ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
+            : commonDir;
+    cloudDir = BackupUtil.appendSlash(cloudDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
     }
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+    return YbcBackupUtil.buildCloudStoreSpec(
+        bucket, cloudDir, previousCloudDir, s3CredsMap, Util.S3);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String[] splitValues = getSplitLocationValue(storageLocation);
+    String bucket = splitValues[0];
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    if (isDsm) {
+      String location = BackupUtil.appendSlash(splitValues[1]);
+      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", s3CredsMap, Util.S3);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", s3CredsMap, Util.S3);
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
     Map<String, String> s3CredsMap = new HashMap<>();
-    s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
-    s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);
+    if (s3Data.isIAMInstanceProfile) {
+      Credentials temporaryCredentials = getTemporaryCredentials();
+      s3CredsMap.put(YBC_AWS_ACCESS_TOKEN_FIELDNAME, temporaryCredentials.getSessionToken());
+      s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, temporaryCredentials.getAccessKeyId());
+      s3CredsMap.put(
+          YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, temporaryCredentials.getSecretAccessKey());
+    } else {
+      s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
+      s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);
+    }
     String bucketRegion = getBucketRegion(bucket, s3Data);
     String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion);
     s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);

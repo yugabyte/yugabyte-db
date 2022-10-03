@@ -12,6 +12,8 @@ import static play.inject.Bindings.bind;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
@@ -48,6 +50,8 @@ public class YsqlQueryExecutorTest extends WithApplication {
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -89,7 +93,7 @@ public class YsqlQueryExecutorTest extends WithApplication {
       PlatformServiceException exception =
           assertThrows(
               PlatformServiceException.class, () -> ysqlQueryExecutor.createUser(universe, dbForm));
-      assertEquals(errorCode, exception.getResult().status());
+      assertEquals(errorCode, exception.getHttpStatus());
     } else {
       ysqlQueryExecutor.createUser(universe, dbForm);
     }

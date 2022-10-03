@@ -13,6 +13,7 @@
 package org.yb.cql;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -29,6 +30,7 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
 
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
@@ -80,6 +82,8 @@ public class TestIndex extends BaseCQLTest {
     session.execute("create table test_index (h int, r1 int, r2 int, c int, " +
                     "primary key ((h), r1, r2)) with transactions = { 'enabled' : true};");
     session.execute("create index i on test_index (h, r2, r1) include (c);");
+
+    waitForReadPermsOnAllIndexes("test_index");
 
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
     session.execute("insert into i (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\")" +
@@ -1109,6 +1113,9 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true}");
     session.execute("create index test_txn2_by_v on test_txn2 (v)");
 
+    waitForReadPermsOnAllIndexes("test_txn1");
+    waitForReadPermsOnAllIndexes("test_txn2");
+
     session.execute("begin transaction" +
                     "  insert into test_txn1 (k, v) values (1, 101);" +
                     "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
@@ -1239,6 +1246,8 @@ public class TestIndex extends BaseCQLTest {
     for (int i = 1; i <= 9; ++i) {
       session.execute(String.format("create index test_txn_by_v%d on test_txn (v%d)", i, i));
     }
+
+    waitForReadPermsOnAllIndexes("test_txn");
 
     session.execute("begin transaction" +
                     getInsertIntoIndexesStr(10) +
@@ -1481,15 +1490,29 @@ public class TestIndex extends BaseCQLTest {
           "with transactions = { 'enabled' : true } and tablets = %d;", tableName, numTablets));
       session.execute(String.format(
             "create index %s on %s (c) with tablets = %d;", indexName, tableName, numTablets));
+      waitForReadPermsOnAllIndexes(tableName);
       final PreparedStatement statement = session.prepare(String.format(
           "insert into %s (h, c) values (?, ?);", tableName));
+
+      AtomicBoolean dropStarted = new AtomicBoolean(false);
 
       List<Thread> threads = new ArrayList<Thread>();
       while (threads.size() != numThreads) {
         Thread thread = new Thread(() -> {
           int key = 0;
           while (!Thread.interrupted()) {
-            session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            try {
+              session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            } catch (NoHostAvailableException e) {
+              // It's possible that we attempt to execute after the table is dropped but before
+              // we're interrupted.
+              if (e.getMessage().contains(
+                  "Error preparing query, got ERROR INVALID: Object Not Found")
+                  && dropStarted.get()) {
+                break;
+              }
+              throw e;
+            }
             ++key;
           }
         });
@@ -1498,6 +1521,7 @@ public class TestIndex extends BaseCQLTest {
       }
       try {
         Thread.sleep(5000);
+        dropStarted.set(true);
         session.execute(String.format("drop table %s;", tableName));
       } finally {
         for (Thread thread : threads) {
@@ -1586,6 +1610,8 @@ public class TestIndex extends BaseCQLTest {
     runInvalidStmt("create index on test_tr_tbl(c1) with " +
                    "transactions = {'consistency_level' : 'user_enforced'};");
 
+    waitForReadPermsOnAllIndexes("test_tr_tbl");
+
     // Create non-transactional test tables and indexes.
     session.execute("create table test_non_tr_tbl (h1 int primary key, c1 int) " +
                     "with transactions = {'enabled' : false};");
@@ -1603,6 +1629,9 @@ public class TestIndex extends BaseCQLTest {
     // Test weak index.
     session.execute("create index test_non_tr_tbl_idx on test_non_tr_tbl(c1) with " +
                     "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+
+    waitForReadPermsOnAllIndexes("test_non_tr_tbl");
+
     assertQuery("select options, transactions from system_schema.indexes where " +
                 "index_name = 'test_non_tr_tbl_idx';",
                 "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
@@ -1622,6 +1651,9 @@ public class TestIndex extends BaseCQLTest {
     // Test weak index.
     session.execute("create index test_reg_tbl_idx on test_reg_tbl(c1) with " +
                     "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+
+    waitForReadPermsOnAllIndexes("test_reg_tbl");
+
     assertQuery("select options, transactions from system_schema.indexes where " +
                 "index_name = 'test_reg_tbl_idx';",
                 "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");

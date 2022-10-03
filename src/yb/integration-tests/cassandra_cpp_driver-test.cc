@@ -117,6 +117,11 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
         break;
       }
     }
+
+    // Set up a ClusterAdminClient
+    admin_client_.reset(
+        new tools::ClusterAdminClient(cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(15)));
+    ASSERT_OK(admin_client_->Init());
   }
 
   void SetUpCluster(ExternalMiniClusterOptions* opts) override {
@@ -170,6 +175,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
 
   unique_ptr<CppCassandraDriver> driver_;
   CassandraSession session_;
+  unique_ptr<tools::ClusterAdminClient> admin_client_;
   std::atomic<bool> keyspace_created_{false};
 };
 
@@ -2183,6 +2189,66 @@ TEST_F_EX(CppCassandraDriverTest, TestTableBackfillUniqueInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue,
                          IncludeAllColumns::kTrue, UserEnforced::kFalse);
+}
+
+class CppCassandraDriverTestWithMasterFailover : public CppCassandraDriverTestIndex {
+ private:
+  virtual std::vector<std::string> ExtraMasterFlags() {
+    auto flags = CppCassandraDriverTest::ExtraMasterFlags();
+    flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=200");
+    flags.push_back("--vmodule=backfill_index=3,async_rpc_tasks=3");
+    return flags;
+  }
+
+  virtual std::vector<std::string> ExtraTServerFlags() {
+    auto flags = CppCassandraDriverTest::ExtraTServerFlags();
+    flags.push_back("--TEST_backfill_paging_size=2");
+    flags.push_back("--TEST_slowdown_backfill_by_ms=3000");
+    return flags;
+  }
+
+  virtual int NumMasters() { return 3; }
+};
+
+TEST_F_EX(
+    CppCassandraDriverTest, TestLogSpewDuringBackfill, CppCassandraDriverTestWithMasterFailover) {
+  FLAGS_external_mini_cluster_max_log_bytes = 50_MB;
+  // TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue, IncludeAllColumns::kTrue,
+  //                        UserEnforced::kFalse, StepdownMasterLeader::kTrue);
+  // Wait for Log spew
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Inserting three rows";
+  constexpr int kNumRows = 10;
+  for (int i = 1; i < kNumRows; i++) {
+    ASSERT_OK(session_.ExecuteQuery(Format("insert into test_table (k, v) values ($0, '$0');", i)));
+  }
+  // create a collision to fail the index.
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (0, '1');"));
+
+  LOG(INFO) << "Creating index";
+  auto create_future =
+      session_.ExecuteGetFuture("create unique index test_table_index_by_v on test_table (v);");
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+  bool stepdown_master = true;
+  if (stepdown_master) {
+    const auto& leader_uuid = cluster_->GetLeaderMaster()->uuid();
+    LOG(INFO) << "Stepping down master leader " << leader_uuid << " got "
+              << admin_client_->MasterLeaderStepDown(leader_uuid);
+  }
+
+  auto res = client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_NOT_USED);
+  LOG(INFO) << "Got " << yb::ToString(res);
+
+  LOG(INFO) << "Waiting for log spew";
+  SleepFor(MonoDelta::FromSeconds(60));
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestIndexUpdateConcurrentTxn, CppCassandraDriverTestIndexSlow) {

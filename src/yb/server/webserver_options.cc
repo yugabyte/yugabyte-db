@@ -75,6 +75,11 @@ TAG_FLAG(webserver_enable_doc_root, advanced);
 DEFINE_string(webserver_certificate_file, "",
     "The location of the debug webserver's SSL certificate file, in .pem format. If "
     "empty, webserver SSL support is not enabled");
+DEFINE_string(webserver_private_key_file, "",
+    "The location of the debug webserver's SSL private key file, in .pem format. If "
+    "empty, the private key is assumed to be located in the same file as the certificate.");
+DEFINE_string(webserver_private_key_password, "",
+    "The password for the debug webserver's SSL private key. If empty, no password is used.");
 DEFINE_string(webserver_authentication_domain, "",
     "Domain used for debug webserver authentication");
 DEFINE_string(webserver_password_file, "",
@@ -102,6 +107,8 @@ WebserverOptions::WebserverOptions()
     port(FLAGS_webserver_port),
     enable_doc_root(FLAGS_webserver_enable_doc_root),
     certificate_file(FLAGS_webserver_certificate_file),
+    private_key_file(FLAGS_webserver_private_key_file),
+    private_key_password(FLAGS_webserver_private_key_password),
     authentication_domain(FLAGS_webserver_authentication_domain),
     password_file(FLAGS_webserver_password_file),
     num_worker_threads(FLAGS_webserver_num_worker_threads) {

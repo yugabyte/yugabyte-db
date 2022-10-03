@@ -25,7 +25,7 @@ Learn how to establish a connection to YugabyteDB database and begin basic CRUD 
 
 ## Project dependencies
 
-Spring Data JPA can be used with both YugabyteDB JDBC driver and the upstream Postgres JDBC driver.
+Spring Data JPA can be used with both YugabyteDB JDBC driver and the upstream PostgreSQL JDBC driver.
 
 ### Maven dependency
 

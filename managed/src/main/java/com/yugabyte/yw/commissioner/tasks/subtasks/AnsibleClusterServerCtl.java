@@ -33,8 +33,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public int sleepAfterCmdMills = 0;
     public boolean isForceDelete = false;
 
-    // Systemd vs Cron Option (Default: Cron)
-    public boolean useSystemd = false;
     public boolean checkVolumesAttached = false;
   }
 
@@ -60,8 +58,6 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     try {
       // Execute the ansible command.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-      taskParams().useSystemd =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
           .processErrors();
@@ -74,7 +70,12 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     }
 
     if (taskParams().sleepAfterCmdMills > 0) {
-      waitFor(Duration.ofMillis(getSleepMultiplier() * taskParams().sleepAfterCmdMills));
+      waitFor(Duration.ofMillis((long) getSleepMultiplier() * taskParams().sleepAfterCmdMills));
     }
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

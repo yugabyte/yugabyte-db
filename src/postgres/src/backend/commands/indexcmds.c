@@ -684,7 +684,7 @@ DefineIndex(Oid relationId,
 	bool is_colocated =
 		IsYBRelation(rel) &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
+		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -693,6 +693,15 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated index")));
+
+	/*
+	 * Fail if the index is colocated and tablespace
+	 * is specified while creation.
+	 */
+	if (OidIsValid(tablespaceId) && is_colocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
@@ -801,8 +810,8 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
-						 "Click '+' on the description to raise its priority")));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
+						 "React with thumbs up to raise its priority")));
 	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
 							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
@@ -1618,7 +1627,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	Oid tablegroupId = InvalidOid;
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates())
+		!YbIsConnectedToTemplateDb())
 	{
 		Relation rel = RelationIdGetRelation(relId);
 		if (IsYBRelation(rel))

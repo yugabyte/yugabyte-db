@@ -2,6 +2,10 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import _ from 'lodash';
+import moment from 'moment';
+import { OverlayTrigger, Tooltip } from 'react-bootstrap';
+
 import {
   divideYAxisByThousand,
   isNonEmptyArray,
@@ -11,13 +15,10 @@ import {
   removeNullProperties,
   timeFormatXAxis
 } from '../../../utils/ObjectUtils';
-import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
-import _ from 'lodash';
-import moment from 'moment';
-import { OverlayTrigger, Tooltip } from 'react-bootstrap';
-
 import prometheusIcon from '../images/prometheus-icon.svg';
+
+import './MetricsPanel.scss';
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -27,6 +28,9 @@ const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
 const MAX_NAME_LENGTH = 15;
 
+const DEFAULT_HEIGHT = 450;
+const DEFAULT_CONTAINER_WIDTH = 1200;
+
 export default class MetricsPanel extends Component {
   static propTypes = {
     metric: PropTypes.object.isRequired,
@@ -34,16 +38,23 @@ export default class MetricsPanel extends Component {
   };
 
   plotGraph = () => {
-    const { metricKey, metric, currentUser } = this.props;
+    const { metricKey, metric, currentUser, shouldAbbreviateTraceName = true } = this.props;
     if (isNonEmptyObject(metric)) {
+      const layoutHeight = this.props.height || DEFAULT_HEIGHT;
+      const layoutWidth =
+        this.props.width ||
+        this.getGraphWidth(this.props.containerWidth || DEFAULT_CONTAINER_WIDTH);
       metric.data.forEach((dataItem, i) => {
         if (dataItem['instanceName'] && dataItem['name'] !== dataItem['instanceName']) {
           dataItem['fullname'] = dataItem['name'] + ' (' + dataItem['instanceName'] + ')';
         } else {
           dataItem['fullname'] = dataItem['name'];
         }
-        // Truncate trace names if they are longer than 15 characters, and append ellipsis
-        if (dataItem['name'].length > MAX_NAME_LENGTH) {
+
+        // To avoid the legend overlapping plot, we allow the option to abbreviate trace names if:
+        // - received truthy shouldAbbreviateTraceName AND
+        // - trace name longer than the max name legnth
+        if (shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
         }
         // Only show upto first 8 traces in the legend
@@ -85,9 +96,8 @@ export default class MetricsPanel extends Component {
 
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width =
-        this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
-      metric.layout.height = this.props.height || 400;
+      metric.layout.width = layoutWidth;
+      metric.layout.height = layoutHeight;
       metric.layout.showlegend = true;
       metric.layout.hovermode = 'closest';
       metric.layout.margin = {
@@ -110,18 +120,12 @@ export default class MetricsPanel extends Component {
         family: METRIC_FONT
       };
 
-      // Give the legend box extra vertical space if there are more than 4 traces
-      let legendExtraMargin = 0;
-      if (metric.data.length > 4) {
-        legendExtraMargin = 0.2;
-      }
-
       metric.layout.legend = {
         orientation: 'h',
         xanchor: 'center',
-        yanchor: 'bottom',
+        yanchor: 'top',
         x: 0.5,
-        y: -0.5 - legendExtraMargin
+        y: -0.3
       };
 
       // Handle the case when the metric data is empty, we would show
@@ -186,10 +190,11 @@ export default class MetricsPanel extends Component {
       var url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
-    }
+    };
+
     return (
       <div id={this.props.metricKey} className="metrics-panel">
-        {prometheusQueryEnabled && this.props.metric.directURLs.length > 0 ? (
+        {prometheusQueryEnabled && isNonEmptyArray(this.props.metric?.directURLs) ? (
           <OverlayTrigger placement="top" overlay={tooltip}>
             <a
               target="_blank"

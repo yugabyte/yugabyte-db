@@ -51,6 +51,9 @@ def main():
     parser.add_argument('--force', help='Skip prompts', action='store_true')
     parser.add_argument('--commit', help='Specifies a custom git commit to use in archive name.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
+    parser.add_argument('--skip_yugabyted_ui_build',
+                        help='Skip building the yugabyted-ui code',
+                        action='store_true')
     parser.add_argument('--build_target',
                         help='Target directory to put the YugaByte distribution into. This can '
                              'be used for debugging this script without having to build the '
@@ -152,6 +155,9 @@ def main():
     if args.skip_build:
         build_cmd_list += ["--skip-build"]
 
+    if not args.skip_yugabyted_ui_build:
+        build_cmd_list += ["--build-yugabyted-ui"]
+
     if args.build_args:
         # TODO: run with shell=True and append build_args as is.
         build_cmd_list += args.build_args.strip().split()
@@ -166,9 +172,12 @@ def main():
     if not args.skip_build:
         # TODO: figure out the dependency issues in our CMake build instead.
         # TODO: move this into yb_build.sh itself.
+        # yugabyted-ui build only needs to run once, so avoid wasting time building it in these
+        # preliminary builds.
         for preliminary_target in ['protoc-gen-insertions', 'bfql_codegen']:
             preliminary_step_cmd_list = [
-                    arg for arg in build_cmd_list if arg != 'packaged_targets'
+                    arg for arg in build_cmd_list
+                    if arg not in ('--build-yugabyted-ui', 'packaged_targets',)
                 ] + ['--target', preliminary_target]
 
             # Skipping Java in these "preliminary" builds whether or not we are building YugaWare.

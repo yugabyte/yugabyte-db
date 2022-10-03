@@ -98,7 +98,7 @@
 // - "sensitive_info":
 //         These flags contain sensitive information. Avoid displaying their values anywhere.
 //
-// - "automatic":
+// - "auto":
 //         These are AutoFlags. Do not explicitly set this tag. Use DEFINE_AUTO_type or
 //         DEFINE_AUTO_NON_RUNTIME_type instead.
 //
@@ -151,7 +151,7 @@ YB_DEFINE_ENUM(
     (kUnsafe)
     (kRuntime)
     (kSensitive_info)
-    (kAutomatic)
+    (kAuto)
     (kPg));
 
 #define FLAG_TAG_stable ::yb::FlagTag::kStable
@@ -162,7 +162,7 @@ YB_DEFINE_ENUM(
 #define FLAG_TAG_unsafe ::yb::FlagTag::kUnsafe
 #define FLAG_TAG_runtime ::yb::FlagTag::kRuntime
 #define FLAG_TAG_sensitive_info ::yb::FlagTag::kSensitive_info
-#define FLAG_TAG_automatic ::yb::FlagTag::kAutomatic
+#define FLAG_TAG_auto ::yb::FlagTag::kAuto
 #define FLAG_TAG_pg ::yb::FlagTag::kPg
 
 // Tag the flag 'flag_name' with the given tag 'tag'.

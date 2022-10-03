@@ -388,7 +388,12 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);
 };
 
-// A writable log segment where state data is stored.
+// A writable log segment where state data is stored. The class is not thread safe.
+// It is still okay to call ::Sync and ::WriteEntryBatch from two different threads
+// as long as write/append/truncate etc are being done by the same thread.
+// ::Sync ends up calling 'fsync' system call and resets 'pending_sync_' prior to that.
+// ::WriteEntryBatch results in a call to 'writev' and is followed by setting 'pending_sync_'.
+// Both these system calls are atomic and hence doing so is safe.
 class WritableLogSegment {
  public:
   WritableLogSegment(std::string path,

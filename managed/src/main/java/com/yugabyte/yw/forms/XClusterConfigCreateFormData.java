@@ -7,6 +7,7 @@ import java.util.UUID;
 import javax.validation.Valid;
 import lombok.ToString;
 import play.data.validation.Constraints.MaxLength;
+import play.data.validation.Constraints.Pattern;
 import play.data.validation.Constraints.Required;
 
 @ApiModel(description = "xcluster create form")
@@ -16,6 +17,11 @@ public class XClusterConfigCreateFormData {
   @Required
   @MaxLength(256)
   @ApiModelProperty(value = "Name", example = "Repl-config1", required = true)
+  @Pattern(
+      value = "^([^\\s_*<>?|\"\\x00]+)$",
+      message =
+          "The name of the replication config cannot contain "
+              + "[SPACE '_' '*' '<' '>' '?' '|' '\"' NULL] characters")
   public String name;
 
   @Required
@@ -29,7 +35,7 @@ public class XClusterConfigCreateFormData {
   @Required
   @ApiModelProperty(
       value = "Source Universe table IDs",
-      example = "[000033df000030008000000000004006, 000033df00003000800000000000400b]",
+      example = "[\"000033df000030008000000000004006\", \"000033df00003000800000000000400b\"]",
       required = true)
   public Set<String> tables;
 
@@ -45,7 +51,7 @@ public class XClusterConfigCreateFormData {
         value =
             "Source Universe table IDs that need bootstrapping; must be a subset of tables "
                 + "in the main body",
-        example = "[000033df000030008000000000004006]",
+        example = "[\"000033df000030008000000000004006\"]",
         required = true)
     public Set<String> tables;
 

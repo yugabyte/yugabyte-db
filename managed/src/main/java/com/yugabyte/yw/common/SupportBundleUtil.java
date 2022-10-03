@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.joda.time.DateTime;
 
 @Slf4j
@@ -192,10 +194,24 @@ public class SupportBundleUtil {
       }
       Matcher fileNameMatcher = Pattern.compile(ybcLogsRegexPattern).matcher(filePath);
       if (fileNameMatcher.matches()) {
-        String fileNameSdfPattern = "yyyyMMdd";
         // Uses capturing and non capturing groups in regex pattern for easier retrieval of
-        // neccessary info. Group 2 = the "yyyyMMdd" format in the file name.
-        Date fileDate = new SimpleDateFormat(fileNameSdfPattern).parse(fileNameMatcher.group(2));
+        // neccessary info.
+        // Group 1 = "yyyyMMdd" format in the file name of normal tserver logs.
+        // Group 2 = "yyyy-MM-dd" format for postgres log file names.
+        // dateStringsInFileName is a list of all the captured groups in the file name.
+        // It is useful for capturing both tserver file dates and postgres file dates
+        List<String> dateStringsInFileName = new ArrayList<>();
+        for (int groupIndex = 1; groupIndex <= fileNameMatcher.groupCount(); ++groupIndex) {
+          dateStringsInFileName.add(fileNameMatcher.group(groupIndex));
+        }
+        // Only one of the groups captured in the file name has a non null date
+        String fileDateString =
+            ObjectUtils.firstNonNull(
+                dateStringsInFileName.toArray(new String[dateStringsInFileName.size()]));
+        // yyyyMMdd -> for master and tserver log file names
+        // yyyy-MM-dd -> for postgres log file names
+        String[] possibleDateFormats = {"yyyyMMdd", "yyyy-MM-dd"};
+        Date fileDate = DateUtils.parseDate(fileDateString, possibleDateFormats);
         if (checkDateBetweenDates(fileDate, startDate, endDate)) {
           filteredLogFilePaths.add(trimmedFilePath);
         } else if ((minDate == null && fileDate.before(startDate))

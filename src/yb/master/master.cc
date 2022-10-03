@@ -93,7 +93,6 @@ METRIC_DEFINE_entity(cluster);
 
 using namespace std::literals;
 using std::min;
-using std::shared_ptr;
 using std::vector;
 
 using yb::consensus::RaftPeerPB;
@@ -170,14 +169,14 @@ Master::~Master() {
 }
 
 string Master::ToString() const {
-  if (state_ != kRunning) {
+  if (state_.load() != kRunning) {
     return "Master (stopped)";
   }
   return strings::Substitute("Master@$0", yb::ToString(first_rpc_address()));
 }
 
 Status Master::Init() {
-  CHECK_EQ(kStopped, state_);
+  CHECK_EQ(kStopped, state_.load());
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
@@ -284,9 +283,9 @@ Status Master::RegisterServices() {
                                                      std::move(consensus_service),
                                                      rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(
-      new tserver::RemoteBootstrapServiceImpl(
-          fs_manager_.get(), catalog_manager_.get(), metric_entity()));
+  std::unique_ptr<ServiceIf> remote_bootstrap_service(new tserver::RemoteBootstrapServiceImpl(
+      fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
+      &this->proxy_cache()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
 
@@ -294,7 +293,7 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
           client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
-          &messenger()->scheduler())));
+          &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
 
   return Status::OK();
 }
@@ -304,11 +303,12 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Tasks.
   DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
-  DisplayIconTile(output, "fa-check", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
+  DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
 }
 
 Status Master::StartAsync() {
-  CHECK_EQ(kInitialized, state_);
+  CHECK_EQ(kInitialized, state_.load());
 
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterServices());
@@ -343,7 +343,7 @@ Status Master::InitCatalogManager() {
 }
 
 Status Master::WaitForCatalogManagerInit() {
-  CHECK_EQ(state_, kRunning);
+  CHECK_EQ(state_.load(), kRunning);
 
   return init_future_.get();
 }
@@ -369,7 +369,7 @@ Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& 
 }
 
 void Master::Shutdown() {
-  if (state_ == kRunning) {
+  if (state_.load() == kRunning) {
     string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
@@ -382,6 +382,9 @@ void Master::Shutdown() {
     async_client_init_->Shutdown();
     cdc_state_client_init_->Shutdown();
     RpcAndWebServerBase::Shutdown();
+    if (init_pool_) {
+      init_pool_->Shutdown();
+    }
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
   } else {

@@ -15,16 +15,16 @@ type: indexpage
 {{< note title="Note" >}}
 
 * YugabyteDB's synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
-* YugabyteDB asynchronous replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
+* YugabyteDB xCluster replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
 
 {{</note >}}
 
 This section describes how replication works in DocDB. The data in a DocDB table is split into tablets. By default, each tablet is synchronously replicated using the Raft algorithm across various nodes or fault domains (such as availability zones/racks/regions/cloud providers).
 
 There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
+
 * **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
 * **Read replicas** The in-cluster asynchronous replicas are called read replicas.
-
 
 <div class="row">
 

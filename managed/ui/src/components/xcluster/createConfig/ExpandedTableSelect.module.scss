@@ -1,0 +1,16 @@
+.expandComponent {
+  margin-left: 65px;
+}
+
+.paginationControls {
+  display: flex;
+
+  .pageSizeInput {
+    margin-top: 20px;
+    width: auto;
+  }
+
+  .yBPagination {
+    margin-left: auto;
+  }
+}

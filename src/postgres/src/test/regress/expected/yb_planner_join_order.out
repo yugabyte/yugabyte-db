@@ -143,9 +143,9 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000000 t4 INNER JOIN t_100 t1 ON t4.id = 
                ->  Seq Scan on t_100 t1
                ->  Index Scan using t_1000000_pkey on t_1000000 t4
                      Index Cond: (id = t1.id)
-         ->  Index Scan using t_10000_pkey on t_10000 t3
+         ->  Index Scan using t_1000_pkey on t_1000 t2
                Index Cond: (id = t4.id)
-   ->  Index Scan using t_1000_pkey on t_1000 t2
+   ->  Index Scan using t_10000_pkey on t_10000 t3
          Index Cond: (id = t4.id)
 (10 rows)
 

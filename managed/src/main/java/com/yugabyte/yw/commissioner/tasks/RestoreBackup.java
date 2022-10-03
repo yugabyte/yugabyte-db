@@ -2,11 +2,12 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import javax.inject.Inject;
@@ -25,6 +26,8 @@ public class RestoreBackup extends UniverseTaskBase {
     return (RestoreBackupParams) taskParams;
   }
 
+  @Inject YbcManager ybcManager;
+
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
@@ -36,6 +39,15 @@ public class RestoreBackup extends UniverseTaskBase {
 
       if (universe.getUniverseDetails().backupInProgress) {
         throw new RuntimeException("A backup for this universe is already in progress.");
+      }
+
+      if (universe.isYbcEnabled()
+          && !universe
+              .getUniverseDetails()
+              .ybcSoftwareVersion
+              .equals(ybcManager.getStableYbcVersion())) {
+        createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
+            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
       }
 
       createAllRestoreSubtasks(

@@ -39,10 +39,14 @@
 DEFINE_uint64(max_group_replicate_batch_size, 16,
               "Maximum number of operations to submit to consensus for replication in a batch.");
 
+DEFINE_double(estimated_replicate_msg_size_percentage, 0.95,
+              "The estimated percentage of replicate message size in a log entry batch.");
+
 DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,
                  "Inject latency before replicating batch.");
 
 DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint64(rpc_max_message_size);
 
 using namespace std::literals;
 using std::vector;
@@ -109,6 +113,7 @@ class PreparerImpl {
   OperationDrivers leader_side_batch_;
   size_t leader_side_batch_size_estimate_ = 0;
   const size_t leader_side_batch_size_limit_;
+  const size_t leader_side_single_op_size_limit_;
 
   std::unique_ptr<ThreadPoolToken> tablet_prepare_pool_token_;
 
@@ -120,6 +125,8 @@ class PreparerImpl {
 
   void ProcessAndClearLeaderSideBatch();
 
+  void ProcessFailedItem(OperationDriver* item, Status status);
+
   // A wrapper around ProcessAndClearLeaderSideBatch that assumes we are currently holding the
   // mutex.
 
@@ -130,7 +137,10 @@ class PreparerImpl {
 PreparerImpl::PreparerImpl(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool)
     : consensus_(consensus),
       // Reserve 5% for other LogEntryBatchPB fields in case of big batches.
-      leader_side_batch_size_limit_(FLAGS_protobuf_message_total_bytes_limit * 0.95),
+      leader_side_batch_size_limit_(
+          FLAGS_protobuf_message_total_bytes_limit * FLAGS_estimated_replicate_msg_size_percentage),
+      leader_side_single_op_size_limit_(
+          FLAGS_rpc_max_message_size * FLAGS_estimated_replicate_msg_size_percentage),
       tablet_prepare_pool_token_(tablet_prepare_pool
                                      ->NewToken(ThreadPool::ExecutionMode::SERIAL)) {
 }
@@ -259,10 +269,19 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
   const bool apply_separately = ShouldApplySeparately(operation_type);
   const int64_t bound_term = apply_separately ? -1 : item->consensus_round()->bound_term();
 
-  const auto item_replicate_msg_size =
-      item->consensus_round() && item->consensus_round()->replicate_msg()
-          ? item->consensus_round()->replicate_msg()->ByteSizeLong()
-          : 0;
+  const auto item_replicate_msg_size = item->ReplicateMsgSize();
+  // The item size exceeds size limit, we cannot handle it.
+  if (item_replicate_msg_size > leader_side_single_op_size_limit_) {
+    ProcessAndClearLeaderSideBatch();
+    ProcessFailedItem(
+        item,
+        STATUS_FORMAT(
+            InvalidArgument,
+            "Operation replicate msg size ($0) exceeds limit of leader side single op size ($1)",
+            item_replicate_msg_size,
+            leader_side_single_op_size_limit_));
+    return;
+  }
   // Don't add more than the max number of operations to a batch, and also don't add
   // operations bound to different terms, so as not to fail unrelated operations
   // unnecessarily in case of a bound term mismatch.
@@ -276,6 +295,16 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
   leader_side_batch_size_estimate_ += item_replicate_msg_size;
   if (apply_separately) {
     ProcessAndClearLeaderSideBatch();
+  }
+}
+
+void PreparerImpl::ProcessFailedItem(OperationDriver* item, Status status) {
+  DCHECK_EQ(leader_side_batch_.size(), 0);
+  Status s = item->PrepareAndStart();
+  if (s.ok()) {
+    item->consensus_round()->NotifyReplicationFailed(status);
+  } else {
+    item->HandleFailure(s);
   }
 }
 

@@ -5,7 +5,6 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.CertificateInfo;
 import java.util.UUID;
 import play.data.validation.Constraints;
@@ -27,7 +26,7 @@ public class ToggleTlsParams {
 
   // Verifies the ToggleTlsParams by comparing with the existing
   // UniverseDefinitionTaskParams, returns YWError object if invalid else null
-  public YBPError verifyParams(UniverseDefinitionTaskParams universeParams) {
+  public void verifyParams(UniverseDefinitionTaskParams universeParams) {
     boolean existingEnableClientToNodeEncrypt =
         universeParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
     boolean existingEnableNodeToNodeEncrypt =
@@ -37,29 +36,48 @@ public class ToggleTlsParams {
 
     if (upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE) {
-      return new YBPError("TLS upgrade can be performed either rolling or non-rolling way.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "TLS upgrade can be performed either rolling or non-rolling way."
+              + " - for universe: "
+              + universeParams.universeUUID);
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
         && this.enableNodeToNodeEncrypt == existingEnableNodeToNodeEncrypt) {
-      return new YBPError("No changes in Tls parameters, cannot perform update operation.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "No changes in Tls parameters, cannot perform update operation."
+              + " - for universe: "
+              + universeParams.universeUUID);
     }
 
     if (rootCA != null && CertificateInfo.get(rootCA) == null) {
-      return new YBPError("No valid rootCA found for UUID: " + rootCA);
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "No valid rootCA found for UUID: "
+              + rootCA
+              + " - for universe: "
+              + universeParams.universeUUID);
     }
 
     if (existingRootCA != null && rootCA != null && !existingRootCA.equals(rootCA)) {
-      return new YBPError("Cannot update root certificate, if already created.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Cannot update root certificate, if already created."
+              + " - for universe: "
+              + universeParams.universeUUID);
     }
 
     if (existingClientRootCA != null
         && clientRootCA != null
         && !existingClientRootCA.equals(clientRootCA)) {
-      return new YBPError("Cannot update client root certificate, if already created.");
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Cannot update client root certificate, if already created."
+              + " - for universe: "
+              + universeParams.universeUUID);
     }
-
-    return null;
   }
 
   public static ToggleTlsParams bindFromFormData(ObjectNode formData) {

@@ -16,6 +16,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -162,14 +163,16 @@ public class TableManagerYbTest extends FakeDBApplication {
   private List<String> getExpectedBackupTableCommand(
       BackupTableParams backupTableParams, String storageType, boolean isDelete) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      podFQDNToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, testUniverse.getUniverseDetails().nodeDetailsSet);
+      for (Cluster cluster : testUniverse.getUniverseDetails().clusters) {
+        podAddrToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, testUniverse.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     }
 
     List<String> cmd = new LinkedList<>();
@@ -212,7 +215,7 @@ public class TableManagerYbTest extends FakeDBApplication {
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
-      cmd.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());
@@ -242,7 +245,9 @@ public class TableManagerYbTest extends FakeDBApplication {
               ? K8S_CERT_PATH
               : testProvider.getYbHome() + VM_CERT_DIR);
     }
-    if (backupTableParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        mockruntimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     cmd.add(backupTableParams.actionType.name().toLowerCase());

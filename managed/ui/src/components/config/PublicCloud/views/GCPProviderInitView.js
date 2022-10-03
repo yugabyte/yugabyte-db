@@ -18,6 +18,7 @@ import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../util
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
+import { specialChars } from '../../constants';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -89,7 +90,7 @@ class GCPProviderInitView extends Component {
       providerUUID: '',
       currentProvider: {},
       hostVpcVisible: true,
-      networkSetupType: 'new_vpc',
+      networkSetupType: 'existing_vpc',
       credentialInputType: 'upload_service_account_json'
     };
     this.hostVpcToggled = this.hostVpcToggled.bind(this);
@@ -195,7 +196,7 @@ class GCPProviderInitView extends Component {
     }
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
-        {'Create a new VPC'}
+        {'Create a new VPC (Beta)'}
       </option>,
       <option key={2} value={'existing_vpc'}>
         {'Specify an existing VPC'}
@@ -399,6 +400,12 @@ const validate = (values) => {
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is Required';
   }
+  else {
+    if(!specialChars.test(values.accountName)){
+      errors.accountName = 'Account Name cannot have special characters except - and _';
+    }
+  }
+  
   if (!isNonEmptyObject(values.gcpConfig)) {
     errors.gcpConfig = 'Provider Config is Required';
   }
@@ -422,7 +429,7 @@ function mapStateToProps(state) {
       accountName: '',
       credential_input: 'upload_service_account_json',
       airGapInstall: false,
-      network_setup: 'new_vpc',
+      network_setup: 'existing_vpc',
       ntp_option: NTP_TYPES.PROVIDER,
       ntpServers: [],
       setUpChrony: true

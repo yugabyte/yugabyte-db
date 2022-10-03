@@ -1,39 +1,78 @@
 #!/usr/bin/env bash
+# Copyright (c) YugaByte, Inc.
 
 set -e
 
-GO111MODULE=on
+export GO111MODULE=on
 
-package_name='node-agent'
-platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly protoc_version=21.5
+readonly package_name='node-agent'
+readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
+readonly skip_dirs=("third-party" "proto" "generated" "build", "resources")
 
-base_dir=$(dirname "$0")
+readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
-project_dir=$(pwd)
+readonly project_dir=$(pwd)
 popd
 
-GOPATH=$project_dir/third-party
+export GOPATH=$project_dir/third-party
+export GOBIN=$GOPATH/bin
+export PATH=$GOBIN:$PATH
 
-build_output_dir="${project_dir}/build"
+readonly build_output_dir="${project_dir}/build"
 if [[ ! -d $build_output_dir ]]; then
     mkdir $build_output_dir
 fi
-grpc_output_dir="${project_dir}/generated"
-if [[ ! -d $grpc_output_dir ]]; then
-    mkdir $grpc_output_dir
-fi
-grpc_proto_dir=${project_dir}/proto
-grpc_proto_files="${grpc_proto_dir}/*.proto"
+readonly grpc_output_dir="${project_dir}/generated"
+readonly grpc_proto_dir=${project_dir}/proto
+readonly grpc_proto_files="${grpc_proto_dir}/*.proto"
 
+to_lower() {
+  out=`awk '{print tolower($0)}' <<< "$1"`
+  echo $out
+}
+
+readonly build_os=$(to_lower "$(uname -s)")
+readonly build_arch=$(to_lower "$(uname -m)")
+
+
+setup_protoc() {
+    if [ ! -f $GOBIN/protoc ]; then
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
+        local release_url=https://github.com/protocolbuffers/protobuf/releases
+        local protoc_os=$build_os
+        if [ $protoc_os == "darwin" ]; then
+            protoc_os=osx
+        fi
+        local protoc_arch=$build_arch
+        local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
+        pushd $GOPATH
+        curl -LO ${release_url}/download/v${protoc_version}/${protoc_filename}
+        unzip -o $protoc_filename -d tmp
+        cp -rf tmp/bin/protoc $GOBIN/protoc
+        rm -rf tmp $protoc_filename
+        popd
+    fi
+    which protoc
+    protoc --version
+    which protoc-gen-go
+    protoc-gen-go --version
+    which protoc-gen-go-grpc
+    protoc-gen-go-grpc --version
+}
 
 generate_grpc_files() {
+    if [[ ! -d $grpc_output_dir ]]; then
+        mkdir -p $grpc_output_dir
+    fi
     protoc -I$grpc_proto_dir --go_out=$grpc_output_dir --go-grpc_out=$grpc_output_dir  \
     --go-grpc_opt=require_unimplemented_servers=false $grpc_proto_files
 }
 
 get_executable_name() {
-    os=$1
-    arch=$2
+    local os=$1
+    local arch=$2
     executable=${package_name}-${os}-${arch}
     if [ $os == "windows" ]; then
         executable+='.exe'
@@ -42,8 +81,8 @@ get_executable_name() {
 }
 
 build_for_platform() {
-    os=$1
-    arch=$2
+    local os=$1
+    local arch=$2
     exec_name=$(get_executable_name $os $arch)
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
@@ -55,12 +94,11 @@ build_for_platform() {
 }
 
 build_for_platforms() {
-    build_output_dir=$1
-    for platform in "${platforms[@]}"
+    for platform in "$@"
     do
         platform_split=(${platform//\// })
-        os=${platform_split[0]}
-        arch=${platform_split[1]}
+        local os=${platform_split[0]}
+        local arch=${platform_split[1]}
         build_for_platform $os $arch
     done
 }
@@ -70,28 +108,49 @@ clean_build() {
     rm -rf $grpc_output_dir
 }
 
+
+
 format() {
     go install github.com/segmentio/golines@latest
-    golines -m 100 -t 4 -w $project_dir/adapters/.
-    golines -m 100 -t 4 -w $project_dir/app/.
-    golines -m 100 -t 4 -w $project_dir/model/.
-    golines -m 100 -t 4 -w $project_dir/util/.
+    go install golang.org/x/tools/cmd/goimports@latest
+    pushd $project_dir
+    for dir in */ ; do
+        # Remove trailing slash.
+        dir=$(echo ${dir} | sed 's/\/$//')
+        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+            continue
+        fi
+        golines -m 100 -t 4 -w ./$dir/.
+    done
+    popd
 }
 
 run_tests() {
-    go  test --tags testonly -v $project_dir/adapters/...
-    go  test --tags testonly -v $project_dir/app/...
-    go  test --tags testonly -v $project_dir/model/...
-    go  test --tags testonly -v $project_dir/util/...
+    # Run all tests if one fails.
+    pushd $project_dir
+    for dir in */ ; do
+        # Remove trailing slash.
+        dir=$(echo ${dir} | sed 's/\/$//')
+        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+            echo "Skipping directory ${dir}"
+            continue
+        fi
+        echo "Running tests in ${dir}..."
+        set +e
+        go test --tags testonly -v ./$dir/...
+        set -e
+    done
+    popd
 }
 
 package_for_platform() {
-    os=$1
-    arch=$2
-    version=$3
-    staging_dir_name="node-agent-${version}-${os}-${arch}"
-    script_dir="${build_output_dir}/${staging_dir_name}/${version}/scripts"
-    bin_dir="${build_output_dir}/${staging_dir_name}/${version}/bin"
+    local os=$1
+    local arch=$2
+    local version=$3
+    staging_dir_name="node_agent-${version}-${os}-${arch}"
+    version_dir="${build_output_dir}/${staging_dir_name}/${version}"
+    script_dir="${version_dir}/scripts"
+    bin_dir="${version_dir}/bin"
     echo "Packaging ${staging_dir_name}"
     os_exec_name=$(get_executable_name $os $arch)
     exec_name="node-agent"
@@ -105,20 +164,23 @@ package_for_platform() {
     mkdir -p $script_dir
     mkdir -p $bin_dir
     cp -rf $os_exec_name ${bin_dir}/$exec_name
+    cp -rf ../version.txt ${version_dir}/version.txt
+    cp -rf ../version_metadata.json ${version_dir}/version_metadata.json
     pushd "$project_dir/resources"
     cp -rf preflight_check.sh ${script_dir}/preflight_check.sh
     cp -rf yb-node-agent.sh ${bin_dir}/yb-node-agent.sh
+    cp -rf node-agent-installer.sh ${bin_dir}/node-agent-installer.sh
     chmod 755 ${script_dir}/*.sh
     chmod 755 ${bin_dir}/*.sh
     popd
-    tar -zcf ${staging_dir_name}.tgz -C $staging_dir_name .
-    rm -rf $staging_dir_name
+    tar -zcf ${staging_dir_name}.tar.gz -C $staging_dir_name .
     popd
 }
 
 package_for_platforms() {
-  version=$1
-  for platform in "${platforms[@]}"
+  local version=$1
+  shift
+  for platform in "$@"
   do
       platform_split=(${platform//\// })
       os=${platform_split[0]}
@@ -128,7 +190,7 @@ package_for_platforms() {
 }
 
 update_dependencies() {
-    go mod tidy
+    go mod tidy -e
 }
 
 build=false
@@ -142,9 +204,9 @@ show_help() {
 Usage:
 ./build.sh <fmt|build|clean|test|package <version>|update-dependencies>
 EOT
+exit 1
 }
 
-build_args=( "$@" )
 while [[ $# -gt 0 ]]; do
   case $1 in
     help)
@@ -184,6 +246,15 @@ while [[ $# -gt 0 ]]; do
   fi
 done
 
+# Release build passes the platforms in the environment.
+if [ -z "${NODE_AGENT_PLATFORMS}" ]; then
+    PLATFORMS=("${default_platforms[@]}")
+    echo "Using default platforms $PLATFORMS"
+else
+    PLATFORMS=($echo ${NODE_AGENT_PLATFORMS})
+    echo "Using environment platforms ${PLATFORMS[@]}"
+fi
+
 help_needed=true
 if [ "$clean" == "true" ]; then
    help_needed=false
@@ -206,9 +277,13 @@ fi
 if [ "$build" == "true" ]; then
     help_needed=false
     echo "Building..."
+    if [ ! -f "go.mod" ]; then
+        go mod init node-agent
+    fi
     format
-    # generate_grpc_files
-    build_for_platforms $build_output_dir
+    setup_protoc
+    generate_grpc_files
+    build_for_platforms "${PLATFORMS[@]}"
 fi
 
 if [ "$test" == "true" ]; then
@@ -223,7 +298,7 @@ if [ "$package" == "true" ]; then
     else
         help_needed=false
         echo "Packaging..."
-        package_for_platforms $version
+        package_for_platforms $version "${PLATFORMS[@]}"
     fi
 fi
 

@@ -152,7 +152,11 @@ if [[ $install_mode == "true" ]]; then
    exit 1
   fi
 
-  ln -sfT "$linuxbrew_dir" "$BREW_HOME"
+  if [[ "$linuxbrew_dir" != "$BREW_HOME" ]]; then
+    ln -sfT "$linuxbrew_dir" "$BREW_HOME"
+  else
+    echo "Skipping linuxbrew symlink, since it already has necessary length: $linuxbrew_dir"
+  fi
 
   # We are relying on the fact that $distribution_dir is not a symlink. We don't want to add symlink
   # resolution to the find command because someone may accidentally add a symlink pointing to a

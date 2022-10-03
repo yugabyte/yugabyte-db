@@ -3114,7 +3114,10 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	 * Disable timeouts to allow for slow commands, idle parallel workers, etc
 	 */
 	if (AH->public.dopt->include_yb_metadata)
+	{
 		ahprintf(AH, "SET yb_binary_restore = true;\n");
+		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
+	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
 	ahprintf(AH, "SET lock_timeout = 0;\n");
 	ahprintf(AH, "SET idle_in_transaction_session_timeout = 0;\n");

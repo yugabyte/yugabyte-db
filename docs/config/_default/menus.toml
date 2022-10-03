@@ -1,5 +1,13 @@
 ########## Top header menu
 
+# [[top_nav]]
+#   name = "Register for DSS 2022"
+#   weight = 1
+#   url = "https://distributedsql.org/"
+#   [top_nav.params]
+#     newTab = true
+#     classes = "gradient-link"
+
 [[top_nav]]
   name = "Join us on"
   weight = 1
@@ -17,9 +25,9 @@
     newTab = true
 
 [[top_nav]]
-  name = "Get Started"
+  name = "Start Now"
   weight = 3
-  url = "https://download.yugabyte.com"
+  url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [top_nav.params]
     newTab = true
 
@@ -84,14 +92,6 @@
   parent = "documentation"
 
 [[main]]
-  name = "Integrations"
-  weight = 11
-  url = "/preview/integrations/apache-kafka/"
-  parent = "documentation"
-  [main.params]
-    excludeVersion = true
-
-[[main]]
   name = "Reference"
   weight = 12
   url = "/architecture/"
@@ -117,13 +117,15 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/yugabyte-platform/overview/"
+  url = "/yugabyte-platform/"
 
 [[main]]
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "FAQ"
@@ -133,9 +135,34 @@
     excludeVersion = true
 
 [[main]]
-  name = "Release Notes"
+  name = "Integrations"
   weight = 4
+  url = "/preview/integrations/apache-kafka/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Releases"
+  weight = 5
+  identifier = "releases"
   url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "YugabyteDB"
+  weight = 1
+  parent = "releases"
+  url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "YugabyteDB Managed"
+  weight = 2
+  parent = "releases"
+  identifier = "ybmanaged-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
   [main.params]
     excludeVersion = true
 
@@ -310,7 +337,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/preview/yugabyte-platform/overview/"
+  url = "/preview/yugabyte-platform/"
   [preview.params]
     showSection = true
 
@@ -318,7 +345,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   [preview.params]
     showSection = true
 
@@ -425,6 +452,15 @@
     classes = "other-links"
     showSection = true
     newTab = true
+
+[[preview_yugabyte-cloud]]
+  name = "What's New"
+  weight = 4
+  identifier = "yugabytedb-managed-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
+  [preview_yugabyte-cloud.params]
+    classes = "other-links"
+    showSection = true
 
 ########## Menus for stable
 
@@ -549,7 +585,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/stable/yugabyte-platform/overview/"
+  url = "/stable/yugabyte-platform/"
   [stable.params]
     showSection = true
 
@@ -557,7 +593,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   [stable.params]
     showSection = true
 
@@ -713,7 +749,7 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
-  url = "/v2.12/yugabyte-platform/overview/"
+  url = "/v2.12/yugabyte-platform/"
   ["v2.12".params]
     showSection = true
 
@@ -721,7 +757,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   ["v2.12".params]
     showSection = true
 
@@ -888,7 +924,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   ["v2.8".params]
     showSection = true
 
@@ -1032,7 +1068,7 @@
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/cloud-overview/"
+  url = "/preview/yugabyte-cloud/"
   ["v2.6".params]
     showSection = true
 

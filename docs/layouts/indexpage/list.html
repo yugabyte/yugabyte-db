@@ -1,5 +1,16 @@
 {{ define "main" }}
 <div class="td-content">
+  {{ if and (.Params.resourcesIntro) (.Params.resources) }}
+    <div class="resources">
+      <ul>
+        <li>{{ .Params.resourcesIntro }}</li>
+        {{ range $key, $properties := .Params.resources }}
+          <li><a href="{{ $properties.url }}" class="{{- if not (modBool $key 2)}}grey-bg{{- else}}purple-bg{{- end }}" title="{{ $properties.title }}">{{ $properties.title }}</a></li>
+        {{ end }}
+      </ul>
+    </div>
+  {{ end }}
+
   <div class="main-heading-with-version {{- if not .Params.image }} heading-without-image{{- end }}">
     {{ if .Page.Params.image }}
       <div class="heading-image">

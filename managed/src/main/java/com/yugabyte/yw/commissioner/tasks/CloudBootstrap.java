@@ -158,7 +158,7 @@ public class CloudBootstrap extends CloudTaskBase {
     public boolean airGapInstall = false;
 
     // Port to open for connections on the instance.
-    public Integer sshPort = 54422;
+    public Integer sshPort = 22;
 
     // Whether provider should validate a custom KeyPair
     // Default: false.

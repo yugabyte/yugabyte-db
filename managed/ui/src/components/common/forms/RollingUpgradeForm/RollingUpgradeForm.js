@@ -64,7 +64,8 @@ export default class RollingUpgradeForm extends Component {
         }
       },
       overrideIntentParams,
-      resetLocation
+      resetLocation,
+      featureFlags
     } = this.props;
 
     const payload = {};
@@ -137,7 +138,9 @@ export default class RollingUpgradeForm extends Component {
     if (!isDefinedNotNull(primaryCluster)) {
       return;
     }
-    payload.ybSoftwareVersion = values.ybSoftwareVersion;
+    if (payload.taskType !== 'VMImage') {
+      payload.ybSoftwareVersion = values.ybSoftwareVersion;
+    }
     payload.universeUUID = universeUUID;
     payload.nodePrefix = nodePrefix;
     const masterGFlagList = [];
@@ -165,6 +168,9 @@ export default class RollingUpgradeForm extends Component {
         primaryCluster.userIntent.deviceInfo.volumeSize = overrideIntentParams.volumeSize;
       }
     }
+
+    if (!isDefinedNotNull(primaryCluster.enableYbc))
+      payload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
 
     this.props.submitRollingUpgradeForm(payload, universeUUID).then((response) => {
       if (response.payload.status === 200) {
@@ -254,7 +260,7 @@ export default class RollingUpgradeForm extends Component {
                   }}
                 />
               ) : (
-                <span>Latest software is installed</span>
+                <span>Selected software version already installed</span>
               )
             }
             asyncValidating={!this.state.formConfirmed}
@@ -323,11 +329,13 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
             footerAccessory={
-              formValues.upgradeOption === 'Non-Restart' && (
+              formValues.upgradeOption === 'Non-Restart' ? (
                 <span className="non-rolling-msg">
                   <img alt="Note" src={WarningIcon} />
                   &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
                 </span>
+              ) : (
+                <></>
               )
             }
             title="G-Flags"
@@ -380,7 +388,7 @@ export default class RollingUpgradeForm extends Component {
                   ))}
                 </div>
               </FlexContainer>
-              {errorAlert}
+              <div className="gflag-err-msg">{errorAlert}</div>
             </div>
           </YBModal>
         );
@@ -546,7 +554,7 @@ export default class RollingUpgradeForm extends Component {
             asyncValidating={!this.state.formConfirmed}
           >
             <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
-              { overrideIntentParams.instanceType ? (
+              {overrideIntentParams.instanceType ? (
                 <Field
                   name="timeDelay"
                   type="number"

@@ -69,47 +69,47 @@ YB_DEFINE_ENUM(
 
 // Runtime AutoFlags
 #define DEFINE_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, true, txt); \
+  DEFINE_AUTO_INTERNAL(bool, name, flag_class, initial_val, target_val, true, txt); \
   TAG_FLAG(name, runtime)
 
 #define DEFINE_AUTO_int32(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, true, txt) \
+  DEFINE_AUTO_INTERNAL(int32, name, flag_class, initial_val, target_val, true, txt) \
   TAG_FLAG(name, runtime)
 
 #define DEFINE_AUTO_int64(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, true, txt) \
+  DEFINE_AUTO_INTERNAL(int64, name, flag_class, initial_val, target_val, true, txt) \
   TAG_FLAG(name, runtime)
 
 #define DEFINE_AUTO_uint64(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, true, txt) \
+  DEFINE_AUTO_INTERNAL(uint64, name, flag_class, initial_val, target_val, true, txt) \
   TAG_FLAG(name, runtime)
 
 #define DEFINE_AUTO_double(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(double, name, flag_class, initial_val, target_val, true, txt) \
+  DEFINE_AUTO_INTERNAL(double, name, flag_class, initial_val, target_val, true, txt) \
   TAG_FLAG(name, runtime)
 
 #define DEFINE_AUTO_string(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(string, name, flag_class, initial_val, target_val, true, txt) \
+  DEFINE_AUTO_string_internal(name, flag_class, initial_val, target_val, true, txt) \
   TAG_FLAG(name, runtime)
 
 // Non Runtime AutoFlags
 #define DEFINE_AUTO_NON_RUNTIME_bool(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL(bool, name, flag_class, initial_val, target_val, false, txt)
 
 #define DEFINE_AUTO_NON_RUNTIME_int32(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL(int32, name, flag_class, initial_val, target_val, false, txt)
 
 #define DEFINE_AUTO_NON_RUNTIME_int64(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL(int64, name, flag_class, initial_val, target_val, false, txt)
 
 #define DEFINE_AUTO_NON_RUNTIME_uint64(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL(uint64, name, flag_class, initial_val, target_val, false, txt)
 
 #define DEFINE_AUTO_NON_RUNTIME_double(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(double, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL(double, name, flag_class, initial_val, target_val, false, txt)
 
 #define DEFINE_AUTO_NON_RUNTIME_string(name, flag_class, initial_val, target_val, txt) \
-  DEFINE_AUTO(string, name, flag_class, initial_val, target_val, false, txt)
+  DEFINE_AUTO_INTERNAL_string(name, flag_class, initial_val, target_val, false, txt)
 
 struct AutoFlagDescription {
   std::string name;
@@ -135,7 +135,7 @@ bool ShouldTestPromoteAllAutoFlags();
 // COMPILE_ASSERT is used to make sure initial_val and target_val are of the specified flag type.
 // If a value of an invalid type is provided, it will cause compilation to fail with an error like
 // FLAG_<name>_initial_val_is_not_valid.
-#define DEFINE_AUTO(type, name, flag_class, initial_val, target_val, is_runtime, txt) \
+#define DEFINE_AUTO_INTERNAL(type, name, flag_class, initial_val, target_val, is_runtime, txt) \
   static_assert( \
       yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(initial_val), \
       "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) \
@@ -145,12 +145,30 @@ bool ShouldTestPromoteAllAutoFlags();
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) \
       " '" BOOST_PP_STRINGIZE(target_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
   BOOST_PP_CAT(DEFINE_, type)(name, initial_val, txt); \
-  TAG_FLAG(name, automatic); \
-  TAG_FLAG(name, stable) \
+  TAG_FLAG(name, auto); \
+  TAG_FLAG(name, stable); \
   namespace { \
-  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)(\
+  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)( \
       BOOST_PP_STRINGIZE(name), yb::AutoFlagClass::flag_class, \
       BOOST_PP_STRINGIZE(initial_val), BOOST_PP_STRINGIZE(target_val), is_runtime); \
+  }  // namespace
+
+#define DEFINE_AUTO_string_internal(name, flag_class, initial_val, target_val, is_runtime, txt) \
+  static_assert( \
+      yb::auto_flags_internal::IsValid_string(initial_val), \
+      "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" initial_val \
+      "' is not assignable to string"); \
+  static_assert( \
+      yb::auto_flags_internal::IsValid_string(target_val), \
+      "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" target_val \
+      "' is not assignable to string"); \
+  DEFINE_string(name, initial_val, txt); \
+  TAG_FLAG(name, auto); \
+  TAG_FLAG(name, stable); \
+  namespace { \
+  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)( \
+      BOOST_PP_STRINGIZE(name), yb::AutoFlagClass::flag_class, initial_val, target_val, \
+      is_runtime); \
   }  // namespace
 
 namespace auto_flags_internal {

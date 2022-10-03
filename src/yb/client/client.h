@@ -241,6 +241,11 @@ class YBClient {
   Status WaitForCreateTableToFinish(const string& table_id,
                                             const CoarseTimePoint& deadline);
 
+  // Wait for delete table to finish.
+  Status WaitForDeleteTableToFinish(const string& table_id);
+  Status WaitForDeleteTableToFinish(const string& table_id,
+                                    const CoarseTimePoint& deadline);
+
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
   Status TruncateTable(const std::string& table_id, bool wait = true);
@@ -533,13 +538,18 @@ class YBClient {
   Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
                          const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
-  Result<bool> IsBootstrapRequired(const TableId& table_id,
+  Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const string& producer_id,
                                                const TableId& table_id,
                                                const master::ProducerSplitTabletInfoPB& split_info);
+
+  // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
+  Result<bool> UpdateConsumerOnProducerMetadata(const string& producer_id,
+                                                const TableId& table_id,
+                                                const tablet::ChangeMetadataRequestPB& meta_info);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -571,7 +581,9 @@ class YBClient {
   // List tables in a namespace.
   //
   // 'tables' is appended to only on success.
-  Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
+  Result<std::vector<YBTableName>> ListUserTables(
+      const master::NamespaceIdentifierPB& ns_identifier,
+      bool include_indexes = false);
 
   Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
 
@@ -634,6 +646,9 @@ class YBClient {
   Status CreateTransactionsStatusTable(
       const std::string& table_name,
       const master::ReplicationInfoPB* replication_info = nullptr);
+
+  // Add a tablet to a transaction table.
+  Status AddTransactionStatusTablet(const TableId& table_id);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
@@ -719,6 +734,9 @@ class YBClient {
   // Check if placement information is satisfiable.
   Status ValidateReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
+  // Get the disk size of a table (calculated as SST file size + WAL file size)
+  Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
@@ -729,6 +747,7 @@ class YBClient {
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
                         master::IncludeInactive include_inactive,
+                        master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);

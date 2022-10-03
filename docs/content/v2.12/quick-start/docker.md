@@ -77,7 +77,7 @@ You must have the Docker runtime installed on your localhost. Follow the links b
 Pull the YugabyteDB container.
 
 ```sh
-$ docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
+$ docker pull yugabytedb/yugabyte:{{<yb-version version="v2.12" format="build">}}
 ```
 
 ## Create a local cluster
@@ -425,4 +425,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ### Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

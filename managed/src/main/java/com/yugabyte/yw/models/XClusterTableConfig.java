@@ -76,11 +76,16 @@ public class XClusterTableConfig extends Model {
       example = "2022-04-26 15:37:32.610000")
   public Date restoreTime;
 
+  // If its main table is not part the config, it will be false; otherwise, it indicates whether the
+  // table is an index table.
+  public boolean indexTable;
+
   public XClusterTableConfig(XClusterConfig config, String tableId) {
     this.config = config;
     this.tableId = tableId;
     replicationSetupDone = false;
     needBootstrap = false;
+    indexTable = false;
   }
 
   public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {

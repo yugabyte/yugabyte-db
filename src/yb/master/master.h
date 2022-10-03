@@ -210,7 +210,7 @@ class Master : public tserver::DbServerBase {
 
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
-  MasterState state_;
+  std::atomic<MasterState> state_;
 
   std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;

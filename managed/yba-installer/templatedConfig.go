@@ -1,363 +1,389 @@
 /*
 * Copyright (c) YugaByte, Inc.
-*/
+ */
 
 package main
 
 import (
-    "github.com/hashicorp/go-version"
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "github.com/spf13/viper"
-    "os"
-    "path/filepath"
-    "sigs.k8s.io/yaml"
-    "strings"
-    "text/template"
-    "io/ioutil"
-    "log"
-    "github.com/xeipuuv/gojsonschema"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	yaml2 "github.com/goccy/go-yaml"
+	"github.com/xeipuuv/gojsonschema"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"sigs.k8s.io/yaml"
+	"strings"
+	"text/template"
 )
 
-var availableData = map[string]string{}
+//PlatformAppSecret is special cased because it is not configurable by the user.
+var platformAppSecret string = GenerateRandomStringURLSafe(64)
 
-// Validates that the parameters in each component's yml config file are indeed
-// valid by turning the YAML file into a JSON file, and then validating that
+//CorsOrigin is special cased because it is not configurable by the user.
+var corsOrigin string = GenerateCORSOrigin()
+
+// RandomDbPassword is applied to the templated configuration file if not already
+// set in the configuration file (arbitrary length 20).
+var randomDbPassword string = GenerateRandomStringURLSafe(20)
+
+// ValidateJSONSchema checks that the parameters in each component's config file are indeed
+// valid by turning the input YAML file into a JSON file, and then validating that
 // the parameters have been specified appropriately using the available
 // JSON schema.
-func ValidateJSONSchema(configYmlList []string) {
+func validateJSONSchema(filename string) {
 
-    for _, filename := range(configYmlList) {
+	createdBytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		LogError(fmt.Sprintf("Error: %v.", err))
+	}
 
-        createdBytes, err := ioutil.ReadFile(filename)
-        if err != nil {
-        log.Fatalf("error: %v", err)
-        }
+	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
+	if jsonStringErr != nil {
+		LogError(fmt.Sprintf("Error: %v.\n", jsonStringErr))
+	}
 
-            jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
-        if jsonStringErr != nil {
-            fmt.Printf("err: %v\n", jsonStringErr)
-        }
+	var jsonData map[string]interface{}
+	if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
+		LogError(fmt.Sprintf("Error: %v.\n", jsonDataError))
+	}
 
-        var jsonData map[string]interface{}
-        if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
-            fmt.Printf("err: %v\n", jsonDataError)
-        }
+	jsonBytesInput, _ := json.Marshal(jsonData)
 
-        jsonBytesInput, _ := json.Marshal(jsonData)
+	jsonStringInput := string(jsonBytesInput)
 
-        jsonStringInput := string(jsonBytesInput)
+	jsonSchemaName := "file://./configFiles/yba-installer-input-json-schema.json"
 
-        serviceName := strings.TrimSuffix(strings.Split(filename, ".")[0], "\n")
+	schemaLoader := gojsonschema.NewReferenceLoader(jsonSchemaName)
+	documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
 
-        schemaLoader := gojsonschema.NewReferenceLoader("file://./"+serviceName+"-json-schema.json")
-        documentLoader := gojsonschema.NewStringLoader(jsonStringInput)
+	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 
-        result, err := gojsonschema.Validate(schemaLoader, documentLoader)
+	// Panic to automatically exit the Templating Phase if the passed-in parameters are
+	// not valid.
+	if err != nil {
+		LogError("Error: " + err.Error() + ".")
+	}
 
-        // Panic to automatically exit the Templating Phase if the passed-in parameters are
-        // not valid.
-        if err != nil {
-            panic(err.Error())
-        }
-
-        if result.Valid() {
-            fmt.Printf("The Ybanystaller configuration is valid!\n")
-        } else {
-            fmt.Printf("The Ybanystaller configuration is not valid! See Errors :\n")
-            for _, desc := range result.Errors() {
-                log.Fatalf("- %s\n", desc)
-            }
-        }
-
-    }
+	if result.Valid() {
+		LogDebug("The YBA Installer configuration is valid.\n")
+	} else {
+		LogInfo("The YBA Installer configuration is not valid! See Errors: \n")
+		for _, desc := range result.Errors() {
+			LogError(fmt.Sprintf("- %s\n", desc))
+		}
+	}
 
 }
 
-// Reads info from input config file and sets all template parameters
-// for each individual config file (for every component separately)
-func ReadConfigAndSetVariables(configYmlList []string) {
+// Custom function to return Yaml data that we call from within the templated
+// configuration file, to better support future file generation.
+func getYamlPathData(text string) string {
 
-    prometheusFileName := configYmlList[0]
-    platformFileName := configYmlList[1]
-    nginxFileName := configYmlList[2]
+	inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
+	if errYml != nil {
+		LogError(fmt.Sprintf("Error: %v.", errYml))
+	}
 
-    viper.SetConfigName(prometheusFileName)
-    viper.SetConfigType("yml")
-    viper.AddConfigPath(".")
-    err1 := viper.ReadInConfig()
-    if err1 != nil {
-        panic(err1)
-    }
+	pathString := strings.ReplaceAll(text, " ", "")
 
-    prometheusOldConfig := viper.Get("prometheusOldConfig").(map[string]interface{})
-    prometheusNewConfig := viper.Get("prometheusNewConfig").(map[string]interface{})
-    prometheusOldService := viper.Get("prometheusOldService").(map[string]interface{})
-    prometheusNewService := viper.Get("prometheusNewService").(map[string]interface{})
+	if strings.Contains(pathString, "appSecret") {
+		return platformAppSecret
+	} else if strings.Contains(pathString, "corsOrigin") {
+		return corsOrigin
+	} else {
+		yamlPathString := "$" + pathString
+		path, err := yaml2.PathString(yamlPathString)
+		if err != nil {
+			LogError("Yaml Path string " + yamlPathString + " not valid.")
+		}
 
-    availableData["PrometheusOldConfFileName"] = fmt.Sprint(prometheusOldConfig["filename"])
-    availableData["PrometheusNewConfFileName"] = fmt.Sprint(prometheusNewConfig["filename"])
-    availableData["PrometheusOldStoragePath"] = fmt.Sprint(prometheusOldService["storagepath"])
-    availableData["PrometheusNewStoragePath"] = fmt.Sprint(prometheusNewService["storagepath"])
+		var val string
+		err = path.Read(bytes.NewReader(inputYml), &val)
+		if strings.Contains(pathString, "platformDbPassword") && val == "" {
+			return randomDbPassword
+		}
+		// To keep the password constant during reconfiguration.
+		if strings.Contains(pathString, "keyStorePassword") && val == "" {
+			return "password"
+		}
+		// Have to be regular user if not root, since we will not have access to the
+		// postgres user.
+		if !hasSudoAccess() {
+			if strings.Contains(pathString, "platformDbUser") {
+				currentUser, _ := ExecuteBashCommand("bash", []string{"-c", "whoami"})
+				currentUser = strings.ReplaceAll(strings.TrimSuffix(currentUser, "\n"), " ", "")
+				return currentUser
+			}
+		}
+		return val
+	}
+}
 
-    viper.SetConfigName(platformFileName)
-    viper.SetConfigType("yml")
-    viper.AddConfigPath(".")
-    err2 := viper.ReadInConfig()
-    if err2 != nil {
-        panic(err2)
-    }
+// Custom function to set Platform Environment Variables, in the case where we
+// are executing as Non-root and not launching Platform as a systemd service.
+func setYamlEnvironmentVariables(text string) string {
 
-    platformOldConfig := viper.Get("platformOldConfig").(map[string]interface{})
-    platformOldService := viper.Get("platformOldService").(map[string]interface{})
-    platformNewService := viper.Get("platformNewService").(map[string]interface{})
+	inputYml, errYml := ioutil.ReadFile("yba-installer-input.yml")
+	if errYml != nil {
+		LogError(fmt.Sprintf("Error: %v.", errYml))
+	}
 
-    platformAppSecret, _ := GenerateRandomStringURLSafe(64)
-    corsOrigin := GenerateCORSOrigin()
-    platformAppSecretWritten := "\"" + strings.TrimSuffix(platformAppSecret, "\n") + "\""
-    availableData["PlatformOldConfAppSecret"] = platformAppSecretWritten
-    availableData["PlatformOldConfCorsOrigin"] = "\"" + strings.TrimSuffix(corsOrigin, "\n") + "\""
+	envVariableString := strings.ReplaceAll(text, " ", "")
 
-    availableData["PlatformOldConfDbUser"] = fmt.Sprint(platformOldConfig["platformdbuser"])
-    availableData["PlatformOldConfDbPassword"] = fmt.Sprint(platformOldConfig["platformdbpassword"])
+	envValueString := strings.ReplaceAll(envVariableString, ".environmentVariables", "")
 
-    // Will generate a random password for this field if not specified by the user.
-    if availableData["PlatformOldConfDbPassword"] == "" {
-        randomPassword, _ := GenerateRandomStringURLSafe(20)
-        randomPasswordWritten := "\"" + strings.TrimSuffix(randomPassword, "\n") + "\""
-        availableData["PlatformOldConfDbPassword"] = randomPasswordWritten
-    }
+	if strings.Contains(envValueString, "appSecret") {
 
-    oldDevopsHome := fmt.Sprint(platformOldConfig["devopshome"])
-    writtenDevops := "\"" + strings.TrimSuffix(oldDevopsHome, "\n") + "\""
+		os.Setenv("PLATFORM_APP_SECRET", platformAppSecret)
 
-    availableData["PlatformOldConfDevopsHome"] = writtenDevops
+		return "PLATFORM_APP_SECRET"
 
-    oldSwamperPath := fmt.Sprint(platformOldConfig["swampertargetpath"])
-    writtenSwamperPath := "\"" + strings.TrimSuffix(oldSwamperPath, "\n") + "\""
+	} else if strings.Contains(envValueString, "corsOrigin") {
 
-    availableData["PlatformOldConfSwamperTargetPath"] = writtenSwamperPath
+		os.Setenv("CORS_ORIGIN", corsOrigin)
 
-    oldMetricsUrl := fmt.Sprint(platformOldConfig["metricsurl"])
-    writtenMetricsUrl := "\"" + strings.TrimSuffix(oldMetricsUrl, "\n") + "\""
+		return "CORS_ORIGIN"
 
-    availableData["PlatformOldConfMetricsUrl"] = writtenMetricsUrl
+	} else if strings.Contains(envValueString, "metricsUrl") {
 
-    oldUseOauth := fmt.Sprint(platformOldConfig["useoauth"])
-    availableData["PlatformOldConfUseOauth"] = oldUseOauth
+		port := getYamlPathData(".prometheus.externalPort")
 
-    oldYbSecurityType := fmt.Sprint(platformOldConfig["ybsecuritytype"])
-    writtenYbSecurityType := "\"" + strings.TrimSuffix(oldYbSecurityType, "\n") + "\""
+		os.Setenv("METRICS_URL", "http://127.0.0.1:"+port+"/api/v1")
 
-    availableData["PlatformOldConfYbSecurityType"] = writtenYbSecurityType
+		return "METRICS_URL"
 
-    oldYbOidcClientId := fmt.Sprint(platformOldConfig["yboidcclientid"])
-    writtenYbOidcClientId := "\"" + strings.TrimSuffix(oldYbOidcClientId, "\n") + "\""
-    availableData["PlatformOldConfYbOidcClientId"] = writtenYbOidcClientId
+	} else if strings.Contains(envValueString, "metricsManagementUrl") {
 
-    oldYbOidcSecret := fmt.Sprint(platformOldConfig["yboidcsecret"])
-    writtenYbOidcSecret := "\"" + strings.TrimSuffix(oldYbOidcSecret, "\n") + "\""
-    availableData["PlatformOldConfYbOidcSecret"] = writtenYbOidcSecret
+		port := getYamlPathData(".prometheus.externalPort")
 
-    oldDiscoveryUri := fmt.Sprint(platformOldConfig["yboidcdiscoveryuri"])
-    writtenDiscoveryUri := "\"" + strings.TrimSuffix(oldDiscoveryUri, "\n") + "\""
-    availableData["PlatformOldConfYbOidcDiscoveryUri"] = writtenDiscoveryUri
+		os.Setenv("METRICS_MANAGEMENT_URL", "http://127.0.0.1:"+port+"/-")
 
-    oldYwUrl := fmt.Sprint(platformOldConfig["ywurl"])
-    writtenYwUrl := "\"" + strings.TrimSuffix(oldYwUrl, "\n") + "\""
-    availableData["PlatformOldConfYwUrl"] = writtenYwUrl
+		return "METRICS_MANAGEMENT_URL"
 
-    oldYbOidcScope := fmt.Sprint(platformOldConfig["yboidcscope"])
-    writtenYbOidcScope := "\"" + strings.TrimSuffix(oldYbOidcScope, "\n") + "\""
-    availableData["PlatformOldConfYbOidcScope"] = writtenYbOidcScope
+	} else {
+		yamlEnvVariableString := "$" + envVariableString
+		yamlEnvValueString := "$" + envValueString
 
-    oldYbOidcEmailAttr := fmt.Sprint(platformOldConfig["yboidcemailattr"])
-    writtenYbOidcEmailAttr := "\"" + strings.TrimSuffix(oldYbOidcEmailAttr, "\n") + "\""
-    availableData["PlatformOldConfYbOidcEmailAttr"] = writtenYbOidcEmailAttr
+		envVariablePath, errVar := yaml2.PathString(yamlEnvVariableString)
+		if errVar != nil {
+			LogError("Yaml Env Variable string " + yamlEnvVariableString + " not valid.")
+		}
 
-    availableData["PlatformOldServiceAppSecret"] = strings.TrimSuffix(platformAppSecret, "\n")
-    availableData["PlatformOldServiceCorsOrigin"] = strings.TrimSuffix(corsOrigin, "\n")
+		envValuePath, errValue := yaml2.PathString(yamlEnvValueString)
+		if errValue != nil {
+			LogError("Yaml Env Value string " + yamlEnvValueString + " not valid.")
+		}
 
-    oldServiceAuth := fmt.Sprint(platformOldService["useoauth"])
-    availableData["PlatformOldServiceUseOauth"] = oldServiceAuth
+		var envVariable string
+		var envValue string
 
-    oldServiceSecurityType := fmt.Sprint(platformOldService["ybsecuritytype"])
-    availableData["PlatformOldServiceYbSecurityType"] = oldServiceSecurityType
+		errVar = envVariablePath.Read(bytes.NewReader(inputYml), &envVariable)
 
-    oldServiceOidcClientId := fmt.Sprint(platformOldService["yboidcclientid"])
-    availableData["PlatformOldServiceYbOidcClientId"] = oldServiceOidcClientId
+		if errVar != nil {
+			LogError("Unable to read " + envVariableString + "in the config file.")
+		}
 
-    oldServiceOidcSecret := fmt.Sprint(platformOldService["yboidcsecret"])
-    availableData["PlatformOldServiceYbOidcSecret"] = oldServiceOidcSecret
+		errValue = envValuePath.Read(bytes.NewReader(inputYml), &envValue)
 
-    oldServiceOidcDiscoveryUri := fmt.Sprint(platformOldService["yboidcdiscoveryuri"])
-    availableData["PlatformOldServiceYbOidcDiscoveryUri"] = oldServiceOidcDiscoveryUri
+		if errValue != nil {
+			LogError("Unable to read " + envValueString + "in the config file.")
+		}
 
-    availableData["PlatformOldServiceYwUrl"] = fmt.Sprint(platformOldService["ywurl"])
-    availableData["PlatformOldServiceYbOidcScope"] = fmt.Sprint(platformOldService["yboidcscope"])
+		if strings.Contains(envValueString, "platformDbPassword") && envValue == "" {
 
-    oldServiceOidcEmailAttr := fmt.Sprint(platformOldService["yboidcemailattr"])
-    availableData["PlatformOldServiceYbOidcEmailAttr"] = oldServiceOidcEmailAttr
+			os.Setenv("PLATFORM_DB_PASSWORD", randomDbPassword)
+			return "PLATFORM_DB_PASSWORD"
 
-    availableData["PlatformNewServiceAppSecret"] = strings.TrimSuffix(platformAppSecret, "\n")
-    availableData["PlatformNewServiceCorsOrigin"] = strings.TrimSuffix(corsOrigin, "\n")
+		} else if strings.Contains(envValueString, "platformDbUser") {
 
-    newServiceAuth := fmt.Sprint(platformNewService["useoauth"])
-    availableData["PlatformNewServiceUseOauth"] = newServiceAuth
+			os.Setenv("DEVOPS_HOME", INSTALL_ROOT+"/devops")
+			os.Setenv("SWAMPER_TARGET_PATH", INSTALL_ROOT+"/swamper_targets")
+			os.Setenv("SWAMPER_RULES_PATH", INSTALL_ROOT+"/swamper_rules")
 
-    newServiceSecurityType := fmt.Sprint(platformNewService["ybsecuritytype"])
-    availableData["PlatformNewServiceYbSecurityType"] = newServiceSecurityType
+			if hasSudoAccess() {
 
-    newServiceOidcClientId := fmt.Sprint(platformNewService["yboidcclientid"])
-    availableData["PlatformNewServiceYbOidcClientId"] = newServiceOidcClientId
+				os.Setenv("PLATFORM_DB_USER", "postgres")
+				return "PLATFORM_DB_USER"
 
-    newServiceOidcSecret := fmt.Sprint(platformNewService["yboidcsecret"])
-    availableData["PlatformNewServiceYbOidcSecret"] = newServiceOidcSecret
+			} else {
 
-    newServiceOidcDiscoveryUri := fmt.Sprint(platformNewService["yboidcdiscoveryuri"])
-    availableData["PlatformNewServiceYbOidcDiscoveryUri"] = newServiceOidcDiscoveryUri
+				currentUser := GetCurrentUser()
+				os.Setenv("PLATFORM_DB_USER", currentUser)
 
-    availableData["PlatformNewServiceYwUrl"] = fmt.Sprint(platformNewService["ywurl"])
-    availableData["PlatformNewServiceYbOidcScope"] = fmt.Sprint(platformNewService["yboidcscope"])
+				return "PLATFORM_DB_USER"
 
-    newServiceOidcEmailAttr := fmt.Sprint(platformNewService["yboidcemailattr"])
-    availableData["PlatformNewServiceYbOidcEmailAttr"] = newServiceOidcEmailAttr
+			}
 
-    viper.SetConfigName(nginxFileName)
-    viper.SetConfigType("yml")
-    viper.AddConfigPath(".")
-    err3 := viper.ReadInConfig()
-    if err3 != nil {
-        panic(err3)
-    }
+		} else {
+			os.Setenv(envVariable, envValue)
+			return envVariable
 
-    nginxHttp := viper.Get("nginxHttp").(map[string]interface{})
-    nginxHttps := viper.Get("nginxHttps").(map[string]interface{})
+		}
 
-    availableData["NginxHttpServerName"] = fmt.Sprint(nginxHttp["servername"])
-    availableData["NginxHttpsServerName"] = fmt.Sprint(nginxHttps["servername"])
+	}
+}
+
+func getOStype() string {
+
+	if containsSubstring(yumList, DetectOS()) && hasSudoAccess() {
+
+		return "yum"
+
+	} else {
+
+		return "apt"
+	}
 
 }
 
-func Configure(filePath string) ([]byte, error) {
+// ReadConfigAndTemplate Reads info from input config file and sets
+// all template parameters for each individual config file directly, without
+// having to rely on variable names in app data.
+func readConfigAndTemplate(configYmlFileName string) ([]byte, error) {
 
-    tmpl, err := template.New(filepath.Base(filePath)).ParseFiles(filePath)
-    if err != nil {
-        return nil, err
-    }
+	// First we create a FuncMap with which to register the function.
+	funcMap := template.FuncMap{
 
-    var buf bytes.Buffer
-    if err := tmpl.Execute(&buf, availableData); err != nil {
-        return nil, err
-    }
+		// The name "yamlPath" is what the function will be called
+		// in the template text.
+		"yamlPath":          getYamlPathData,
+		"yamlSetEnv":        setYamlEnvironmentVariables,
+		"installRoot":       GetInstallRoot,
+		"installVersionDir": GetInstallVersionDir,
+		"osType":            getOStype,
+	}
 
-    return buf.Bytes(), nil
+	tmpl, err := template.New(filepath.Base("configFiles/" + configYmlFileName)).
+		Funcs(funcMap).ParseFiles("configFiles/" + configYmlFileName)
 
-    }
+	if err != nil {
+		LogError("Error: " + err.Error() + ".")
+		return nil, err
+	}
 
-    func ReadYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, ""); err != nil {
+		LogError("Error: " + err.Error() + ".")
+		return nil, err
+	}
 
-    jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
-    if jsonStringErr != nil {
-        fmt.Printf("err: %v\n", jsonStringErr)
-        return nil, jsonStringErr
-    }
-
-    var jsonData map[string]interface{}
-    if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
-        fmt.Printf("err: %v\n", jsonDataError)
-        return nil, jsonDataError
-    }
-
-    return jsonData, nil
+	return buf.Bytes(), nil
 
 }
 
+func readYAMLtoJSON(createdBytes []byte) (map[string]interface{}, error) {
+
+	jsonString, jsonStringErr := yaml.YAMLToJSON(createdBytes)
+	if jsonStringErr != nil {
+		LogError(fmt.Sprintf("Error: %v.\n", jsonStringErr))
+		return nil, jsonStringErr
+	}
+
+	var jsonData map[string]interface{}
+	if jsonDataError := json.Unmarshal([]byte(jsonString), &jsonData); jsonDataError != nil {
+		LogError(fmt.Sprintf("Error: %v.\n", jsonDataError))
+		return nil, jsonDataError
+	}
+
+	return jsonData, nil
+
+}
+
+// WriteBytes writes the byteSlice data to the specified fileName path.
 func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 
-    fileNameString := string(fileName)
+	fileNameString := string(fileName)
 
-    file, createErr := os.OpenFile(
-        fileNameString,
-        os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
-        os.ModePerm,
-    )
+	file, createErr := Create(fileNameString)
 
-    if createErr != nil {
-        return nil, createErr
-    }
+	if createErr != nil {
+		LogError("Error: " + createErr.Error() + ".")
+		return nil, createErr
+	}
 
-    defer file.Close()
-    _, writeErr := file.Write(byteSlice)
-    if writeErr != nil {
-        return nil, writeErr
-    }
+	defer file.Close()
+	_, writeErr := file.Write(byteSlice)
+	if writeErr != nil {
+		LogError("Error: " + writeErr.Error() + ".")
+		return nil, writeErr
+	}
 
-    return []byte("Wrote bytes to " + fileNameString + " successfully!"), nil
+	return []byte("Wrote bytes to " + fileNameString + " successfully!"), nil
 
 }
 
-func GenerateTemplatedConfiguration(vers string, httpMode string) {
+//GenerateTemplatedConfiguration creates the templated configuration files for
+//all Yugabyte Anywhere services.
+func GenerateTemplatedConfiguration(services ...string) {
 
-    configYmlList := []string{"yba-installer-input-prometheus.yml",
-    "yba-installer-input-platform.yml", "yba-installer-input-nginx.yml"}
+	inputYmlName := "yba-installer-input.yml"
 
-    ValidateJSONSchema(configYmlList)
+	validateJSONSchema(inputYmlName)
 
-    ReadConfigAndSetVariables(configYmlList)
+	outputYmlList := []string{"yba-installer-prometheus.yml",
+		"yba-installer-platform.yml", "yba-installer-postgres.yml"}
 
-    outputYmlList :=  []string{"yba-installer-nginx.yml",
-    "yba-installer-prometheus.yml",
-    "yba-installer-platform.yml"}
+	if len(services) != 0 {
+		outputYmlList = services
+	}
 
-    for _, outYmlName := range(outputYmlList) {
+	for _, outYmlName := range outputYmlList {
 
-        createdBytes, _ := Configure(outYmlName)
-        jsonData, _ := ReadYAMLtoJSON(createdBytes)
+		createdBytes, _ := readConfigAndTemplate(outYmlName)
 
-        numberOfServices := len(jsonData["services"].([]interface{}))
+		jsonData, _ := readYAMLtoJSON(createdBytes)
 
-        v1, _ := version.NewVersion(vers)
-        v2, _ := version.NewVersion("2.8.0.0")
-        isOld := v1.LessThan(v2)
+		numberOfServices := len(jsonData["services"].([]interface{}))
 
-        for i := 0; i < numberOfServices; i++ {
+		for i := 0; i < numberOfServices; i++ {
 
-        service := jsonData["services"].([]interface{})[i]
-        serviceName := fmt.Sprint(service.(map[string]interface{})["name"])
+			service := jsonData["services"].([]interface{})[i]
+			serviceName := fmt.Sprint(service.(map[string]interface{})["name"])
 
-        serviceFileName := fmt.Sprint(service.(map[string]interface{})["fileName"])
-        serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
+			serviceFileName := fmt.Sprint(service.(map[string]interface{})["fileName"])
 
+			serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
 
-            if strings.Contains(serviceName, "nginx") {
-                if httpMode == "http" && serviceName == "nginxHttp" {
-                    WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                    fmt.Println("Templated configuration for " + serviceName +
-                    " succesfully applied!")
-                } else if httpMode == "https" && serviceName == "nginxHttps" {
-                    WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                    fmt.Println("Templated configuration for " + serviceName +
-                    " succesfully applied!")
-            }
-        }
+			// Only write the service files to the appropriate file location if we are
+			// running as root (since we might not be able to write to /etc/systemd)
+			// in the non-root case.
 
-            if isOld {
-                if strings.Contains(serviceName, "Old") {
-                    WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                    fmt.Println("Templated configuration for " + serviceName +
-                    " succesfully applied!")
-                }
+			if !hasSudoAccess() {
 
-                } else {
-                if strings.Contains(serviceName, "New") {
-                    WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-                    fmt.Println("Templated configuration for " + serviceName +
-                    " succesfully applied!")
-                }
-            }
-    }
+				if !strings.Contains(serviceName, "Service") {
 
-    }
+					WriteBytes([]byte(serviceContents), []byte(serviceFileName))
+
+				}
+
+			} else {
+
+				WriteBytes([]byte(serviceContents), []byte(serviceFileName))
+
+			}
+
+			if strings.Contains(serviceFileName, "yb-platform.conf") {
+
+				file, err := os.OpenFile(serviceFileName, os.O_APPEND|os.O_WRONLY, 0644)
+				if err != nil {
+					LogError("Error: " + err.Error() + ".")
+				}
+				defer file.Close()
+
+				// Add the additional raw text to yb-platform.conf if it exists.
+				additionalEntryString := strings.TrimSuffix(getYamlPathData(".additional"), "\n")
+
+				if _, err := file.WriteString(additionalEntryString); err != nil {
+					LogError("Error: " + err.Error() + ".")
+				}
+
+			}
+
+			LogDebug("Templated configuration for " + serviceName +
+				" succesfully applied.")
+
+		}
+	}
 }

@@ -7,6 +7,8 @@ headcontent: Create a local cluster on a single host
 aliases:
   - /quick-start/linux/
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 <div class="custom-tabs tabs-style-2">
@@ -80,7 +82,8 @@ Before installing YugabyteDB, ensure that you have the following available:
     ```
 
     By default, CentOS 8 does not have an unversioned system-wide `python` command. To fix this, set `python3` as the alternative for `python` by running `sudo alternatives --set python /usr/bin/python3`.
-    Starting from Ubuntu 20.04, `python` is not available anymore. Install `sudo apt install python-is-python3`.
+
+    Starting from Ubuntu 20.04, `python` is no longer available. To fix this, run `sudo apt install python-is-python3`.
 
 1. `wget` or `curl`.
 
@@ -100,9 +103,11 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 ### Download YugabyteDB
 
-You download YugabyteDB as follows:
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-1. Download the YugabyteDB package using the following `wget` command:
+Download YugabyteDB as follows:
+
+1. Download the YugabyteDB package using one of the following `wget` commands:
 
     ```sh
     wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
@@ -146,7 +151,7 @@ After the cluster has been created, clients can connect to the YSQL and YCQL API
 
 If you have previously installed YugabyteDB 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
-### Check cluster status
+### Check the cluster status
 
 Execute the following command to check the cluster status:
 
@@ -171,7 +176,7 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### Check cluster status with Admin UI
+### Use the Admin UI
 
 The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
@@ -212,21 +217,51 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 ## Build a Java application
 
+The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations.
+
+For examples using other languages, refer to [Build an application](../../develop/build-apps/).
+
 ### Prerequisites
 
-Before building a Java application, perform the following:
+- Java Development Kit (JDK) 1.8 or later. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later.
 
-- While YugabyteDB is running, use the [yb-ctl](../../admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+### Start a local multi-node cluster
 
-  ```sh
-  cd <path-to-yugabytedb-installation>
+First, destroy the currently running single-node cluster:
 
-  ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
-  ```
+```sh
+./bin/yugabyted destroy
+```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+Create the first node as follows:
 
-- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
+```
+
+The additional nodes need loopback addresses configured that allow you to simulate the use of multiple hosts or nodes:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
+
+Add two more nodes to the cluster using the join option:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
+
+./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
+```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
+```sh
+./bin/yugabyted configure --fault_tolerance=zone
+```
 
 ### Create and configure the Java project
 

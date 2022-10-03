@@ -48,9 +48,9 @@ extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
 extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
 									   YBCPgDatumKind kind);
 
-extern Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI);
+extern Expr *YbExprInstantiateParams(Expr* expr, EState *estate);
 extern PushdownExprs *YbInstantiateRemoteParams(PushdownExprs *remote,
-												ParamListInfo paramLI);
+												EState *estate);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 

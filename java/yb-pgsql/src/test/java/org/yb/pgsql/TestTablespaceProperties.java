@@ -197,6 +197,29 @@ public class TestTablespaceProperties extends BasePgSQLTest {
     assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
   }
 
+  /**
+   * Negative test: Create an index for a table (created inside a tablegroup) and specify its
+   * tablespace. This would throw an error as we do not support tablespaces for indexes on
+   * Colocated tables.
+   */
+  @Test
+  public void disallowTableSpaceForIndexOnColocatedTables() throws Exception {
+    String customTablegroup =  "test_custom_tablegroup";
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute("CREATE TABLEGROUP " +  customTablegroup +
+          " TABLESPACE testTablespace");
+      setupStatement.execute("CREATE TABLE t (a INT, b FLOAT) TABLEGROUP " + customTablegroup);
+
+      // Create index without specifying tablespace.
+      setupStatement.execute("CREATE INDEX t_idx1 ON t(a)");
+
+      // Create an index and also specify its tablespace.
+      String errorMsg = "TABLESPACE is not supported for indexes on colocated tables.";
+      executeAndAssertErrorThrown("CREATE INDEX t_idx2 ON t(b) TABLESPACE testTablespace",
+                                  errorMsg);
+    }
+  }
+
   @Test
   public void testTablesOptOutOfColocation() throws Exception {
     final String dbname = "testdatabase";

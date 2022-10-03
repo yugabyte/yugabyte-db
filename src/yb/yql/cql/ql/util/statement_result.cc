@@ -16,6 +16,7 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -213,6 +214,7 @@ void RowsResult::SetPagingState(YBqlOp *op) {
   if (op->response().has_paging_state()) {
     QLPagingStatePB *paging_state = op->mutable_response()->mutable_paging_state();
     paging_state->set_table_id(op->table()->id());
+    paging_state->set_schema_version(op->table()->schema().version());
     SetPagingState(*paging_state);
   }
 }

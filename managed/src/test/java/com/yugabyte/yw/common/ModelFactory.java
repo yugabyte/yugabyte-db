@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -52,6 +54,7 @@ import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -231,6 +234,18 @@ public class ModelFactory {
     params.nodePrefix = universeName;
     params.rootCA = rootCA;
     params.enableYbc = enableYbc;
+    params.ybcInstalled = enableYbc;
+    if (enableYbc) {
+      params.ybcSoftwareVersion = "1.0.0-b1";
+      NodeDetails node = new NodeDetails();
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.private_ip = "127.0.0.1";
+      params.nodeDetailsSet.add(node);
+      NodeDetails node2 = node.clone();
+      node2.cloudInfo.private_ip = "127.0.0.2";
+      params.nodeDetailsSet.add(node2);
+      userIntent.ybSoftwareVersion = "2.14.0.0-b1";
+    }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
   }
@@ -429,6 +444,18 @@ public class ModelFactory {
     return alertDefinition;
   }
 
+  public static AlertTemplateSettings createTemplateSettings(Customer customer) {
+    AlertTemplateSettings templateSettings =
+        new AlertTemplateSettings()
+            .generateUUID()
+            .setCustomerUUID(customer.getUuid())
+            .setTemplate(MEMORY_CONSUMPTION.name())
+            .setLabels(ImmutableMap.of("foo", "bar", "one", "two"))
+            .setCreateTime(new Date());
+    templateSettings.save();
+    return templateSettings;
+  }
+
   public static Alert createAlert(Customer customer) {
     return createAlert(customer, null, null, null);
   }
@@ -476,7 +503,7 @@ public class ModelFactory {
     alert.setDefinitionUuid(definition.getUuid());
     List<AlertLabel> labels =
         definition
-            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

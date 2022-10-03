@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package model
 
 type NodeState string

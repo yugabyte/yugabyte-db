@@ -125,6 +125,11 @@ Status EnumerateSysCatalog(
 Status EnumerateSysCatalog(
     docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback);
+// A helper function for EnumerateSysCatalog.
+Status ReadNextSysCatalogRow(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
+    ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
+    const EnumerationCallback& callback);
 
 } // namespace master
 } // namespace yb

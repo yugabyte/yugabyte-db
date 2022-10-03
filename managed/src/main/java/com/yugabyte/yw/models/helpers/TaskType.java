@@ -45,6 +45,10 @@ public enum TaskType {
 
   CreateBackup("CreateBackup"),
 
+  CreatePitrConfig("CreatePitrConfig"),
+
+  RestoreSnapshot("RestoreSnapshot"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
@@ -63,9 +67,13 @@ public enum TaskType {
 
   RestartUniverse("upgrade.RestartUniverse"),
 
+  RestartUniverseKubernetesUpgrade("upgrade.RestartUniverseKubernetesUpgrade"),
+
   SoftwareUpgrade("upgrade.SoftwareUpgrade"),
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  KubernetesOverridesUpgrade("upgrade.KubernetesOverridesUpgrade"),
 
   GFlagsUpgrade("upgrade.GFlagsUpgrade"),
 
@@ -107,6 +115,8 @@ public enum TaskType {
 
   RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
 
+  RebootNodeInUniverse("RebootNodeInUniverse"),
+
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
   RotateAccessKey("RotateAccessKey"),
@@ -131,6 +141,8 @@ public enum TaskType {
   CreateXClusterConfig("CreateXClusterConfig"),
 
   EditXClusterConfig("EditXClusterConfig"),
+
+  RestartXClusterConfig("RestartXClusterConfig"),
 
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
@@ -203,9 +215,13 @@ public enum TaskType {
 
   UpdateAndPersistGFlags("subtasks.UpdateAndPersistGFlags"),
 
+  UpdateAndPersistKubernetesOverrides("subtasks.UpdateAndPersistKubernetesOverrides"),
+
   UpdatePlacementInfo("subtasks.UpdatePlacementInfo"),
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
+
+  UpdateUniverseYbcDetails("subtasks.UpdateUniverseYbcDetails"),
 
   VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
 
@@ -248,6 +264,8 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
 
+  ResetXClusterConfigEntry("subtasks.xcluster.ResetXClusterConfigEntry"),
+
   SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
 
   SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
@@ -263,6 +281,8 @@ public enum TaskType {
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
   XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
+
+  XClusterInfoPersist("subtasks.xcluster.XClusterInfoPersist"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -368,7 +388,17 @@ public enum TaskType {
 
   RunHooks("subtasks.RunHooks"),
 
-  UpdateUniverseTags("subtasks.UpdateUniverseTags");
+  UpdateUniverseTags("subtasks.UpdateUniverseTags"),
+
+  UpgradeYbc("subtasks.UpgradeYbc"),
+
+  InstallYbcSoftware("InstallYbcSoftware"),
+
+  UpgradeUniverseYbc("UpgradeUniverseYbc"),
+
+  DisableYbc("DisableYbc"),
+
+  InstanceExistCheck("subtasks.InstanceExistCheck");
 
   private String relativeClassPath;
 

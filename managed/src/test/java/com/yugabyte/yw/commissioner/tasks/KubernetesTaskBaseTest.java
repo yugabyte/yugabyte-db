@@ -41,17 +41,23 @@ public class KubernetesTaskBaseTest {
 
   @Test
   @Parameters({
-    "yb-master-1, master, false, false",
-    "demo-universe-yb-tserver-1, tserver, false, true",
-    "yb-master-1, master, true, false",
-    "demo-universe-az-1-yb-tserver-1, tserver, true, true"
+    "yb-master-1, master, false, false, false",
+    "demo-universe-yb-tserver-1, tserver, false, true, false",
+    "demo-universe-rr-yb-tserver-1, tserver, false, true, true",
+    "yb-master-1, master, true, false, false",
+    "demo-universe-az-1-yb-tserver-1, tserver, true, true, false",
+    "demo-universe-rr-az-1-yb-tserver-1, tserver, true, true, true"
   })
   public void testGetPodName(
-      String podName, String server, boolean isMultiAz, boolean newNamingStyle) {
+      String podName,
+      String server,
+      boolean isMultiAz,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     ServerType serverType = server.equals("master") ? ServerType.MASTER : ServerType.TSERVER;
     String pod =
         kubernetesTaskBase.getPodName(
-            1, "az-1", serverType, "demo-universe", isMultiAz, newNamingStyle);
+            1, "az-1", serverType, "demo-universe", isMultiAz, newNamingStyle, isReadOnlyCluster);
     assertEquals(podName, pod);
   }
 }

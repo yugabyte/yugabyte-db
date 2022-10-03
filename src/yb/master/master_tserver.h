@@ -38,11 +38,11 @@ class MasterTabletServer : public tserver::TabletServerIf,
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
   rpc::Publisher* GetPublisher() override { return nullptr; }
 
-  Status GetTabletPeer(const std::string& tablet_id,
-                               std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const override;
+  Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const override;
 
   Status GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
-                                 tserver::GetTabletStatusResponsePB* resp) const override;
+                         tserver::GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
@@ -54,6 +54,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override;
+
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
 
   client::TransactionPool& TransactionPool() override;
 

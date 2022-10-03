@@ -1210,7 +1210,7 @@ select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
 
 create index trgm_idx on test_trgm using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 create index trgm_idx on test_trgm using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
@@ -1391,7 +1391,7 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 10
 drop index test2_idx_gin;
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 -- Check similarity threshold (bug #14202)
 CREATE TEMP TABLE restaurants (city text);
 INSERT INTO restaurants SELECT 'Warsaw' FROM generate_series(1, 10000);

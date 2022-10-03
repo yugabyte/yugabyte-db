@@ -69,9 +69,6 @@ Status MakeYsqlSysCatalogTablesTransactional(
     SysConfigInfo* ysql_catalog_config,
     int64_t term);
 
-// Master's logic to decide whether to auto-run initdb on leader initialization.
-bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists);
-
 }  // namespace master
 }  // namespace yb
 

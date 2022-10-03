@@ -55,12 +55,22 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kVisibleToClient) // All tables visible to the client
                );
 
+YB_STRONGLY_TYPED_BOOL(HideOnly);
+YB_STRONGLY_TYPED_BOOL(KeepData);
+
 class CatalogManagerIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table) = 0;
 
+  virtual void DeleteTabletReplicas(
+      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data) = 0;
+
+  virtual void NotifyPrepareDeleteTransactionTabletFinished(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only) = 0;
+
   virtual void NotifyTabletDeleteFinished(
-      const TabletServerId& tserver_uuid, const TableId& table_id, const TableInfoPtr& table) = 0;
+      const TabletServerId& tserver_uuid, const TabletId& tablet_id,
+      const TableInfoPtr& table) = 0;
 
   virtual std::string GenerateId() = 0;
 

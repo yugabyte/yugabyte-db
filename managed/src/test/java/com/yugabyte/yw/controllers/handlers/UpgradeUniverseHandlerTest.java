@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -48,7 +49,8 @@ public class UpgradeUniverseHandlerTest {
             mockCommissioner,
             mock(KubernetesManagerFactory.class),
             mock(RuntimeConfigFactory.class),
-            mock(GFlagsValidationHandler.class));
+            mock(GFlagsValidationHandler.class),
+            mock(YbcManager.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {

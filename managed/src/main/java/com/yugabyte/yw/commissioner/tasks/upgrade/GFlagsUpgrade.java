@@ -2,20 +2,26 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -71,14 +77,63 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                       || !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags)
                   ? fetchTServerNodes(taskParams().upgradeOption)
                   : new ArrayList<>();
+
+          Universe universe = getUniverse();
+          Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
+
+          if (!config.getBoolean("yb.cloud.enabled")
+              && !runtimeConfig.getBoolean("yb.gflags.allow_user_override")) {
+            masterNodes.forEach(
+                node ->
+                    checkForbiddenToOverrideGFlags(
+                        node,
+                        userIntent,
+                        universe,
+                        ServerType.MASTER,
+                        taskParams().masterGFlags,
+                        config));
+            tServerNodes.forEach(
+                node ->
+                    checkForbiddenToOverrideGFlags(
+                        node,
+                        userIntent,
+                        universe,
+                        ServerType.TSERVER,
+                        taskParams().tserverGFlags,
+                        config));
+          }
+
           // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
+          taskParams().verifyParams(universe);
           // Upgrade GFlags in all nodes
           createGFlagUpgradeTasks(userIntent, masterNodes, tServerNodes);
           // Update the list of parameter key/values in the universe with the new ones.
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
         });
+  }
+
+  private void checkForbiddenToOverrideGFlags(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      Universe universe,
+      ServerType processType,
+      Map<String, String> newGFlags,
+      Config config) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
+
+    String errorMsg =
+        GFlagsUtil.checkForbiddenToOverride(node, params, userIntent, universe, newGFlags, config);
+    if (errorMsg != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          errorMsg
+              + ". It is not advised to set these internal gflags. If you want to do it"
+              + " forcefully - set runtime config value for "
+              + "'yb.gflags.allow_user_override' to 'true'");
+    }
   }
 
   private void createGFlagUpgradeTasks(
@@ -92,7 +147,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                 createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            taskParams().ybcInstalled);
         break;
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
@@ -100,7 +156,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                 createServerConfFileUpdateTasks(userIntent, nodes, processTypes),
             masterNodes,
             tServerNodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            taskParams().ybcInstalled);
         break;
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(
@@ -119,7 +176,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             },
             masterNodes,
             tServerNodes,
-            DEFAULT_CONTEXT);
+            DEFAULT_CONTEXT,
+            taskParams().ybcInstalled);
         break;
     }
   }

@@ -62,6 +62,7 @@ class Slice;
 
 // Convert the given C++ Status object into the equivalent Protobuf.
 void StatusToPB(const Status& status, AppStatusPB* pb);
+void StatusToPB(const Status& status, LWAppStatusPB* pb);
 
 // Convert the given protobuf into the equivalent C++ Status object.
 Status StatusFromPB(const AppStatusPB& pb);

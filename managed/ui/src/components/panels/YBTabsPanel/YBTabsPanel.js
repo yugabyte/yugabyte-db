@@ -23,7 +23,7 @@ class YBTabsPanel extends Component {
     const locationTabKey = location.query?.tab;
     if (isDefinedNotNull(locationTabKey)) {
       return children.some((item) => {
-        return item.props.eventKey.indexOf(locationTabKey) >= 0 && !item.props.disabled;
+        return item?.props?.eventKey?.indexOf(locationTabKey) >= 0 && !item.props.disabled;
       })
         ? locationTabKey
         : false;

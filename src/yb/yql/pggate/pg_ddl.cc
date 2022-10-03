@@ -33,6 +33,7 @@ DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
 
 DECLARE_int32(max_num_tablets_for_table);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
 namespace pggate {
@@ -50,6 +51,16 @@ CoarseTimePoint DdlDeadline() {
     timeout = kDdlTimeout;
   }
   return CoarseMonoClock::now() + timeout;
+}
+
+// Make a special case for create database because it is a well-known slow operation in YB.
+CoarseTimePoint CreateDatabaseDeadline() {
+  int32 timeout = FLAGS_TEST_user_ddl_operation_timeout_sec;
+  if (timeout == 0) {
+    timeout = FLAGS_yb_client_admin_operation_timeout_sec *
+              RegularBuildVsDebugVsSanitizers(1, 2, 2);
+  }
+  return CoarseMonoClock::now() + MonoDelta::FromSeconds(timeout);
 }
 
 } // namespace
@@ -76,7 +87,7 @@ PgCreateDatabase::~PgCreateDatabase() {
 }
 
 Status PgCreateDatabase::Exec() {
-  return pg_session_->pg_client().CreateDatabase(&req_, DdlDeadline());
+  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -366,6 +377,11 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
   auto& rename = *req_.mutable_rename_table();
   rename.set_database_name(db_name);
   rename.set_table_name(newname);
+  return Status::OK();
+}
+
+Status PgAlterTable::IncrementSchemaVersion() {
+  req_.set_increment_schema_version(true);
   return Status::OK();
 }
 

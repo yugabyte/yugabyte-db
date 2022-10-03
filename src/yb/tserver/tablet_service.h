@@ -132,6 +132,16 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                        UpdateTransactionStatusLocationResponsePB* resp,
                                        rpc::RpcContext context) override;
 
+  void UpdateTransactionWaitingForStatus(
+      const UpdateTransactionWaitingForStatusRequestPB* req,
+      UpdateTransactionWaitingForStatusResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ProbeTransactionDeadlock(
+      const ProbeTransactionDeadlockRequestPB* req,
+      ProbeTransactionDeadlockResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Truncate(const TruncateRequestPB* req,
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
@@ -156,6 +166,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void GetSharedData(const GetSharedDataRequestPB* req,
                      GetSharedDataResponsePB* resp,
                      rpc::RpcContext context) override;
+
+  void GetTserverCatalogVersionInfo(const GetTserverCatalogVersionInfoRequestPB* req,
+                                    GetTserverCatalogVersionInfoResponsePB* resp,
+                                    rpc::RpcContext context) override;
 
   void Shutdown() override;
 
@@ -188,6 +202,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   void CreateTablet(const CreateTabletRequestPB* req,
                     CreateTabletResponsePB* resp,
                     rpc::RpcContext context) override;
+
+  void PrepareDeleteTransactionTablet(const PrepareDeleteTransactionTabletRequestPB* req,
+                                      PrepareDeleteTransactionTabletResponsePB* resp,
+                                      rpc::RpcContext context) override;
 
   void DeleteTablet(const DeleteTabletRequestPB* req,
                     DeleteTabletResponsePB* resp,
@@ -245,6 +263,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpgradeYsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void UpdateTransactionTablesVersion(
+      const UpdateTransactionTablesVersionRequestPB* req,
+      UpdateTransactionTablesVersionResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -270,53 +293,53 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 
   virtual ~ConsensusServiceImpl();
 
-  virtual void UpdateConsensus(const consensus::ConsensusRequestPB *req,
-                               consensus::ConsensusResponsePB *resp,
-                               rpc::RpcContext context) override;
+  void UpdateConsensus(const consensus::ConsensusRequestPB *req,
+                       consensus::ConsensusResponsePB *resp,
+                       rpc::RpcContext context) override;
 
-  virtual void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
-                                        consensus::MultiRaftConsensusResponsePB *resp,
-                                        rpc::RpcContext context) override;
+  void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
+                                consensus::MultiRaftConsensusResponsePB *resp,
+                                rpc::RpcContext context) override;
 
-  virtual void RequestConsensusVote(const consensus::VoteRequestPB* req,
-                                    consensus::VoteResponsePB* resp,
-                                    rpc::RpcContext context) override;
-
-  virtual void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
-                            consensus::ChangeConfigResponsePB* resp,
+  void RequestConsensusVote(const consensus::VoteRequestPB* req,
+                            consensus::VoteResponsePB* resp,
                             rpc::RpcContext context) override;
 
-  virtual void UnsafeChangeConfig(const consensus::UnsafeChangeConfigRequestPB* req,
-                                  consensus::UnsafeChangeConfigResponsePB* resp,
-                                  rpc::RpcContext context) override;
+  void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
+                    consensus::ChangeConfigResponsePB* resp,
+                    rpc::RpcContext context) override;
 
-  virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
-                               consensus::GetNodeInstanceResponsePB* resp,
-                               rpc::RpcContext context) override;
+  void UnsafeChangeConfig(const consensus::UnsafeChangeConfigRequestPB* req,
+                          consensus::UnsafeChangeConfigResponsePB* resp,
+                          rpc::RpcContext context) override;
 
-  virtual void RunLeaderElection(const consensus::RunLeaderElectionRequestPB* req,
-                                 consensus::RunLeaderElectionResponsePB* resp,
-                                 rpc::RpcContext context) override;
+  void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
+                       consensus::GetNodeInstanceResponsePB* resp,
+                       rpc::RpcContext context) override;
 
-  virtual void LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
-                                  consensus::LeaderElectionLostResponsePB *resp,
-                                  ::yb::rpc::RpcContext context) override;
+  void RunLeaderElection(const consensus::RunLeaderElectionRequestPB* req,
+                         consensus::RunLeaderElectionResponsePB* resp,
+                         rpc::RpcContext context) override;
 
-  virtual void LeaderStepDown(const consensus::LeaderStepDownRequestPB* req,
-                              consensus::LeaderStepDownResponsePB* resp,
-                              rpc::RpcContext context) override;
+  void LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
+                          consensus::LeaderElectionLostResponsePB *resp,
+                          rpc::RpcContext context) override;
 
-  virtual void GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
-                           consensus::GetLastOpIdResponsePB *resp,
-                           rpc::RpcContext context) override;
+  void LeaderStepDown(const consensus::LeaderStepDownRequestPB* req,
+                      consensus::LeaderStepDownResponsePB* resp,
+                      rpc::RpcContext context) override;
 
-  virtual void GetConsensusState(const consensus::GetConsensusStateRequestPB *req,
-                                 consensus::GetConsensusStateResponsePB *resp,
-                                 rpc::RpcContext context) override;
+  void GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
+                   consensus::GetLastOpIdResponsePB *resp,
+                   rpc::RpcContext context) override;
 
-  virtual void StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB* req,
-                                    consensus::StartRemoteBootstrapResponsePB* resp,
-                                    rpc::RpcContext context) override;
+  void GetConsensusState(const consensus::GetConsensusStateRequestPB *req,
+                         consensus::GetConsensusStateResponsePB *resp,
+                         rpc::RpcContext context) override;
+
+  void StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB* req,
+                            consensus::StartRemoteBootstrapResponsePB* resp,
+                            rpc::RpcContext context) override;
 
  private:
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,

@@ -5,19 +5,32 @@
     margin: 0 2px;
     padding: 0 3px;
     font-size: inherit !important;
-    font-family: inherit !important;
     border-radius: 4px;
-    background: #e6efff !important;
-    border: 1px solid #dee0ea;
-    line-height: normal;
+    background: $YB_LIGHT_GRAY !important;
+    border: 1px solid transparent;
+    line-height: inherit;
     color: #000041 !important;
     max-width: 100%;
     overflow: auto;
   }
 
+  table code,
+  li > code,
   p > code {
     white-space: nowrap;
-    padding: 2px 4px;
+    padding: 0 4px;
+    border-width: 0 !important;
+    font-size: 90% !important;
+    line-height: 20px;
+    color: inherit !important;
+  }
+
+  p > a {
+    &:hover {
+      >code {
+        text-decoration: underline;
+      }
+    }
   }
 
   h1 > code,
@@ -25,10 +38,35 @@
   h3 > code,
   h4 > code,
   h5 > code,
-  h6 > code,
-  a > code {
+  h6 > code {
     color: inherit !important;
     margin: 0 0 2px;
+  }
+
+  a {
+    >code {
+      color: inherit !important;
+      margin: 0 -4px;
+      padding: 0 4px !important;
+      line-height: 18px;
+      font-size: 90% !important;
+    }
+  }
+
+  *:not(.tabs-name) > li:not(.nav-item) > a,
+  p > a,
+  td > a {
+    position: relative;
+    z-index: 1;
+
+    >code {
+      position: relative;
+      z-index: -1;
+    }
+  }
+
+  *:not(.tabs-name) > li:not(.nav-item) > a:hover > code {
+    text-decoration: underline;
   }
 
   pre {

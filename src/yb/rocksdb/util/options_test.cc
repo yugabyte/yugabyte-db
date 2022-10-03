@@ -1939,6 +1939,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
       BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
       BLACKLIST_ENTRY(DBOptions, disk_group_no),
+      BLACKLIST_ENTRY(DBOptions, priority_thread_pool_metrics),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

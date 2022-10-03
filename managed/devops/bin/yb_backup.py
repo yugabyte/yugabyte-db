@@ -565,8 +565,11 @@ class S3BackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         # If 's3cmd get' fails it creates zero-length file, '--force' is needed to
         # override this empty file on the next retry-step.
-        return ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
+        args = ['s3cmd', '--force', '--no-check-certificate', '--config=%s'
                 % self.options.cloud_cfg_file_path]
+        if self.options.args.disable_multipart:
+            args.append('--disable-multipart')
+        return args
 
     def upload_file_cmd(self, src, dest):
         cmd_list = ["put", src, dest]
@@ -649,15 +652,15 @@ BACKUP_STORAGE_ABSTRACTIONS = {
 
 
 class KubernetesDetails():
-    def __init__(self, server_fqdn, config_map):
-        self.namespace = server_fqdn.split('.')[2]
-        self.pod_name = server_fqdn.split('.')[0]
+    def __init__(self, server_ip, config_map):
+        self.pod_name = config_map[server_ip]["podName"]
+        self.namespace = config_map[server_ip]["namespace"]
         # The pod names are <helm fullname>yb-<master|tserver>-n where
         # n is the pod number. <helm fullname> can be blank. And
         # yb-master/yb-tserver are the container names.
         self.container = "yb-master" if self.pod_name.find("master") > 0 else "yb-tserver"
         self.env_config = os.environ.copy()
-        self.env_config["KUBECONFIG"] = config_map[server_fqdn]
+        self.env_config["KUBECONFIG"] = config_map[server_ip]["KUBECONFIG"]
 
 
 def get_instance_profile_credentials():
@@ -743,7 +746,7 @@ class YBTSConfig:
         if self.backup.args.verbose:
             logging.info("Loading TS config via Web UI on {}:{}".format(tserver_ip, web_port))
 
-        url = "{}:{}/varz".format(tserver_ip, web_port)
+        url = "{}:{}/varz?raw=1".format(tserver_ip, web_port)
         output = self.backup.run_program(['curl', url, '--silent', '--show-error'], num_retry=10)
 
         # Read '--placement_region'.
@@ -770,7 +773,7 @@ class YBTSConfig:
                 break
 
         if not data_dirs:
-            msg = "Did not find any data directories in tserver by querying /varz endpoint"\
+            msg = "Did not find any data directories in tserver by querying /varz?raw=1 endpoint"\
                   " on tserver '{}:{}'. Was looking for '{}', got this: [[ {} ]]".format(
                       tserver_ip, web_port, self.FS_DATA_DIRS_ARG_PREFIX, output)
             logging.error("[app] {}".format(msg))
@@ -907,7 +910,7 @@ class YBManifest:
         properties['check-sums'] = not self.backup.args.disable_checksums
         if not self.backup.args.disable_checksums:
             properties['hash-algorithm'] = XXH64_FILE_EXT \
-                if self.backup.xxh64sum_binary_present else SHA_FILE_EXT
+                if self.backup.use_xxhash_checksum else SHA_FILE_EXT
 
     def init_locations(self, tablet_leaders, snapshot_bucket):
         locations = self.body['locations']
@@ -989,13 +992,13 @@ class YBBackup:
         self.live_tserver_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
-        self.k8s_pod_fqdn_to_cfg = {}
+        self.k8s_pod_addr_to_cfg = {}
         self.timer = BackupTimer()
         self.ts_cfgs = {}
         self.ip_to_ssh_key_map = {}
         self.secondary_to_primary_ip_map = {}
         self.region_to_location = {}
-        self.xxh64sum_binary_present = None
+        self.use_xxhash_checksum = None
         self.database_version = YBVersion("unknown")
         self.manifest = YBManifest(self)
         self.parse_arguments()
@@ -1130,6 +1133,12 @@ class YBBackup:
         parser.add_argument(
             '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
                                                                           "pg based backup.")
+        parser.add_argument(
+            '--disable_xxhash_checksum', action='store_true', default=False,
+            help="Disables xxhash algorithm for checksum computation.")
+        parser.add_argument(
+            '--disable_multipart', required=False, action='store_true', default=False,
+            help="Disable multipart upload for S3 backups")
         parser.add_argument(
             '--ssh_key_path', required=False, help="Path to the ssh key file")
         parser.add_argument(
@@ -1278,8 +1287,8 @@ class YBBackup:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
         if self.is_k8s():
-            self.k8s_pod_fqdn_to_cfg = json.loads(self.args.k8s_config)
-            if self.k8s_pod_fqdn_to_cfg is None:
+            self.k8s_pod_addr_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_pod_addr_to_cfg is None:
                 raise BackupException("Couldn't load k8s configs")
 
         if self.args.storage_type == 'nfs':
@@ -1382,6 +1391,9 @@ class YBBackup:
         if self.args.mac:
             XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
             SHA_TOOL_PATH = '/usr/bin/shasum'
+
+        if self.args.disable_checksums:
+            self.use_xxhash_checksum = False
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -1791,9 +1803,15 @@ class YBBackup:
                             if data['database_type'] == 'YQL_DATABASE_PGSQL' else ''
                         keyspaces[object_id] = keyspace_prefix + data['name']
                     elif object_type == 'TABLE':
-                        snapshot_keyspaces.append(keyspaces[data['namespace_id']])
-                        snapshot_tables.append(data['name'])
-                        snapshot_table_uuids.append(object_id)
+                        # If a table is colocated, it will share its backing tablets with other
+                        # tables.  To avoid repeated work in getting the list of backing tablets for
+                        # all tables just add a single table from each colocation group to the table
+                        # list.
+                        if (not data.get('colocated', False)
+                                or is_parent_colocated_table_name(data['name'])):
+                            snapshot_keyspaces.append(keyspaces[data['namespace_id']])
+                            snapshot_tables.append(data['name'])
+                            snapshot_table_uuids.append(object_id)
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))
@@ -1833,10 +1851,6 @@ class YBBackup:
             tablet_leaders = []
 
             for i in range(0, len(self.args.table)):
-                # Don't call list_tablets on a parent colocated table.
-                if is_parent_colocated_table_name(self.args.table[i]):
-                    continue
-
                 if self.args.table_uuid:
                     yb_admin_args = ['list_tablets', 'tableid.' + self.args.table_uuid[i], '0']
                 else:
@@ -1931,7 +1945,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -1981,7 +1995,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -2052,7 +2066,7 @@ class YBBackup:
             cmd = "{} {}".format(bash_env_args, cmd)
 
         if self.is_k8s():
-            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_addr_to_cfg)
             return self.run_program([
                 'kubectl',
                 'exec',
@@ -2117,8 +2131,8 @@ class YBBackup:
 
     def find_data_dirs(self, tserver_ip):
         """
-        Finds the data directories on the given tserver. This queries the /varz endpoint of tserver
-        and extracts --fs_data_dirs flag from response.
+        Finds the data directories on the given tserver. This queries the /varz?raw=1 endpoint of
+        tserver and extracts --fs_data_dirs flag from response.
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
@@ -2355,51 +2369,56 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
-    def check_if_xxh64bin_present(self):
+    def check_if_use_xxhash_checksum(self):
         # Checking the xxh64 binaries on single node(master leader).
         # In case if the binary is absent on other host, script will fail during execution.
-        try:
-            host_ip = self.get_main_host_ip()
-            if self.is_k8s():
-                k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
-                return self.run_program([
-                    'kubectl',
-                    'exec',
-                    '-t',
-                    '-n={}'.format(k8s_details.namespace),
-                    # For k8s, pick the first qualified name, if given a CNAME.
-                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
-                    env=k8s_details.env_config)
-            elif self.args.no_ssh:
-                self.run_program([
-                    'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
-                ])
-            else:
-                ssh_key_path = self.args.ssh_key_path
-                if self.ip_to_ssh_key_map:
-                    ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
-                self.run_program([
-                    'ssh',
-                    '-o', 'StrictHostKeyChecking=no',
-                    '-o', 'UserKnownHostsFile=/dev/null',
-                    '-o', 'ControlMaster=auto',
-                    '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
-                    '-o', 'ControlPersist=1m',
-                    '-i', ssh_key_path,
-                    '-p', self.args.ssh_port,
-                    '-q',
-                    '%s@%s' % (self.args.ssh_user, host_ip),
-                    'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
-                ])
-            self.xxh64sum_binary_present = True
-        except subprocess.CalledProcessError as e:
-            self.xxh64sum_binary_present = False
-            logging.warning(
-                "Tool {} not found on host {}. Error: {}".format(XXH64HASH_TOOL_PATH, host_ip, e))
+        if self.args.disable_xxhash_checksum:
+            # Disable the xxhash checksum in case client specifies so.
+            self.use_xxhash_checksum = False
+        else:
+            try:
+                host_ip = self.get_main_host_ip()
+                if self.is_k8s():
+                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_addr_to_cfg)
+                    return self.run_program([
+                        'kubectl',
+                        'exec',
+                        '-t',
+                        '-n={}'.format(k8s_details.namespace),
+                        # For k8s, pick the first qualified name, if given a CNAME.
+                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)],
+                        env=k8s_details.env_config)
+                elif self.args.no_ssh:
+                    self.run_program([
+                        'command', '-v', XXH64HASH_TOOL_PATH, '/dev/null'
+                    ])
+                else:
+                    ssh_key_path = self.args.ssh_key_path
+                    if self.ip_to_ssh_key_map:
+                        ssh_key_path = self.ip_to_ssh_key_map.get(host_ip, ssh_key_path)
+                    self.run_program([
+                        'ssh',
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-o', 'ControlMaster=auto',
+                        '-o', 'ControlPath=~/.ssh/ssh-%r@%h:%p',
+                        '-o', 'ControlPersist=1m',
+                        '-i', ssh_key_path,
+                        '-p', self.args.ssh_port,
+                        '-q',
+                        '%s@%s' % (self.args.ssh_user, host_ip),
+                        'command -v %s /dev/null' % (XXH64HASH_TOOL_PATH)
+                    ])
+                self.use_xxhash_checksum = True
+            except subprocess.CalledProcessError as e:
+                self.use_xxhash_checksum = False
+                logging.warning(
+                    "Tool {} not found on host {}. Error: {}"
+                    .format(XXH64HASH_TOOL_PATH, host_ip, e))
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        assert self.xxh64sum_binary_present is not None
-        tool_path = XXH64HASH_TOOL_PATH if self.xxh64sum_binary_present else SHA_TOOL_PATH
+        assert self.use_xxhash_checksum is not None
+        tool_path = XXH64HASH_TOOL_PATH if self.use_xxhash_checksum else SHA_TOOL_PATH
         prefix = pipes.quote(tool_path)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
@@ -2408,8 +2427,8 @@ class YBBackup:
             pipes.quote(file_path), pipes.quote(checksum_file_path))
 
     def checksum_path(self, file_path):
-        assert self.xxh64sum_binary_present is not None
-        ext = XXH64_FILE_EXT if self.xxh64sum_binary_present else SHA_FILE_EXT
+        assert self.use_xxhash_checksum is not None
+        ext = XXH64_FILE_EXT if self.use_xxhash_checksum else SHA_FILE_EXT
         return file_path + '.' + ext
 
     def checksum_path_downloaded(self, file_path):
@@ -2894,7 +2913,7 @@ class YBBackup:
         """
         if not self.args.disable_checksums:
             # Define a tool for checksum calculation.
-            self.check_if_xxh64bin_present()
+            self.check_if_use_xxhash_checksum()
 
         if not self.args.keyspace:
             raise BackupException('Need to specify --keyspace')
@@ -3059,7 +3078,7 @@ class YBBackup:
 
         if not self.args.disable_checksums:
             # Define a tool for checksum calculation.
-            self.check_if_xxh64bin_present()
+            self.check_if_use_xxhash_checksum()
 
         src_manifest_path = os.path.join(self.args.backup_location, MANIFEST_FILE_NAME)
         manifest_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
@@ -3067,11 +3086,11 @@ class YBBackup:
             try:
                 self.download_file(src_manifest_path, manifest_path)
             except subprocess.CalledProcessError as ex:
-                if self.xxh64sum_binary_present:
+                if self.use_xxhash_checksum:
                     # Possibly old checksum tool was used for the backup.
                     # Try again with the old tool.
                     logging.warning("Try to use " + SHA_TOOL_PATH + " for Manifest")
-                    self.xxh64sum_binary_present = False
+                    self.use_xxhash_checksum = False
                     self.download_file(src_manifest_path, manifest_path)
                 else:
                     raise ex
@@ -3088,11 +3107,11 @@ class YBBackup:
         if self.manifest.is_loaded():
             if not self.args.disable_checksums and \
                 self.manifest.get_hash_algorithm() == XXH64_FILE_EXT \
-                    and not self.xxh64sum_binary_present:
+                    and not self.use_xxhash_checksum:
                 raise BackupException("Manifest references unavailable tool " + XXH64HASH_TOOL_PATH)
         else:
             self.manifest.create_by_default(self.args.backup_location)
-            self.xxh64sum_binary_present = False
+            self.use_xxhash_checksum = False
 
         if self.args.verbose:
             logging.info("{} manifest: {}".format(
@@ -3166,7 +3185,7 @@ class YBBackup:
             if self.args.ssh2_enabled:
                 # Todo: Fix the condition. Will be fixed, as part of migration of common
                 # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
-                old_db_name = old_db_name.splitlines()[-1]
+                old_db_name = old_db_name.splitlines()[-1].strip()
 
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])

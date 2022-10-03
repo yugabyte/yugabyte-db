@@ -53,6 +53,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"

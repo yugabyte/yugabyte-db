@@ -15,7 +15,9 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,10 +51,11 @@ public class TlsToggle extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          Set<NodeDetails> allNodes = toOrderedSet(nodes);
           // Verify the request params and fail if invalid
           verifyParams();
           // Copy any new certs to all nodes
-          createCopyCertTasks(nodes.getRight());
+          createCopyCertTasks(allNodes);
           // Round 1 gflags upgrade
           createRound1GFlagUpdateTasks(nodes);
           // Update TLS related params in universe details
@@ -87,20 +90,23 @@ public class TlsToggle extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
-          DEFAULT_CONTEXT);
+          DEFAULT_CONTEXT,
+          false);
     } else {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
             (nodeList, processTypes) ->
                 createGFlagUpdateTasks(1, nodeList, getSingle(processTypes)),
             nodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            false);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
             (nodeList, processTypes) ->
                 createGFlagUpdateTasks(1, nodeList, getSingle(processTypes)),
             nodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            false);
       }
     }
   }
@@ -119,21 +125,31 @@ public class TlsToggle extends UpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
-          DEFAULT_CONTEXT);
+          DEFAULT_CONTEXT,
+          false);
     } else if (getNodeToNodeChange() < 0) {
       if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
         createRollingUpgradeTaskFlow(
             (nodeList, processTypes) ->
                 createGFlagUpdateTasks(2, nodeList, getSingle(processTypes)),
             nodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            false);
       } else if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
         createNonRollingUpgradeTaskFlow(
             (nodeList, processTypes) ->
                 createGFlagUpdateTasks(2, nodeList, getSingle(processTypes)),
             nodes,
-            RUN_BEFORE_STOPPING);
+            RUN_BEFORE_STOPPING,
+            false);
       }
+    }
+
+    if (taskParams().ybcInstalled) {
+      createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop");
+      createYbcFlagsUpdateTasks(nodes.getRight());
+      createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "start");
+      createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes.getRight()));
     }
   }
 
@@ -160,7 +176,16 @@ public class TlsToggle extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private void createCopyCertTasks(List<NodeDetails> nodes) {
+  private void createYbcFlagsUpdateTasks(List<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(getAnsibleConfigureServerTaskForYbcToggleTls(node));
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createCopyCertTasks(Collection<NodeDetails> nodes) {
     // Copy cert tasks are not needed if TLS is disabled
     if (!taskParams().enableNodeToNodeEncrypt && !taskParams().enableClientToNodeEncrypt) {
       return;
@@ -203,6 +228,26 @@ public class TlsToggle extends UpgradeTaskBase {
       NodeDetails node, ServerType processType, UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.ToggleTls, taskSubType);
+    params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
+    params.allowInsecure = taskParams().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    params.nodeToNodeChange = getNodeToNodeChange();
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    return task;
+  }
+
+  private AnsibleConfigureServers getAnsibleConfigureServerTaskForYbcToggleTls(NodeDetails node) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            node,
+            ServerType.CONTROLLER,
+            UpgradeTaskType.ToggleTls,
+            UpgradeTaskSubType.YbcGflagsUpdate);
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.allowInsecure = taskParams().allowInsecure;

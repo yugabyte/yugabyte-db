@@ -367,9 +367,13 @@ class LibraryPackager:
                 raise RuntimeError("No files found matching the pattern '{}'".format(
                     seed_executable_glob))
             for executable in glob_results:
+                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
+                if 'gobin' in seed_executable_glob:
+                    # This is a statically linked go binary
+                    shutil.copy(executable, dest_bin_dir)
+                    continue
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
-                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
                 if deps:
                     self.install_dyn_linked_binary(executable, dest_bin_dir)
                     executable_basename = os.path.basename(executable)

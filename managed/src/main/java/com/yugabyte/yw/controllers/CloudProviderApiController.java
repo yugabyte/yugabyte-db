@@ -70,6 +70,12 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(Provider.getAll(customerUUID, name, providerCode));
   }
 
+  @ApiOperation(value = "Get a cloud provider", response = Provider.class, nickname = "getProvider")
+  public Result index(UUID customerUUID, UUID providerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return PlatformResults.withData(Provider.getOrBadRequest(customerUUID, providerUUID));
+  }
+
   @ApiOperation(
       value = "Delete a cloud provider",
       notes = "This endpoint is used only for integration tests.",

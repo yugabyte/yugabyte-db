@@ -44,9 +44,12 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tserver/remote_bootstrap_anchor_client.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap.proxy.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/rate_limiter.h"
 
@@ -96,7 +99,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
  public:
   RemoteBootstrapSession(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                          std::string session_id, std::string requestor_uuid,
-                         const std::atomic<int>* nsessions);
+                         const std::atomic<int>* nsessions,
+                         const scoped_refptr<RemoteBootstrapAnchorClient>&
+                            rbs_anchor_client = nullptr);
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
@@ -136,6 +141,9 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   RateLimiter& rate_limiter() { return rate_limiter_; }
 
+  Stopwatch& crc_compute_timer() { return crc_compute_timer_; }
+  Stopwatch& data_read_timer() { return data_read_timer_; }
+
   static const std::string kCheckpointsDir;
 
   // Get a piece of a RocksDB file.
@@ -143,6 +151,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // is only for sending rocksdb files.
   static Status GetFilePiece(
       const std::string& path, const std::string& file_name, Env* env, GetDataPieceInfo* info);
+
+  // Refresh the Log Anchor Session with the leader when rbs_anchor_client != nullptr and
+  // rbs_anchor_session_created_ is set.
+  Status RefreshRemoteLogAnchorSessionAsync();
 
  private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
@@ -218,6 +230,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Time when this session was initialized.
   MonoTime start_time_;
 
+  // Stopwatch to capture the latency of different operations
+  Stopwatch crc_compute_timer_;
+  Stopwatch data_read_timer_;
+
   // Used to limit the transmission rate.
   RateLimiter rate_limiter_;
 
@@ -226,6 +242,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   const std::atomic<int>* nsessions_;
 
   std::array<std::unique_ptr<RemoteBootstrapSource>, DataIdPB::IdType_ARRAYSIZE> sources_;
+
+  scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client_;
+
+  // Boolean that determines if we need to call KeepLogAnchorAlive on rbs_anchor_client_.
+  bool rbs_anchor_session_created_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapSession);
 };

@@ -283,7 +283,7 @@ public class MiniYBCluster implements AutoCloseable {
    * @return the string representation of a random localhost IP.
    */
   private String getRandomBindAddressOnLinux() throws IllegalArgumentException {
-    assert(TestUtils.IS_LINUX);
+    assert(SystemUtil.IS_LINUX);
     // On Linux we can use 127.x.y.z, so let's just pick a random address.
     final StringBuilder randomLoopbackIp = new StringBuilder("127");
     final Random rng = RandomNumberUtil.getRandomGenerator();
@@ -313,7 +313,7 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   private String getDaemonBindAddress(MiniYBDaemonType daemonType) throws IOException {
-    if (TestUtils.IS_LINUX && !clusterParameters.useIpWithCertificate) {
+    if (SystemUtil.IS_LINUX && !clusterParameters.useIpWithCertificate) {
       return pickFreeRandomBindIpOnLinux(daemonType);
     }
 
@@ -356,7 +356,7 @@ public class MiniYBCluster implements AutoCloseable {
     // range of x.
     final int nextToLastByteMax = clusterParameters.useIpWithCertificate ? 0 : 3;
 
-    if (TestUtils.IS_LINUX) {
+    if (SystemUtil.IS_LINUX) {
       // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
       final int lastIpByteStep = clusterParameters.useIpWithCertificate ? 2 : 1;
       for (int nextToLastByte = nextToLastByteMin;

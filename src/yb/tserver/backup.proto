@@ -25,6 +25,13 @@ service TabletServerBackupService {
   rpc TabletSnapshotOp(TabletSnapshotOpRequestPB) returns (TabletSnapshotOpResponsePB);
 }
 
+message TableMetadataPB {
+  uint32 schema_version = 1;
+  SchemaPB schema = 2;
+  repeated IndexInfoPB indexes = 3;
+  bytes table_id = 4;
+}
+
 message TabletSnapshotOpRequestPB {
   enum Operation {
     UNKNOWN = 0;
@@ -79,6 +86,9 @@ message TabletSnapshotOpRequestPB {
   // This is the database oid that needs to be restored partially. Applicable
   // only for tablets of sequences_data table currently.
   int64 db_oid = 18;
+
+  // Metadata of all colocated tables in the case of RESTORE_ON_TABLET rpc.
+  repeated TableMetadataPB colocated_tables_metadata = 19;
 }
 
 message TabletSnapshotOpResponsePB {

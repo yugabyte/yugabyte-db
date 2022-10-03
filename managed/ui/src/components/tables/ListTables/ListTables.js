@@ -168,6 +168,7 @@ class ListTableGrid extends Component {
             actionType="create-backup"
             disabled={actions_disabled || !disableManualBackup}
             btnClass={'btn-orange'}
+            universeUUID={currentUniverse.universeUUID}
           />
         ];
         if (getTableIcon(row.tableType) === 'YCQL') {
@@ -194,8 +195,6 @@ class ListTableGrid extends Component {
         );
       }
     };
-
-    const tablePlacementDummyData = { read: '-', write: '-' };
 
     const formatTableStatus = function (item, row) {
       if (item === 'success') {
@@ -238,10 +237,9 @@ class ListTableGrid extends Component {
           tableType: item.tableType,
           tableName: item.tableName,
           status: 'success',
-          read: tablePlacementDummyData.read,
-          write: tablePlacementDummyData.write,
           isIndexTable: item.isIndexTable,
-          sizeBytes: item.sizeBytes
+          sizeBytes: item.sizeBytes,
+          walSizeBytes: item.walSizeBytes
         };
       });
     }
@@ -299,7 +297,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn
           dataField={'tableType'}
           dataFormat={getTableIcon}
-          width="10%"
+          width="15%"
           columnClassName={'table-type-image-header yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
@@ -308,7 +306,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'keySpace'}
-          width="10%"
+          width="15%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatKeySpace}
           dataSort
@@ -317,7 +315,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'status'}
-          width="5%"
+          width="15%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatTableStatus}
         >
@@ -330,13 +328,16 @@ class ListTableGrid extends Component {
           dataFormat={formatBytes}
           dataSort
         >
-          Size
+          SST Size
         </TableHeaderColumn>
-        <TableHeaderColumn dataField={'read'} width="10%" columnClassName={'yb-table-cell'}>
-          Read
-        </TableHeaderColumn>
-        <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
-          Write
+        <TableHeaderColumn
+          dataField={'walSizeBytes'}
+          width="15%"
+          columnClassName={'yb-table-cell'}
+          dataFormat={formatBytes}
+          dataSort
+        >
+          WAL Size
         </TableHeaderColumn>
         {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn

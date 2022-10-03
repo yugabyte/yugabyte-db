@@ -137,6 +137,7 @@ class SysCatalogTable {
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
+  ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const {
     return std::atomic_load(&tablet_peer_);
@@ -182,8 +183,9 @@ class SysCatalogTable {
     TableToTablespaceIdMap *table_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.
-  Result<uint32_t> ReadPgClassRelnamespace(const uint32_t database_oid,
-                                           const uint32_t table_oid);
+  Result<uint32_t> ReadPgClassColumnWithOidValue(const uint32_t database_oid,
+                                                 const uint32_t table_oid,
+                                                 const string& column_name);
 
   // Read nspname string from the pg_namespace catalog table.
   Result<std::string> ReadPgNamespaceNspname(const uint32_t database_oid,
@@ -295,6 +297,8 @@ class SysCatalogTable {
 
   // Thread pool for appender tasks
   std::unique_ptr<ThreadPool> append_pool_;
+
+  std::unique_ptr<ThreadPool> log_sync_pool_;
 
   std::unique_ptr<ThreadPool> allocation_pool_;
 

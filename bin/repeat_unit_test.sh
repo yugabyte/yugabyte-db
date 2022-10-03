@@ -194,7 +194,7 @@ set_build_root
 set_sanitizer_runtime_options
 
 declare -i -r num_pos_args=${#positional_args[@]}
-if "$is_java_test"; then
+if [[ ${is_java_test} == "true" ]]; then
   if [[ $num_pos_args -ne 2 ]]; then
     fatal "Expected two positional arguments for Java tests, not including build type:" \
           "<maven_module_name> <class_name_with_package>"
@@ -254,7 +254,7 @@ if [[ $iteration -gt 0 ]]; then
   # One iteration with a specific "id" ($iteration).
   test_log_path_prefix=$log_dir/$iteration
   test_log_path=$test_log_path_prefix.log
-  if "$is_java_test"; then
+  if [[ ${is_java_test} == "true" ]]; then
     export YB_SUREFIRE_REPORTS_DIR=$test_log_path_prefix.reports
   fi
   export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
@@ -269,7 +269,7 @@ if [[ $iteration -gt 0 ]]; then
   fi
 
   # TODO: deduplicate the setup here against run_one_cxx_test() in common-test-env.sh.
-  if "$is_java_test"; then
+  if [[ ${is_java_test} == "true" ]]; then
     test_wrapper_cmd_line=(
       "$YB_BUILD_SUPPORT_DIR"/run-test.sh "${positional_args[@]}"
     )
@@ -287,7 +287,7 @@ if [[ $iteration -gt 0 ]]; then
   start_time_sec=$( date +%s )
   (
     cd "$TEST_TMPDIR"
-    if "$verbose"; then
+    if [[ ${verbose} == "true" ]]; then
       log "Iteration $iteration logging to $test_log_path"
     fi
     ulimit -c unlimited
@@ -316,9 +316,9 @@ if [[ $iteration -gt 0 ]]; then
       keep_log=true
     fi
   fi
-  if "$keep_log"; then
+  if [[ ${keep_log} == "true" ]]; then
     if ! "$skip_log_compression"; then
-      if "$is_java_test"; then
+      if [[ ${is_java_test} == "true" ]]; then
         # Compress Java test log.
         mv "$test_log_path" "$YB_SUREFIRE_REPORTS_DIR"
         pushd "$log_dir"
@@ -362,7 +362,7 @@ if [[ $iteration -gt 0 ]]; then
     comment+="; test log path: $test_log_path"
   else
     rm -f "$test_log_path"
-    if "$is_java_test"; then
+    if [[ ${is_java_test} == "true" ]]; then
       set +e
       rm -rf "$YB_SUREFIRE_REPORTS_DIR"
       set -e
@@ -397,7 +397,7 @@ else
   log "$gtest_filter_info"
   if [[ -n ${YB_EXTRA_GTEST_FLAGS:-} ]]; then
     log "Extra test flags from YB_EXTRA_GTEST_FLAGS: $YB_EXTRA_GTEST_FLAGS"
-  elif "$verbose"; then
+  elif [[ ${verbose} == "true" ]]; then
     log "YB_EXTRA_GTEST_FLAGS is not set"
   fi
   log "Saving repeated test execution logs to: $log_dir"

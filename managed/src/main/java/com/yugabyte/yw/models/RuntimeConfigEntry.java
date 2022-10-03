@@ -12,6 +12,7 @@ import io.ebean.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -22,6 +23,10 @@ import org.slf4j.LoggerFactory;
 
 @Entity
 public class RuntimeConfigEntry extends Model {
+
+  private static final Finder<UUID, RuntimeConfigEntry> find =
+      new Finder<UUID, RuntimeConfigEntry>(RuntimeConfigEntry.class) {};
+
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfigEntry.class);
   private static final Set<String> sensitiveKeys =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
@@ -60,6 +65,15 @@ public class RuntimeConfigEntry extends Model {
   @Deprecated
   public static RuntimeConfigEntry get(UUID scope, String path) {
     return findOne.byId(new RuntimeConfigEntryKey(scope, path));
+  }
+
+  public static Optional<RuntimeConfigEntry> maybeGet(UUID scope, String path) {
+    return RuntimeConfigEntry.find
+        .query()
+        .where()
+        .eq("scope_uuid", scope)
+        .eq("path", path)
+        .findOneOrEmpty();
   }
 
   public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {

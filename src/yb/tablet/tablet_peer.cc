@@ -58,6 +58,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
@@ -143,13 +145,14 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
+using consensus::OpIdType;
+using consensus::PeerMemberType;
+using consensus::RaftConfigPB;
+using consensus::RaftConsensus;
+using consensus::RaftPeerPB;
+using consensus::ReplicateMsg;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
-using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
-using consensus::RaftConsensus;
-using consensus::ReplicateMsg;
-using consensus::OpIdType;
 using log::Log;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
@@ -763,6 +766,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
+  status_pb_out->set_has_been_fully_compacted(meta_->has_been_fully_compacted());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -1046,27 +1050,69 @@ OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
 }
 
+CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    return txn_participant->GetCheckpointExpirationTime();
+  }
+
+  return CoarseTimePoint();
+}
+
+OpId TabletPeer::GetLatestCheckPoint() {
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    return txn_participant->GetLatestCheckPoint();
+  }
+  return OpId();
+}
+
+Result<NamespaceId> TabletPeer::GetNamespaceId() {
+  auto namespace_id = tablet()->metadata()->namespace_id();
+  if (!namespace_id.empty()) {
+    return namespace_id;
+  }
+  // This is empty the first time we try to fetch the namespace id from the tablet metadata, so
+  // fetch it from the client and populate the tablet metadata.
+  auto* client = client_future().get();
+  master::GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
+                                         tablet()->metadata()->namespace_name(),
+                                         boost::none /* database_type */, &resp));
+  namespace_id = resp.namespace_().id();
+  if (namespace_id.empty()) {
+    return STATUS(IllegalState, Format("Could not get namespace id for $0",
+                                       tablet()->metadata()->namespace_name()));
+  }
+  RETURN_NOT_OK(tablet()->metadata()->set_namespace_id(namespace_id));
+  return namespace_id;
+}
+
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
   if (cdc_sdk_op_id == OpId::Invalid()) {
     return Status::OK();
   }
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
-  auto txn_participant = tablet()->transaction_participant();
-  if (txn_participant) {
-    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    RETURN_NOT_OK(CheckRunning());
+    auto txn_participant = tablet_->transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
   }
   return Status::OK();
 }
 
-Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
-    const CoarseTimePoint& cdc_sdk_latest_active_time) {
+Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time) {
   MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
   // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
   // It's mean that, no need to retain the intents. This can happen in below case:-
   //      a. Only XCluster streams are defined for the tablet.
   //      b. CDCSDK stream for the tablet is expired.
-  if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
+  if (cdc_sdk_latest_active_time == 0) {
     return cdc_sdk_intent_retention;
   }
 
@@ -1077,7 +1123,8 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
     // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
     MonoDelta max_retain_time =
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-    MonoDelta lastest_active_time(CoarseMonoClock::Now() - cdc_sdk_latest_active_time);
+    auto lastest_active_time =
+        MonoDelta::FromMicroseconds(GetCurrentTimeMicros() - cdc_sdk_latest_active_time);
     if (max_retain_time >= lastest_active_time) {
       cdc_sdk_intent_retention = max_retain_time - lastest_active_time;
     }
@@ -1402,10 +1449,78 @@ rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
 }
 
+// Called from within RemoteBootstrapSession and RemoteBootstrapAnchorService.
+Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
+  shared_ptr<consensus::Consensus> consensus = shared_consensus();
+
+  // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
+  // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
+  // null.
+  if (!consensus) {
+    RaftGroupStatePB tablet_state = state();
+    return STATUS(
+        IllegalState,
+        Substitute(
+            "Unable to change role for server $0 in config for tablet $1. Consensus is not "
+            "available. "
+            "Tablet state: $2 ($3)",
+            requestor_uuid, tablet_id(), RaftGroupStatePB_Name(tablet_state), tablet_state));
+  }
+
+  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
+  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
+  // the leader starts bootstrapping it.
+  const consensus::RaftConfigPB config = RaftConfig();
+  for (const RaftPeerPB& peer_pb : config.peers()) {
+    if (peer_pb.permanent_uuid() != requestor_uuid) {
+      continue;
+    }
+
+    switch(peer_pb.member_type()) {
+      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::VOTER:
+        LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
+                   << PeerMemberType_Name(peer_pb.member_type())
+                   << " Not changing its role after remote bootstrap";
+
+        // Even though this is an error, we return Status::OK() so the remote server doesn't
+        // tombstone its tablet.
+        return Status::OK();
+
+      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_VOTER: {
+        consensus::ChangeConfigRequestPB req;
+        consensus::ChangeConfigResponsePB resp;
+
+        req.set_tablet_id(tablet_id());
+        req.set_type(consensus::CHANGE_ROLE);
+        RaftPeerPB* peer = req.mutable_server();
+        peer->set_permanent_uuid(requestor_uuid);
+
+        boost::optional<TabletServerErrorPB::Code> error_code;
+
+        // If another ChangeConfig is being processed, our request will be rejected.
+        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
+      }
+      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
+        return STATUS(
+            IllegalState,
+            Substitute(
+                "Unable to change role for peer $0 in config for "
+                "tablet $1. Peer has an invalid member type $2",
+                peer_pb.permanent_uuid(), tablet_id(), PeerMemberType_Name(peer_pb.member_type())));
+    }
+    LOG(FATAL) << "Unexpected peer member type " << PeerMemberType_Name(peer_pb.member_type());
+  }
+  return STATUS(
+      IllegalState,
+      Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
+}
+
 void TabletPeer::PollWaitQueue() const {
   if (tablet()) {
     DCHECK_NOTNULL(tablet()->wait_queue());
-    tablet()->wait_queue()->PollBlockerStatus(clock_->Now());
+    tablet()->wait_queue()->Poll(clock_->Now());
   }
 }
 

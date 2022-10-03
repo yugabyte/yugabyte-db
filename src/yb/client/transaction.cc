@@ -72,9 +72,6 @@ DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
-DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
-            "Automatically promote transactions touching data outside of region to global.");
-
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
 
@@ -92,6 +89,8 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
+
+DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 
 namespace yb {
 namespace client {
@@ -133,6 +132,11 @@ bool YBSubTransaction::operator==(const YBSubTransaction& other) const {
 void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
   sub_txn_.subtransaction_id = id;
   highest_subtransaction_id_ = std::max(highest_subtransaction_id_, id);
+}
+
+bool YBSubTransaction::HasSubTransaction(SubTransactionId id) const {
+  // See the condition in YBSubTransaction::RollbackToSubTransaction.
+  return highest_subtransaction_id_ >= id;
 }
 
 Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
@@ -250,6 +254,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << __func__ << "(" << IsolationLevel_Name(isolation) << ", "
                         << read_point.GetReadTime() << ")";
 
@@ -319,6 +324,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         return false;
       }
       const bool defer = !ready_ || *promotion_started;
+
+      if (!status_.ok()) {
+        auto status = status_;
+        lock.unlock();
+        VLOG_WITH_PREFIX(2) << "Prepare, transaction already failed: " << status;
+        if (waiter) {
+          waiter(status);
+        }
+        return false;
+      }
 
       if (!defer || initial) {
         PrepareOpsGroups(initial, ops_info->groups);
@@ -801,11 +816,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return metadata_;
   }
 
-  void StartHeartbeat() {
-    VLOG_WITH_PREFIX(2) << __PRETTY_FUNCTION__;
-    RequestStatusTablet(TransactionRpcDeadline());
-  }
-
   void SetActiveSubTransaction(SubTransactionId id) {
     VLOG_WITH_PREFIX(4) << "set active sub txn=" << id
                         << ", subtransaction_=" << subtransaction_.ToString();
@@ -829,6 +839,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
               },
               aborted_sub_txn_set), handle);
     });
+  }
+
+  bool HasSubTransaction(SubTransactionId id) EXCLUDES(mutex_) {
+    SharedLock<std::shared_mutex> lock(mutex_);
+    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
@@ -932,11 +947,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         << "; subtransaction_=" << subtransaction_.ToString();
 
     return Status::OK();
-  }
-
-  bool HasSubTransactionState() EXCLUDES(mutex_) {
-    SharedLock<std::shared_mutex> lock(mutex_);
-    return subtransaction_.active();
   }
 
  private:
@@ -1357,6 +1367,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -1717,6 +1728,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
         std::bind(
             &Impl::LookupTabletForTransactionStatusLocationUpdateDone, this, _1, weak_transaction,
@@ -2123,13 +2135,6 @@ Trace* YBTransaction::trace() {
   return impl_->trace();
 }
 
-YBTransactionPtr YBTransaction::Take(
-    TransactionManager* manager, const TransactionMetadata& metadata) {
-  auto result = std::make_shared<YBTransaction>(manager, metadata, PrivateOnlyTag());
-  result->impl_->StartHeartbeat();
-  return result;
-}
-
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
 }
@@ -2138,8 +2143,8 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
   return impl_->RollbackToSubTransaction(id, deadline);
 }
 
-bool YBTransaction::HasSubTransactionState() {
-  return impl_->HasSubTransactionState();
+bool YBTransaction::HasSubTransaction(SubTransactionId id) {
+  return impl_->HasSubTransaction(id);
 }
 
 } // namespace client

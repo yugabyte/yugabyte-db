@@ -252,6 +252,10 @@ public class YsqlQueryExecutor {
 
       allQueries.setLength(0);
       allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
+      runUserDbCommands(allQueries.toString(), data.dbName, universe);
+      LOG.info("Dropped unrequired roles");
+
+      allQueries.setLength(0);
 
       versionMatch =
           universe
@@ -270,13 +274,11 @@ public class YsqlQueryExecutor {
               "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username);
       allQueries.append(String.format("%s; ", query));
     }
-
-    // Reset pg_stat_statements table to remove queries containing credentials.
-    query = "SELECT pg_stat_statements_reset()";
-    allQueries.append(String.format("%s; ", query));
+    query = "SELECT pg_stat_statements_reset();";
+    allQueries.append(query);
 
     runUserDbCommands(allQueries.toString(), data.dbName, universe);
-    LOG.info("Dropped unrequired roles and assigned permissions to the user");
+    LOG.info("Assigned permissions to the user");
   }
 
   private void runUserDbCommands(String query, String dbName, Universe universe) {
@@ -299,6 +301,7 @@ public class YsqlQueryExecutor {
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.db_name = data.dbName;
     ysqlQuery.query = "SELECT 1";
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);

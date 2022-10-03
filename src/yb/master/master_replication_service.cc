@@ -42,6 +42,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
     (UpdateConsumerOnProducerSplit)
+    (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
     (SetUniverseReplicationEnabled)
     (SetupUniverseReplication)
@@ -49,6 +50,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
+    (SetupNSUniverseReplication)
   )
 };
 

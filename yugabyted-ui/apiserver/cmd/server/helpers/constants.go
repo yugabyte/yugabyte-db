@@ -2,8 +2,8 @@ package helpers
 
 // hard coded
 const (
-    HOST     = "127.0.0.1"
-    PORT     = 5433
+//    HOST     = "127.0.0.1"
+//    PORT     = 5433
     USER     = "yugabyte"
     PASSWORD = "yugabyte"
     DBNAME   = "yugabyte"

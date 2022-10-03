@@ -346,10 +346,10 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
   auto i = ybctids->begin();
-  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(make_lw_function(
+  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps({make_lw_function(
       [&i, end = ybctids->end()] {
         return i != end ? *i++ : Slice();
-      })));
+      }), ybctids->size()}));
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }
@@ -384,7 +384,7 @@ Status PgDml::Fetch(int32_t natts,
 
 Result<bool> PgDml::FetchDataFromServer() {
   // Get the rowsets from doc-operator.
-  RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+  rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
 
   // Check if EOF is reached.
   if (rowsets_.empty()) {
@@ -401,7 +401,7 @@ Result<bool> PgDml::FetchDataFromServer() {
               "YSQL read operation was not sent");
 
     // Get the rowsets from doc-operator.
-    RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
+    rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
   }
 
   // Return the output parameter back to Postgres if server wants.

@@ -216,6 +216,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	if (stmt->if_not_exists && OidIsValid(existing_relid))
 	{
+		/*
+		 * If we are in an extension script, insist that the pre-existing
+		 * object be a member of the extension, to avoid security risks.
+		 */
+		ObjectAddress address;
+
+		ObjectAddressSet(address, RelationRelationId, existing_relid);
+		checkMembershipInCurrentExtension(&address);
+
+		/* OK to skip */
 		ereport(NOTICE,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists, skipping",
@@ -1023,8 +1033,8 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	ereport(ERROR,
 			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
-			 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1129. "
-			         "Click '+' on the description to raise its priority"),
+			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
+			         "React with thumbs up to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
 

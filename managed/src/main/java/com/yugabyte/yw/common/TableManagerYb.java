@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -77,17 +78,19 @@ public class TableManagerYb extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
     if (region.provider.code.equals("kubernetes")) {
-      PlacementInfo pi = primaryCluster.placementInfo;
-      podFQDNToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        PlacementInfo pi = cluster.placementInfo;
+        podAddrToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
@@ -164,17 +167,18 @@ public class TableManagerYb extends DevopsBase {
         }
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-
+        CustomerConfigStorageData configData =
+            (CustomerConfigStorageData) customerConfig.getDataObject();
         Map<String, String> regionLocationMap =
-            StorageUtil.getStorageUtil(customerConfig.name)
-                .getRegionLocationsMap(customerConfig.getDataObject());
+            StorageUtil.getStorageUtil(customerConfig.name).getRegionLocationsMap(configData);
         if (MapUtils.isNotEmpty(regionLocationMap)) {
           regionLocationMap.forEach(
               (r, bL) -> {
                 commandArgs.add("--region");
                 commandArgs.add(r);
                 commandArgs.add("--region_location");
-                commandArgs.add(BackupUtil.getExactRegionLocation(backupTableParams, bL));
+                commandArgs.add(
+                    BackupUtil.getExactRegionLocation(backupTableParams.storageLocation, bL));
               });
         }
 
@@ -190,7 +194,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            podFQDNToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -246,7 +250,7 @@ public class TableManagerYb extends DevopsBase {
             region,
             customerConfig,
             provider,
-            podFQDNToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -271,13 +275,13 @@ public class TableManagerYb extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> podFQDNToConfig,
+      Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
@@ -301,7 +305,10 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
     }
-    if (backupTableParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (backupTableParams.useTablespaces) {
@@ -310,11 +317,17 @@ public class TableManagerYb extends DevopsBase {
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
     }
+    if (backupTableParams.disableMultipart) {
+      commandArgs.add("--disable_multipart");
+    }
     if (backupTableParams.disableParallelism) {
       commandArgs.add("--disable_parallelism");
     }
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
+    }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+      commandArgs.add("--disable_xxhash_checksum");
     }
   }
 

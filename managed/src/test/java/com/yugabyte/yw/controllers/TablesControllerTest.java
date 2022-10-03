@@ -65,7 +65,6 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.TablesController.TableInfoResp;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -82,7 +81,6 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -277,7 +275,7 @@ public class TablesControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> tablesController.listTables(customer.uuid, u1.universeUUID, false))
-            .getResult();
+            .buildResult();
     assertEquals(503, r.status());
     assertEquals(
         "Expected error. Masters are not currently queryable.",
@@ -298,7 +296,7 @@ public class TablesControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> tablesController.listTables(customer.uuid, u2.universeUUID, false))
-            .getResult();
+            .buildResult();
     assertEquals(500, r.status());
     assertEquals(
         "Could not find the master leader", Json.parse(contentAsString(r)).get("error").asText());

@@ -31,21 +31,20 @@
 //
 package org.yb.client;
 
-import java.util.List;
-
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.DefaultByteBufHolder;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.rpc.RpcHeader;
 import org.yb.util.Slice;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import java.util.List;
 
 /**
  * This class handles information received from an RPC response, providing
  * access to sidecars and decoded protobufs from the message.
  */
 @InterfaceAudience.Private
-final class CallResponse {
-  private final ChannelBuffer buf;
+final class CallResponse extends DefaultByteBufHolder {
   private final RpcHeader.ResponseHeader header;
   private final int totalResponseSize;
 
@@ -61,12 +60,12 @@ final class CallResponse {
    * @param buf Channel buffer which call response reads from.
    * @throws IllegalArgumentException If either the entire recorded packet
    * size or recorded response header PB size are not within reasonable
-   * limits as defined by {@link YRpc#checkArrayLength(ChannelBuffer, long)}.
+   * limits as defined by {@link YRpc#checkArrayLength(ByteBuf, long)}.
    * @throws IndexOutOfBoundsException if the ChannelBuffer does not contain
    * the amount of bytes specified by its length prefix.
    */
-  public CallResponse(final ChannelBuffer buf) {
-    this.buf = buf;
+  public CallResponse(final ByteBuf buf) {
+    super(buf);
 
     this.totalResponseSize = buf.readInt();
     if (this.totalResponseSize > 0) {
@@ -104,7 +103,7 @@ final class CallResponse {
    * protobuf message.
    * @throws IllegalArgumentException If the recorded size for the main message
    * is not within reasonable limits as defined by
-   * {@link YRpc#checkArrayLength(ChannelBuffer, long)}.
+   * {@link YRpc#checkArrayLength(ByteBuf, long)}.
    * @throws IllegalStateException If the offset for the main protobuf message
    * is not valid.
    */
@@ -129,7 +128,7 @@ final class CallResponse {
    * does not exist.
    * @throws IllegalArgumentException If the recorded size for the main message
    * is not within reasonable limits as defined by
-   * {@link YRpc#checkArrayLength(ChannelBuffer, long)}.
+   * {@link YRpc#checkArrayLength(ByteBuf, long)}.
    */
   public Slice getSidecar(int sidecar) {
     cacheMessage();
@@ -157,8 +156,9 @@ final class CallResponse {
   // Reads the message after the header if not read yet
   private void cacheMessage() {
     if (this.message != null) return;
-    final int length = Bytes.readVarInt32(buf);
-    this.message = nextBytes(buf, length);
+    ByteBuf content = content();
+    final int length = Bytes.readVarInt32(content);
+    this.message = nextBytes(content, length);
   }
 
   // Accounts for a parent slice's offset when making a new one with relative offsets.
@@ -168,7 +168,7 @@ final class CallResponse {
 
   // After checking the length, generates a slice for the next 'length'
   // bytes of 'buf'.
-  private static Slice nextBytes(final ChannelBuffer buf, final int length) {
+  private static Slice nextBytes(final ByteBuf buf, final int length) {
     YRpc.checkArrayLength(buf, length);
     byte[] payload;
     int offset;

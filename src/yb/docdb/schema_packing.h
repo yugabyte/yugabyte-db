@@ -53,6 +53,8 @@ struct ColumnPackingData {
   }
 
   std::string ToString() const;
+
+  bool operator==(const ColumnPackingData&) const = default;
 };
 
 class SchemaPacking {
@@ -83,6 +85,8 @@ class SchemaPacking {
   void ToPB(SchemaPackingPB* out) const;
 
   std::string ToString() const;
+
+  bool operator==(const SchemaPacking&) const = default;
 
  private:
   std::vector<ColumnPackingData> columns_;
@@ -115,6 +119,8 @@ class SchemaPackingStorage {
   }
 
   bool HasVersionBelow(SchemaVersion version) const;
+
+  bool operator==(const SchemaPackingStorage&) const = default;
 
  private:
   // Set could_present to true when schemas could contain the same packings as already present.

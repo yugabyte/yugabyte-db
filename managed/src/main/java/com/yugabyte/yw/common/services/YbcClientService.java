@@ -4,6 +4,8 @@ package com.yugabyte.yw.common.services;
 
 import javax.inject.Singleton;
 import org.yb.client.YbcClient;
+import org.yb.ybc.VersionRequest;
+import org.yb.ybc.VersionResponse;
 
 @Singleton
 public class YbcClientService {
@@ -36,6 +38,21 @@ public class YbcClientService {
   public void closeClient(YbcClient client) {
     if (client != null) {
       client.close();
+    }
+  }
+
+  public String getYbcServerVersion(String nodeIp, int ybcPort, String certFile) {
+    YbcClient client = null;
+    try {
+      client = getNewClient(nodeIp, ybcPort, certFile);
+      VersionRequest req = VersionRequest.newBuilder().build();
+      VersionResponse resp = client.version(req);
+      String version = resp.getServerVersion();
+      return version;
+    } catch (Exception e) {
+      throw e;
+    } finally {
+      closeClient(client);
     }
   }
 }

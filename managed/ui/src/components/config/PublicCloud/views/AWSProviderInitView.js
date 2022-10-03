@@ -32,6 +32,7 @@ import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
 import clsx from 'clsx';
 import './providerView.scss';
+import { specialChars } from '../../constants';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -467,7 +468,7 @@ class AWSProviderInitView extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      networkSetupType: 'new_vpc',
+      networkSetupType: 'existing_vpc',
       setupHostedZone: false,
       credentialInputType: 'custom_keys',
       sshPrivateKeyContent: {},
@@ -871,7 +872,7 @@ class AWSProviderInitView extends Component {
     // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
-        {'Create a new VPC'}
+        {'Create a new VPC (Beta)'}
       </option>,
       <option key={2} value={'existing_vpc'}>
         {'Specify an existing VPC'}
@@ -976,6 +977,11 @@ function validate(values) {
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is required';
   }
+  else {
+    if(!specialChars.test(values.accountName)){
+      errors.accountName = 'Account Name cannot have special characters except - and _';
+    }
+  }
 
   if (!isNonEmptyArray(values.regionList)) {
     errors.regionList = { _error: 'Provider must have at least one region' };
@@ -1020,7 +1026,8 @@ let awsProviderConfigForm = reduxForm({
   validate,
   initialValues: {
     ntp_option: NTP_TYPES.PROVIDER,
-    ntpServers: []
+    ntpServers: [],
+    network_setup : 'existing_vpc'
   },
   touchOnChange: true
 })(AWSProviderInitView);

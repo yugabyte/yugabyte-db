@@ -91,7 +91,6 @@ using yb::cqlserver::CQLServer;
 using yb::cqlserver::CQLServerOptions;
 
 using yb::pgwrapper::PgProcessConf;
-using yb::pgwrapper::PgWrapper;
 using yb::pgwrapper::PgSupervisor;
 
 using namespace yb::size_literals;  // NOLINT

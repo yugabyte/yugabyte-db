@@ -243,10 +243,17 @@ $(document).ready(() => {
   });
 
   // Right sidebar click move content to inpage link.
-  $(document).on('click', '.td-toc #TableOfContents a,.td-content h2 a,.td-content h3 a,.td-content h4 a', (event) => {
+  $(document).on('click', '.td-toc #TableOfContents a,.td-content a', (event) => {
     const linkHref = $(event.currentTarget).attr('href');
-    window.location.hash = linkHref;
+    if (!linkHref.startsWith('#')) {
+      return;
+    }
 
+    if ($(event.currentTarget).hasClass('nav-link') && $(event.currentTarget).attr('role') === 'tab') {
+      return;
+    }
+
+    window.location.hash = linkHref;
     if ($(window).width() > 767) {
       $('html, body').scrollTop(($(linkHref).offset().top) - 70);
     } else {
@@ -257,8 +264,8 @@ $(document).ready(() => {
   });
 
   // Hash link move page to his inpage link.
-  if (window.location.hash) {
-    $(`.td-toc #TableOfContents a[href="${window.location.hash}"]`).click();
+  if (window.location.hash && $(`.td-content ${window.location.hash} a`)) {
+    $(`.td-content ${window.location.hash} a`).click();
   }
 
   // Expand / collapse left navigation on click.
@@ -316,7 +323,14 @@ $(document).ready(() => {
 $(window).scroll(() => {
   // Right sidebar inpage link active on scroll.
   if ($('.td-toc #TableOfContents').length > 0) {
-    $('.td-content > h2,.td-content > h3,.td-content > h4').each((index, element) => {
+    let rightMenuSelector = '.td-content > h2,.td-content > h3,.td-content > h4';
+    if ($('.td-toc').hasClass('hide-h3')) {
+      rightMenuSelector = '.td-content > h2';
+    } else if ($('.td-toc').hasClass('hide-h4')) {
+      rightMenuSelector = '.td-content > h2,.td-content > h3';
+    }
+
+    $(rightMenuSelector).each((index, element) => {
       const offsetTop = $(element).offset().top;
       const scrollTop = $(window).scrollTop();
       const headingId = $(element).attr('id');

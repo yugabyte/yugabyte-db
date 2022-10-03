@@ -155,7 +155,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
                              doc_path.as_slice().ToDebugHexString());
       }
-      // We will acquire strong lock on entire doc_path, so remove it from list of weak locks.
+      // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
       // Acquire weak lock on empty key for transactional tables,
@@ -835,7 +835,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
           intent_iter.Seek(reverse_index_value);
           if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
-                        << " for " << key_slice.ToDebugHexString();
+                         << " for " << key_slice.ToDebugHexString()
+                         << ", transactionId: " << transaction_id;
             return ApplyTransactionState{};
           }
 
@@ -857,15 +858,18 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 decoded_value.body,
             }};
 
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
+
             IntentKeyValueForCDC intent_metadata;
             intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
             intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
+            intent_metadata.intent_ht = doc_ht;
             (*key_value_intents).push_back(intent_metadata);
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
-                      << (*key_value_intents).size();
+                    << (*key_value_intents).size();
             ++write_id;
           }
         }

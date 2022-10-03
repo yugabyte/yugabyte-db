@@ -18,10 +18,15 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/json_util.h"
 #include "yb/common/snapshot.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
@@ -52,6 +57,159 @@ Result<T> GetOptionalArg(const Args& args, size_t idx) {
                          idx + 1, args.size());
   }
   return VERIFY_RESULT(T::FromString(args[idx]));
+}
+
+Status ListSnapshots(ClusterAdminClientClass* client, const EnumBitSet<ListSnapshotsFlag>& flags) {
+  auto snapshot_response = VERIFY_RESULT(client->ListSnapshots(flags));
+
+  rapidjson::Document document(rapidjson::kObjectType);
+  bool json = flags.Test(ListSnapshotsFlag::JSON);
+
+  if (snapshot_response.has_current_snapshot_id()) {
+    if (json) {
+      AddStringField(
+          "current_snapshot_id", SnapshotIdToString(snapshot_response.current_snapshot_id()),
+          &document, &document.GetAllocator());
+    } else {
+      std::cout << "Current snapshot id: "
+                << SnapshotIdToString(snapshot_response.current_snapshot_id()) << std::endl;
+    }
+  }
+
+  rapidjson::Value json_snapshots(rapidjson::kArrayType);
+  if (!json) {
+    if (snapshot_response.snapshots_size()) {
+      // Using 2 tabs so that the header can be aligned to the time.
+      std::cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << kColumnSep
+                << kColumnSep << "Creation Time" << std::endl;
+    } else {
+      std::cout << "No snapshots" << std::endl;
+    }
+  }
+
+  for (master::SnapshotInfoPB& snapshot : *snapshot_response.mutable_snapshots()) {
+    rapidjson::Value json_snapshot(rapidjson::kObjectType);
+    if (json) {
+      AddStringField(
+          "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
+      const auto& entry = snapshot.entry();
+      AddStringField(
+          "state", master::SysSnapshotEntryPB::State_Name(entry.state()), &json_snapshot,
+          &document.GetAllocator());
+      AddStringField(
+          "snapshot_time", HybridTimeToString(HybridTime::FromPB(entry.snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
+      AddStringField(
+          "previous_snapshot_time",
+          HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
+    } else {
+      std::cout << SnapshotIdToString(snapshot.id()) << kColumnSep
+                << master::SysSnapshotEntryPB::State_Name(snapshot.entry().state()) << kColumnSep
+                << HybridTimeToString(HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time()))
+                << std::endl;
+    }
+
+    // Not implemented in json mode.
+    if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
+      for (master::SysRowEntry& entry : *snapshot.mutable_entry()->mutable_entries()) {
+        string decoded_data;
+        switch (entry.type()) {
+          case master::SysRowEntryType::NAMESPACE: {
+            auto meta =
+                VERIFY_RESULT(pb_util::ParseFromSlice<master::SysNamespaceEntryPB>(entry.data()));
+            meta.clear_transaction();
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            break;
+          }
+          case master::SysRowEntryType::UDTYPE: {
+            auto meta =
+                VERIFY_RESULT(pb_util::ParseFromSlice<master::SysUDTypeEntryPB>(entry.data()));
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            break;
+          }
+          case master::SysRowEntryType::TABLE: {
+            auto meta =
+                VERIFY_RESULT(pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data()));
+            meta.clear_schema();
+            meta.clear_partition_schema();
+            meta.clear_index_info();
+            meta.clear_indexes();
+            meta.clear_transaction();
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            break;
+          }
+          default:
+            break;
+        }
+
+        if (!decoded_data.empty()) {
+          entry.set_data("DATA");
+          std::cout << kColumnSep
+                    << StringReplace(
+                           JsonWriter::ToJson(entry, JsonWriter::COMPACT), "\"DATA\"", decoded_data,
+                           false)
+                    << std::endl;
+        }
+      }
+    }
+    if (json) {
+      json_snapshots.PushBack(json_snapshot, document.GetAllocator());
+    }
+  }
+
+  if (json) {
+    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
+    std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
+    return Status::OK();
+  }
+
+  auto restorations_result =
+      VERIFY_RESULT(client->ListSnapshotRestorations(TxnSnapshotRestorationId::Nil()));
+  if (restorations_result.restorations_size() == 0) {
+    std::cout << "No snapshot restorations" << std::endl;
+  } else if (flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED)) {
+    std::cout << "Not show fully RESTORED entries" << std::endl;
+  }
+
+  bool title_printed = false;
+  for (const auto& restoration : restorations_result.restorations()) {
+    if (!flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED) ||
+        restoration.entry().state() != master::SysSnapshotEntryPB::RESTORED) {
+      if (!title_printed) {
+        std::cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << std::endl;
+        title_printed = true;
+      }
+      std::cout << TryFullyDecodeTxnSnapshotRestorationId(restoration.id()) << kColumnSep
+                << master::SysSnapshotEntryPB::State_Name(restoration.entry().state()) << std::endl;
+    }
+  }
+
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ListSnapshotRestorations(
+    ClusterAdminClientClass* client, const TxnSnapshotRestorationId& restoration_id) {
+  auto resp = VERIFY_RESULT(client->ListSnapshotRestorations(restoration_id));
+  rapidjson::Document result;
+  result.SetObject();
+  rapidjson::Value json_restorations(rapidjson::kArrayType);
+  for (const auto& restoration : resp.restorations()) {
+    rapidjson::Value json_restoration(rapidjson::kObjectType);
+    AddStringField(
+        "id", VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(restoration.id())).ToString(),
+        &json_restoration, &result.GetAllocator());
+    AddStringField(
+        "snapshot_id",
+        VERIFY_RESULT(FullyDecodeTxnSnapshotId(restoration.entry().snapshot_id())).ToString(),
+        &json_restoration, &result.GetAllocator());
+    AddStringField(
+        "state", master::SysSnapshotEntryPB_State_Name(restoration.entry().state()),
+        &json_restoration, &result.GetAllocator());
+    json_restorations.PushBack(json_restoration, result.GetAllocator());
+  }
+  result.AddMember("restorations", json_restorations, result.GetAllocator());
+  return result;
 }
 
 } // namespace
@@ -85,7 +243,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(flags), "Unable to list snapshots");
+        RETURN_NOT_OK_PREPEND(ListSnapshots(client, flags), "Unable to list snapshots");
         return Status::OK();
       });
 
@@ -125,7 +283,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       " [<restoration_id>]",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
         auto restoration_id = VERIFY_RESULT(GetOptionalArg<TxnSnapshotRestorationId>(args, 0));
-        return client->ListSnapshotRestorations(restoration_id);
+        return ListSnapshotRestorations(client, restoration_id);
       });
 
   RegisterJson(
@@ -142,9 +300,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         // This is just a paranoid check, should never happen.
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
-        }
-        if (interval > retention) {
-          return STATUS(InvalidArgument, "Interval cannot be greater than retention");
         }
         if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
             tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
@@ -189,6 +344,38 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         return client->RestoreSnapshotSchedule(schedule_id, restore_at);
+      });
+
+  RegisterJson(
+      "edit_snapshot_schedule",
+      " <schedule_id> (interval <new_interval_in_minutes> | retention "
+      "<new_retention_in_minutes>){1,2}",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        if (args.size() != 3 && args.size() != 5) {
+          return STATUS(InvalidArgument,
+                        Format("Expected 3 or 5 arguments, received $0", args.size()));
+        }
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        std::optional<MonoDelta> new_interval;
+        std::optional<MonoDelta> new_retention;
+        for (size_t i = 1; i + 1 < args.size(); i += 2) {
+          if (args[i] == "interval") {
+            if (new_interval) {
+              return STATUS(InvalidArgument, "Repeated interval");
+            }
+            new_interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else if (args[i] == "retention") {
+            if (new_retention) {
+              return STATUS(InvalidArgument, "Repeated retention");
+            }
+            new_retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[i + 1])));
+          } else {
+            return STATUS(
+                InvalidArgument,
+                Format("Expected either \"retention\" or \"interval\", got: $0", args[i]));
+          }
+        }
+        return client->EditSnapshotSchedule(schedule_id, new_interval, new_retention);
       });
 
   Register(
@@ -694,6 +881,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         }
 
         return client->WaitForReplicationDrain(stream_ids, target_time);
+      });
+
+  Register(
+      "setup_namespace_universe_replication",
+      " <producer_universe_uuid> <producer_master_addresses> <namespace>",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+        const string producer_uuid = args[0];
+        vector<string> producer_addresses;
+        boost::split(producer_addresses, args[1], boost::is_any_of(","));
+        TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
+
+        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
+                                                                 producer_addresses,
+                                                                 producer_namespace),
+                              Substitute("Unable to setup namespace replication from universe $0",
+                                         producer_uuid));
+        return Status::OK();
       });
 }  // NOLINT -- a long function but that is OK
 

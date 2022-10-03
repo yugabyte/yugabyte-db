@@ -49,6 +49,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
+
+    public boolean enableybc;
     public String ybcSoftwareVersion = null;
 
     // Optional params.
@@ -73,8 +75,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // > 0 => node-to-node encryption is enabled
     // < 0 => node-to-node encryption is disabled
     public int nodeToNodeChange = 0;
-    // Systemd vs Cron Option (Default: Cron)
-    public boolean useSystemd = false;
     // Cert rotation related params
     public CertRotationType rootCARotationType = CertRotationType.None;
     public CertRotationType clientRootCARotationType = CertRotationType.None;
@@ -116,7 +116,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
       }
 
-      // Create an alert if the cronjobs failed to be created on this node.
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       if (response.code != 0 || taskParams().useSystemd) {
         String nodeName = taskParams().nodeName;
@@ -138,13 +137,14 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         saveUniverseDetails(updater);
       }
 
-      if (!taskParams().useSystemd) {
-        long inactiveCronNodes =
-            universe.getNodes().stream().filter(node -> !node.cronsActive).count();
-        metricService.setMetric(
-            buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
-            inactiveCronNodes);
+      long inactiveCronNodes = 0;
+      if (!taskParams().useSystemd && !taskParams().isSystemdUpgrade) {
+        inactiveCronNodes = universe.getNodes().stream().filter(node -> !node.cronsActive).count();
       }
+      // Create an alert if the cronjobs failed to be created.
+      metricService.setMetric(
+          buildMetricTemplate(PlatformMetrics.UNIVERSE_INACTIVE_CRON_NODES, universe),
+          inactiveCronNodes);
 
       // AnsibleConfigureServers performs multiple operations based on the parameters.
       String processType = taskParams().getProperty("processType");
@@ -156,5 +156,10 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         setNodeStatus(NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build());
       }
     }
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

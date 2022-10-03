@@ -35,6 +35,7 @@
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -412,6 +413,45 @@ void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
   }
 }
 
+Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
+  std::lock_guard<decltype(lock_)> l(lock_);
+
+  for (const auto& entry : partitions_) {
+    const auto& tablet = entry.second;
+    const auto& metadata = tablet->LockForRead();
+    Partition partition;
+    Partition::FromPB(metadata->pb.partition(), &partition);
+    auto result = PartitionSchema::SplitHashPartitionForStatusTablet(partition);
+    if (result) {
+      return TabletWithSplitPartitions{tablet, result->first, result->second};
+    }
+  }
+
+  return STATUS_FORMAT(NotFound, "Table $0 has no splittable hash partition", table_id_);
+}
+
+void TableInfo::AddStatusTabletViaSplitPartition(
+    TabletInfoPtr old_tablet, const Partition& partition, const TabletInfoPtr& new_tablet) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+
+  const auto& new_dirty = new_tablet->metadata().dirty();
+  if (new_dirty.is_deleted()) {
+    return;
+  }
+
+  auto old_lock = old_tablet->LockForWrite();
+  auto old_partition = old_lock.mutable_data()->pb.mutable_partition();
+  partition.ToPB(old_partition);
+  old_lock.Commit();
+
+  tablets_.emplace(new_tablet->id(), new_tablet.get());
+
+  if (!new_dirty.is_hidden()) {
+    const auto& new_partition_key = new_dirty.pb.partition().partition_key_end();
+    partitions_.emplace(new_partition_key, new_tablet.get());
+  }
+}
+
 void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& dirty = tablet->metadata().dirty();
   if (dirty.is_deleted()) {
@@ -646,7 +686,7 @@ bool TableInfo::HasTasks() const {
   return !pending_tasks_.empty();
 }
 
-bool TableInfo::HasTasks(server::MonitoredTask::Type type) const {
+bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
   SharedLock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
@@ -1033,6 +1073,12 @@ const DdlLogEntryPB& DdlLogEntry::new_pb() const {
 
 std::string DdlLogEntry::id() const {
   return DocHybridTime(HybridTime(pb_.time()), kMaxWriteId).EncodedInDocDbFormat();
+}
+
+void XClusterSafeTimeInfo::Clear() {
+  auto l = LockForWrite();
+  l.mutable_data()->pb.Clear();
+  l.Commit();
 }
 
 }  // namespace master
