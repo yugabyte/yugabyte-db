@@ -245,4 +245,36 @@ public class TestPgMisc extends BasePgSQLTest {
       statement.executeUpdate("DROP TABLE test_table;");
     }
   }
+
+  /*
+   * Test to make sure that batched nested loops joins work with extended queries over
+   * multiple invocations.
+   * See issue #14278.
+   */
+  @Test
+  public void testBatchedNestLoopExtendedQuery() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate("CREATE TABLE test_table1(r1 int, r2 int," +
+                              "PRIMARY KEY(r1 asc))");
+      statement.executeUpdate("CREATE TABLE test_table2(r1 int, r2 int," +
+                              "PRIMARY KEY(r1 asc))");
+
+      String QUERY = "/*+Set(enable_hashjoin off) Set(enable_mergejoin off) " +
+                     "Set(yb_bnl_batch_size 4) Set(enable_seqscan off) " +
+                     "Set(enable_material off)*/ " +
+                     "SELECT * FROM test_table1, test_table2 " +
+                     "WHERE test_table1.r1 = test_table2.r1";
+      PreparedStatement stmt = connection.prepareStatement(QUERY);
+      // Make sure we're always preparing statements at the server
+      com.yugabyte.jdbc.PgStatement pgstmt = (com.yugabyte.jdbc.PgStatement) stmt;
+      pgstmt.setPrepareThreshold(1);
+
+      stmt.executeQuery();
+      stmt.executeQuery();
+      stmt.executeQuery();
+
+      statement.executeUpdate("DROP TABLE test_table1;");
+      statement.executeUpdate("DROP TABLE test_table2;");
+    }
+  }
 }

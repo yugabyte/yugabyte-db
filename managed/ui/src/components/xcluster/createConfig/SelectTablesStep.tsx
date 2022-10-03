@@ -15,7 +15,12 @@ import { api } from '../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { hasSubstringMatch } from '../../queries/helpers/queriesHelper';
-import { adaptTableUUID, getSharedXClusterConfigs, tableSort } from '../ReplicationUtils';
+import {
+  adaptTableUUID,
+  formatBytes,
+  getSharedXClusterConfigs,
+  tableSort
+} from '../ReplicationUtils';
 import {
   CreateXClusterConfigFormErrors,
   CreateXClusterConfigFormValues,
@@ -348,9 +353,13 @@ export const SelectTablesStep = ({
           <TableHeaderColumn dataField="keyspace" isKey={true} dataSort={true}>
             {tableType === TableType.PGSQL_TABLE_TYPE ? 'Namespace' : 'Keyspace'}
           </TableHeaderColumn>
-          {/* TODO: format sizeBytes to GB*/}
-          <TableHeaderColumn dataField="sizeBytes" dataSort={true} width="100px">
-            Size (GB)
+          <TableHeaderColumn
+            dataField="sizeBytes"
+            dataSort={true}
+            width="100px"
+            dataFormat={(cell) => formatBytes(cell)}
+          >
+            Size
           </TableHeaderColumn>
         </BootstrapTable>
       </div>

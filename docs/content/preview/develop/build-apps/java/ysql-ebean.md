@@ -61,18 +61,6 @@ type: docs
       YSQL - Ebean
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../ycql-4.6/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
-    </a>
-  </li>
 </ul>
 
 The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:

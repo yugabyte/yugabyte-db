@@ -336,10 +336,16 @@ Result<cdc::ConsumerTabletInfo> CDCConsumer::GetConsumerTableInfo(
   SharedLock<rw_spinlock> lock(master_data_mutex_);
   const auto& index_by_tablet = producer_consumer_tablet_map_from_master_.get<TabletTag>();
   auto count = index_by_tablet.count(producer_tablet_id);
+  SCHECK(
+      count, NotFound,
+      Format("No consumer tablets found for producer tablet $0.", producer_tablet_id));
+
   if (count != 1) {
-    return STATUS(IllegalState, Format("For producer tablet $0, found $1 entries when exactly 1 "
-                                       "expected for transactional workloads.", producer_tablet_id,
-                                       count));
+    return STATUS(
+        IllegalState, Format(
+                          "For producer tablet $0, found $1 consumer tablets when exactly 1 "
+                          "expected for transactional workloads.",
+                          producer_tablet_id, count));
   }
   auto it = index_by_tablet.find(producer_tablet_id);
   return it->consumer_tablet_info;

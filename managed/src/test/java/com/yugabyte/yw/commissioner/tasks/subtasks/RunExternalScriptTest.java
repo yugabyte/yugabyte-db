@@ -2,8 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static org.junit.Assert.assertEquals;
+import static org.hamcrest.core.StringEndsWith.endsWith;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -40,8 +41,6 @@ public class RunExternalScriptTest extends FakeDBApplication {
 
   private final String PLATFORM_URL = "";
   private final String TIME_LIMIT_MINS = "5";
-  private final String PLT_EXT_SCRIPT_RUNTIME_CONFIG_PATH =
-      ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH;
 
   static String TMP_DEVOPS_HOME = "/tmp/yugaware_tests";
 
@@ -61,7 +60,7 @@ public class RunExternalScriptTest extends FakeDBApplication {
       String json = mapper.writeValueAsString(runtimeConfigObject);
       settableRuntimeConfigFactory
           .forUniverse(defaultUniverse)
-          .setValue(PLT_EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
+          .setValue(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH, json);
       settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.devops.home", TMP_DEVOPS_HOME);
     } catch (Exception e) {
       assertNull(e);
@@ -101,11 +100,8 @@ public class RunExternalScriptTest extends FakeDBApplication {
         .deleteEntry(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH);
     RunExternalScript externalScriptTask = AbstractTaskBase.createTask(RunExternalScript.class);
     externalScriptTask.initialize(params);
-    RuntimeException re = assertThrows(RuntimeException.class, () -> externalScriptTask.run());
-    assertEquals(
-        "java.lang.RuntimeException: External Script Task failed"
-            + " as the schedule is stopped and this is a old task",
-        re.getMessage());
+    RuntimeException re = assertThrows(RuntimeException.class, externalScriptTask::run);
+    assertThat(re.getMessage(), endsWith(RunExternalScript.STALE_TASK_RAN_ERR));
     settableRuntimeConfigFactory
         .forUniverse(defaultUniverse)
         .setValue("platform_ext_script_content", "the script");

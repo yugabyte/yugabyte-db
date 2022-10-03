@@ -11,7 +11,7 @@ import { KeyspaceRow } from './SelectTablesStep';
 import { YBControlledSelect } from '../../common/forms/fields';
 import YBPagination from '../../tables/YBPagination/YBPagination';
 import { SortOrder } from '../constants';
-import { tableSort } from '../ReplicationUtils';
+import { formatBytes, tableSort } from '../ReplicationUtils';
 
 import styles from './ExpandedTableSelect.module.scss';
 
@@ -63,8 +63,13 @@ export const ExpandedTableSelect = ({
         <TableHeaderColumn dataField="tableName" dataSort={true}>
           Table Name
         </TableHeaderColumn>
-        <TableHeaderColumn dataField="sizeBytes" dataSort={true} width="100px">
-          Size (GB)
+        <TableHeaderColumn
+          dataField="sizeBytes"
+          dataSort={true}
+          width="100px"
+          dataFormat={(cell) => formatBytes(cell)}
+        >
+          Size
         </TableHeaderColumn>
       </BootstrapTable>
       {row.tables.length > TABLE_MIN_PAGE_SIZE && (

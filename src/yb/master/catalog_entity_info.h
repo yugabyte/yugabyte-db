@@ -251,6 +251,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
   uint32_t reported_schema_version(const TableId& table_id);
 
+  // Accessors for the initial leader election protege.
+  void SetInitiaLeaderElectionProtege(const std::string& protege_uuid) EXCLUDES(lock_);
+  std::string InitiaLeaderElectionProtege() EXCLUDES(lock_);
+
   bool colocated() const;
 
   // No synchronization needed.
@@ -302,6 +306,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
+
+  // The protege UUID to use for the initial leader election (in-memory only).
+  std::string initial_leader_election_protege_ GUARDED_BY(lock_);
 
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 

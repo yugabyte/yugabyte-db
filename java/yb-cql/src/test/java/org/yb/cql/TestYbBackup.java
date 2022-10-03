@@ -86,8 +86,7 @@ public class TestYbBackup extends BaseYbBackupTest {
                     "with transactions = { 'enabled' : true };");
     session.execute("create index json_idx on test_json_tbl (j->'a'->>'b');");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("test_json_tbl");
 
     for (int i = 1; i <= 2000; ++i) {
       String s = String.valueOf(i);

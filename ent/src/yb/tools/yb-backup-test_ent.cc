@@ -2452,12 +2452,15 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplicat
   SetDbName("demo");
 
   // Create 10 tables in a loop and insert data.
-  const string base_table_name = "mytbl";
-  for (int i = 0; i < 10; i++) {
+  vector<string> table_names;
+  for (int i = 0; i < 10; ++i) {
+    table_names.push_back(Format("mytbl_$0", i));
+  }
+  for (const auto& table_name : table_names) {
     ASSERT_NO_FATALS(CreateTable(
-        Format("CREATE TABLE $0_$1 (k INT PRIMARY KEY)", base_table_name, i)));
+        Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
     ASSERT_NO_FATALS(InsertRows(
-        Format("INSERT INTO $0_$1 VALUES (generate_series(1, 100))", base_table_name, i), 100));
+        Format("INSERT INTO $0 VALUES (generate_series(1, 100))", table_name), 100));
   }
   LOG(INFO) << "All tables created and data inserted successsfully";
 
@@ -2508,16 +2511,15 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplicat
   SetDbName("yugabyte_new");
 
   // Post-restore, we should have all the data.
-  for (int i = 0; i < 10; i++) {
+  for (const auto& table_name : table_names) {
     ASSERT_NO_FATALS(RunPsqlCommand(
-        Format("SELECT COUNT(*) FROM $0_$1", base_table_name, i),
+        Format("SELECT COUNT(*) FROM $0", table_name),
         R"#(
            count
           -------
              100
           (1 row)
-        )#"
-    ));
+        )#"));
   }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();

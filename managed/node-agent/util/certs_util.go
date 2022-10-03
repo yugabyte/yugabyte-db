@@ -12,14 +12,14 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-//Claims for the JWT.
+// Claims for the JWT.
 type Claims struct {
 	JwtClientIdClaim string `json:"clientId"`
 	JwtUserIdClaim   string `json:"userId"`
 	jwt.StandardClaims
 }
 
-//Saves the cert and key to the certs directory.
+// Saves the cert and key to the certs directory.
 func SaveCerts(config *Config, cert string, key string, subDir string) error {
 	certsDir := filepath.Join(CertsDir(), subDir)
 	err := os.MkdirAll(certsDir, os.ModePerm)

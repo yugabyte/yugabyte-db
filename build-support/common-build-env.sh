@@ -2198,13 +2198,15 @@ check_python_script_syntax() {
 
 run_shellcheck() {
   local scripts_to_check=(
-    yb_build.sh
-    build-support/find_linuxbrew.sh
     build-support/common-build-env.sh
-    build-support/common-test-env.sh
     build-support/common-cli-env.sh
-    build-support/run-test.sh
+    build-support/common-test-env.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
+    build-support/find_linuxbrew.sh
+    build-support/jenkins/build-and-test.sh
+    build-support/jenkins/yb-jenkins-build.sh
+    build-support/run-test.sh
+    yb_build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path

@@ -83,8 +83,7 @@ public class TestIndex extends BaseCQLTest {
                     "primary key ((h), r1, r2)) with transactions = { 'enabled' : true};");
     session.execute("create index i on test_index (h, r2, r1) include (c);");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("test_index");
 
     session.execute("insert into test_index (h, r1, r2, c) values (1, 2, 3, 4);");
     session.execute("insert into i (\"C$_h\", \"C$_r2\", \"C$_r1\", \"C$_c\")" +
@@ -1114,6 +1113,9 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = {'enabled' : true}");
     session.execute("create index test_txn2_by_v on test_txn2 (v)");
 
+    waitForReadPermsOnAllIndexes("test_txn1");
+    waitForReadPermsOnAllIndexes("test_txn2");
+
     session.execute("begin transaction" +
                     "  insert into test_txn1 (k, v) values (1, 101);" +
                     "  insert into test_txn2 (k, v) values ('k1', 'v101');" +
@@ -1244,6 +1246,8 @@ public class TestIndex extends BaseCQLTest {
     for (int i = 1; i <= 9; ++i) {
       session.execute(String.format("create index test_txn_by_v%d on test_txn (v%d)", i, i));
     }
+
+    waitForReadPermsOnAllIndexes("test_txn");
 
     session.execute("begin transaction" +
                     getInsertIntoIndexesStr(10) +
@@ -1486,6 +1490,7 @@ public class TestIndex extends BaseCQLTest {
           "with transactions = { 'enabled' : true } and tablets = %d;", tableName, numTablets));
       session.execute(String.format(
             "create index %s on %s (c) with tablets = %d;", indexName, tableName, numTablets));
+      waitForReadPermsOnAllIndexes(tableName);
       final PreparedStatement statement = session.prepare(String.format(
           "insert into %s (h, c) values (?, ?);", tableName));
 
@@ -1605,6 +1610,8 @@ public class TestIndex extends BaseCQLTest {
     runInvalidStmt("create index on test_tr_tbl(c1) with " +
                    "transactions = {'consistency_level' : 'user_enforced'};");
 
+    waitForReadPermsOnAllIndexes("test_tr_tbl");
+
     // Create non-transactional test tables and indexes.
     session.execute("create table test_non_tr_tbl (h1 int primary key, c1 int) " +
                     "with transactions = {'enabled' : false};");
@@ -1622,6 +1629,9 @@ public class TestIndex extends BaseCQLTest {
     // Test weak index.
     session.execute("create index test_non_tr_tbl_idx on test_non_tr_tbl(c1) with " +
                     "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+
+    waitForReadPermsOnAllIndexes("test_non_tr_tbl");
+
     assertQuery("select options, transactions from system_schema.indexes where " +
                 "index_name = 'test_non_tr_tbl_idx';",
                 "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");
@@ -1641,6 +1651,9 @@ public class TestIndex extends BaseCQLTest {
     // Test weak index.
     session.execute("create index test_reg_tbl_idx on test_reg_tbl(c1) with " +
                     "transactions = {'enabled' : false, 'consistency_level' : 'user_enforced'};");
+
+    waitForReadPermsOnAllIndexes("test_reg_tbl");
+
     assertQuery("select options, transactions from system_schema.indexes where " +
                 "index_name = 'test_reg_tbl_idx';",
                 "Row[{target=c1, h1}, {enabled=false, consistency_level=user_enforced}]");

@@ -16,15 +16,15 @@ type: docs
 
 ## What does API compatibility exactly mean?
 
-API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), [IDE integrations](../../tools/), and other [ecosystem integrations](../../integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 
 {{< note title="Note" >}}
-The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.
+The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver, and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.
 {{< /note >}}
 
 ## Why are YugabyteDB APIs compatible with popular DB languages?
 
-- YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started easily using a language they are already comfortable with.
+- YugabyteDB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugabyteDB ensures that developers can get started quickly using a language they are already comfortable with.
 
 - YugabyteDB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed, strongly-consistent storage architecture that YugabyteDB provides. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugabyteDB.
 
@@ -32,20 +32,22 @@ The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means Postgr
 
 ### What is the extent of compatibility with PostgreSQL?
 
-As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses open source PostgreSQL’s query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL is based on PostgreSQL v11.2. Following are some of the currently supported features:
+As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses the open source PostgreSQL query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL is based on PostgreSQL v11.2. Following are some of the currently supported features:
 
 - DDL statements: CREATE, DROP, and TRUNCATE tables
 - Data types: All primitive types including numeric types (integers and floats), text data types, byte arrays, date-time types, UUID, SERIAL, as well as JSONB
-- DML statements: INSERT, UPDATE, SELECT and DELETE. Bulk of core SQL including JOINs, WHERE clauses, GROUP BY, ORDER BY, LIMIT, OFFSET, and SEQUENCES
+- DML statements: INSERT, UPDATE, SELECT, and DELETE. Bulk of core SQL including JOINs, WHERE clauses, GROUP BY, ORDER BY, LIMIT, OFFSET, and SEQUENCES
 - Transactions: ABORT, ROLLBACK, BEGIN, END, and COMMIT
 - Expressions: Rich set of PostgreSQL built-in functions and operators
 - Other Features: VIEWs, EXPLAIN, PREPARE-BIND-EXECUTE, and JDBC support
+
+For more information, refer to [SQL features](../../explore/ysql-language-features).
 
 YugabyteDB's goal is to remain as compatible with PostgreSQL as much as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues) for us.
 
 ## Can I insert data using YCQL, but read using YSQL, or vice versa?
 
-The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be useful for simple use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://blog.yugabyte.com/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
+The YugabyteDB APIs are currently isolated and independent from one another. Data inserted or managed by one API cannot be queried by the other API. Additionally, Yugabyte does not provide a way to access the data across the APIs. An external framework, such as Presto, might be useful for basic use cases. For an example that joins YCQL and YSQL data, see the blog post about [Presto on YugabyteDB: Interactive OLAP SQL Queries Made Easy](https://blog.yugabyte.com/presto-on-yugabyte-db-interactive-olap-sql-queries-made-easy-facebook/).
 
 Allowing YCQL tables to be accessed from the PostgreSQL-compatible YSQL API as foreign tables using foreign data wrappers (FDW) is on the roadmap. You can comment or increase the priority of the associated [GitHub](https://github.com/yugabyte/yugabyte-db/issues/830) issue.
 
@@ -55,13 +57,13 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 ### Features present in YCQL but not present in CQL
 
-1. Strongly-consistent reads and writes for a single row as an absolute guarantee. This is because YugabyteDB is a Consistent & Partition-tolerant (CP) database as opposed to Apache Cassandra which is an Available & Partition-tolerant (AP) databse. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) prove this correctness aspect under extreme failure conditions.
+1. Strongly-consistent reads and writes for a single row as an absolute guarantee. This is because YugabyteDB is a Consistent & Partition-tolerant (CP) database as opposed to Apache Cassandra which is an Available & Partition-tolerant (AP) database. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) prove this correctness aspect under extreme failure conditions.
 2. [JSONB](../../develop/learn/data-types/) column type for modeling document data
 3. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions.
 
 ### Features present in both YCQL and CQL but YCQL provides stricter guarantees
 
-1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent since internally they use distributed transactions.
+1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent because internally they use distributed transactions.
 2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
 3. Timeline-consistent tunably-stale reads that maintain ordering guarantees from either a follower replica in the primary cluster or a observer replica in the read replica cluster.
 
@@ -72,7 +74,7 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 This [blog](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/) goes into the details of YCQL vs Apache Cassandra architecture and is recommended for further reading.
 
-### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?
+### Do INSERTs do "upserts" by default? How do I insert data only if it is absent?
 
 By default, inserts overwrite data on primary key collisions. So INSERTs do an upsert. This an intended CQL feature. In order to insert data only if the primary key is not already present,  add a clause "IF NOT EXISTS" to the INSERT statement. This will cause the INSERT fail if the row exists.
 
@@ -80,7 +82,7 @@ Here is an example from CQL:
 
 ```sql
 INSERT INTO mycompany.users (id, lastname, firstname)
-   VALUES (100, ‘Smith’, ‘John’)
+   VALUES (100, 'Smith', 'John')
 IF NOT EXISTS;
 ```
 
@@ -103,7 +105,7 @@ INSERT with timestamp far in the future.
 > SELECT * FROM table;
 ```
 
-```
+```output
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
@@ -117,7 +119,7 @@ timestamp.
 > SELECT * FROM table;
 ```
 
-```
+```output
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
@@ -132,7 +134,7 @@ TIMESTAMP` clause, then appropriate timestamp ordering is performed. Example:
 > SELECT * FROM table;
 ```
 
-```
+```output
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
@@ -145,7 +147,7 @@ INSERT with timestamp far in the future, this would overwrite old value.
 > SELECT * FROM table;
 ```
 
-```
+```output
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  4
@@ -158,7 +160,7 @@ INSERT without 'USING TIMESTAMP' will always overwrite.
 > SELECT * FROM table;
 ```
 
-```
+```output
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  5

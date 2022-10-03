@@ -1217,6 +1217,11 @@ class CatalogManager :
       std::set<TabletServerId>* excluded,
       CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
+  // Select and assign a tablet server as the protege 'config'. This protege is selected from the
+  // set of tservers in 'global_state' that have the lowest current protege load.
+  Status SelectProtegeForTablet(
+      TabletInfo* tablet, consensus::RaftConfigPB *config, CMGlobalLoadState* global_state);
+
   // Select N Replicas from online tablet servers (as specified by
   // 'ts_descs') for the specified tablet and populate the consensus configuration
   // object. If 'ts_descs' does not specify enough online tablet

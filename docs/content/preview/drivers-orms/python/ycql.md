@@ -1,45 +1,36 @@
 ---
-title: Build a Python application that uses YCQL
-headerTitle: Build a Python application
-linkTitle: More examples
-description: Build a Python application with the Yugabyte Python Driver for YCQL.
+title: Connect an application
+linkTitle: Connect an app
+description: Python driver for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-python
-    identifier: python-3
-    weight: 553
+    identifier: ycql-python-driver
+    parent: python-drivers
+    weight: 600
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../yugabyte-psycopg2/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-psycopg2.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-aiopg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - aiopg
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - SQL Alchemy
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
+   <li >
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Django
+      YugabyteDB Python Driver
     </a>
   </li>
 </ul>
@@ -62,7 +53,7 @@ The flag `--no-cython` is necessary on MacOS Catalina and further MacOS releases
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../../quick-start/).
 
 ### Write the sample Python application
 
@@ -122,3 +113,4 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 John 35 Python
 ```
+

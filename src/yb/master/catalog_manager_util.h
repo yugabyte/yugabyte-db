@@ -17,6 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
@@ -128,11 +130,11 @@ class CatalogManagerUtil {
 
       for (const auto& loc : *replica_locs) {
         // Ignore replica if not present in the tserver list passed.
-        if (state->per_ts_load_.count(loc.first) == 0) {
+        if (state->per_ts_replica_load_.count(loc.first) == 0) {
           continue;
         }
         // Account for this load.
-        state->per_ts_load_[loc.first]++;
+        state->per_ts_replica_load_[loc.first]++;
       }
     }
   }
@@ -182,10 +184,20 @@ class CatalogManagerUtil {
 
 class CMGlobalLoadState {
  public:
-  uint32_t GetGlobalLoad(const TabletServerId& id) {
-    return per_ts_load_[id];
+  Result<uint32_t> GetGlobalReplicaLoad(const TabletServerId& id) {
+    SCHECK_EQ(per_ts_replica_load_.count(id), 1, IllegalState,
+              Format("Could not locate tablet server $0", id));
+    return per_ts_replica_load_[id];
   }
-  std::unordered_map<TabletServerId, uint32_t> per_ts_load_;
+
+  Result<uint32_t> GetGlobalProtegeLoad(const TabletServerId& id) {
+    SCHECK_EQ(per_ts_replica_load_.count(id), 1, IllegalState,
+              Format("Could not locate tablet server $0", id));
+    return per_ts_protege_load_[id];
+  }
+
+  std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
+  std::unordered_map<TabletServerId, uint32_t> per_ts_protege_load_;
 };
 
 class CMPerTableLoadState {
@@ -193,12 +205,12 @@ class CMPerTableLoadState {
   explicit CMPerTableLoadState(CMGlobalLoadState* global_state)
     : global_load_state_(global_state) {}
 
-  bool CompareLoads(const TabletServerId& ts1, const TabletServerId& ts2);
+  Result<bool> CompareReplicaLoads(const TabletServerId& ts1, const TabletServerId& ts2);
 
   void SortLoad();
 
-  std::vector<TabletServerId> sorted_load_;
-  std::unordered_map<TabletServerId, uint32_t> per_ts_load_;
+  std::vector<TabletServerId> sorted_replica_load_;
+  std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
   CMGlobalLoadState* global_load_state_;
 };
 
@@ -206,7 +218,13 @@ struct Comparator {
   explicit Comparator(CMPerTableLoadState* state) : state_(state) {}
 
   bool operator()(const TabletServerId& id1, const TabletServerId& id2) {
-    return state_->CompareLoads(id1, id2);
+    auto result = state_->CompareReplicaLoads(id1, id2);
+    if (!result.ok()) {
+      LOG(WARNING) << result.ToString();
+      return false;
+    }
+
+    return *result;
   }
 
   CMPerTableLoadState* state_;

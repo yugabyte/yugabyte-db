@@ -34,12 +34,14 @@ For applications that access the cluster from a non-peered network, use the upst
 
 The following libraries are officially supported by YugabyteDB.
 
-### [Java](java/)
+### Java
 
 | Driver/ORM | Support Level | Example apps |
 | :-------------------------- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
+| [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD Example](java/ycql) |
+| [YugabyteDB Java Driver for YCQL (4.6)](java/ycql-4.6/) | Full | [CRUD Example](java/ycql-4.6) |
 | [Ebean](java/ebean/) | Full | [CRUD Example](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD Example](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD Example](../integrations/spring-framework/sdyb/#examples) |
@@ -48,17 +50,18 @@ The following libraries are officially supported by YugabyteDB.
 <!-- | Quarkus | Beta |  | -->
 <!-- | MyBatis | Full |  | -->
 
-### [Go](go/)
+### Go
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
 | [YugabyteDB PGX Smart Driver](go/yb-pgx/) [Recommended] | Full | [CRUD Example](go/yb-pgx/) |
 | [PGX Driver](go/pgx/) | Full | [CRUD Example](go/pgx/) |
 | [PQ Driver](go/pq/) | Full | [CRUD Example](go/pq/) |
+| [YugabyteDB Go Driver for YCQL](go/ycql/) | Full | [CRUD Example](go/ycql) |
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
 | [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
 
-### [Node.js](nodejs/)
+### Node.js
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
@@ -67,14 +70,15 @@ The following libraries are officially supported by YugabyteDB.
 | [Sequelize](nodejs/sequelize/) | Full | [CRUD Example](nodejs/sequelize/) |
 | [Prisma](nodejs/prisma/) | Full | [CRUD Example](nodejs/prisma/)
 
-### [C#](csharp/)
+### C#
 
-| Name | Type | Support | Example |
-| :--- | :--- | :-------| :------ |
-| [Npgsql Driver](csharp/postgres-npgsql/) | Driver | Full | [CRUD Example](csharp/postgres-npgsql/) |
-| [EntityFramework](csharp/entityframework/) | ORM | Full | [CRUD Example](csharp/entityframework/) |
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [PostgreSQL Npgsql Driver](csharp/postgres-npgsql/) | Full | [CRUD Example](csharp/postgres-npgsql/) |
+| [YugabyteDB C# Driver for YCQL](csharp/ycql/) | Full | [CRUD Example](csharp/ycql/) |
+| [Entity Framework](csharp/entityframework/) | Full | [CRUD Example](csharp/entityframework/) |
 
-### [Python](python/)
+### Python
 
 | Driver/ORM | Support Level | Example apps |
 | :------------------------- | :------------ | :----------- |
@@ -84,7 +88,7 @@ The following libraries are officially supported by YugabyteDB.
 | [Django](python/django/) | Full | [CRUD Example](python/django/) |
 | [SQLAlchemy](python/sqlalchemy/) | Full | [CRUD Example](python/sqlalchemy/) |
 
-### [Rust](rust/)
+### Rust
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
