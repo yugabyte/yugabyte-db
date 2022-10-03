@@ -604,7 +604,7 @@ TEST_F(CDCServiceTest, TestSafeTime) {
 
 
   // Get CDC changes.
-  FLAGS_TEST_xcluster_simulate_have_more_records = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_have_more_records) = true;
   {
     RpcController rpc;
     SCOPED_TRACE(change_req.DebugString());
@@ -615,7 +615,7 @@ TEST_F(CDCServiceTest, TestSafeTime) {
     ASSERT_TRUE(ht_0 < safe_hybrid_time && safe_hybrid_time < ht_1);
   }
 
-  FLAGS_TEST_xcluster_simulate_have_more_records = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_have_more_records) = false;
   {
     auto pre_get_changes_time = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();;
     RpcController rpc;
@@ -828,12 +828,12 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
-  FLAGS_log_segment_size_bytes = 100;
-  FLAGS_get_changes_honor_deadline = true;
-  FLAGS_cdc_read_safe_deadline_ratio = 0.30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_get_changes_honor_deadline) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_safe_deadline_ratio) = 0.30;
 
   // Skip the META_OP that has the initial table Schema.  This method avoids LogCache.
-  FLAGS_TEST_xcluster_skip_meta_ops = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_skip_meta_ops) = true;
 
   std::string tablet_id = GetTablet();
 
@@ -860,8 +860,8 @@ TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
   {
     // Get CDC changes. Note that the timeout value and read delay
     // should ensure that some, but not all records are read.
-    FLAGS_TEST_get_changes_read_loop_delay_ms = 10 * kTimeMultiplier;
-    FLAGS_cdc_read_rpc_timeout_ms = 50 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_get_changes_read_loop_delay_ms) = 10 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 50 * kTimeMultiplier;
 
     ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
         FLAGS_cdc_read_rpc_timeout_ms));
@@ -877,8 +877,8 @@ TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
   {
     // Try again, but use a timeout value large enough such that
     // all records should be read before timeout.
-    FLAGS_TEST_get_changes_read_loop_delay_ms = 0;
-    FLAGS_cdc_read_rpc_timeout_ms = 30 * 1000 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_get_changes_read_loop_delay_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 30 * 1000 * kTimeMultiplier;
 
     ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
                                     FLAGS_cdc_read_rpc_timeout_ms));
@@ -1653,7 +1653,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Force the producer bootstrap to fail after updating the tablet replication index entries.
-  FLAGS_TEST_cdc_inject_replication_index_update_failure = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_inject_replication_index_update_failure) = true;
 
   // Verify that the producer bootstrap request fails.
   BootstrapProducerRequestPB req;
@@ -1670,7 +1670,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Clear the error injection.
-  FLAGS_TEST_cdc_inject_replication_index_update_failure = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_inject_replication_index_update_failure) = false;
 
   // Verify that the next producer bootstrap request succeeds.
   rpc.Reset();
@@ -1799,7 +1799,7 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
                                                         &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
-  FLAGS_TEST_simulate_free_space_bytes = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
 
   ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
                                                         &segment_sequence));
