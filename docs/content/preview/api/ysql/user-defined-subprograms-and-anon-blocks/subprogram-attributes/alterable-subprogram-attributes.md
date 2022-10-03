@@ -45,7 +45,7 @@ The _security_ attribute determines the identity of the effective _role_ (as is 
 
 - A _security definer_ subprogram executes with the privileges of the subprogram's owner. And a _security invoker_ subprogram executes with the privileges of the _[session_user](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_.
 
-It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the section [Writing safe "security definer" subprograms](../writing-safe-security-definer-subprograms/).
+It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the [Writing SECURITY DEFINER Functions Safely](https://www.postgresql.org/docs/11/sql-createfunction.html#id-1.9.3.67.10.2) section of the PostgreSQL documentation.
 
 Try the following demonstration. It connects to the database _demo_ and relies on two roles, _u1_ (which owns the schema called _u1_) and _u2_ (which doesn't need to own a schema).
 

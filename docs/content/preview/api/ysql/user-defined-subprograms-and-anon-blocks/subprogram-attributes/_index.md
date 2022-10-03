@@ -82,7 +82,7 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 
 As of the current _latest_ version of YugabyteDB, user-defined subprograms can be implemented in SQL, PL/pgSQL, or C. (However, this section does not address implementing user-defined subprograms in C.)
 
-See the section [PL/pgSQL](_to_do_) for an account of that language's syntax and semantics.
+<!-- See the section [PL/pgSQL](_to_do_) for an account of that language's syntax and semantics. -->
 
 See the section [Window functions](../../exprs/window_functions/) for an account of this special kind of function.
 
