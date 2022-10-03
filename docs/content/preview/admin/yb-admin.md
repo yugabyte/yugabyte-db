@@ -50,7 +50,6 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [Backup and snapshot](#backup-and-snapshot-commands)
 * [Deployment topology](#deployment-topology-commands)
   * [Multi-zone and multi-region](#multi-zone-and-multi-region-deployment-commands)
-  * [Master-follower](#master-follower-deployment-commands)
   * [Read replica](#read-replica-deployment-commands)
 * [Security](#security-commands)
   * [Encryption at rest](#encryption-at-rest-commands)
