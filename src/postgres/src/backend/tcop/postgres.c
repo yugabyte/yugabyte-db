@@ -3816,6 +3816,13 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 */
 	if (need_global_cache_refresh)
 		yb_need_cache_refresh = true;
+	else if (need_table_cache_refresh)
+	{
+		ereport(LOG,
+				(errmsg("invalidating table cache entry %s",
+						table_to_refresh)));
+		HandleYBStatus(YBCPgInvalidateTableCacheByTableId(table_to_refresh));
+	}
 
 	/*
 	 * Prepare to retry the query if possible.
@@ -3864,14 +3871,6 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 			/* Refresh cache now so that the retry uses latest version. */
 			if (need_global_cache_refresh)
 				YBRefreshCache();
-			else
-			{
-				/* need_table_cache_refresh */
-				ereport(LOG,
-						(errmsg("invalidating table cache entry %s",
-								table_to_refresh)));
-				HandleYBStatus(YBCPgInvalidateTableCacheByTableId(table_to_refresh));
-			}
 
 			*need_retry = true;
 		}
