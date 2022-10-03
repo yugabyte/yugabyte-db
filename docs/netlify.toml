@@ -405,24 +405,48 @@
   to = "/preview/drivers-orms/java/ycql/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/java/ycql-4.6/"
+  from = "/preview/develop/build-apps/java/ycql-4.6/"
   to = "/preview/drivers-orms/java/ycql-4.6/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/go/ycql/"
+  from = "/preview/develop/build-apps/go/ycql/"
   to = "/preview//drivers-orms/go/ycql/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/python/ycql/"
+  from = "/preview/develop/build-apps/python/ycql/"
   to = "/preview//drivers-orms/python/ycql/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/nodejs/ycql/"
+  from = "/preview/develop/build-apps/nodejs/ycql/"
   to = "/preview//drivers-orms/nodejs/ycql/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/csharp/ycql/"
+  from = "/preview/develop/build-apps/csharp/ycql/"
   to = "/preview//drivers-orms/csharp/ycql/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/c/ysql/"
+  to = "/preview//drivers-orms/c/ysql/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/cpp/ysql/"
+  to = "/preview//drivers-orms/cpp/ysql/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/cpp/ycql/"
+  to = "/preview//drivers-orms/cpp/ycql/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/ruby/ysql-pg/"
+  to = "/preview//drivers-orms/ruby/ysql-pg/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
+  to = "/preview//drivers-orms/ruby/activerecord/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/ruby/ycql/"
+  to = "/preview//drivers-orms/ruby/ycql/"
 
 
 # Hugo resource caching plugin configuration
