@@ -225,6 +225,11 @@ void TabletInfo::UpdateReplicaDriveInfo(const std::string& ts_uuid,
   it->second.UpdateDriveInfo(drive_info);
 }
 
+std::unordered_map<CDCStreamId, uint64_t>  TabletInfo::GetReplicationStatus() {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return replication_stream_to_status_bitmask_;
+}
+
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
   std::lock_guard<simple_spinlock> l(lock_);
   last_update_time_ = ts;

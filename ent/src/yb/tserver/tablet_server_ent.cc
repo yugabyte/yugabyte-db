@@ -164,8 +164,9 @@ Status TabletServer::CreateCDCConsumer() {
     }
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   };
-  cdc_consumer_ = VERIFY_RESULT(CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(),
-                                                    this));
+
+  cdc_consumer_ = VERIFY_RESULT(
+    CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
   return Status::OK();
 }
 

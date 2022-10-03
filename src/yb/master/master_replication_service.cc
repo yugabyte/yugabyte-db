@@ -51,6 +51,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
     (SetupNSUniverseReplication)
+    (GetReplicationStatus)
   )
 };
 

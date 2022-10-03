@@ -441,6 +441,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
   Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
 
+  // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.
+  void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const;
+
   // Kick off an asynchronous task that pre-allocates a new log-segment, setting
   // 'allocation_status_'. To wait for the result of the task, use allocation_status_.Get().
   Status AsyncAllocateSegment();

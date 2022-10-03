@@ -956,6 +956,9 @@ class CatalogManager :
       const std::string& ts_uuid,
       const TabletDriveStorageMetadataPB& storage_metadata);
 
+  virtual Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) EXCLUDES(mutex_);
+
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
   Status ShouldSplitValidCandidate(

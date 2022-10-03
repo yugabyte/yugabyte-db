@@ -71,6 +71,10 @@ class AutoFlagsManager;
 
 namespace tserver {
 
+namespace enterprise {
+class CDCConsumer;
+}
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this

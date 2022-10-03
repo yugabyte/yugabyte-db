@@ -1748,6 +1748,29 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetReplicationInfo(
+    const std::string& universe_uuid) {
+
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  if (!universe_uuid.empty()) {
+    req.set_universe_id(universe_uuid);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetReplicationStatus(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting replication status: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << resp.DebugString();
+  return Status::OK();
+}
+
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb
