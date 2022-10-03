@@ -23,6 +23,7 @@
 
 #include "yb/master/master_replication.fwd.h"
 
+#include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -204,6 +205,28 @@ class TwoDCTestBase : public YBTest {
 
   client::TransactionManager* consumer_txn_mgr() {
     return consumer_cluster_.txn_mgr_.get_ptr();
+  }
+
+  std::string GetAdminToolPath() {
+    const std::string kAdminToolName = "yb-admin";
+    return GetToolPath(kAdminToolName);
+  }
+
+  template <class... Args>
+  Result<std::string> CallAdmin(MiniCluster* cluster, Args&&... args) {
+    return CallAdminVec(ToStringVector(
+        GetAdminToolPath(), "-master_addresses", cluster->GetMasterAddresses(),
+        std::forward<Args>(args)...));
+  }
+
+  Result<std::string> CallAdminVec(const std::vector<std::string>& args) {
+    std::string result;
+    LOG(INFO) << "Execute: " << AsString(args);
+    auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+    if (!status.ok()) {
+      return status.CloneAndAppend(result);
+    }
+    return result;
   }
 
  protected:

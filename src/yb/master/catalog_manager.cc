@@ -12030,5 +12030,11 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
   return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
 }
 
+Status CatalogManager::ProcessTabletReplicationStatus(
+    const TabletReplicationStatusPB& replication_state) {
+  // Only implemented on the enterprise catalog manager.
+  return Status::OK();
+}
+
 }  // namespace master
 }  // namespace yb

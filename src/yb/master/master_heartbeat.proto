@@ -98,6 +98,13 @@ message TabletDriveStorageMetadataPB {
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
+message TabletReplicationStatusPB {
+  required bytes tablet_id = 1;
+
+  // Maps a stream id -> replication status.
+  map<string, StreamReplicationStatusPB> stream_replication_statuses = 2;
+}
+
 message ReportedTabletUpdatesPB {
   required bytes tablet_id = 1;
   optional string state_msg = 2;
@@ -189,10 +196,14 @@ message TSHeartbeatRequestPB {
 
   reserved 13;
 
+  // Drive metadata. Only set in the metrics heartbeat.
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 
   // Tablet server has at least one faulty drive.
   optional bool faulty_drive = 15;
+
+  // Replication status. Only set in the metrics heartbeat.
+  repeated TabletReplicationStatusPB replication_state = 16;
 }
 
 message TSHeartbeatResponsePB {

@@ -309,7 +309,7 @@ message EncryptionInfoPB {
   optional bool key_in_memory = 5;
 }
 
-// The on-disk entry in the sys.catalog table for configuration vinformation
+// The on-disk entry in the sys.catalog table for configuration information
 // that are relevant to the entire cluster. This has a version entry that is
 // used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
@@ -524,7 +524,7 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> consumer table ID map.
   map<string, string> validated_tables = 5;
 
-  // producer table ID -> producer CDC stream map.
+  // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
   // Namespace-level replication setup.

@@ -185,6 +185,8 @@ DEFINE_test_flag(bool, pause_before_wal_sync, false, "Pause before doing work in
 
 DEFINE_test_flag(bool, set_pause_before_wal_sync, false,
                  "Set pause_before_wal_sync to true in Log::Sync.");
+DEFINE_test_flag(bool, disable_wal_retention_time, false,
+                 "If true, disables time-based wal retention.");
 
 // TaskStream flags.
 // We have to make the queue length really long.
@@ -1198,6 +1200,14 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
+  if PREDICT_TRUE(!FLAGS_TEST_disable_wal_retention_time) {
+    ApplyTimeRetentionPolicy(segments_to_gc);
+  }
+
+  return Status::OK();
+}
+
+void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
 
@@ -1219,8 +1229,6 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
       break;
     }
   }
-
-  return Status::OK();
 }
 
 Status Log::Append(LogEntryPB* phys_entry,
@@ -1375,6 +1383,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       log_index_->GC(min_remaining_op_idx);
     }
   }
+
   return Status::OK();
 }
 
