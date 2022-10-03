@@ -17,14 +17,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../entityframework/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      EntityFramework ORM
+      Entity Framework ORM
     </a>
   </li>
 
 </ul>
 
-[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
+[Entity Framework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
 
 ## CRUD operations
 

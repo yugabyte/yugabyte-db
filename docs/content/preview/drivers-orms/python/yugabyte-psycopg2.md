@@ -11,11 +11,26 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yugabyte-psycopg2/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
@@ -54,12 +69,6 @@ Or, you can use the setup.py script if you've downloaded the source package loca
 ```sh
 $ python setup.py build
 $ sudo python setup.py install
-```
-
-Then import the psycopg2 package.
-
-```python
-import psycopg2
 ```
 
 ### Step 2: Set up the database connection

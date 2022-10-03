@@ -1,53 +1,36 @@
 ---
-title: Build a Go application that uses YCQL
-headerTitle: Build a Go application
-linkTitle: More examples
-description: Build a sample Go application with the Yugabyte Go Driver for YCQL.
-aliases:
-  - /preview/develop/client-drivers/cassandra/go/
+title: Connect an application
+linkTitle: Connect an app
+description: Go driver for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-go
-    identifier: go-6
-    weight: 552
+    identifier: yb-pgx-driver-ycql
+    parent: go-drivers
+    weight: 500
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../yb-pgx/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../ysql-yb-pgx/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YugabyteDB PGX
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-pgx/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PGX
-    </a>
-  </li>
   <li >
-    <a href="../ysql-pq/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PQ
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-pg/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-gorm/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - GORM
-    </a>
-  </li>
-  <li>
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB Go Driver
     </a>
   </li>
 </ul>
@@ -56,7 +39,7 @@ type: docs
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../explore/ycql/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../quick-start/).
 - installed Go version 1.13 or later.
 
 ## Install the Yugabyte Go Driver for YCQL
