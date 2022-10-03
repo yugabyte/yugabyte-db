@@ -166,7 +166,7 @@ class PgClientServiceImpl::Impl {
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       rpc::Scheduler* scheduler,
-      const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map)
+      const XClusterSafeTimeMap* xcluster_safe_time_map)
       : client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
@@ -188,7 +188,7 @@ class PgClientServiceImpl::Impl {
 
     auto session_id = ++session_serial_no_;
     auto session = std::make_shared<LockablePgClientSession>(
-        &client(), clock_, transaction_pool_provider_, &table_cache_, session_id,
+        session_id, &client(), clock_, transaction_pool_provider_, &table_cache_,
         xcluster_safe_time_map_);
     resp->set_session_id(session_id);
 
@@ -478,7 +478,7 @@ class PgClientServiceImpl::Impl {
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
 
-  const std::shared_ptr<XClusterSafeTimeMap> xcluster_safe_time_map_;
+  const XClusterSafeTimeMap* xcluster_safe_time_map_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -487,7 +487,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     TransactionPoolProvider transaction_pool_provider,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
-    const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map)
+    const XClusterSafeTimeMap* xcluster_safe_time_map)
     : PgClientServiceIf(entity),
       impl_(new Impl(
           client_future, clock, std::move(transaction_pool_provider), scheduler,
