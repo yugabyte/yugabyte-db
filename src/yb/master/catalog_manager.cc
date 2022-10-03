@@ -10297,6 +10297,33 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   return SendCreateTabletRequests(deferred.needs_create_rpc);
 }
 
+Status CatalogManager::SelectProtegeForTablet(
+    TabletInfo* tablet, consensus::RaftConfigPB* config, CMGlobalLoadState* global_state) {
+  // Find the tserver with the lowest pending protege load.
+  const std::string* ts_uuid = nullptr;
+  uint32_t min_protege_load = std::numeric_limits<uint32_t>::max();
+  for (const RaftPeerPB& peer : config->peers()) {
+    const uint32_t protege_load =
+        VERIFY_RESULT(global_state->GetGlobalProtegeLoad(peer.permanent_uuid()));
+    if (protege_load < min_protege_load) {
+      ts_uuid = &peer.permanent_uuid();
+      min_protege_load = protege_load;
+    }
+  }
+
+  if (ts_uuid == nullptr) {
+    DCHECK_EQ(config->peers_size(), 0);
+    DCHECK_EQ(min_protege_load, std::numeric_limits<uint32_t>::max());
+    return STATUS(NotFound, "Unable to locate protege for tablet", tablet->tablet_id());
+  }
+
+  tablet->SetInitiaLeaderElectionProtege(*ts_uuid);
+
+  ++global_state->per_ts_protege_load_[*ts_uuid];
+
+  return Status::OK();
+}
+
 Status CatalogManager::SelectReplicasForTablet(
     const TSDescriptorVector& ts_descs, TabletInfo* tablet,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
@@ -10317,7 +10344,7 @@ Status CatalogManager::SelectReplicasForTablet(
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   cstate->set_current_term(kMinimumTerm);
-  consensus::RaftConfigPB *config = cstate->mutable_config();
+  consensus::RaftConfigPB* config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
@@ -10329,6 +10356,14 @@ Status CatalogManager::SelectReplicasForTablet(
     out << peer.permanent_uuid() << " ";
   }
   VLOG(0) << out.str();
+
+  // Select a protege for the initial leader election. The selected protege is stored in 'tablet'
+  // but is not used until the master starts the initial leader election. The master will start the
+  // initial leader after it receives a quorum of reports from bootstrapped replicas.
+  RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
+
+  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+            << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -10571,7 +10606,17 @@ void CatalogManager::StartElectionIfReady(
     return;
   }
 
-  const auto& protege = RandomElement(possible_leaders);
+  // The table creation path may store a protege hint in the tablet info.
+  std::string protege = tablet->InitiaLeaderElectionProtege();
+
+  // The 'protege' may not exist in 'possible_leaders'. In this scenario, select a random protege
+  // from the list of possible leaders. This can happen when:
+  //   1) The 'protege' is unconfigured (e.g. unset/empty).
+  //   2) The 'protege' corresponds to a tserver that is no longer serving a replica.
+  //   3) The 'protege' corresponds to a tserver that is not accepting leader load.
+  if (std::count(possible_leaders.begin(), possible_leaders.end(), protege) == 0) {
+    protege = RandomElement(possible_leaders);
+  }
 
   LOG_WITH_PREFIX(INFO)
       << "Starting election at " << tablet->tablet_id() << " in favor of " << protege;
@@ -10587,7 +10632,7 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     set<TabletServerId>* excluded,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   shared_ptr<TSDescriptor> found_ts;
-  for (const auto& sorted_load : per_table_state->sorted_load_) {
+  for (const auto& sorted_load : per_table_state->sorted_replica_load_) {
     // Don't consider a tserver that has already been considered for this tablet.
     if (excluded->count(sorted_load)) {
       continue;
@@ -10617,8 +10662,8 @@ void CatalogManager::SelectReplicas(
         ts_descs, already_selected_ts, per_table_state, global_state);
     InsertOrDie(already_selected_ts, ts->permanent_uuid());
     // Update the load state at global and table level.
-    per_table_state->per_ts_load_[ts->permanent_uuid()]++;
-    global_state->per_ts_load_[ts->permanent_uuid()]++;
+    per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
+    global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
     per_table_state->SortLoad();
 
     // Increment the number of pending replicas so that we take this selection into
@@ -11796,9 +11841,9 @@ void CatalogManager::InitializeTableLoadState(
     const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_load_[ts->permanent_uuid()];
+    state->per_ts_replica_load_[ts->permanent_uuid()];
     // Insert into the sorted list.
-    state->sorted_load_.emplace_back(ts->permanent_uuid());
+    state->sorted_replica_load_.emplace_back(ts->permanent_uuid());
   }
 
   auto table_info = GetTableInfo(table_id);
@@ -11813,7 +11858,8 @@ void CatalogManager::InitializeGlobalLoadState(
     TSDescriptorVector ts_descs, CMGlobalLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_load_[ts->permanent_uuid()];
+    state->per_ts_replica_load_[ts->permanent_uuid()];
+    state->per_ts_protege_load_[ts->permanent_uuid()];
   }
 
   SharedLock l(mutex_);

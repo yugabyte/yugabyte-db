@@ -113,6 +113,10 @@ if("${YB_BUILD_TYPE}" STREQUAL "")
 endif()
 
 message("YB_BUILD_TYPE: ${YB_BUILD_TYPE}")
+message("YB_LINKING_TYPE: ${YB_LINKING_TYPE}")
+if("${YB_LINKING_TYPE}" STREQUAL "")
+  message(FATAL_ERROR "YB_LINKING_TYPE is not set")
+endif()
 message("CMAKE_MAKE_PROGRAM: ${CMAKE_MAKE_PROGRAM}")
 
 # CMAKE_LINK_DEPENDS_NO_SHARED prevents prevent re-linking dependents of a shared library when it
@@ -242,6 +246,9 @@ endif()
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
   message("CMAKE_EXPORT_COMPILE_COMMANDS is already enabled, will export compile_commands.json.")
+elseif ("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
+  message("This is an LTO-enabled build, will export compile_commands.json.")
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 elseif ("$ENV{YB_EXPORT_COMPILE_COMMANDS}" STREQUAL "1")
   message("The YB_EXPORT_COMPILE_COMMANDS environment variable is set to 1, will export "
           "compile_commands.json.")
@@ -769,6 +776,9 @@ add_subdirectory(src/yb/yql)
 add_subdirectory(src/yb/cdc)
 
 include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
+
+yb_add_lto_target(yb-master)
+yb_add_lto_target(yb-tserver)
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

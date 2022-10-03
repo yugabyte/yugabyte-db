@@ -15,6 +15,7 @@
 #
 set -euo pipefail
 
+# shellcheck source=build-support/common-test-env.sh
 . "${0%/*}/../common-test-env.sh"
 
 print_help() {
@@ -38,18 +39,13 @@ Environment variables:
 EOT
 }
 
-echo "Build script $BASH_SOURCE is running"
-
-delete_arc_patch_branches=false
+echo "Build script ${BASH_SOURCE[0]} is running"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
       print_help
       exit 0
-    ;;
-    --delete-arc-patch-branches)
-      delete_arc_patch_branches=true
     ;;
     *)
       echo "Invalid option: $1" >&2

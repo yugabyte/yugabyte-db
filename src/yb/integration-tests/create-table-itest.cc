@@ -42,6 +42,8 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_Del
 
 DECLARE_int32(ycql_num_tablets);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
@@ -200,14 +202,16 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
 }
 
 // Ensure that, when a table is created,
-// the tablets are well spread out across the machines in the cluster.
+// both the tablets and leaders are well spread out across the machines in the cluster.
 TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   const int kNumServers = 10;
   const int kNumTablets = 20;
+  const int kReplicationFactor = 3;
   vector<string> ts_flags;
   vector<string> master_flags;
   ts_flags.push_back("--never_fsync");  // run faster on slow disks
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  master_flags.push_back(Format("--replication_factor=$0", kReplicationFactor));
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
@@ -219,12 +223,55 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
             .num_tablets(kNumTablets)
             .Create());
 
-  // Load should be equal on all the 10 servers without any deviation.
-  for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    auto num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
-    LOG(INFO) << "TS " << ts_idx << " has " << num_replicas << " tablets";
-    ASSERT_EQ(num_replicas, 6);
+  // Validate that both the tablets and leaders are evenly distributed among the tservers.
+  const int kExpectedTablets = kNumTablets * kReplicationFactor / kNumServers;
+  const int kExpectedLeaders = kNumTablets / kNumServers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < kNumServers; i++) {
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kExpectedTablets, kExpectedLeaders, kTableName.table_name(), true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Are tablets running", 1s));
+}
+
+TEST_F(CreateTableITest, CreateTableWithoutQuorum) {
+  const int kNumServers = 3;
+  const int kNumTablets = 1;
+  const int kReplicationFactor = 3;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  master_flags.push_back(Format("--replication_factor=$0", kReplicationFactor));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+
+  // Disable heartbeats on all but the first tserver. This ensures that the master does not receive
+  // a quorum of tserver heartbeats. This prevents the master from starting the initial leader
+  // election.
+  for (int i = 1; i < kNumServers; ++i) {
+    ASSERT_OK(
+      cluster_->SetFlag(cluster_->tablet_server(i), "TEST_tserver_disable_heartbeat", "true"));
   }
+
+  // Create a table. Set a timeout long enough to ensure that the standard raft failure detection
+  // will run and elect a raft leader for the single tablet. When the raft leader is elected, the
+  // table will come online.
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  table_creator->timeout(MonoDelta::FromMilliseconds(
+    4 *
+    FLAGS_raft_heartbeat_interval_ms *
+    static_cast<int>(FLAGS_leader_failure_max_missed_heartbeat_periods)));
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+  ASSERT_OK(table_creator->table_name(kTableName)
+            .schema(&client_schema)
+            .num_tablets(kNumTablets)
+            .Create());
 }
 
 TEST_F(CreateTableITest, TestNoAllocBlacklist) {

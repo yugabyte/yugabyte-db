@@ -1,34 +1,37 @@
 ---
-title: Build a C# application that uses YCQL
-headerTitle: Build a C# application
-linkTitle: More examples
-description: Build a C# application that uses YCQL.
+title: Connect an application
+linkTitle: Connect an app
+description: C# driver for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    identifier: build-apps-csharp-2-ycql
-    parent: cloud-csharp
-    weight: 554
+    identifier: csharp-driver-ycql
+    parent: csharp-drivers
+    weight: 500
 type: docs
 ---
+
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../postgres-npgsql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./ysql.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-entity-framework/" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Entity Framework
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB C# Driver
     </a>
   </li>
 
@@ -38,16 +41,16 @@ type: docs
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../quick-start/).
 - installed Visual Studio.
 
 ## Write the HelloWorld C# app
 
 In your Visual Studio create a new **Project** and choose **Console Application** as template. Follow the instructions to save the project.
 
-### Install Yugabyte C# Driver for YCQL
+### Install YugabyteDB C# Driver for YCQL
 
-The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the Apache Cassandra C# Driver, but adds features unique to YCQL, including [JSONB support](../../../../api/ycql/type_jsonb/) and a different routing policy.
+The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-driver) is based on a fork of the Apache Cassandra C# Driver, but adds features unique to YCQL, including [JSONB support](../../../api/ycql/type_jsonb/) and a different routing policy.
 
 To install the [Yugabyte C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
 

@@ -216,26 +216,27 @@ foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
 endforeach(ADDITIONAL_TEST)
 
 # Actual master executable
-add_executable(yb-master master_main.cc)
-target_link_libraries(yb-master
+add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
+target_link_libraries(
+  "${YB_MASTER_DYNAMIC_EXE_NAME}"
   master
   ${YB_BASE_LIBS})
 
 # Generate master_flags.xml
 set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
-add_custom_command(TARGET yb-master POST_BUILD
+add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "yb-master"
+    "--program_name" "${YB_MASTER_DYNAMIC_EXE_NAME}"
     "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
 
 # Generate auto_flags.json
 set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
-  "--program_list" "yb-master,yb-tserver"
+  "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
   "--output_file_path" "${AUTO_FLAGS_FILE}")
 add_custom_target(
   gen_auto_flags_json ALL
   COMMAND ${GEN_AUTO_FLAGS_COMMAND}
   BYPRODUCTS "${AUTO_FLAGS_FILE}"
-  DEPENDS yb-master yb-tserver)
+  DEPENDS "${YB_MASTER_DYNAMIC_EXE_NAME}" "${YB_TSERVER_DYNAMIC_EXE_NAME}")

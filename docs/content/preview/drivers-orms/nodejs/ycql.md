@@ -1,39 +1,36 @@
 ---
-title: Build a Node.js application that uses YCQL
-headerTitle: Build a Node.js application
-linkTitle: More examples
-description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
+title: Connect an application
+linkTitle: Connect an app
+description: Node.js drivers for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-node
-    identifier: nodejs-3
-    weight: 551
+    identifier: ycql-node-driver
+    parent: nodejs-drivers
+    weight: 600
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../yugabyte-node-driver/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PostgreSQL driver
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Sequelize
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+   <li >
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YSQL - Prisma
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB Node.js Driver
     </a>
   </li>
 </ul>
