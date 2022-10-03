@@ -9,8 +9,7 @@ menu:
     identifier: jepsen-testing-2-ycql
     parent: resilience
     weight: 13
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

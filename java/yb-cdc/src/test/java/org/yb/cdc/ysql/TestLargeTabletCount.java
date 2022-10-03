@@ -13,10 +13,11 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.common.ExpectedRecordYSQL;
@@ -32,7 +33,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestLargeTabletCount extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestLargeTabletCount.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestLargeTabletCount.class);
 
   @Before
   public void setUp() throws Exception {

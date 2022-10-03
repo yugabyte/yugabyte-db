@@ -1,6 +1,6 @@
 ---
 title: Get query statistics using pg_stat_statements
-linkTitle: Get query statistics using pg_stat_statements
+linkTitle: Get query statistics
 description: Track planning and execution statistics for all SQL statements executed by a server.
 headerTitle: Get query statistics using pg_stat_statements
 image: /images/section_icons/index/develop.png
@@ -9,8 +9,7 @@ menu:
     identifier: pg-stat-statements
     parent: query-tuning
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The `pg_stat_statements` module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.
@@ -29,10 +28,10 @@ You can configure the following parameters in `postgresql.conf`:
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
 ```sh
-pg_stat_statements.max = 10000      
-pg_stat_statements.track = all 
-pg_stat_statements.track_utility = off  
-pg_stat_statements.save = on  
+pg_stat_statements.max = 10000
+pg_stat_statements.track = all
+pg_stat_statements.track_utility = off
+pg_stat_statements.save = on
 ```
 
 To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
@@ -44,7 +43,7 @@ To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql
  The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
 
  ```sh
- track_activity_query_size = 2048 
+ track_activity_query_size = 2048
  ```
 
 The extension is created by default. To add or remove it manually, use the following statements:
@@ -67,31 +66,31 @@ yugabyte=# \d pg_stat_statements;
 
 ```output
                     View "public.pg_stat_statements"
-       Column        |       Type       | Collation | Nullable | Default 
+       Column        |       Type       | Collation | Nullable | Default
 ---------------------+------------------+-----------+----------+---------
- userid              | oid              |           |          | 
- dbid                | oid              |           |          | 
- queryid             | bigint           |           |          | 
- query               | text             |           |          | 
- calls               | bigint           |           |          | 
- total_time          | double precision |           |          | 
- min_time            | double precision |           |          | 
- max_time            | double precision |           |          | 
- mean_time           | double precision |           |          | 
- stddev_time         | double precision |           |          | 
- rows                | bigint           |           |          | 
- shared_blks_hit     | bigint           |           |          | 
- shared_blks_read    | bigint           |           |          | 
- shared_blks_dirtied | bigint           |           |          | 
- shared_blks_written | bigint           |           |          | 
- local_blks_hit      | bigint           |           |          | 
- local_blks_read     | bigint           |           |          | 
- local_blks_dirtied  | bigint           |           |          | 
- local_blks_written  | bigint           |           |          | 
- temp_blks_read      | bigint           |           |          | 
- temp_blks_written   | bigint           |           |          | 
- blk_read_time       | double precision |           |          | 
- blk_write_time      | double precision |           |          | 
+ userid              | oid              |           |          |
+ dbid                | oid              |           |          |
+ queryid             | bigint           |           |          |
+ query               | text             |           |          |
+ calls               | bigint           |           |          |
+ total_time          | double precision |           |          |
+ min_time            | double precision |           |          |
+ max_time            | double precision |           |          |
+ mean_time           | double precision |           |          |
+ stddev_time         | double precision |           |          |
+ rows                | bigint           |           |          |
+ shared_blks_hit     | bigint           |           |          |
+ shared_blks_read    | bigint           |           |          |
+ shared_blks_dirtied | bigint           |           |          |
+ shared_blks_written | bigint           |           |          |
+ local_blks_hit      | bigint           |           |          |
+ local_blks_read     | bigint           |           |          |
+ local_blks_dirtied  | bigint           |           |          |
+ local_blks_written  | bigint           |           |          |
+ temp_blks_read      | bigint           |           |          |
+ temp_blks_written   | bigint           |           |          |
+ blk_read_time       | double precision |           |          |
+ blk_write_time      | double precision |           |          |
  ```
 
 Describe the view's columns, including storage type and description:
@@ -102,31 +101,31 @@ Describe the view's columns, including storage type and description:
 
  ```output
                                  View "public.pg_stat_statements"
-       Column        |       Type       | Collation | Nullable | Default | Storage  | Description 
+       Column        |       Type       | Collation | Nullable | Default | Storage  | Description
 ---------------------+------------------+-----------+----------+---------+----------+-------------
- userid              | oid              |           |          |         | plain    | 
- dbid                | oid              |           |          |         | plain    | 
- queryid             | bigint           |           |          |         | plain    | 
- query               | text             |           |          |         | extended | 
- calls               | bigint           |           |          |         | plain    | 
- total_time          | double precision |           |          |         | plain    | 
- min_time            | double precision |           |          |         | plain    | 
- max_time            | double precision |           |          |         | plain    | 
- mean_time           | double precision |           |          |         | plain    | 
- stddev_time         | double precision |           |          |         | plain    | 
- rows                | bigint           |           |          |         | plain    | 
- shared_blks_hit     | bigint           |           |          |         | plain    | 
- shared_blks_read    | bigint           |           |          |         | plain    | 
- shared_blks_dirtied | bigint           |           |          |         | plain    | 
- shared_blks_written | bigint           |           |          |         | plain    | 
- local_blks_hit      | bigint           |           |          |         | plain    | 
- local_blks_read     | bigint           |           |          |         | plain    | 
- local_blks_dirtied  | bigint           |           |          |         | plain    | 
- local_blks_written  | bigint           |           |          |         | plain    | 
- temp_blks_read      | bigint           |           |          |         | plain    | 
- temp_blks_written   | bigint           |           |          |         | plain    | 
- blk_read_time       | double precision |           |          |         | plain    | 
- blk_write_time      | double precision |           |          |         | plain    | 
+ userid              | oid              |           |          |         | plain    |
+ dbid                | oid              |           |          |         | plain    |
+ queryid             | bigint           |           |          |         | plain    |
+ query               | text             |           |          |         | extended |
+ calls               | bigint           |           |          |         | plain    |
+ total_time          | double precision |           |          |         | plain    |
+ min_time            | double precision |           |          |         | plain    |
+ max_time            | double precision |           |          |         | plain    |
+ mean_time           | double precision |           |          |         | plain    |
+ stddev_time         | double precision |           |          |         | plain    |
+ rows                | bigint           |           |          |         | plain    |
+ shared_blks_hit     | bigint           |           |          |         | plain    |
+ shared_blks_read    | bigint           |           |          |         | plain    |
+ shared_blks_dirtied | bigint           |           |          |         | plain    |
+ shared_blks_written | bigint           |           |          |         | plain    |
+ local_blks_hit      | bigint           |           |          |         | plain    |
+ local_blks_read     | bigint           |           |          |         | plain    |
+ local_blks_dirtied  | bigint           |           |          |         | plain    |
+ local_blks_written  | bigint           |           |          |         | plain    |
+ temp_blks_read      | bigint           |           |          |         | plain    |
+ temp_blks_written   | bigint           |           |          |         | plain    |
+ blk_read_time       | double precision |           |          |         | plain    |
+ blk_write_time      | double precision |           |          |         | plain    |
 View definition:
  SELECT pg_stat_statements.userid,
     pg_stat_statements.dbid,
@@ -312,8 +311,15 @@ yugabyte=# select pg_stat_statements_reset();
 ```
 
 ```output
- pg_stat_statements_reset 
+ pg_stat_statements_reset
 --------------------------
- 
+
 (1 row)
 ```
+
+## Learn more
+
+- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.
+- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.

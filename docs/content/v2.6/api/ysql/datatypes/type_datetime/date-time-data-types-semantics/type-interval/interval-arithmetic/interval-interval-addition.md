@@ -8,8 +8,7 @@ menu:
     identifier: interval-interval-addition
     parent: interval-arithmetic
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section presents a PL/pgSQL implementation of the model that explains how adding two _interval_ values or subtracting one _interval_ value from another works.
@@ -92,7 +91,7 @@ This is the result:
  intermediate model mm_dd_ss:          6.0000 months         2.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              6.0000 months         2.0000 days         0.0000 seconds
  actual mm_dd_ss:                      6.0000 months         2.0000 days         0.0000 seconds
- 
+
  ultimate model result: 6 mons 2 days
 ```
 
@@ -114,7 +113,7 @@ This is the result:
  intermediate model mm_dd_ss:          8.0000 months        56.0000 days    141840.0000 seconds
  ultimate model mm_dd_ss:              8.0000 months        56.0000 days    141840.0000 seconds
  actual mm_dd_ss:                      8.0000 months        56.0000 days    141840.0000 seconds
- 
+
  ultimate model result: 8 mons 56 days 39:24:00
 ```
 

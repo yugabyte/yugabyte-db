@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.models.helpers.NodeConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import java.util.Set;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
@@ -47,5 +49,8 @@ public class NodeInstanceFormData {
 
     @ApiModelProperty(value = "Node name", example = "India node")
     public String nodeName;
+
+    @ApiModelProperty(value = "Node configurations")
+    public Set<NodeConfig> nodeConfigs;
   }
 }

@@ -55,7 +55,7 @@ namespace server {
 // NOTE: this class is thread safe.
 class LogicalClock : public Clock {
  public:
-  CHECKED_STATUS Init() override;
+  Status Init() override;
 
   // Returns the current value of the clock without incrementing it.
   HybridTime Peek();

@@ -32,6 +32,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
@@ -75,7 +76,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     TransactionTestBase::DoBeforeTearDown();
   }
 
-  CHECKED_STATUS WaitAllSnapshotsDeleted() {
+  Status WaitAllSnapshotsDeleted() {
     RETURN_NOT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
     // Check if deleted in DocDB.
     return WaitFor([this]() -> Result<bool> {

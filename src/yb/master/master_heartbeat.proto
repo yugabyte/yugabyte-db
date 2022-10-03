@@ -134,6 +134,16 @@ message TSSnapshotsInfoPB {
   repeated TSSnapshotRestorationInfoPB restorations = 3;
 }
 
+message YsqlCatalogVersionPB {
+  optional uint32 db_oid = 1;
+  optional uint64 current_version = 2;
+  optional uint64 last_breaking_version = 3;
+}
+
+message DBCatalogVersionDataPB {
+  repeated YsqlCatalogVersionPB db_catalog_versions = 1;
+}
+
 // Heartbeat sent from the tablet-server to the master
 // to establish liveness and report back any status changes.
 message TSHeartbeatRequestPB {
@@ -180,6 +190,9 @@ message TSHeartbeatRequestPB {
   reserved 13;
 
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
+
+  // Tablet server has at least one faulty drive.
+  optional bool faulty_drive = 15;
 }
 
 message TSHeartbeatResponsePB {
@@ -215,9 +228,12 @@ message TSHeartbeatResponsePB {
 
   // Current YSQL catalog schema version.
   // Used by tservers and postgres backends to decide if a cache refresh is needed.
+  // In per-db catalog version mode, db_catalog_version_data will be used instead.
   optional uint64 ysql_catalog_version = 10;
 
   optional uint64 ysql_last_breaking_catalog_version = 15;
+
+  optional DBCatalogVersionDataPB db_catalog_version_data = 20;
 
   optional encryption.UniverseKeyRegistryPB universe_key_registry = 11;
 
@@ -234,6 +250,12 @@ message TSHeartbeatResponsePB {
   // Version of transaction tables and their placements, so that the TS knows when
   // to update the cached list of status tablet ids in the transaction manager.
   optional uint64 transaction_tables_version = 18;
+
+  // Specify whether or not the cluster is a producer of a valid replication stream.
+  optional bool xcluster_enabled_on_producer = 19;
+
+  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  map<string, fixed64> xcluster_namespace_to_safe_time = 21;
 }
 
 service MasterHeartbeat {

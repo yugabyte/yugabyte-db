@@ -8,13 +8,12 @@ menu:
     identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Scatter-plot for 21-Oct-2020
 
-The dots on this plot represent _"mask_wearing_pct"_ on the x-axis with _"symptoms_pct"_ on the y-axis from this query: 
+The dots on this plot represent _"mask_wearing_pct"_ on the x-axis with _"symptoms_pct"_ on the y-axis from this query:
 
 ```plpgsql
 select
@@ -58,7 +57,7 @@ from a;
 This is the result:
 
 ```
- survey_date |   s   |   i    
+ survey_date |   s   |   i
 -------------+-------+--------
  10/21       |  -1.2 |  131.4
 ```
@@ -91,7 +90,7 @@ as $body$
 
 This code, and the remaining code below, needed to make the scatter-plot for synthetic data is included in [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/).
 
-It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../extensions/#tablefunc) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
+It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
 
 It was then invoked like this:
 
@@ -138,7 +137,7 @@ from a;
 This is the result:
 
 ```
-  r2   |   s   |   i    
+  r2   |   s   |   i
 -------+-------+--------
   0.98 |  -1.2 |  130.8
 ```
@@ -150,4 +149,3 @@ Here is the resulting plot
 ![Scatter-plot for synthetic data](/images/api/ysql/exprs/aggregate_functions/covid-data-case-study/scatter-plot-synthetic-data.jpg):
 
 **Note:** The `normal_rand()` function produces a different set of pseudorandomly distributed values each time that  [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/) is run. But the overall shape of the scatter-plot will remain the same.
-

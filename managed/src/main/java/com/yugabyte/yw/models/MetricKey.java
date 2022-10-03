@@ -32,8 +32,8 @@ public class MetricKey {
       return this;
     }
 
-    public MetricKeyBuilder targetUuid(UUID targetUuid) {
-      this.sourceUuid = targetUuid;
+    public MetricKeyBuilder sourceUuid(UUID sourceUuid) {
+      this.sourceUuid = sourceUuid;
       return this;
     }
 

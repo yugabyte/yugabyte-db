@@ -8,8 +8,7 @@ menu:
     identifier: test-date-time-addition-overloads
     parent: date-time-operators
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [start page](../../../type_datetime/) of the overall _date-time_ section explains why _timetz_ is not covered. So there are five _date-time_ data types to consider here and therefore twenty-five overloads to test. The following code implements all of the tests. The design of the code (it tests the legal additions and the illegal additions separately) was informed by _ad hoc_ tests during its development.

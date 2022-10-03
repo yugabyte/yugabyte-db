@@ -9,8 +9,7 @@ menu:
     identifier: with-clause
     parent: the-sql-language
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
@@ -50,7 +49,7 @@ Notice the (optional) parenthesised parameter list that follows the name, just a
 This is the result:
 
 ```
- k  | v  
+ k  | v
 ----+----
  11 | 22
  12 | 24
@@ -89,7 +88,7 @@ order by table_name, k;
 This is the result:
 
 ```
- table_name | k  | v  
+ table_name | k  | v
 ------------+----+----
  t1         | 11 | 22
  t1         | 12 | 24
@@ -108,7 +107,7 @@ The central notion is that each CTE that you name in a `WITH` clause can then be
 Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functionality, like graph analysis. For example, an _"employees"_ table often has a self-referential foreign key like _"manager_id"_ that points to the table's primary key, _"employee_id"_. `SELECT` statements that use a recursive CTE allow the reporting structure to be presented in various ways. This result shows the reporting paths of employees, in an organization with a strict hierarchical reporting scheme, in depth-first order. See the section [Pretty-printing the top-down depth-first report of paths](./emps-hierarchy/#pretty-printing-the-top-down-depth-first-report-of-paths).
 
 ```
- emps hierarchy 
+ emps hierarchy
 ----------------
  mary
    fred
@@ -157,5 +156,3 @@ All of these studies make heavy use of regular (i.e. non-recursive) CTEs. They t
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
 {{< /tip >}}
-
-

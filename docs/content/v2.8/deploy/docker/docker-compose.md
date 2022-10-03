@@ -9,9 +9,7 @@ menu:
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -33,7 +31,7 @@ Use [docker-compose](https://docs.docker.com/compose/overview/) utility to creat
 
 ## Prerequisites
 
-Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine. 
+Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 
 ## 1. Create a single node cluster
 
@@ -79,7 +77,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"]
       ports:
@@ -186,7 +184,7 @@ services:
       - yb-tserver-data-1:/mnt/tserver
       command: [ "/home/yugabyte/bin/yb-tserver",
                 "--fs_data_dirs=/mnt/tserver",
-                "--start_pgsql_proxy",
+                "--enable_ysql",
                 "--rpc_bind_addresses=yb-tserver-n1:9100",
                 "--tserver_master_addrs=yb-master-n1:7100"
                 ]

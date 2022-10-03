@@ -9,11 +9,10 @@ import { NodeAction } from '../../universes';
 const nodeActionExpectedResult = {
   START: 'Live',
   STOP: 'Stopped',
-  REMOVE: 'Unreachable',
+  REMOVE: 'Removed',
   RELEASE: 'Unreachable',
   DELETE: 'Unreachable'
 };
-
 export default class NodeActionModal extends Component {
   static propTypes = {
     nodeInfo: PropTypes.object.isRequired,
@@ -21,20 +20,20 @@ export default class NodeActionModal extends Component {
   };
 
   pollNodeStatusUpdate = (universeUUID, actionType, nodeName, payload) => {
-    const { preformGetUniversePerNodeStatus, preformGetUniversePerNodeStatusResponse } = this.props;
+    const { getNodeDetails, getNodeDetailsResponse } = this.props;
     this.interval = setTimeout(() => {
-      preformGetUniversePerNodeStatus(universeUUID).then((response) => {
+      getNodeDetails(universeUUID, nodeName).then((response) => {
         if (response.payload && response.payload.data) {
-          const node = response.payload.data[nodeName];
+          const node = response.payload.data;
           if (
             actionType === 'DELETE' ||
-            node.node_status === nodeActionExpectedResult[actionType]
+            node.state === nodeActionExpectedResult[actionType]
           ) {
             clearInterval(this.interval);
-            preformGetUniversePerNodeStatusResponse(response.payload);
+            getNodeDetailsResponse(response.payload)
             return;
           }
-          preformGetUniversePerNodeStatusResponse(response.payload);
+          getNodeDetailsResponse(response.payload);
           this.pollNodeStatusUpdate(universeUUID, actionType, nodeName, payload);
         }
       });

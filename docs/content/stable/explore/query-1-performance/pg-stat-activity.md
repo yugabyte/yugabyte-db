@@ -1,21 +1,18 @@
 ---
-title: Viewing live queries with pg_stat_activity
-linkTitle: Viewing live queries with pg_stat_activity
+title: View live queries with pg_stat_activity
+linkTitle: View live queries
 description: Using pg_stat_activity to troubleshoot issues and help to identify long running transactions.
-headerTitle: Viewing live queries with pg_stat_activity
+headerTitle: View live queries with pg_stat_activity
 image: /images/section_icons/index/develop.png
 menu:
   stable:
     identifier: pg-stat-activity
     parent: query-tuning
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-Yugabyte uses PostgreSQL’s `pg_stat_activity` view to analyze live queries.
-This view returns analytic and diagnostic information about active Yugabyte server processes and queries.
-The pg_stat_activity view returns one row per server process, and displays information related to the current status of the database connection.
+YugabyteDB supports the PostgreSQL `pg_stat_activity` view to analyze live queries. This view returns analytic and diagnostic information about active YugabyteDB server processes and queries. The view returns one row per server process, and displays information related to the current status of the database connection.
 
 ## Supported fields
 
@@ -62,7 +59,7 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 ```
 
 ```output
- datname  |  pid  | application_name | state  |                                   query                                   
+ datname  |  pid  | application_name | state  |                                   query
 ----------+-------+------------------+--------+----------------------------------------------------------------------------
  yugabyte | 10027 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
           | 10013 |                  |        |
@@ -71,24 +68,22 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 
 In this listing:
 
-* `datname` is the database connected to this process.                               
+* `datname` is the database connected to this process.
 * `pid` is the process ID.
-* `application_name` is the application connected to this process.                                
+* `application_name` is the application connected to this process.
 * `state` is the operational condition of the process.
 * `query` is the latest query executed for this process.
 
 ### Identify and terminate an open transaction
 
-Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it.
+Often enough, you may need to identify long-running queries, because these queries could indicate deeper problems. The pg_stat_activity view can help identify these issues. In this example, you create an open transaction, identify it, and terminate it. The example uses the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
 
 #### Create an open transaction
-
-1. Follow the steps on [this page](https://download.yugabyte.com/#macos) to load the `yb_demo` sample dataset.
 
 1. Use the following query to return a row from the users table.
 
     ```sql
-    yugabyte=# SELECT id, name, state
+    yb_demo=# SELECT id, name, state
         FROM users
         WHERE id = 212;
     ```
@@ -103,7 +98,7 @@ Often enough, you may need to identify long-running queries, because these queri
 1. Update the state column value of this role with a transaction. The query is deliberately missing the `END;` statement to close the transaction.
 
     ```sql
-    yugabyte=# BEGIN TRANSACTION;
+    yb_demo=# BEGIN TRANSACTION;
         UPDATE users
             SET state = 'IA'
             WHERE id = 212;
@@ -116,7 +111,7 @@ Often enough, you may need to identify long-running queries, because these queri
 
 #### Find the open transaction
 
-Since the transaction never ends, it wastes resources as an open process.
+Because the transaction never ends, it wastes resources as an open process.
 
 1. Check the state of the transaction by opening another `ysqlsh` instance and finding information about this idle transaction with pg_stat_activity.
 
@@ -126,7 +121,7 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-     datname  |  pid  | application_name |        state        |                                   query                                   
+     datname  |  pid  | application_name |        state        |                                   query
     ----------+-------+------------------+---------------------+----------------------------------------------------------------------------
      yugabyte | 10381 | ysqlsh           | active              | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
      yb_demo  | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212;
@@ -138,10 +133,10 @@ Since the transaction never ends, it wastes resources as an open process.
 
 #### Terminate the open transaction
 
-1. Terminate the idle transaction.
+1. Terminate the idle transaction. Replace `<pid>` with the PID of the process to terminate.
 
     ```sql
-    yugabyte=# SELECT pg_terminate_backend(10033);
+    yugabyte=# SELECT pg_terminate_backend(<pid>);
     ```
 
     ```output
@@ -159,7 +154,7 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-     datname  |  pid  | application_name | state  |                                   query                                   
+     datname  |  pid  | application_name | state  |                                   query
     ----------+-------+------------------+--------+----------------------------------------------------------------------------
      yugabyte | 10381 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
               | 10013 |                  |        |
@@ -168,7 +163,7 @@ Since the transaction never ends, it wastes resources as an open process.
 
 ### Other time-related queries
 
-You can run some time-related queries to help you identify long-running transactions. These are particularly useful when there are a lot of open connections on that node.
+You can run some time-related queries to help you identify long-running transactions. These are particularly helpful when there are a lot of open connections on that node.
 
 **Get a list of processes ordered by current `txn_duration`**:
 
@@ -180,28 +175,35 @@ yugabyte=# SELECT datname, pid, application_name, state, query, now() - xact_sta
 ```
 
 ```output
- datname  |  pid  | application_name | state  |                                  query                                  | txn_duration 
+ datname  |  pid  | application_name | state  |                                  query                                  | txn_duration
 ----------+-------+------------------+--------+-------------------------------------------------------------------------+--------------
- yugabyte | 17695 | ysqlsh           | idle   |                                                                         | 
-          | 17519 |                  |        |                                                                         | 
+ yugabyte | 17695 | ysqlsh           | idle   |                                                                         |
+          | 17519 |                  |        |                                                                         |
  yugabyte | 17540 | ysqlsh           | active | SELECT datname, pid, application_name, state, query, now() - xact_start+| 00:00:00
-          |       |                  |        |     AS txn_duration                                                    +| 
-          |       |                  |        |     FROM pg_stat_activity                                              +| 
-          |       |                  |        |     ORDER BY txn_duration desc;                                         | 
+          |       |                  |        |     AS txn_duration                                                    +|
+          |       |                  |        |     FROM pg_stat_activity                                              +|
+          |       |                  |        |     ORDER BY txn_duration desc;                                         |
 (3 rows)
 ```
 
 **Get a list of processes where the current transaction has taken more than 1 minute**:
 
 ```sql
-yugabyte=# SELECT datname, pid, application_name, state, query, xact_start 
-    FROM pg_stat_activity 
+yugabyte=# SELECT datname, pid, application_name, state, query, xact_start
+    FROM pg_stat_activity
     WHERE now() - xact_start > '1 min';
 ```
 
 ```output
- datname |  pid  | application_name |        state        |                     query                     |          xact_start         
+ datname |  pid  | application_name |        state        |                     query                     |          xact_start
 ---------+-------+------------------+---------------------+-----------------------------------------------+------------------------------
  yb_demo | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212; | 2021-05-06 15:26:28.74615-04
 (1 row)
 ```
+
+## Learn more
+
+- Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
+- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.
+- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.

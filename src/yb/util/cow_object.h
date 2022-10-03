@@ -130,6 +130,10 @@ class CowObject {
     return is_dirty_;
   }
 
+  void WriteLockThreadChanged() {
+    lock_.WriteLockThreadChanged();
+  }
+
  private:
   mutable RWCLock lock_;
 
@@ -283,6 +287,10 @@ class CowWriteLock {
 
   bool locked() const {
     return cow_ != nullptr;
+  }
+
+  void ThreadChanged() {
+    cow_->WriteLockThreadChanged();
   }
 
   ~CowWriteLock() {

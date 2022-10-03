@@ -142,7 +142,7 @@ class RowsResult : public ExecutedResult {
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 
-  CHECKED_STATUS Append(RowsResult&& other);
+  Status Append(RowsResult&& other);
 
   void SetPagingState(client::YBqlOp *op);
   void SetPagingState(const QLPagingStatePB& paging_state);

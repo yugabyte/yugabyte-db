@@ -123,6 +123,30 @@ void CatalogManagerBgTasks::Shutdown() {
   }
 }
 
+void CatalogManagerBgTasks::TryResumeBackfillForTables(std::unordered_set<TableId>* tables) {
+  for (auto it = tables->begin(); it != tables->end(); it = tables->erase(it)) {
+    const auto& table_info_result = catalog_manager_->FindTableById(*it);
+    if (!table_info_result.ok()) {
+      LOG(WARNING) << "Table Info not found for id " << *it;
+      continue;
+    }
+    const auto& table_info = *table_info_result;
+    // Get schema version.
+    uint32_t version = table_info->LockForRead()->pb.version();
+    const auto& tablets = table_info->GetTablets();
+    for (const auto& tablet : tablets) {
+      LOG(INFO) << "PITR: Try resuming backfill for tablet " << tablet->id()
+                << ". If it is not a table for which backfill needs to be resumed"
+                << " then this is a NO-OP";
+      auto s = catalog_manager_->HandleTabletSchemaVersionReport(
+          tablet.get(), version, table_info);
+      // If schema version changed since PITR restore then backfill should restart
+      // by virtue of that particular alter if needed.
+      WARN_NOT_OK(s, Format("PITR: Resume backfill failed for tablet ", tablet->id()));
+    }
+  }
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -175,6 +199,14 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
+      // Trigger pending backfills.
+      std::unordered_set<TableId> table_map;
+      {
+        std::lock_guard<rw_spinlock> lock(catalog_manager_->backfill_mutex_);
+        table_map.swap(catalog_manager_->pending_backfill_tables_);
+      }
+      TryResumeBackfillForTables(&table_map);
+
       // Do the LB enabling check
       if (!processed_tablets) {
         if (catalog_manager_->TimeSinceElectedLeader() >
@@ -184,29 +216,21 @@ void CatalogManagerBgTasks::Run() {
       }
 
       TableInfoMap table_info_map;
+      TabletInfoMap tablet_info_map;
       {
         CatalogManager::SharedLock lock(catalog_manager_->mutex_);
         table_info_map = *catalog_manager_->table_ids_map_;
+        tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map);
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map, tablet_info_map);
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
       }
-      std::vector<scoped_refptr<CDCStreamInfo>> streams;
-      auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
-      if (s.ok() && !streams.empty()) {
-        s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
-      }
-
-      // Do a failed universe clean up
-      if (s.ok()) {
-        s = catalog_manager_->ClearFailedUniverse();
-      }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
-        s = catalog_manager_->SysCatalogRespectLeaderAffinity();
+        Status s = catalog_manager_->SysCatalogRespectLeaderAffinity();
         if (!s.ok()) {
           YB_LOG_EVERY_N(INFO, 10) << s.message().ToBuffer();
         }
@@ -216,9 +240,19 @@ void CatalogManagerBgTasks::Run() {
         // Start the tablespace background task.
         catalog_manager_->StartTablespaceBgTaskIfStopped();
       }
+
+      // Run background tasks related to XCluster & CDC Schema.
+      WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
+
+      was_leader_ = true;
     } else {
-      // Reset Metrics when leader_status is not ok.
-      catalog_manager_->ResetMetrics();
+      // leader_status is not ok.
+      if (was_leader_) {
+        LOG(INFO) << "Begin one-time cleanup on losing leadership";
+        catalog_manager_->ResetMetrics();
+        catalog_manager_->ResetTasksTrackers();
+        was_leader_ = false;
+      }
     }
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add

@@ -10,8 +10,7 @@ menu:
     identifier: create-databases
     parent: yugabyte-cloud
     weight: 643
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Create a database using YSQL

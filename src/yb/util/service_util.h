@@ -35,6 +35,16 @@
     } \
   } while (false)
 
+// Utility macro to setup error response and return if status is not OK.
+#define RPC_RESULT_RETURN_ERROR(result, error, code, context) \
+  do { \
+    if (PREDICT_FALSE(!result.ok())) { \
+      auto s_tmp = (result).status(); \
+      SetupErrorAndRespond(error, s_tmp, code, &(context)); \
+      return; \
+    } \
+  } while (false)
+
 // Utility macros to perform the appropriate check. If the check fails,
 // returns the specified (error) Status, with the given message.
 #define RPC_CHECK_OP_AND_RETURN_ERROR(var1, op, var2, s, error, code, context) \

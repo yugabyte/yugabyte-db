@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zadd
   - /preview/api/yedis/zadd
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

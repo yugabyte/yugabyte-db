@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -63,9 +64,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Builder;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
@@ -94,6 +97,9 @@ public class TablesController extends AuthenticatedController {
 
   private static final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
 
+  private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
+      "yb.wait_for_master_leader_timeout";
+
   Commissioner commissioner;
 
   private final YBClientService ybService;
@@ -106,6 +112,8 @@ public class TablesController extends AuthenticatedController {
 
   private final Environment environment;
 
+  private final Config config;
+
   @Inject
   public TablesController(
       Commissioner commissioner,
@@ -113,6 +121,7 @@ public class TablesController extends AuthenticatedController {
       MetricQueryHelper metricQueryHelper,
       CustomerConfigService customerConfigService,
       NodeUniverseManager nodeUniverseManager,
+      Config config,
       Environment environment) {
     this.commissioner = commissioner;
     this.ybService = service;
@@ -120,6 +129,7 @@ public class TablesController extends AuthenticatedController {
     this.customerConfigService = customerConfigService;
     this.nodeUniverseManager = nodeUniverseManager;
     this.environment = environment;
+    this.config = config;
   }
 
   @ApiOperation(
@@ -297,8 +307,11 @@ public class TablesController extends AuthenticatedController {
     @ApiModelProperty(value = "Relation type")
     public final RelationType relationType;
 
-    @ApiModelProperty(value = "Size in bytes", accessMode = READ_ONLY)
+    @ApiModelProperty(value = "SST size in bytes", accessMode = READ_ONLY)
     public final double sizeBytes;
+
+    @ApiModelProperty(value = "WAL size in bytes", accessMode = READ_ONLY)
+    public final double walSizeBytes;
 
     @ApiModelProperty(value = "UI_ONLY", hidden = true)
     public final boolean isIndexTable;
@@ -311,6 +324,9 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Parent Table UUID")
     public final UUID parentTableUUID;
+
+    @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
+    public final String pgSchemaName;
   }
 
   @ApiOperation(
@@ -333,7 +349,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
     }
 
-    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
+    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
     ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
@@ -361,7 +377,7 @@ public class TablesController extends AuthenticatedController {
   }
 
   // Query prometheus for table sizes.
-  private Map<String, Double> getTableSizesOrEmpty(Universe universe) {
+  private Map<String, TableSizes> getTableSizesOrEmpty(Universe universe) {
     try {
       return queryTableSizes(universe.getUniverseDetails().nodePrefix);
     } catch (RuntimeException e) {
@@ -378,6 +394,7 @@ public class TablesController extends AuthenticatedController {
     ListTablesResponse response;
     try {
       client = ybService.getClient(masterAddresses, certificate);
+      checkLeaderMasterAvailability(client);
       response = client.getTablesList();
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -388,6 +405,15 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
     }
     return response;
+  }
+
+  private void checkLeaderMasterAvailability(YBClient client) {
+    long waitForLeaderTimeoutMs = config.getDuration(MASTER_LEADER_TIMEOUT_CONFIG_PATH).toMillis();
+    try {
+      client.waitForMasterLeader(waitForLeaderTimeoutMs);
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not find the master leader");
+    }
   }
 
   /**
@@ -798,16 +824,26 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  private Map<String, Double> queryTableSizes(String nodePrefix) {
-    // Execute query and check for errors.
-    ArrayList<MetricQueryResponse.Entry> values =
-        metricQueryHelper.queryDirect(
-            "sum by (table_id) (rocksdb_current_version_sst_files_size{node_prefix=\""
-                + nodePrefix
-                + "\"})");
+  private Map<String, TableSizes> queryTableSizes(String nodePrefix) {
+    HashMap<String, TableSizes> result = new HashMap<>();
+    queryAndAppendTableSizeMetric(
+        result, "rocksdb_current_version_sst_files_size", nodePrefix, TableSizes::setSstSizeBytes);
+    queryAndAppendTableSizeMetric(result, "log_wal_size", nodePrefix, TableSizes::setWalSizeBytes);
+    return result;
+  }
 
-    HashMap<String, Double> result = new HashMap<>();
-    for (final MetricQueryResponse.Entry entry : values) {
+  private void queryAndAppendTableSizeMetric(
+      Map<String, TableSizes> tableSizes,
+      String metricName,
+      String nodePrefix,
+      BiConsumer<TableSizes, Double> fieldSetter) {
+
+    // Execute query and check for errors.
+    ArrayList<MetricQueryResponse.Entry> metricValues =
+        metricQueryHelper.queryDirect(
+            "sum by (table_id) (" + metricName + "{node_prefix=\"" + nodePrefix + "\"})");
+
+    for (final MetricQueryResponse.Entry entry : metricValues) {
       String tableID = entry.labels.get("table_id");
       if (tableID == null
           || tableID.isEmpty()
@@ -815,9 +851,10 @@ public class TablesController extends AuthenticatedController {
           || entry.values.size() == 0) {
         continue;
       }
-      result.put(tableID, entry.values.get(0).getRight());
+      fieldSetter.accept(
+          tableSizes.computeIfAbsent(tableID, k -> new TableSizes()),
+          entry.values.get(0).getRight());
     }
-    return result;
   }
 
   @ApiOperation(
@@ -838,9 +875,9 @@ public class TablesController extends AuthenticatedController {
     }
 
     LOG.info("Fetching table spaces...");
-    NodeDetails randomTServer = null;
+    NodeDetails nodeToUse = null;
     try {
-      randomTServer = CommonUtils.getARandomLiveTServer(universe);
+      nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
     } catch (IllegalStateException ise) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
@@ -848,12 +885,11 @@ public class TablesController extends AuthenticatedController {
     final String fetchTablespaceQuery =
         "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
     ShellResponse shellResponse =
-        nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, "postgres", fetchTablespaceQuery);
+        nodeUniverseManager.runYsqlCommand(nodeToUse, universe, "postgres", fetchTablespaceQuery);
     if (!shellResponse.isSuccess()) {
       LOG.warn(
           "Attempt to fetch tablespace info via node {} failed, response {}:{}",
-          randomTServer.nodeName,
+          nodeToUse.nodeName,
           shellResponse.code,
           shellResponse.message);
       throw new PlatformServiceException(
@@ -958,7 +994,7 @@ public class TablesController extends AuthenticatedController {
       return ok(errMsg);
     }
 
-    Map<String, Double> tableSizes = getTableSizesOrEmpty(universe);
+    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     String certificate = universe.getCertificateNodetoNode();
     ListTablesResponse response = listTablesOrBadRequest(masterAddresses, certificate);
@@ -1009,7 +1045,7 @@ public class TablesController extends AuthenticatedController {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
-      Map<String, Double> tableSizes) {
+      Map<String, TableSizes> tableSizeMap) {
     String id = table.getId().toStringUtf8();
     String tableKeySpace = table.getNamespace().getName();
     TableInfoResp.TableInfoRespBuilder builder =
@@ -1020,15 +1056,19 @@ public class TablesController extends AuthenticatedController {
             .tableName(table.getName())
             .relationType(table.getRelationType())
             .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-    Double tableSize = tableSizes.get(id);
-    if (tableSize != null) {
-      builder.sizeBytes(tableSize);
+    TableSizes tableSizes = tableSizeMap.get(id);
+    if (tableSizes != null) {
+      builder.sizeBytes(tableSizes.getSstSizeBytes());
+      builder.walSizeBytes(tableSizes.getWalSizeBytes());
     }
     if (tablePartitionInfo != null) {
       builder.tableSpace(tablePartitionInfo.tablespace);
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (table.hasPgschemaName()) {
+      builder.pgSchemaName(table.getPgschemaName());
     }
     return builder;
   }
@@ -1114,5 +1154,11 @@ public class TablesController extends AuthenticatedController {
       this.tableName = tableName;
       this.keyspace = keyspace;
     }
+  }
+
+  @Data
+  private static class TableSizes {
+    private double sstSizeBytes;
+    private double walSizeBytes;
   }
 }

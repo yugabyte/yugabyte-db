@@ -8,8 +8,7 @@ menu:
     identifier: creating-date-time values
     parent: date-time-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Notice that there is no built-in function to create a _timetz_ value—but this is of no consequence because of the recommendation, stated on the [Date and time data types](../../../type_datetime/#avoid-timetz) section's main page, to avoid using this data type.

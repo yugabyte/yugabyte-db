@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-object-agg
     parent: json-functions-operators
     weight: 155
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** This is an aggregate function. (Aggregate functions compute a single result from a `SETOF` input values.) It creates a JSON _object_ whose values are the JSON representations of the aggregated SQL values. It is most useful when these to-be-aggregated values are _"row"_ type values with two fields. The first represents the _key_ and the second represents the _value_ of the intended JSON _object_'s _key-value_ pair.
@@ -51,7 +50,7 @@ select ('{"f2": 42, "f7": 7, "f2": null}'::jsonb)::text;
 ```
 It shows this:
 ```
-         text          
+         text
 -----------------------
  {"f2": null, "f7": 7}
 ```

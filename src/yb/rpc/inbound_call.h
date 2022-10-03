@@ -53,6 +53,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/locks.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
@@ -212,6 +213,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   int64_t GetRpcQueuePosition() const { return rpc_queue_position_; }
 
+  // For requests that have requested traces to be collected, we will ensure
+  // that trace_ is not null and can be used for collecting the requested data.
+  void EnsureTraceCreated();
+
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
@@ -247,6 +252,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   scoped_refptr<Counter> rpc_method_response_bytes_;
   scoped_refptr<Histogram> rpc_method_handler_latency_;
+
+  bool cleared_ = false;
+  mutable simple_spinlock mutex_;
 
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.

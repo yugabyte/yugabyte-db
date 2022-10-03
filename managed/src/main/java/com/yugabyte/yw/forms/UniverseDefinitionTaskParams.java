@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -14,18 +15,22 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -35,6 +40,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import javax.validation.constraints.Size;
+import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
 
@@ -63,7 +71,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
   @Constraints.Required()
-  @Constraints.MinLength(1)
+  @Size(min = 1)
   public List<Cluster> clusters = new LinkedList<>();
 
   // This is set during configure to figure out which cluster type is intended to be modified.
@@ -76,6 +84,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.
   @ApiModelProperty public String nodePrefix = null;
+
+  // Runtime flags to be set when creating the Universe
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+  @ApiModelProperty
+  public Map<String, String> runtimeFlags = null;
 
   // The UUID of the rootCA to be used to generate node certificates and facilitate TLS
   // communication between database nodes.
@@ -139,6 +152,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // EDIT mode: Set to true if nodes could be resized without full move.
   @ApiModelProperty public boolean nodesResizeAvailable = false;
 
+  // This flag indicates whether the Kubernetes universe will use new
+  // naming style of the Helm chart. The value cannot be changed once
+  // set during universe creation. Default is set to false for
+  // backward compatibility.
+  @ApiModelProperty public boolean useNewHelmNamingStyle = false;
+
+  // Place all masters into default region flag.
+  @ApiModelProperty public boolean mastersInDefaultRegion = true;
+
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -172,6 +194,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     EXPOSED,
     UNEXPOSED
   }
+
+  /**
+   * This are available update options when user clicks "Save" on EditUniverse page. UPDATE and
+   * FULL_MOVE are handled by the same task (EditUniverse), the difference is that for FULL_MOVE ui
+   * acts a little different. SMART_RESIZE_NON_RESTART - we don't need any confirmations for that as
+   * it is non-restart. SMART_RESIZE - upgrade that handled by ResizeNode task GFLAGS_UPGRADE - for
+   * the case of toggling "enable YSQ" and so on.
+   */
+  public enum UpdateOptions {
+    UPDATE,
+    FULL_MOVE,
+    SMART_RESIZE_NON_RESTART,
+    SMART_RESIZE,
+    GFLAGS_UPGRADE
+  }
+
+  @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -254,9 +293,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate() {
+    public void validate(boolean validateGFlagsConsistency) {
       checkDeviceInfo();
       checkStorageType();
+      if (validateGFlagsConsistency) {
+        GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
     }
 
     private void checkDeviceInfo() {
@@ -308,16 +350,34 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   public static boolean hasEphemeralStorage(UserIntent userIntent) {
-    if (userIntent.providerType == CloudType.aws) {
+    boolean result =
+        hasEphemeralStorage(
+            userIntent.providerType, userIntent.instanceType, userIntent.deviceInfo);
+    if (userIntent.dedicatedNodes) {
+      result =
+          result
+              || hasEphemeralStorage(
+                  userIntent.providerType,
+                  userIntent.masterInstanceType,
+                  userIntent.masterDeviceInfo);
+    }
+    return result;
+  }
+
+  public static boolean hasEphemeralStorage(
+      CloudType providerType, String instanceType, DeviceInfo deviceInfo) {
+    if (providerType == CloudType.aws && instanceType != null) {
       for (String prefix : AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY) {
-        if (userIntent.instanceType.startsWith(prefix)) {
+        if (instanceType.startsWith(prefix)) {
           return true;
         }
       }
       return false;
-    } else if (userIntent.providerType == CloudType.gcp) {
-      return userIntent.deviceInfo != null
-          && userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch;
+    } else if (providerType == CloudType.gcp) {
+      if (deviceInfo != null
+          && deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
+        return true;
+      }
     }
     return false;
   }
@@ -347,13 +407,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // for a multi-region setup.
     @ApiModelProperty public UUID preferredRegion;
 
-    // Cloud Instance Type that the user wants
+    // Cloud Instance Type that the user wants for tserver nodes.
     @Constraints.Required() @ApiModelProperty public String instanceType;
 
     // The number of nodes to provision. These include ones for both masters and tservers.
     @Constraints.Min(1)
     @ApiModelProperty
     public int numNodes;
+
+    // Universe level overrides for kubernetes universes.
+    @ApiModelProperty public String universeOverrides;
+
+    // AZ level overrides for kubernetes universes.
+    @ApiModelProperty public Map<String, String> azOverrides;
 
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
@@ -418,8 +484,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
     @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
 
+    // Flags for YB-Controller.
+    @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
+
     // Instance tags (used for AWS only).
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
+
+    // True if user wants to have dedicated nodes for master and tserver processes.
+    @ApiModelProperty public boolean dedicatedNodes = false;
+
+    // Instance type used for dedicated master nodes.
+    @Nullable @ApiModelProperty public String masterInstanceType;
+
+    // Device info for dedicated master nodes.
+    @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
     @Override
     public String toString() {
@@ -453,9 +531,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", staticPublicIP="
           + assignStaticPublicIP
           + ", tags="
-          + instanceTags;
+          + instanceTags
+          + ", masterInstanceType="
+          + masterInstanceType;
     }
 
+    @Override
     public UserIntent clone() {
       UserIntent newUserIntent = new UserIntent();
       newUserIntent.universeName = universeName;
@@ -484,7 +565,39 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       newUserIntent.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       newUserIntent.instanceTags = new HashMap<>(instanceTags);
+      if (deviceInfo != null) {
+        newUserIntent.deviceInfo = deviceInfo.clone();
+      }
+      newUserIntent.masterInstanceType = masterInstanceType;
+      if (masterDeviceInfo != null) {
+        newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
+      }
+      newUserIntent.dedicatedNodes = dedicatedNodes;
       return newUserIntent;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public String getInstanceTypeForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterInstanceType != null) {
+        return masterInstanceType;
+      }
+      return instanceType;
+    }
+
+    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
+      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
+    }
+
+    public DeviceInfo getDeviceInfoForProcessType(
+        @Nullable UniverseDefinitionTaskBase.ServerType type) {
+      if (type == UniverseDefinitionTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+        return masterDeviceInfo;
+      }
+      return deviceInfo;
     }
 
     // NOTE: If new fields are checked, please add them to the toString() as well.
@@ -502,7 +615,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
-          && useSystemd == other.useSystemd) {
+          && useSystemd == other.useSystemd
+          && dedicatedNodes == other.dedicatedNodes
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;
@@ -521,7 +636,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
-          && useTimeSync == other.useTimeSync) {
+          && useTimeSync == other.useTimeSync
+          && dedicatedNodes == other.dedicatedNodes
+          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
         return true;
       }
       return false;
@@ -541,29 +658,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
      */
     private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
       return (new HashSet<>(left)).equals(new HashSet<>(right));
-    }
-
-    /**
-     * Helper API to send the tags to be used for any instance level operation. The existing map is
-     * cloned and modifications are performed on the clone. Currently it removes just the node name,
-     * which should not be duplicated in ybcloud commands. Used only for AWS now.
-     *
-     * @return A map of tags to use.
-     */
-    @JsonIgnore
-    public Map<String, String> getInstanceTagsForInstanceOps() {
-      Map<String, String> retTags = new HashMap<>();
-      if (!Provider.InstanceTagsEnabledProviders.contains(providerType)) {
-        return retTags;
-      }
-
-      retTags.putAll(instanceTags);
-      if (providerType.equals(Common.CloudType.aws)) {
-        // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
-        retTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
-      }
-
-      return retTags;
     }
 
     @JsonIgnore
@@ -765,4 +859,88 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return taskParams;
     }
   }
+
+  // XCluster: All the xCluster related code resides in this section.
+  // --------------------------------------------------------------------------------
+  @ApiModelProperty("XCluster related states in this universe")
+  @JsonProperty("xclusterInfo")
+  public XClusterInfo xClusterInfo = new XClusterInfo();
+
+  @JsonGetter("xclusterInfo")
+  XClusterInfo getXClusterInfo() {
+    this.xClusterInfo.universeUuid = this.universeUUID;
+    return this.xClusterInfo;
+  }
+
+  @JsonIgnoreProperties(
+      value = {"sourceXClusterConfigs", "targetXClusterConfigs"},
+      allowGetters = true)
+  @ToString
+  public static class XClusterInfo {
+    @ApiModelProperty("The value of certs_for_cdc_dir gflag")
+    public String sourceRootCertDirPath;
+
+    @JsonIgnore private UUID universeUuid;
+
+    @JsonIgnore
+    public boolean isSourceRootCertDirPathGflagConfigured() {
+      return StringUtils.isNotBlank(sourceRootCertDirPath);
+    }
+
+    @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+    @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+    public List<UUID> getTargetXClusterConfigs() {
+      if (universeUuid == null) {
+        return new ArrayList<>();
+      }
+      return XClusterConfig.getByTargetUniverseUUID(universeUuid)
+          .stream()
+          .map(xClusterConfig -> xClusterConfig.uuid)
+          .collect(Collectors.toList());
+    }
+
+    @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+    @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+    public List<UUID> getSourceXClusterConfigs() {
+      if (universeUuid == null) {
+        return Collections.emptyList();
+      }
+      return XClusterConfig.getBySourceUniverseUUID(universeUuid)
+          .stream()
+          .map(xClusterConfig -> xClusterConfig.uuid)
+          .collect(Collectors.toList());
+    }
+  }
+
+  /**
+   * It returns the path to the directory containing the source universe root certificates on the
+   * target universe. It must be called with target universe as context.
+   *
+   * @return The path to the directory containing the source universe root certificates
+   */
+  @JsonIgnore
+  public File getSourceRootCertDirPath() {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getPrimaryCluster().userIntent;
+    String gflagValueOnMasters =
+        userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+    String gflagValueOnTServers =
+        userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+    if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
+      if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
+        throw new IllegalStateException(
+            String.format(
+                "%s gflag is different on masters (%s) and tservers (%s)",
+                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                gflagValueOnMasters,
+                gflagValueOnTServers));
+      }
+      return new File(gflagValueOnMasters);
+    }
+    if (xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+      return new File(xClusterInfo.sourceRootCertDirPath);
+    }
+    return null;
+  }
+  // --------------------------------------------------------------------------------
+  // End of XCluster.
 }

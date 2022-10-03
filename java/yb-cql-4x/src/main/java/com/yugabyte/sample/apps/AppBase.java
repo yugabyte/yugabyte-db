@@ -39,8 +39,6 @@ import java.util.zip.Checksum;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 
-import org.apache.log4j.Logger;
-
 import com.datastax.oss.driver.api.core.AllNodesFailedException;
 import com.datastax.oss.driver.api.core.ConsistencyLevel;
 import com.datastax.oss.driver.api.core.CqlSession;
@@ -60,6 +58,8 @@ import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 import com.yugabyte.sample.common.metrics.MetricsTracker;
 import com.yugabyte.sample.common.metrics.MetricsTracker.MetricName;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
@@ -73,7 +73,7 @@ import redis.clients.jedis.YBJedis;
  *   - Has the abstract methods that are implemented by the various apps.
  */
 public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
-  private static final Logger LOG = Logger.getLogger(AppBase.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AppBase.class);
 
   // Number of uniques keys to insert by default.
   public static final int NUM_UNIQUE_KEYS = 1000000;
@@ -433,7 +433,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       final String prefix = new String(value, 1, prefixSize);
       // Check prefix.
       if (!prefix.equals(keyValueStr.substring(0, prefixSize))) {
-        LOG.fatal("Value mismatch for key: " + key.toString() +
+        LOG.error("Value mismatch for key: " + key.toString() +
                   ", expected to start with: " + keyValueStr +
                   ", got: " + prefix);
         return false;
@@ -455,7 +455,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
         }
       }
       if (checksum.getValue() != expectedCs) {
-        LOG.fatal("Value mismatch for key: " + key.toString() +
+        LOG.error("Value mismatch for key: " + key.toString() +
                   ", expected checksum: " + expectedCs +
                   ", got: " + checksum.getValue());
         return false;

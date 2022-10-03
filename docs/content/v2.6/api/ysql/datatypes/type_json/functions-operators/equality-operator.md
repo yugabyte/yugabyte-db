@@ -8,8 +8,7 @@ menu:
     identifier: equality-operator
     parent: json-functions-operators
     weight: 15
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Test if two `jsonb` values are equal.

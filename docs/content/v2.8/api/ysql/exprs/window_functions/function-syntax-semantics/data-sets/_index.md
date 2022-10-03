@@ -9,8 +9,7 @@ menu:
     identifier: data-sets
     parent: window-function-syntax-semantics
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 These four pages:

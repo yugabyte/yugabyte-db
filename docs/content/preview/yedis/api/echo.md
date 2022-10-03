@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/echo
   - /preview/api/yedis/del
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

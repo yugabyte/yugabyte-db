@@ -25,6 +25,7 @@
 #define YB_DOCDB_DOCDB_PGAPI_H_
 
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/common/column_id.h"
@@ -98,11 +99,14 @@ Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValue
 
 Status SetValueFromQLBinary(const QLValuePB ql_value,
                             const int pg_data_type,
+                            const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
                             DatumMessagePB* cdc_datum_message = NULL);
 
-Status SetValueFromQLBinaryHelper(const QLValuePB ql_value,
-                                  const int elem_type,
-                                  DatumMessagePB* cdc_datum_message = NULL);
+Status SetValueFromQLBinaryHelper(
+    const QLValuePB ql_value,
+    const int elem_type,
+    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
+    DatumMessagePB *cdc_datum_message = NULL);
 
 } // namespace docdb
 } // namespace yb

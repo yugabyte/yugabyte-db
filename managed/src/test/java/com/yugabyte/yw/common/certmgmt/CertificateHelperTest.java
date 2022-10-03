@@ -4,9 +4,11 @@ package com.yugabyte.yw.common.certmgmt;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -34,7 +36,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateHelperTest extends FakeDBApplication {
@@ -42,11 +43,14 @@ public class CertificateHelperTest extends FakeDBApplication {
   private Customer c;
 
   private String certPath;
+  private Config spyConf;
 
   @Before
   public void setUp() {
     c = ModelFactory.testCustomer();
     certPath = String.format("/tmp/" + getClass().getSimpleName() + "/certs/%s/", c.uuid);
+    spyConf = spy(app.config());
+    doReturn("/tmp/" + getClass().getSimpleName()).when(spyConf).getString("yb.storage.path");
     new File(certPath).mkdirs();
   }
 
@@ -59,9 +63,7 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateRootCAWithoutClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA =
-        CertificateHelper.createRootCA(
-            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.uuid);
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
@@ -77,11 +79,9 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateRootCAWithClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA =
-        CertificateHelper.createRootCA(
-            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.uuid);
     CertificateHelper.createClientCertificate(
-        rootCA, String.format(certPath + "/%s", rootCA), "yugabyte", null, null);
+        spyConf, rootCA, String.format(certPath + "/%s", rootCA), "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
@@ -89,7 +89,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
       assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
       FileInputStream is =
-          new FileInputStream(new File(certPath + String.format("/%s/yugabytedb.crt", rootCA)));
+          new FileInputStream(certPath + String.format("/%s/yugabytedb.crt", rootCA));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
       clientCer.verify(cert.getPublicKey(), "BC");
     } catch (Exception e) {
@@ -102,10 +102,14 @@ public class CertificateHelperTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID clientRootCA =
-        CertificateHelper.createClientRootCA(
-            taskParams.nodePrefix, c.uuid, "/tmp/" + getClass().getSimpleName());
+        CertificateHelper.createClientRootCA(spyConf, taskParams.nodePrefix, c.uuid);
     CertificateHelper.createClientCertificate(
-        clientRootCA, String.format(certPath + "/%s", clientRootCA), "yugabyte", null, null);
+        spyConf,
+        clientRootCA,
+        String.format(certPath + "/%s", clientRootCA),
+        "yugabyte",
+        null,
+        null);
     assertNotNull(CertificateInfo.get(clientRootCA));
     try {
       InputStream in =
@@ -114,8 +118,7 @@ public class CertificateHelperTest extends FakeDBApplication {
       X509Certificate cert = (X509Certificate) factory.generateCertificate(in);
       assertEquals(cert.getIssuerDN(), cert.getSubjectDN());
       FileInputStream is =
-          new FileInputStream(
-              new File(certPath + String.format("/%s/yugabytedb.crt", clientRootCA)));
+          new FileInputStream(certPath + String.format("/%s/yugabytedb.crt", clientRootCA));
       X509Certificate clientCer = (X509Certificate) factory.generateCertificate(is);
       clientCer.verify(cert.getPublicKey(), "BC");
     } catch (Exception e) {
@@ -129,11 +132,11 @@ public class CertificateHelperTest extends FakeDBApplication {
           NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.uuid);
     assertNotNull(CertificateInfo.get(rootCA));
 
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    FileInputStream is = new FileInputStream(new File(cert.certificate));
+    FileInputStream is = new FileInputStream(cert.certificate);
     CertificateFactory fact = CertificateFactory.getInstance("X.509");
     X509Certificate cer = (X509Certificate) fact.generateCertificate(is);
 
@@ -142,7 +145,8 @@ public class CertificateHelperTest extends FakeDBApplication {
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
     CertificateDetails result =
-        CertificateHelper.createClientCertificate(rootCA, null, "postgres", certStart, certExpiry);
+        CertificateHelper.createClientCertificate(
+            spyConf, rootCA, null, "postgres", certStart, certExpiry);
     String clientCert = result.crt;
     assertNotNull(clientCert);
     ByteArrayInputStream bytes = new ByteArrayInputStream(clientCert.getBytes());
@@ -157,11 +161,11 @@ public class CertificateHelperTest extends FakeDBApplication {
           NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.uuid);
     assertNotNull(CertificateInfo.get(rootCA));
 
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    FileInputStream is = new FileInputStream(new File(cert.certificate));
+    FileInputStream is = new FileInputStream(cert.certificate);
     CertificateFactory fact = CertificateFactory.getInstance("X.509");
     X509Certificate cer = (X509Certificate) fact.generateCertificate(is);
 
@@ -169,13 +173,19 @@ public class CertificateHelperTest extends FakeDBApplication {
     Date certStart = cal.getTime();
     cal.add(Calendar.YEAR, 1);
     Date certExpiry = cal.getTime();
-    CertificateHelper.createClientCertificate(
-        rootCA, String.format("/tmp", rootCA), "postgres", certStart, certExpiry);
+    String certPath = String.format("/tmp/%s", rootCA);
 
-    is = new FileInputStream(new File(String.format("/tmp/yugabytedb.crt", rootCA)));
-    X509Certificate clientCer = (X509Certificate) fact.generateCertificate(is);
+    if (new File(certPath).mkdirs()) {
+      CertificateHelper.createClientCertificate(
+          spyConf, rootCA, String.format("/tmp/%s", rootCA), "postgres", certStart, certExpiry);
 
-    clientCer.verify(cer.getPublicKey(), "BC");
+      is = new FileInputStream(String.format("/tmp/%s/yugabytedb.crt", rootCA));
+      X509Certificate clientCer = (X509Certificate) fact.generateCertificate(is);
+
+      clientCer.verify(cer.getPublicKey(), "BC");
+    } else {
+      fail();
+    }
   }
 
   private String getIncorrectCertContent() {
@@ -348,10 +358,6 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testUploadRootCA() {
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
-    cal.add(Calendar.YEAR, 1);
-    Date certExpiry = cal.getTime();
     UUID rootCA = null;
     CertConfigType type = CertConfigType.CustomCertHostPath;
     String certContent = getCertContent();
@@ -359,7 +365,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     try {
       rootCA =
           CertificateHelper.uploadRootCA(
-              "test", c.uuid, "/tmp", certContent, null, certStart, certExpiry, type, null, null);
+              "test", c.uuid, "/tmp", certContent, null, type, null, null);
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -375,10 +381,6 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testUploadRootCAWithExpiredCertValidity() {
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
-    cal.add(Calendar.DATE, 1);
-    Date certExpiry = cal.getTime();
     CertConfigType type = CertConfigType.CustomServerCert;
     String certContent = getRootCertContent();
     CertificateParams.CustomServerCertData customServerCertData =
@@ -388,16 +390,7 @@ public class CertificateHelperTest extends FakeDBApplication {
 
     try {
       CertificateHelper.uploadRootCA(
-          "test",
-          c.uuid,
-          "/tmp",
-          certContent,
-          null,
-          certStart,
-          certExpiry,
-          type,
-          null,
-          customServerCertData);
+          "test", c.uuid, "/tmp", certContent, null, type, null, customServerCertData);
     } catch (Exception e) {
 
       assertEquals(
@@ -408,16 +401,16 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testUploadRootCAWithInvalidCertContent() {
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
-    cal.add(Calendar.YEAR, 1);
-    Date certExpiry = cal.getTime();
-    CertConfigType type = CertConfigType.CustomCertHostPath;
-
     try {
       CertificateHelper.uploadRootCA(
-          "test", c.uuid, "/tmp", "invalid_cert", null, certStart, certExpiry, type, null, null);
-      assertTrue(false);
+          "test",
+          c.uuid,
+          "/tmp",
+          "invalid_cert",
+          null,
+          CertConfigType.CustomCertHostPath,
+          null,
+          null);
     } catch (Exception e) {
       assertEquals("Unable to get cert Objects", e.getMessage());
     }
@@ -425,24 +418,11 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testSelfSignedCertUploadRootCA() {
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
-    cal.add(Calendar.YEAR, 1);
-    Date certExpiry = cal.getTime();
     CertConfigType type = CertConfigType.SelfSigned;
     String cert_content = getCertContent();
     try {
       CertificateHelper.uploadRootCA(
-          "test",
-          c.uuid,
-          "/tmp",
-          cert_content,
-          "test_key",
-          certStart,
-          certExpiry,
-          type,
-          null,
-          null);
+          "test", c.uuid, "/tmp", cert_content, "test_key", type, null, null);
     } catch (Exception e) {
       assertEquals("Certificate and key don't match.", e.getMessage());
     }
@@ -450,24 +430,11 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   @Test
   public void testSelfSignedIncorrectCertUploadRootCA() {
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
-    cal.add(Calendar.YEAR, 1);
-    Date certExpiry = cal.getTime();
     CertConfigType type = CertConfigType.SelfSigned;
     String cert_content = getIncorrectCertContent();
     try {
       CertificateHelper.uploadRootCA(
-          "test",
-          c.uuid,
-          "/tmp",
-          cert_content,
-          "test_key",
-          certStart,
-          certExpiry,
-          type,
-          null,
-          null);
+          "test", c.uuid, "/tmp", cert_content, "test_key", type, null, null);
     } catch (Exception e) {
       assertEquals(
           "Certificate with CN = Cloud Intermediate has no associated root", e.getMessage());

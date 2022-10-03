@@ -104,7 +104,7 @@ void TabletTestPreBase::InsertTestRows(int32_t first_row,
   }
 }
 
-CHECKED_STATUS TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
+Status TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
                                                 int32_t key_idx,
                                                 int32_t val) {
   QLWriteRequestPB req;
@@ -113,7 +113,7 @@ CHECKED_STATUS TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
   return writer->Write(&req);
 }
 
-CHECKED_STATUS TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
+Status TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
                                                 int32_t key_idx,
                                                 int32_t new_val) {
   QLWriteRequestPB req;
@@ -125,7 +125,7 @@ CHECKED_STATUS TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
   return writer->Write(&req);
 }
 
-CHECKED_STATUS TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx) {
+Status TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer, int32_t key_idx) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_UPDATE);
   BuildRowKey(&req, key_idx);
@@ -133,7 +133,7 @@ CHECKED_STATUS TabletTestPreBase::UpdateTestRowToNull(LocalTabletWriter* writer,
   return writer->Write(&req);
 }
 
-CHECKED_STATUS TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx) {
+Status TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32_t key_idx) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_DELETE);
   BuildRowKey(&req, key_idx);
@@ -183,7 +183,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
   LOG(INFO) << "Successfully verified " << expected_count << "rows";
 }
 
-CHECKED_STATUS TabletTestPreBase::IterateToStringList(vector<string> *out) {
+Status TabletTestPreBase::IterateToStringList(vector<string> *out) {
   // TODO(dtxn) pass correct transaction ID if needed
   auto iter = this->tablet()->NewRowIterator(this->client_schema_);
   RETURN_NOT_OK(iter);

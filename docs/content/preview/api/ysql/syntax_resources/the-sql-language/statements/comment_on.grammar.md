@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 comment_on ::= COMMENT ON 
                { ACCESS METHOD access_method_name
                  | AGGREGATE aggregate_name ( aggregate_signature )
@@ -14,8 +14,8 @@ comment_on ::= COMMENT ON
                  | EVENT TRIGGER object_name
                  | FOREIGN DATA WRAPPER object_name
                  | FOREIGN TABLE object_name
-                 | FUNCTION function_name [ ( function_signature ) ]
-                 | INDEX object_name
+                 | FUNCTION subprogram_name ( [ subprogram_signature ] 
+                   ) | INDEX object_name
                  | LARGE OBJECT large_object_oid
                  | MATERIALIZED VIEW object_name
                  | OPERATOR operator_name ( operator_signature )
@@ -23,13 +23,12 @@ comment_on ::= COMMENT ON
                  | OPERATOR FAMILY object_name USING index_method
                  | POLICY policy_name ON table_name
                  | [ PROCEDURAL ] LANGUAGE object_name
-                 | PROCEDURE procedure_name 
-                   [ ( [ [ argmode ] [ argname ] argtype [ , ... ] ] ) ]
+                 | PROCEDURE subprogram_name ( 
+                   [ subprogram_signature ] )
                  | PUBLICATION object_name
                  | ROLE object_name
-                 | ROUTINE routine_name 
-                   [ ( [ [ argmode ] [ argname ] argtype [ , ... ] ] ) ]
-                 | RULE rule_name ON table_name
+                 | ROUTINE subprogram_name ( [ subprogram_signature ] 
+                   ) | RULE rule_name ON table_name
                  | SCHEMA object_name
                  | SEQUENCE object_name
                  | SERVER object_name
@@ -41,7 +40,6 @@ comment_on ::= COMMENT ON
                  | TEXT SEARCH DICTIONARY object_name
                  | TEXT SEARCH PARSER object_name
                  | TEXT SEARCH TEMPLATE object_name
-                 | TRANSFORM FOR type_name LANGUAGE lang_name
                  | TRIGGER trigger_name ON table_name
                  | TYPE object_name
                  | VIEW object_name } IS { '<Text Literal>' | NULL }

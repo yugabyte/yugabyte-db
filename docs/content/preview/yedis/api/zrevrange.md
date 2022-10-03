@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zrevrange
   - /preview/api/yedis/zrevrange
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

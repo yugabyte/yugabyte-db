@@ -25,6 +25,7 @@ import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 import org.yb.client.TestUtils;
+import org.yb.util.Pair;
 import org.json.JSONObject;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -2378,6 +2379,82 @@ public class TestBindVariable extends BaseCQLTest {
     }
 
     LOG.info("End test");
+  }
+
+  // yb-cql-4x/src/test/java/org/yb/loadtest/TestTupleOperators.java contains
+  // the tests for the unsupported multi-column IN bind formats.
+  @Test
+  public void testMultiColumnInWithBind() throws Exception {
+    LOG.info("TEST IN KEYWORD - Start");
+    setupTable("in_bind_test", 10);
+
+    // Test basic bind.
+    {
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 = 1 AND h2 = 'h1' AND " +
+          "(r1, r2) IN ((?, ?), (?, ?), (?, ?))",
+          new Integer(101), new String("r101"), new Integer(103),
+          new String("r103"), new Integer(107), new String("r107"));
+      Set<Pair<Integer, String>> expectedValues = new HashSet<>();
+      expectedValues.add(new Pair(101, "r101"));
+      // Check rows
+      for (Row row : rs) {
+        Integer r1 = row.getInt("r1");
+        String r2 = row.getString("r2");
+        Pair<Integer, String> value = new Pair(r1, r2);
+        assertTrue(expectedValues.contains(value));
+        expectedValues.remove(value);
+      }
+      assertTrue(expectedValues.isEmpty());
+    }
+
+    // Test prepare bind.
+    {
+      PreparedStatement prepared = session
+          .prepare("SELECT * FROM in_bind_test WHERE h1 = 1 AND h2 = 'h1' AND (r1, r2) IN " +
+              "((?, ?), (?, ?), (?, ?))");
+      ResultSet rs = session
+          .execute(prepared.bind(new Integer(101), new String("r101"),
+              new Integer(103), new String("r103"),
+              new Integer(107), new String("r107")));
+      Set<Pair<Integer, String>> expectedValues = new HashSet<>();
+      expectedValues.add(new Pair(101, "r101"));
+      // Check rows
+      for (Row row : rs) {
+        Integer r1 = row.getInt("r1");
+        String r2 = row.getString("r2");
+        Pair<Integer, String> value = new Pair(r1, r2);
+        assertTrue(expectedValues.contains(value));
+        expectedValues.remove(value);
+      }
+      assertTrue(expectedValues.isEmpty());
+    }
+
+    // Test bind by name.
+    {
+      HashMap values = new HashMap<String, Object>() {
+        {
+          put("b1", new Integer(101));
+          put("b2", new String("r101"));
+          put("b3", new Integer(103));
+          put("b4", new String("r103"));
+          put("b5", new Integer(107));
+          put("b6", new String("r107"));
+        }
+      };
+      ResultSet rs = session.execute("SELECT * FROM in_bind_test WHERE h1 = 1 AND h2 = 'h1' AND " +
+          "(r1, r2) IN ((:b1, :b2), (:b3, :b4), (:b5, :b6))", values);
+      Set<Pair<Integer, String>> expectedValues = new HashSet<>();
+      expectedValues.add(new Pair(101, "r101"));
+      // Check rows
+      for (Row row : rs) {
+        Integer r1 = row.getInt("r1");
+        String r2 = row.getString("r2");
+        Pair<Integer, String> value = new Pair(r1, r2);
+        assertTrue(expectedValues.contains(value));
+        expectedValues.remove(value);
+      }
+      assertTrue(expectedValues.isEmpty());
+    }
   }
 
 /*

@@ -129,10 +129,10 @@ class TestQLProcessor : public ClockHolder {
       const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
 
   // Execute a QL statement.
-  CHECKED_STATUS Run(
+  Status Run(
       const std::string& stmt, const StatementParameters& params = StatementParameters());
 
-  CHECKED_STATUS Run(const Statement& stmt, const StatementParameters& params);
+  Status Run(const Statement& stmt, const StatementParameters& params);
 
   // Construct a row_block and send it back.
   std::shared_ptr<QLRowBlock> row_block() const;
@@ -143,7 +143,7 @@ class TestQLProcessor : public ClockHolder {
 
   std::string CurrentKeyspace() const;
 
-  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
+  Status UseKeyspace(const std::string& keyspace_name);
 
   void RemoveCachedTableDesc(const client::YBTableName& table_name);
 
@@ -187,10 +187,10 @@ class QLTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
-  CHECKED_STATUS TestParser(const std::string& stmt);
+  Status TestParser(const std::string& stmt);
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
+  Status TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.

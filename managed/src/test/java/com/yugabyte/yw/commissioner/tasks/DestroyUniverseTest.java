@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
@@ -18,7 +17,6 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -26,11 +24,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
@@ -39,7 +37,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DestroyUniverseTest extends CommissionerBaseTest {
@@ -112,7 +109,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
         MetricKey.builder()
             .customerUuid(defaultCustomer.getUuid())
             .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
-            .targetUuid(defaultUniverse.getUniverseUUID())
+            .sourceUuid(defaultUniverse.getUniverseUUID())
             .build();
     assertThat(metricService.get(metricKey), nullValue());
   }

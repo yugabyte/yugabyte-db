@@ -24,6 +24,7 @@
 #pragma once
 
 #include "yb/rocksdb/env.h"
+#include "yb/util/io.h"
 
 namespace rocksdb {
 
@@ -38,18 +39,16 @@ class RateLimiter {
   // Request for token to write bytes. If this request can not be satisfied,
   // the call is blocked. Caller is responsible to make sure
   // bytes <= GetSingleBurstBytes()
-  virtual void Request(const int64_t bytes, const Env::IOPriority pri) = 0;
+  virtual void Request(const int64_t bytes, const yb::IOPriority pri) = 0;
 
   // Max bytes can be granted in a single burst
   virtual int64_t GetSingleBurstBytes() const = 0;
 
   // Total bytes that go though rate limiter
-  virtual int64_t GetTotalBytesThrough(
-      const Env::IOPriority pri = Env::IO_TOTAL) const = 0;
+  virtual int64_t GetTotalBytesThrough(const yb::IOPriority pri = yb::IOPriority::kTotal) const = 0;
 
   // Total # of requests that go though rate limiter
-  virtual int64_t GetTotalRequests(
-      const Env::IOPriority pri = Env::IO_TOTAL) const = 0;
+  virtual int64_t GetTotalRequests(const yb::IOPriority pri = yb::IOPriority::kTotal) const = 0;
 };
 
 // Create a RateLimiter object, which can be shared among RocksDB instances to

@@ -30,19 +30,23 @@
 // under the License.
 //
 
-#include "yb/util/flags.h"
 
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/split.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/heap-profiler.h>
 #endif
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/auto_flags_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/url-coding.h"
@@ -75,6 +79,23 @@ TAG_FLAG(heap_profile_path, advanced);
 
 DEFINE_int32(svc_queue_length_default, 50, "Default RPC queue length for a service");
 TAG_FLAG(svc_queue_length_default, advanced);
+
+// This provides a more accurate representation of default gFlag values for application like
+// yb-master which override the hard coded values at process startup time.
+DEFINE_bool(
+    dump_flags_xml, false,
+    "Dump a XLM document describing all of gFlags used in this binary. Differs from helpxml by "
+    "displaying the current runtime value as the default instead of the hard coded values from the "
+    "flag definitions. ");
+TAG_FLAG(dump_flags_xml, stable);
+TAG_FLAG(dump_flags_xml, advanced);
+
+DEFINE_bool(help_auto_flag_json, false,
+    "Dump a JSON document describing all of the AutoFlags available in this binary.");
+TAG_FLAG(help_auto_flag_json, stable);
+TAG_FLAG(help_auto_flag_json, advanced);
+
+DECLARE_bool(TEST_promote_all_auto_flags);
 
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
@@ -160,6 +181,7 @@ TAG_FLAG(v, runtime);
 
 DECLARE_string(vmodule);
 TAG_FLAG(vmodule, stable);
+TAG_FLAG(vmodule, runtime);
 TAG_FLAG(vmodule, advanced);
 
 DECLARE_bool(symbolize_stacktrace);
@@ -231,23 +253,69 @@ void AppendXMLTag(const char* tag, const string& txt, string* r) {
   strings::SubstituteAndAppend(r, "<$0>$1</$0>", tag, EscapeForHtmlToString(txt));
 }
 
-static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
-  unordered_set<string> tags;
+YB_STRONGLY_TYPED_BOOL(OnlyDisplayDefaultFlagValue);
+
+static string DescribeOneFlagInXML(
+    const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
+  unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+
+  if (only_display_default_values && tags.contains(FlagTag::kHidden)) {
+    return {};
+  }
+
+  vector<string> tags_str;
+  std::transform(tags.begin(), tags.end(), std::back_inserter(tags_str), [](const FlagTag tag) {
+    // Convert "kEnum_val" to "enum_val"
+    auto name = ToString(tag).erase(0, 1);
+    boost::algorithm::to_lower(name);
+    return name;
+  });
+
+  auto auto_flag_desc = GetAutoFlagDescription(flag.name);
 
   string r("<flag>");
   AppendXMLTag("file", flag.filename, &r);
   AppendXMLTag("name", flag.name, &r);
   AppendXMLTag("meaning", flag.description, &r);
-  AppendXMLTag("default", flag.default_value, &r);
-  AppendXMLTag("current", flag.current_value, &r);
+
+  if (auto_flag_desc) {
+    AppendXMLTag("class", ToString(auto_flag_desc->flag_class), &r);
+    if (!only_display_default_values) {
+      AppendXMLTag(
+          "state", IsFlagPromoted(flag, *auto_flag_desc) ? "promoted" : "not-promoted", &r);
+    }
+    AppendXMLTag("initial", auto_flag_desc->initial_val, &r);
+    AppendXMLTag("target", auto_flag_desc->target_val, &r);
+  } else {
+    AppendXMLTag("default", flag.default_value, &r);
+  }
+
+  if (!only_display_default_values) {
+    AppendXMLTag("current", flag.current_value, &r);
+  }
+
   AppendXMLTag("type", flag.type, &r);
-  AppendXMLTag("tags", JoinStrings(tags, ","), &r);
+  AppendXMLTag("tags", JoinStrings(tags_str, ","), &r);
   r += "</flag>";
   return r;
 }
 
-void DumpFlagsXML() {
+namespace {
+struct sort_flags_by_name {
+  inline bool operator()(const CommandLineFlagInfo& flag1, const CommandLineFlagInfo& flag2) {
+    const auto& a = flag1.name;
+    const auto& b = flag2.name;
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) {
+      if (std::tolower(a[i]) != std::tolower(b[i]))
+        return (std::tolower(a[i]) < std::tolower(b[i]));
+    }
+    return a.size() < b.size();
+  }
+};
+}  // namespace
+
+void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values) {
   vector<CommandLineFlagInfo> flags;
   GetAllFlags(&flags);
 
@@ -260,12 +328,17 @@ void DumpFlagsXML() {
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
 
+  std::sort(flags.begin(), flags.end(), sort_flags_by_name());
+
   for (const CommandLineFlagInfo& flag : flags) {
-    cout << DescribeOneFlagInXML(flag) << std::endl;
+    const auto flag_info = DescribeOneFlagInXML(flag, only_display_default_values);
+    if (!flag_info.empty()) {
+      cout << flag_info << std::endl;
+    }
   }
 
   cout << "</AllFlags>" << endl;
-  exit(1);
+  exit(0);
 }
 
 void ShowVersionAndExit() {
@@ -273,13 +346,45 @@ void ShowVersionAndExit() {
   exit(0);
 }
 
-} // anonymous namespace
+void SetFlagDefaultsToCurrent() {
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  for (const auto& flag_info : flag_infos) {
+    if (!flag_info.is_default) {
+      // This is not expected to fail as we are setting default to the already validated current
+      // value.
+      CHECK(!gflags::SetCommandLineOptionWithMode(
+                 flag_info.name.c_str(),
+                 flag_info.current_value.c_str(),
+                 gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+                 .empty());
+    }
+  }
+}
+
+}  // anonymous namespace
 
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
+  // gFlags have one hard-coded static default value in all programs that include the file
+  // where it was defined. Programs that need custom defaults set the flag at runtime before the
+  // call to ParseCommandLineFlags. So the current value is technically the default value used
+  // by this program.
+  SetFlagDefaultsToCurrent();
+
   int ret = google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
 
+  if (FLAGS_TEST_promote_all_auto_flags) {
+    PromoteAllAutoFlags();
+  }
+
   if (FLAGS_helpxml) {
-    DumpFlagsXML();
+    DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kFalse);
+  } else if (FLAGS_dump_flags_xml) {
+    DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kTrue);
+  } else if (FLAGS_help_auto_flag_json) {
+    cout << AutoFlagsUtil::DumpAutoFlagsToJSON();
+    exit(0);
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
     JsonWriter w(&s, JsonWriter::PRETTY);
@@ -293,8 +398,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_heap_profile_path.empty()) {
-    FLAGS_heap_profile_path = strings::Substitute(
-        "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    const auto path =
+        strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
+    CHECK_OK(SetFlagDefaultAndCurrent("heap_profile_path", path));
   }
 
 #ifdef TCMALLOC_ENABLED
@@ -311,7 +417,176 @@ bool RefreshFlagsFile(const std::string& filename) {
   // TODO: Find a better way to refresh flags from the file, ReadFromFlagsFile is going to be
   // deprecated.
   const char* prog_name = "yb";
-  return google::ReadFromFlagsFile(filename, prog_name, false);
+  if (!google::ReadFromFlagsFile(filename, prog_name, false /* errors_are_fatal */)) {
+    return false;
+  }
+
+  if (FLAGS_TEST_promote_all_auto_flags) {
+    PromoteAllAutoFlags();
+  }
+
+  return true;
+}
+
+Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value) {
+  // SetCommandLineOptionWithMode returns non-empty string on success
+  if (!gflags::SetCommandLineOptionWithMode(
+           flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_DEFAULT)
+           .empty()) {
+    // This is not expected to fail
+    CHECK(!gflags::SetCommandLineOptionWithMode(
+               flag_name.c_str(), value.c_str(), gflags::FlagSettingMode::SET_FLAGS_VALUE)
+               .empty());
+
+    return Status::OK();
+  }
+
+  return STATUS_FORMAT(InvalidArgument, "Failed to set flag $0 to value $1", flag_name, value);
+}
+
+// Flag update related helpers
+namespace {
+// Validates that the requested updates to vmodule can be made, and calls
+// google::SetVLOGLevel accordingly.
+// modules not explicitly specified in the request are reset to 0.
+// Returns the updated string to be used for --vmodule or error status.
+Result<string> ValidateAndSetVLOG(const string& flag_name, const string& new_value) {
+  vector<string> existing_settings = strings::Split(FLAGS_vmodule, ",");
+  // Use a vector as order matters. For each file the first matching pattern is applied and it is
+  // not updated even if a better matching pattern is found later.
+  vector<std::pair<string, int>> module_values;
+
+  // Set everything to 0
+  for (const auto& module_value : existing_settings) {
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.empty() || kv[0].empty()) {
+      continue;
+    }
+    module_values.push_back({kv[0], 0});
+  }
+
+  // Validate and set new requested values
+  auto requested_settings = strings::Split(new_value, ",");
+  for (const auto& module_value : requested_settings) {
+    if (module_value.empty()) {
+      continue;
+    }
+    vector<string> kv = strings::Split(module_value, "=");
+    if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
+      LOG(WARNING) << "Malformed request to set vmodule to " << new_value;
+      return STATUS(InvalidArgument, "Unable to set flag: bad value");
+    }
+
+    for (size_t i = 0; i < kv[1].size(); i++) {
+      if (!isdigit(kv[1][i])) {
+        LOG(WARNING) << "Cannot set vmodule for module " << kv[0] << " to " << kv[1];
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "$1 is not a valid number. Cannot update vmodule setting for module $0.", kv[1], kv[0]);
+      }
+    }
+
+    const int value = std::atoi(kv[1].c_str());
+    auto it = std::find_if(
+        module_values.begin(), module_values.end(),
+        [&](std::pair<string, int> const& elem) { return elem.first == kv[0]; });
+
+    if (it == module_values.end()) {
+      module_values.push_back({kv[0], value});
+    } else {
+      it->second = value;
+    }
+  }
+
+  std::stringstream set_vmodules;
+  bool is_first = true;
+  for (auto elem : module_values) {
+    google::SetVLOGLevel(elem.first.c_str(), elem.second);
+    set_vmodules << (is_first ? "" : ",") << elem.first << "=" << elem.second;
+    is_first = false;
+  }
+  return set_vmodules.str();
+}
+
+PgConfigReloader pg_config_reloader_;
+std::mutex pg_config_reloader_mutex_;
+
+Status ReloadPgConfig() {
+  std::lock_guard l(pg_config_reloader_mutex_);
+  if (pg_config_reloader_) {
+    return pg_config_reloader_();
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+void RegisterPgConfigReloader(const PgConfigReloader reloader) {
+  std::lock_guard l(pg_config_reloader_mutex_);
+  pg_config_reloader_ = reloader;
+}
+
+SetFlagResult SetFlag(
+    const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
+    string* output_msg) {
+  // Validate that the flag exists and get the current value.
+  string old_val;
+  if (!google::GetCommandLineOption(flag_name.c_str(), &old_val)) {
+    *output_msg = "Flag does not exist";
+    return SetFlagResult::NO_SUCH_FLAG;
+  }
+
+  // Validate that the flag is runtime-changeable.
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  if (!ContainsKey(tags, FlagTag::kRuntime)) {
+    if (force) {
+      LOG(WARNING) << "Forcing change of non-runtime-safe flag " << flag_name;
+    } else {
+      *output_msg = "Flag is not safe to change at runtime";
+      return SetFlagResult::NOT_SAFE;
+    }
+  }
+
+  string value_to_set = new_value;
+  // Special handling for vmodule
+  if (flag_name == "vmodule") {
+    auto res = ValidateAndSetVLOG(flag_name, new_value);
+    if (!res) {
+      *output_msg = res.status().ToString();
+      return SetFlagResult::BAD_VALUE;
+    }
+    value_to_set = *res;
+  }
+  // The gflags library sets new values of flags without synchronization.
+  // TODO: patch gflags to use proper synchronization.
+  ANNOTATE_IGNORE_WRITES_BEGIN();
+  // Try to set the new value.
+  string ret = google::SetCommandLineOption(flag_name.c_str(), value_to_set.c_str());
+  ANNOTATE_IGNORE_WRITES_END();
+
+  if (ret.empty()) {
+    *output_msg = "Unable to set flag: bad value";
+    return SetFlagResult::BAD_VALUE;
+  }
+
+  if (ContainsKey(tags, FlagTag::kPg)) {
+    auto status = ReloadPgConfig();
+    if (!status.ok()) {
+      LOG(WARNING) << "Reload of Postgres config failed: " << status.message();
+      *output_msg = Format("Unable to set Postgres flag: $0", status.message());
+      return SetFlagResult::PG_SET_FAILED;
+    }
+  }
+
+  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
+  LOG(INFO) << "Changed flag: " << flag_name << " from '" << (is_sensitive ? "***" : old_val)
+            << "' to '" << (is_sensitive ? "***" : value_to_set) << "'";
+
+  *output_msg = ret;
+  *old_value = old_val;
+
+  return SetFlagResult::SUCCESS;
 }
 
 } // namespace yb

@@ -8,8 +8,7 @@ menu:
     identifier: toc
     parent: api-ysql-datatypes-datetime
     weight: 150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## [The "Date and time data types and functionality" parent page](../../type_datetime/)

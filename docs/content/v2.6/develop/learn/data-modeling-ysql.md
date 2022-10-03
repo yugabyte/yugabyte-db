@@ -8,8 +8,7 @@ menu:
     identifier: data-modeling-2-ysql
     parent: learn
     weight: 562
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

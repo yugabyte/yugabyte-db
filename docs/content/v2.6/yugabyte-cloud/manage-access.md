@@ -10,8 +10,7 @@ menu:
     identifier: manage-access
     parent: yugabyte-cloud
     weight: 644
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the Database Access page to manage YugabyteDB users. This page displays a user list that includes username, cluster, authenication method, and YugabyteDB roles. Here's an example of the page:
@@ -44,4 +43,3 @@ Click **INFO** under **Actions** for the user whose details you want to see.
 To see the password, click **Show password**. Click **Close** when finished.
 
 ![User Details dialog](/images/deploy/yugabyte-cloud/user-details.png)
-

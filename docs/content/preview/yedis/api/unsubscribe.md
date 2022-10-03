@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/unsubscribe
   - /preview/api/yedis/unsubscribe
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

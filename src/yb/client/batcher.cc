@@ -528,7 +528,7 @@ void Batcher::ExecuteOperations(Initial initial) {
 
   outstanding_rpcs_.store(rpcs.size());
   for (const auto& rpc : rpcs) {
-    if (transaction) {
+    if (transaction && transaction->trace() && rpc->trace()) {
       transaction->trace()->AddChildTrace(rpc->trace());
     }
     rpc->SendRpc();

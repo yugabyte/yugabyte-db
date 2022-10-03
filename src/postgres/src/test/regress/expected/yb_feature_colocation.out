@@ -232,6 +232,49 @@ CREATE TABLE tab_range_nonkey_noco3 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (co
 CREATE INDEX idx_range4 ON tab_range_nonkey_noco3 (a);
 CREATE TABLE tab_range_nonkey5 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
+CREATE TABLE tbl (r1 INT, r2 INT, v1 INT, v2 INT,
+PRIMARY KEY (r1, r2));
+CREATE INDEX idx_hash1 on tbl (r1 HASH);
+ERROR:  cannot colocate hash partitioned index
+CREATE INDEX idx_hash2 on tbl ((r1, r2) HASH);
+ERROR:  cannot colocate hash partitioned index
+CREATE INDEX idx_hash3 on tbl (r1 HASH, r2 ASC);
+ERROR:  cannot colocate hash partitioned index
+CREATE UNIQUE INDEX unique_idx_hash1 on tbl (r1 HASH);
+ERROR:  cannot colocate hash partitioned index
+CREATE UNIQUE INDEX unique_idx_hash2 on tbl ((r1, r2) HASH);
+ERROR:  cannot colocate hash partitioned index
+CREATE UNIQUE INDEX unique_idx_hash3 on tbl (r1 HASH, r2 ASC);
+ERROR:  cannot colocate hash partitioned index
+\d tbl
+                Table "public.tbl"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           | not null |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
+
+-- Make sure nothing bad happens to UNIQUE constraints after disabling HASH columns
+-- for colocated indexes
+CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1));
+ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
+\d tbl2
+                Table "public.tbl2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ r1     | integer |           | not null |
+ r2     | integer |           |          |
+ v1     | integer |           |          |
+ v2     | integer |           |          |
+Indexes:
+    "tbl2_pkey" PRIMARY KEY, lsm (r1 ASC)
+    "tbl2_v1_key" UNIQUE CONSTRAINT, lsm (v1 ASC)
+    "unique_v2_tbl2" UNIQUE CONSTRAINT, lsm (v2 ASC)
+
+DROP TABLE tbl, tbl2;
 -- colocated table with unique index
 CREATE TABLE tab_nonkey2 (a INT) WITH (colocated = true);
 CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);

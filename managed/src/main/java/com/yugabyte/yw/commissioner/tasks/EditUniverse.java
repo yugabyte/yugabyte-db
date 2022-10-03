@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
-
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -30,6 +28,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -59,11 +58,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     try {
       checkUniverseVersion();
-      if (isFirstTryForTask(taskParams())) {
+      if (isFirstTry()) {
         // Verify the task params.
         verifyParams(UniverseOpType.EDIT);
       }
 
+      Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe =
@@ -72,7 +72,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               u -> {
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
-                if (isFirstTryForTask(taskParams())) {
+                for (Cluster cluster : taskParams().clusters) {
+                  Cluster originalCluster = u.getCluster(cluster.uuid);
+                  if (!cluster.areTagsSame(originalCluster)) {
+                    tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
+                  }
+                }
+                if (isFirstTry()) {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
                   fetchTaskDetailsFromDB();
@@ -103,6 +109,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                       n -> {
                         n.masterState = MasterState.ToStop;
                       });
+                  // UserIntent in universe will be pointing to userIntent from params after
+                  // setUserIntentToUniverse. So we need to store tags locally to be able to reset
+                  // them later.
+                  Map<UUID, Map<String, String>> currentTags =
+                      u.getUniverseDetails()
+                          .clusters
+                          .stream()
+                          .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
                   // Set the prepared data to universe in-memory.
                   setUserIntentToUniverse(u, taskParams(), false);
                   // Task params contain the exact blueprint of what is desired.
@@ -110,6 +124,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
                   updateTaskDetailsInDB(taskParams());
+                  // We need to reset tags, to make this tags update retryable.
+                  // New tags will be written into DB in UpdateUniverseTags task.
+                  for (Cluster cluster : u.getUniverseDetails().clusters) {
+                    cluster.userIntent.instanceTags = currentTags.get(cluster.uuid);
+                  }
                 }
               });
 
@@ -135,10 +154,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            updateMasters);
+            updateMasters,
+            tagsToUpdate);
       }
 
       // Wait for the master leader to hear from all tservers.
+      // NOTE: Universe expansion will fail in the master leader failover scenario - if a node
+      // is down externally for >15 minutes and the master leader then marks the node down for
+      // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the DNS entry for this universe, based in primary provider info.
@@ -180,7 +203,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters) {
+      boolean updateMasters,
+      Map<UUID, Map<String, String>> tagsToUpdate) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -212,15 +236,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Update any tags on nodes that are not going to be removed and not being added.
     Cluster existingCluster = universe.getCluster(cluster.uuid);
-    if (!cluster.areTagsSame(existingCluster)) {
-      log.info(
-          "Tags changed from '{}' to '{}'.",
-          existingCluster.userIntent.instanceTags,
-          cluster.userIntent.instanceTags);
+    if (tagsToUpdate.containsKey(cluster.uuid)) {
+      Map<String, String> newTags = tagsToUpdate.get(cluster.uuid);
+      log.info("Tags changed from '{}' to '{}'.", existingCluster.userIntent.instanceTags, newTags);
       createUpdateInstanceTagsTasks(
           getNodesInCluster(cluster.uuid, liveNodes),
-          Util.getKeysNotPresent(
-              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
+          newTags,
+          Util.getKeysNotPresent(existingCluster.userIntent.instanceTags, newTags));
+
+      createUpdateUniverseTagsTask(cluster, newTags)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
 
     boolean ignoreUseCustomImageConfig =
@@ -325,6 +350,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Start tservers on all nodes.
       createStartTserverProcessTasks(newTservers);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+      }
     }
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live.
@@ -441,6 +471,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

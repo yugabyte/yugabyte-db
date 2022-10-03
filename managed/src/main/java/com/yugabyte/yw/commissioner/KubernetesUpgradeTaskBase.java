@@ -8,12 +8,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,6 +55,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       if (taskParams().clusters == null || taskParams().clusters.isEmpty()) {
         taskParams().clusters = universe.getUniverseDetails().clusters;
       }
+
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       // Execute the lambda which populates subTaskGroupQueue
       upgradeLambda.run();
@@ -93,17 +102,36 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   public void createUpgradeTask(
       Universe universe,
-      PlacementInfo placementInfo,
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, placementInfo);
+    createUpgradeTask(
+        universe, softwareVersion, isMasterChanged, isTServerChanged, CommandType.HELM_UPGRADE);
+  }
 
-    KubernetesPlacement placement = new KubernetesPlacement(placementInfo);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      CommandType commandType) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    createSingleKubernetesExecutorTask(
+        CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+
+    KubernetesPlacement placement =
+        new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
@@ -111,7 +139,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             placement.masters,
             taskParams().nodePrefix,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle,
+            provider.getK8sPodAddrTemplate());
 
     if (isMasterChanged) {
       upgradePodsTask(
@@ -121,8 +151,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.MASTER,
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
+          universeOverrides,
+          azOverrides,
           isMasterChanged,
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false,
+          commandType);
     }
 
     if (isTServerChanged) {
@@ -137,9 +172,39 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.TSERVER,
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
+          universeOverrides,
+          azOverrides,
           false, // master change is false since it has already been upgraded.
-          isTServerChanged);
+          isTServerChanged,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false,
+          commandType);
 
+      // Handle read cluster upgrade.
+      if (universeDetails.getReadOnlyClusters().size() != 0) {
+        PlacementInfo readClusterPlacementInfo =
+            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+        createSingleKubernetesExecutorTask(
+            CommandType.POD_INFO, readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        KubernetesPlacement readClusterPlacement =
+            new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        upgradePodsTask(
+            readClusterPlacement,
+            masterAddresses,
+            null,
+            ServerType.TSERVER,
+            softwareVersion,
+            taskParams().sleepAfterTServerRestartMillis,
+            universeOverrides,
+            azOverrides,
+            false, // master change is false since it has already been upgraded.
+            isTServerChanged,
+            newNamingStyle,
+            /*isReadOnlyCluster*/ true,
+            commandType);
+      }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }
   }

@@ -7,12 +7,11 @@ aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -86,7 +85,7 @@ You configure the TKG credentials as follows:
 
   - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
   - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
-  
+
 - Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 - Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
@@ -100,7 +99,7 @@ You configure region and zones as follows:
 
 - On the **Create VMware Tanzu Configuration** page, click **Add region** to open the **Add new region** dialog.
 
-- Use the **Region** field to select the region. 
+- Use the **Region** field to select the region.
 
 - Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
 

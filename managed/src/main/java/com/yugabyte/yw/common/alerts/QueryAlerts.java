@@ -12,12 +12,12 @@ package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -44,16 +45,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -63,11 +60,7 @@ public class QueryAlerts {
   private static final int ALERTS_BATCH = 1000;
   private static final String SUMMARY_ANNOTATION_NAME = "summary";
 
-  private AtomicBoolean running = new AtomicBoolean(false);
-
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final MetricQueryHelper queryHelper;
 
@@ -83,16 +76,14 @@ public class QueryAlerts {
 
   @Inject
   public QueryAlerts(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       AlertService alertService,
       MetricQueryHelper queryHelper,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
       AlertConfigurationService alertConfigurationService,
       AlertManager alertManager) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.queryHelper = queryHelper;
     this.alertService = alertService;
     this.metricService = metricService;
@@ -102,23 +93,15 @@ public class QueryAlerts {
   }
 
   public void start() {
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            // Start 30 seconds later to allow Prometheus to get Platform metrics
-            // and evaluate alerts based on them.
-            Duration.create(YB_QUERY_ALERTS_INTERVAL_SEC, TimeUnit.SECONDS),
-            Duration.create(YB_QUERY_ALERTS_INTERVAL_SEC, TimeUnit.SECONDS),
-            this::scheduleRunner,
-            this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ofSeconds(YB_QUERY_ALERTS_INTERVAL_SEC),
+        Duration.ofSeconds(YB_QUERY_ALERTS_INTERVAL_SEC),
+        this::scheduleRunner);
   }
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of alert query is still underway");
-      return;
-    }
     try {
       if (HighAvailabilityConfig.isFollower()) {
         log.debug("Skipping querying for alerts for follower platform");
@@ -136,8 +119,6 @@ public class QueryAlerts {
       alertManager.sendNotifications();
     } catch (Exception e) {
       log.error("Error processing alerts", e);
-    } finally {
-      running.set(false);
     }
   }
 

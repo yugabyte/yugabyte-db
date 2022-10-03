@@ -8,8 +8,7 @@ menu:
     identifier: moment-interval-overloads-of-plus-and-minus
     parent: interval-arithmetic
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

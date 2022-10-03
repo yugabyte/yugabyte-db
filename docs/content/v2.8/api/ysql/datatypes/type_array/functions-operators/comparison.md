@@ -8,8 +8,7 @@ menu:
     identifier: array-comparison
     parent: array-functions-operators
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Comparison operators overview
@@ -46,7 +45,7 @@ There is, of course, a well-defined priority among the comparisons. Briefly, val
 
 The first comparison test scans the values in each of the LHS and RHS arrays in row-major order (see [Joint semantics](../properties/#joint-semantics)) and does a pairwise comparison. Notably, the comparison rule non-negotiably uses `IS NOT DISTINCT FROM` semantics. Moreover, when a `not null` array value is pairwise compared with a `NULL` value, the `not null` value is deemed to be _less than_ the `NULL` value.
 
-Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `NULL` semantics but, of course, lets you use `IS NOT DISTINCT FROM` comparison if this better suits your purpose. 
+Notice the contrast with the `=` operator comparison rule for free-standing scalar values. This comparison uses `NULL` semantics but, of course, lets you use `IS NOT DISTINCT FROM` comparison if this better suits your purpose.
 
 Otherwise, the comparison rules are the same as those for scalar values and, by extension, with those for, for example, _"row"_ type values.
 
@@ -91,7 +90,7 @@ from v;
 ```
 This is the result:
 ```
- EQUALITY comparison result 
+ EQUALITY comparison result
 ----------------------------
  true
 ```
@@ -137,7 +136,7 @@ from v;
 ```
 This is the result:
 ```
- 'LESS THAN' comparison result 1 | 'LESS THAN' comparison result 2 
+ 'LESS THAN' comparison result 1 | 'LESS THAN' comparison result 2
 ---------------------------------+---------------------------------
  true                            | true
 ```
@@ -161,7 +160,7 @@ from v;
 ```
 This is the result:
 ```
- CONTAINS comparison result | 'IS CONTAINED BY' comparison result 
+ CONTAINS comparison result | 'IS CONTAINED BY' comparison result
 ----------------------------+-------------------------------------
  true                       | true
 ```
@@ -184,7 +183,7 @@ from v;
 ```
 This is the result:
 ```
- 'a1 OVERLAPS a2' comparison result | 'a2 OVERLAPS a1' comparison result 
+ 'a1 OVERLAPS a2' comparison result | 'a2 OVERLAPS a1' comparison result
 ------------------------------------+------------------------------------
  true                               | true
 ```
@@ -240,7 +239,7 @@ begin
   -- is made. Other differences are irrelevant.
   declare
     a constant int[] := '{10, 20, 30}';
-    b constant int[] := '{10, 19, 31}'; 
+    b constant int[] := '{10, 19, 31}';
   begin
     assert
       (a <> b) and
@@ -283,7 +282,7 @@ begin
   --
   -- Pairwise value comparison has the hoghest priority.
   -- therefore c is deemed to be GREATER THAN d.
-  
+
   declare
     c constant int[] := '{2}';
 
@@ -320,7 +319,7 @@ begin
   -- so e is deemed to be GREATER THAN f.
   declare
     e constant int[] := '{10, 20, 30, 40, 50, 60, 70}';
-    f constant int[] := '[2:3][3:5]={{10, 20, 30}, {40, 50, 60}}'; 
+    f constant int[] := '[2:3][3:5]={{10, 20, 30}, {40, 50, 60}}';
   begin
     assert
       e[1] = f[2][3] and
@@ -356,7 +355,7 @@ begin
   -- Ndims has higher priority among ndims and lower bounds,
   -- so g is deemed to be GREATER THAN h.
   declare
-    g constant int[] := '{{10, 20, 30}, {40, 50, 60}}'; 
+    g constant int[] := '{{10, 20, 30}, {40, 50, 60}}';
     h constant int[] := '[2:7]={10, 20, 30, 40, 50, 60}';
   begin
     assert
@@ -387,7 +386,7 @@ begin
 
   ------------------------------------------------------------------------------
   declare
-    i constant int[] := '[5:6][4:6]={{10, 20, 30}, {40, 50, 60}}'; 
+    i constant int[] := '[5:6][4:6]={{10, 20, 30}, {40, 50, 60}}';
     j constant int[] := '[3:4][6:8]={{10, 20, 30}, {40, 50, 60}}';
   begin
     assert

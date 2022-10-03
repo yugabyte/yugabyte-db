@@ -44,7 +44,6 @@ class TabletServerBackupServiceProxy;
 class TabletServerIf;
 class TabletServerOptions;
 class TabletServerServiceProxy;
-class TabletServerForwardServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
 
@@ -52,7 +51,7 @@ enum class TabletServerServiceRpcMethodIndexes;
 
 YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
-using TransactionPoolProvider = std::function<client::TransactionPool*()>;
+using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 } // namespace tserver
 } // namespace yb

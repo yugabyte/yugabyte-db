@@ -35,7 +35,7 @@ class VisitorBase {
 
   virtual int entry_type() const = 0;
 
-  virtual CHECKED_STATUS Visit(Slice id, Slice data) = 0;
+  virtual Status Visit(Slice id, Slice data) = 0;
 
  protected:
 };
@@ -46,7 +46,7 @@ class Visitor : public VisitorBase {
   Visitor() {}
   virtual ~Visitor() = default;
 
-  virtual CHECKED_STATUS Visit(Slice id, Slice data) {
+  virtual Status Visit(Slice id, Slice data) {
     typename PersistentDataEntryClass::data_type metadata;
     RETURN_NOT_OK_PREPEND(
         pb_util::ParseFromArray(&metadata, data.data(), data.size()),
@@ -58,7 +58,7 @@ class Visitor : public VisitorBase {
   int entry_type() const { return PersistentDataEntryClass::type(); }
 
  protected:
-  virtual CHECKED_STATUS Visit(
+  virtual Status Visit(
       const std::string& id, const typename PersistentDataEntryClass::data_type& metadata) = 0;
 
  private:
@@ -67,17 +67,17 @@ class Visitor : public VisitorBase {
 
 // Template method defintions must go into a header file.
 template <class... Items>
-CHECKED_STATUS SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
+Status SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
   return Mutate(QLWriteRequestPB::QL_STMT_UPDATE, leader_term, std::forward<Items>(items)...);
 }
 
 template <class... Items>
-CHECKED_STATUS SysCatalogTable::Delete(int64_t leader_term, Items&&... items) {
+Status SysCatalogTable::Delete(int64_t leader_term, Items&&... items) {
   return Mutate(QLWriteRequestPB::QL_STMT_DELETE, leader_term, std::forward<Items>(items)...);
 }
 
 template <class... Items>
-CHECKED_STATUS SysCatalogTable::Mutate(
+Status SysCatalogTable::Mutate(
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items) {
   auto w = NewWriter(leader_term);
   RETURN_NOT_OK(w->Mutate(op_type, std::forward<Items>(items)...));

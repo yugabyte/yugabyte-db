@@ -12,8 +12,7 @@ aliases:
   - /preview/api/cassandra/type_timestamp
   - /preview/api/ycql/type_datetime
   - /preview/api/ycql/type_timestamp
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

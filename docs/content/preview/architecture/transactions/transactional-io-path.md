@@ -10,8 +10,7 @@ menu:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
     weight: 1156
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Introduction

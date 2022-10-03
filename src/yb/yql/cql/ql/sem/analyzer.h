@@ -42,7 +42,7 @@ class Analyzer {
 
   // Run semantics analysis on the given parse tree and decorate it with semantics information such
   // as datatype or object-type of a database object.
-  CHECKED_STATUS Analyze(ParseTreePtr ptree);
+  Status Analyze(ParseTreePtr ptree);
 
   // Returns decorated parse tree from the semantic analysis and destroys the context.
   ParseTreePtr Done();

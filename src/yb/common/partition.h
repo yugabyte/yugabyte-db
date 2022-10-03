@@ -186,6 +186,21 @@ class Partition {
 class PartitionSchema {
  public:
 
+  struct RangeSplit {
+    explicit RangeSplit(const std::string& bounds) : column_bounds(bounds) {}
+
+    std::string column_bounds;
+
+    friend bool operator==(const RangeSplit&, const RangeSplit&) = default;
+  };
+
+  struct RangeSchema {
+    std::vector<ColumnId> column_ids;
+    std::vector<RangeSplit> splits;
+
+    friend bool operator==(const RangeSchema&, const RangeSchema&) = default;
+  };
+
   static constexpr int32_t kPartitionKeySize = 2;
   static constexpr int32_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
 
@@ -236,6 +251,8 @@ class PartitionSchema {
 
   YBHashSchema hash_schema() const;
 
+  const RangeSchema& range_schema() const;
+
   bool IsRangePartitioning() const {
     return range_schema_.column_ids.size() > 0;
   }
@@ -246,11 +263,27 @@ class PartitionSchema {
   // Decode the given partition_key to a 2-byte integer.
   static uint16_t DecodeMultiColumnHashValue(Slice partition_key);
 
+  // Decode the given partition inclusive left bound to a 2-byte inclusive left bound integer.
+  static uint16_t DecodeMultiColumnHashLeftBound(Slice partition_key);
+
+  // Decode the given partition exclusive right bound to a 2-byte inclusive right bound integer.
+  static uint16_t DecodeMultiColumnHashRightBound(Slice partition_key);
+
   // Does [partition_key_start, partition_key_end] form a valid range.
   static Status IsValidHashPartitionRange(const std::string& partition_key_start,
                                           const std::string& partition_key_end);
 
   static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
+
+  // Get the overlap between two key ranges.
+  static uint32_t GetOverlap(
+      const std::string& key_start,
+      const std::string& key_end,
+      const std::string& other_key_start,
+      const std::string& other_key_end);
+
+  // Get the Partition range size.
+  static uint32_t GetPartitionRangeSize(const std::string& key_start, const std::string& key_end);
 
   template <class T>
   static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {
@@ -264,8 +297,8 @@ class PartitionSchema {
   static void ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out);
 
   // Encoded (sub)doc keys that belong to partition with partition_key lower bound
-  // are starting with this prefix or greater than it
-  static std::string GetEncodedKeyPrefix(
+  // are starting with this prefix or greater than it.
+  static Result<std::string> GetEncodedKeyPrefix(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
 
   // YugaByte partition creation
@@ -332,23 +365,21 @@ class PartitionSchema {
   // with no bucketing components, etc.
   bool IsSimplePKRangePartitioning(const Schema& schema) const;
 
+  // Returns two hash-partitions covering the range of the passed in hash-partiion, or
+  // std::nullopt if the passed in partition covers only one value.
+  // This does not attempt to split partition evenly based on tablet data, and is only suitable
+  // for tablets of the transaction status table, which have no data.
+  static boost::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
+      const Partition& partition);
+
  private:
-
-  struct RangeSplit {
-    explicit RangeSplit(const std::string& bounds) : column_bounds(bounds) {}
-
-    std::string column_bounds;
-  };
-
-  struct RangeSchema {
-    std::vector<ColumnId> column_ids;
-    std::vector<RangeSplit> splits;
-  };
 
   struct HashBucketSchema {
     std::vector<ColumnId> column_ids;
     int32_t num_buckets;
     uint32_t seed;
+
+    friend bool operator==(const HashBucketSchema&, const HashBucketSchema&) = default;
   };
 
   // Convertion between PB and partition schema.

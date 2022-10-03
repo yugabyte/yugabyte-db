@@ -1,7 +1,7 @@
 ---
 title: Using a recursive CTE to traverse a general graph
 headerTitle: Using a recursive CTE to traverse graphs of all kinds
-linkTitle: traversing general graphs
+linkTitle: Traversing general graphs
 description: This section shows how to use a recursive CTE to traverse graphs of all kinds.
 image: /images/section_icons/api/ysql.png
 menu:
@@ -9,17 +9,11 @@ menu:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
 
-**On this page**<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Undirected cyclic graph](./#undirected-cyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Directed cyclic graph](./#directed-cyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Directed acyclic graph](./#directed-acyclic-graph)<br>
-&#160;&#160;&#160;&#160;&#160;&#160;&#160;[Rooted tree](./#rooted-tree)
-
-{{< tip title="Download a zip of scripts that include all the code examples that this section uses" >}}
+{{< tip title="Download the code examples" >}}
 
 All of the `.sql` scripts that this section presents for copy-and-paste at the `ysqlsh` prompt are included for download in a zip-file.
 
@@ -87,13 +81,13 @@ The reporting tree for employees in an organization, whose traversal was discuss
 
 The next sections show how to find the paths in each of the four kinds of graph that are described above.
 
-### Representing the different kinds of graph in a SQL database — [here](./graph-representation/)
+### Representing the different kinds of graph in a SQL database
 
-This section describes the minimal table structure for representing graphs.
+[This section](./graph-representation/) describes the minimal table structure for representing graphs.
 
-### Common code for traversing all kinds of graph — [here](./common-code/)
+### Common code for traversing all kinds of graph
 
-The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them. 
+[This section](./common-code/) describes common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries, and various helper functions and procedures, upon which the described traversal schemes all depend.
 
 ### Path finding approaches
 

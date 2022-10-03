@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dml_delete
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/delete,returning_clause.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/delete,returning_clause.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/delete,returning_clause.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/delete,returning_clause.diagram.md" %}}
   </div>
 </div>
 
@@ -53,7 +52,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### *delete* 
+### *delete*
 
 #### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*] (#returning-clause) ]
 
@@ -125,5 +124,5 @@ DELETE 1
 ## See also
 
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)

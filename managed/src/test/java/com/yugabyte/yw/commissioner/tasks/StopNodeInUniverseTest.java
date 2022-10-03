@@ -19,16 +19,21 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
@@ -70,9 +75,27 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .then(
+            invocation -> {
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                ShellResponse listResponse = new ShellResponse();
+                NodeTaskParams params = invocation.getArgument(1);
+                if (params.nodeUuid == null) {
+                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                } else {
+                  listResponse.message =
+                      "{\"universe_uuid\":\""
+                          + params.universeUUID
+                          + "\", "
+                          + "\"node_uuid\": \""
+                          + params.nodeUuid
+                          + "\"}";
+                }
+                return listResponse;
+              }
+              return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
+            });
 
     YBClient mockClient = mock(YBClient.class);
     try {
@@ -136,6 +159,34 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
+  private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.ModifyBlackList,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.UpdateNodeProcess,
+          TaskType.SetNodeState,
+          TaskType.UniverseUpdateSucceeded,
+          TaskType.ModifyBlackList);
+
+  private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "controller", "command", "stop")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
+          Json.toJson(ImmutableMap.of("state", "Stopped")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.ModifyBlackList,
@@ -170,30 +221,92 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
+  private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER =
+      ImmutableList.of(
+          TaskType.ModifyBlackList,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.ChangeMasterConfig,
+          TaskType.UpdateNodeProcess,
+          TaskType.SetNodeState,
+          TaskType.UniverseUpdateSucceeded,
+          TaskType.ModifyBlackList);
+
+  private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "controller", "command", "stop")),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
+          Json.toJson(ImmutableMap.of("state", "Stopped")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
   private void assertStopNodeSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean isMaster) {
+      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean isMaster, boolean isYbcConfigured) {
     int position = 0;
-    if (isMaster) {
-      for (TaskType taskType : STOP_NODE_TASK_SEQUENCE_MASTER) {
-        List<TaskInfo> tasks = subTasksByPosition.get(position);
-        assertEquals(1, tasks.size());
-        assertEquals(taskType, tasks.get(0).getTaskType());
-        JsonNode expectedResults = STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS.get(position);
-        List<JsonNode> taskDetails =
-            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
-        assertJsonEqual(expectedResults, taskDetails.get(0));
-        position++;
+    if (!isYbcConfigured) {
+      if (isMaster) {
+        for (TaskType taskType : STOP_NODE_TASK_SEQUENCE_MASTER) {
+          List<TaskInfo> tasks = subTasksByPosition.get(position);
+          assertEquals(1, tasks.size());
+          assertEquals(taskType, tasks.get(0).getTaskType());
+          JsonNode expectedResults = STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS.get(position);
+          List<JsonNode> taskDetails =
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          assertJsonEqual(expectedResults, taskDetails.get(0));
+          position++;
+        }
+      } else {
+        for (TaskType taskType : STOP_NODE_TASK_SEQUENCE) {
+          List<TaskInfo> tasks = subTasksByPosition.get(position);
+          assertEquals(1, tasks.size());
+          assertEquals(taskType, tasks.get(0).getTaskType());
+          JsonNode expectedResults = STOP_NODE_TASK_EXPECTED_RESULTS.get(position);
+          List<JsonNode> taskDetails =
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          assertJsonEqual(expectedResults, taskDetails.get(0));
+          position++;
+        }
       }
     } else {
-      for (TaskType taskType : STOP_NODE_TASK_SEQUENCE) {
-        List<TaskInfo> tasks = subTasksByPosition.get(position);
-        assertEquals(1, tasks.size());
-        assertEquals(taskType, tasks.get(0).getTaskType());
-        JsonNode expectedResults = STOP_NODE_TASK_EXPECTED_RESULTS.get(position);
-        List<JsonNode> taskDetails =
-            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
-        assertJsonEqual(expectedResults, taskDetails.get(0));
-        position++;
+      if (isMaster) {
+        for (TaskType taskType : STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER) {
+          List<TaskInfo> tasks = subTasksByPosition.get(position);
+          assertEquals(1, tasks.size());
+          assertEquals(taskType, tasks.get(0).getTaskType());
+          JsonNode expectedResults = STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER_RESULTS.get(position);
+          List<JsonNode> taskDetails =
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          assertJsonEqual(expectedResults, taskDetails.get(0));
+          position++;
+        }
+      } else {
+        for (TaskType taskType : STOP_NODE_WITH_YBC_TASK_SEQUENCE) {
+          List<TaskInfo> tasks = subTasksByPosition.get(position);
+          assertEquals(1, tasks.size());
+          assertEquals(taskType, tasks.get(0).getTaskType());
+          JsonNode expectedResults = STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS.get(position);
+          List<JsonNode> taskDetails =
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          assertJsonEqual(expectedResults, taskDetails.get(0));
+          position++;
+        }
       }
     }
   }
@@ -211,13 +324,57 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE_MASTER.size());
-    assertStopNodeSequence(subTasksByPosition, true);
+    assertStopNodeSequence(subTasksByPosition, true, false);
+  }
+
+  @Test
+  public void testStopMasterNodeWithYbc() {
+    NodeTaskParams taskParams = new NodeTaskParams();
+    Customer customer = ModelFactory.testCustomer("tc3", "Test Customer 3");
+    Universe universe =
+        createUniverse(
+            "Test Universe 2",
+            UUID.randomUUID(),
+            customer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.replicationFactor = 3;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent,
+                "host",
+                true /* setMasters */,
+                false /* updateInProgress */,
+                placementInfo,
+                true /* enableYbc */));
+    taskParams.universeUUID = universe.universeUUID;
+
+    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(subTasksByPosition.size(), STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER.size());
+    assertStopNodeSequence(subTasksByPosition, true, true);
   }
 
   @Test
   public void testStopNonMasterNode() {
     NodeTaskParams taskParams = new NodeTaskParams();
-    Customer customer = ModelFactory.testCustomer("tc2", "Test Customer 2");
+    Customer customer = ModelFactory.testCustomer("tc4", "Test Customer 4");
     Universe universe = createUniverse(customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -237,7 +394,51 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE.size());
-    assertStopNodeSequence(subTasksByPosition, false);
+    assertStopNodeSequence(subTasksByPosition, false, false);
+  }
+
+  @Test
+  public void testStopNonMasterNodeWithYBC() {
+    NodeTaskParams taskParams = new NodeTaskParams();
+    Customer customer = ModelFactory.testCustomer("tc2", "Test Customer 2");
+    Universe universe =
+        createUniverse(
+            "Test Universe",
+            UUID.randomUUID(),
+            customer.getCustomerId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 5;
+    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.replicationFactor = 3;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, userIntent.replicationFactor, null);
+    universe =
+        Universe.saveDetails(
+            universe.universeUUID,
+            ApiUtils.mockUniverseUpdater(
+                userIntent,
+                "host",
+                true /* setMasters */,
+                false /* updateInProgress */,
+                placementInfo,
+                true /* enableYbc */));
+    taskParams.universeUUID = universe.universeUUID;
+
+    TaskInfo taskInfo = submitTask(taskParams, "host-n4");
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertEquals(subTasksByPosition.size(), STOP_NODE_WITH_YBC_TASK_SEQUENCE.size());
+    assertStopNodeSequence(subTasksByPosition, false, true);
   }
 
   @Test

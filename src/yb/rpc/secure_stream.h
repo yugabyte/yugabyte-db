@@ -35,13 +35,15 @@ class SecureContext {
                 const std::string& required_uid = {});
   ~SecureContext();
 
-  CHECKED_STATUS AddCertificateAuthorityFile(const std::string& file);
+  Status AddCertificateAuthorityFile(const std::string& file);
 
-  CHECKED_STATUS UseCertificates(
+  Status UseCertificates(
       const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data);
 
+  std::string GetCertificateDetails();
+
   // Generates and uses temporary keys, should be used only during testing.
-  CHECKED_STATUS TEST_GenerateKeys(int bits, const std::string& common_name,
+  Status TEST_GenerateKeys(int bits, const std::string& common_name,
                                    MatchingCertKeyPair matching_cert_key_pair);
 
  private:
@@ -57,6 +59,12 @@ StreamFactoryPtr SecureStreamFactory(
     const SecureContext* context);
 
 void InitOpenSSL();
+
+bool AllowInsecureConnections();
+
+std::string GetSSLProtocols();
+std::string GetCipherList();
+std::string GetCipherSuites();
 
 } // namespace rpc
 } // namespace yb

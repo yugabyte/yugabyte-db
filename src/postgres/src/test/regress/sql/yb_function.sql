@@ -15,12 +15,17 @@ CREATE FUNCTION admin_func(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 + 1';
 CREATE FUNCTION admin_func_leakproof(int) RETURNS int LANGUAGE sql  -- not allowed
   LEAKPROOF AS 'SELECT $1 + 1';
-CREATE FUNCTION language_func() RETURNS uuid
+CREATE OR REPLACE FUNCTION increment(i integer) RETURNS integer AS $$
+  BEGIN
+    RETURN i + 1;
+  END;
+$$ LANGUAGE plpgsql;
+CREATE FUNCTION language_func() RETURNS uuid  -- C functions aren't allowed
   LANGUAGE c STRICT PARALLEL SAFE
   AS '$libdir/uuid-ossp', 'uuid_generate_v1';
 DROP FUNCTION admin_func(int);
 DROP FUNCTION other_func(int);
-DROP FUNCTION language_func();
+DROP FUNCTION language_func(); -- does not exist
 RESET SESSION AUTHORIZATION;
 
 ---

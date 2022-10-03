@@ -18,6 +18,7 @@
 
 #include "yb/docdb/packed_row.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/util/fast_varint.h"
@@ -44,7 +45,9 @@ void TestRowPacking(const Schema& schema, const std::vector<QLValuePB>& values) 
   ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), values.size());
   constexpr int kVersion = 1;
   SchemaPacking schema_packing(schema);
-  RowPacker packer(kVersion, schema_packing);
+  RowPacker packer(
+      kVersion, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
+      /* value_control_fields= */ Slice());
   size_t idx = schema.num_key_columns();
   for (const auto& value : values) {
     auto column_id = schema.column_id(idx);

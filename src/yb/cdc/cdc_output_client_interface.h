@@ -34,6 +34,7 @@ struct OutputClientResponse {
   Status status;
   OpIdPB last_applied_op_id;
   uint32_t processed_record_count;
+  uint32_t wait_for_version { 0 };
 };
 
 class CDCOutputClient {
@@ -41,7 +42,7 @@ class CDCOutputClient {
   virtual ~CDCOutputClient() {}
   virtual void Shutdown() {}
   // Async call for applying changes.
-  virtual CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
+  virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
 };
 
 } // namespace cdc

@@ -16,7 +16,7 @@ package yb;
 
 option java_package = "org.yb";
 
-// Sequence of values used to represent Lists and Sets (and later Tuples)
+// Sequence of values used to represent Lists, Sets and Tuples
 message QLSeqValuePB {
   repeated QLValuePB elems = 1;
 }
@@ -85,6 +85,7 @@ message QLValuePB {
     QLVirtualValuePB virtual_value = 25;
     // Null category for GIN indexes.
     uint32 gin_null_value = 26;
+    QLSeqValuePB tuple_value = 27;
   }
 }
 

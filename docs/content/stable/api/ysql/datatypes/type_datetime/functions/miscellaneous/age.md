@@ -8,11 +8,10 @@ menu:
     identifier: age
     parent: miscellaneous
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-## The semantics of the two-parameter overload of function age(timestamp[tz], timestamp[tz])  
+## The semantics of the two-parameter overload of function age(timestamp[tz], timestamp[tz])
 
 This section defines the semantics of the overload of the function _age()_ with two parameters of data type plain _timestamp_ by implementing the defining rules in PL/pgSQL in the function _modeled_age()_. The rules by which the returned _interval_ value is calculated are the same for the _(timestamptz, timestamptz)_ overload as for the plain _(timestamp, timestamp)_ overload except that, for the _with time zone_ overload, the actual timezone component (whether this is specified implicitly or taken from the session environment) and the sensitivity to the reigning timezone have their usual effect.
 
@@ -63,7 +62,7 @@ select
 This is the result:
 
 ```output
- Feb-2011 | Feb-2012 | Apr-2013 | Dec-2016 
+ Feb-2011 | Feb-2012 | Apr-2013 | Dec-2016
 ----------+----------+----------+----------
        28 |       29 |       30 |       31
 ```
@@ -134,7 +133,7 @@ declare
   dd_dob         constant int              not null := extract(day   from t_dob);
   ss_dob         constant double precision not null := extract(epoch from t_dob::time);
 
-  years                   int              not null := 
+  years                   int              not null :=
     case
       -- Special treatment is needed when yy_today and yy_dob span AC/BC
       -- 'cos there's no year zero.
@@ -164,7 +163,7 @@ begin
   declare
     age constant interval not null := make_interval(years=>years, months=>months, days=>days, secs=>secs);
   begin
-    return case negative_age 
+    return case negative_age
       when true then -age
       else            age
     end;
@@ -259,12 +258,12 @@ Notice that the first two "Positive ages" tests use the same values as do the ex
 
 ### Function random_timestamp() returns timestamp
 
-Because the implementation of _modeled_age(timestamp, timestamp)_ function was designed using intuition and iterative refinement in response to trial-and-error, it's critically important to test the comparison of the result from this and the result from the built-in _age()_ function with a huge number of distinct input pairs. The only way to do this is to generate these pairs randomly. There is no available suitable random-number generator. But the function _gen_random_bytes()_ comes to the rescue. This is not, strictly speaking, a built-in. Rather, it comes when you install the _[pgcrypto](../../../../../extensions/#pgcrypto)_ extension.
+Because the implementation of _modeled_age(timestamp, timestamp)_ function was designed using intuition and iterative refinement in response to trial-and-error, it's critically important to test the comparison of the result from this and the result from the built-in _age()_ function with a huge number of distinct input pairs. The only way to do this is to generate these pairs randomly. There is no available suitable random-number generator. But the function _gen_random_bytes()_ comes to the rescue. This is not, strictly speaking, a built-in. Rather, it comes when you install the _[pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example)_ extension.
 
 {{< tip title="Always make the 'pgcrypto' extension centrally available in every database." >}}
-Not only does installing the [_pgcrypto_](../../../../../extensions/#pgcrypto) extension bring the function _gen_random_bytes()_; also, it brings _gen_random_uuid()_. This is commonly used to populate a surrogate primary key column. Yugabyte therefore recommends that you adopt the practice routinely to install _pgcrypto_ (this must be done by a _superuser_) in a central "utilities" schema in every database that you create. By granting appropriate privileges and by including this schema in, for example, the second position in every regular user's search path, you can make _gen_random_bytes()_, _gen_random_uuid()_, and all sorts of other useful utilities immediately available to all users with no further fuss.
+Not only does installing the [_pgcrypto_](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension bring the function _gen_random_bytes()_; also, it brings _gen_random_uuid()_. This is commonly used to populate a surrogate primary key column. Yugabyte therefore recommends that you adopt the practice routinely to install _pgcrypto_ (this must be done by a _superuser_) in a central "utilities" schema in every database that you create. By granting appropriate privileges and by including this schema in, for example, the second position in every regular user's search path, you can make _gen_random_bytes()_, _gen_random_uuid()_, and all sorts of other useful utilities immediately available to all users with no further fuss.
 
-You might also like to install the _[tablefunc](../../../../../extensions/#tablefunc)_ extension as part of your standard set of central utilities. This does bring a random-number generator function, _normal_rand()_. However, this generates a normally distributed set of _double precision_ values. This functionality isn't appropriate for testing _modeled_age()_; but it _is_ appropriate for many other testing purposes.
+You might also like to install the _[tablefunc](../../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example)_ extension as part of your standard set of central utilities. This does bring a random-number generator function, _normal_rand()_. However, this generates a normally distributed set of _double precision_ values. This functionality isn't appropriate for testing _modeled_age()_; but it _is_ appropriate for many other testing purposes.
 {{< /tip >}}
 
 First, you need a helper function to convert the _bytea_ value that _gen_random_bytes()_ returns to a number value. Create and test the helper thus:
@@ -391,7 +390,7 @@ This should give you a very high confidence indeed that the function _modeled_ag
 
 The effect of _age(t)_ is identical to the effect of _age(\<midnight today\>, t)_. Here's a demonstration of the semantics. The expression _date_trunc('day', clock_timestamp())_ is copied from the definition of _today()_ in the subsection [Consider user-defined functions rather than 'today', 'tomorrow', and 'yesterday'](../../current-date-time-moment/#consider-user-defined-functions-rather-than-today-tomorrow-and-yesterday).
 
-Do this to test this assertion for the _timestamptz_ overloads: 
+Do this to test this assertion for the _timestamptz_ overloads:
 
 ```plpgsql
 drop procedure if exists assert_one_parameter_overload_of_age_semantics(timestamptz) cascade;
@@ -421,7 +420,7 @@ call assert_one_parameter_overload_of_age_semantics(clock_timestamp());
 
 Each _call_ statement finishes without error, showing that the assertion holds for every test
 
-Do this to test this assertion for the plain _timestamp_ overloads: 
+Do this to test this assertion for the plain _timestamp_ overloads:
 
 ```plpgsql
 drop procedure if exists assert_one_parameter_overload_of_age_semantics(timestamp) cascade;

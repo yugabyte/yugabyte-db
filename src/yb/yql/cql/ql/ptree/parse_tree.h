@@ -54,7 +54,7 @@ class ParseTree {
   ~ParseTree();
 
   // Run semantics analysis.
-  CHECKED_STATUS Analyze(SemContext *sem_context);
+  Status Analyze(SemContext *sem_context);
 
   // Access function for stmt_.
   const std::string& stmt() const {
@@ -100,6 +100,12 @@ class ParseTree {
     return internal_;
   }
 
+  // Get schema version this statement used.
+  Result<SchemaVersion> GetYBTableSchemaVersion() const;
+
+  // Check if the used schema version is not in sync with the Master.
+  Result<bool> IsYBTableAltered(QLEnv *ql_env) const;
+
   // Add table to the set of tables used during semantic analysis.
   void AddAnalyzedTable(const client::YBTableName& table_name);
 
@@ -113,6 +119,8 @@ class ParseTree {
   void ClearAnalyzedUDTypeCache(QLEnv *ql_env) const;
 
  private:
+  static std::shared_ptr<const client::YBTable> GetYBTableFromTreeNode(const TreeNode *tnode);
+
   // The SQL statement.
   const std::string& stmt_;
 

@@ -43,7 +43,7 @@ namespace master {
 
 class MiniMaster;
 
-CHECKED_STATUS WaitForRunningTabletCount(MiniMaster* mini_master,
+Status WaitForRunningTabletCount(MiniMaster* mini_master,
                                          const client::YBTableName& table_name,
                                          int expected_count,
                                          GetTableLocationsResponsePB* resp);

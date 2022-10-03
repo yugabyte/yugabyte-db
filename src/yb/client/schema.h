@@ -212,7 +212,7 @@ class YBColumnSpec {
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
 
-  CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
+  Status ToColumnSchema(YBColumnSchema* col) const;
 
   YBColumnSpec* JsonOp(JsonOperatorPB op, const QLValuePB& value);
 
@@ -262,7 +262,7 @@ class YBSchemaBuilder {
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
   // a bad Status will be returned.
-  CHECKED_STATUS Build(YBSchema* schema);
+  Status Build(YBSchema* schema);
 
  private:
   class Data;
@@ -286,22 +286,23 @@ class YBSchema {
   void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
-  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
+  Status Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   void Reset(std::unique_ptr<Schema> schema);
 
   bool Equals(const YBSchema& other) const;
 
-  bool EquivalentForDataCopy(const YBSchema& other) const;
+  bool EquivalentForDataCopy(const YBSchema& source_schema) const;
 
   Result<bool> Equals(const SchemaPB& pb_schema) const;
 
-  // Two schemas are equivalent if it's possible to copy data from one table to the
-  // other containing these two schemas.
-  // For example, columns and columns types are the same, but table properties
-  // might be different in areas that are not relevant (e.g. TTL).
-  Result<bool> EquivalentForDataCopy(const SchemaPB& pb_schema) const;
+  // Two schemas are equivalent if it's possible to copy data from the source table to the
+  // destination table containing the schema represented by this class. Not a pure Equals. Rules:
+  //  1. The source schema must have matching columns and columns types on the destination.
+  //  2. The destination schema may contain more columns than the source (subset relationship)
+  //  3. Table properties might be different in areas that are not relevant (e.g. TTL).
+  Result<bool> EquivalentForDataCopy(const SchemaPB& source_pb_schema) const;
 
   const TableProperties& table_properties() const;
 

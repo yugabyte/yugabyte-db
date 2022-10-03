@@ -26,7 +26,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_bool(enable_multi_raft_heartbeat_batcher, true,
+DEFINE_bool(enable_multi_raft_heartbeat_batcher, false,
             "If true, enables multi-Raft batching of raft heartbeats.");
 
 DEFINE_uint64(multi_raft_heartbeat_interval_ms, 50,

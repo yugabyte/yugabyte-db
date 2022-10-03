@@ -2,13 +2,12 @@
 title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
-section: INTEGRATIONS
 menu:
   preview:
     identifier: sequelize
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [Sequelize](https://sequelize.org/), a promise-based Node.js object-relational mapping (ORM), with YugabetyDB.
@@ -17,9 +16,7 @@ This document describes how to use [Sequelize](https://sequelize.org/), a promis
 
 Before you can start using Sequelize, ensure that you have the following available:
 
-- YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
-
-- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)).
+- YugabyteDB version 2.4 or later (see [Quick Start](../../quick-start/)).
 
 - Node.js (see [Downloading and installing Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm)).
 

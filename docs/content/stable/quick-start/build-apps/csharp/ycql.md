@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-csharp-2-ycql
     parent: build-apps
     weight: 554
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -21,7 +20,7 @@ showAsideToc: true
     </a>
   </li>
   <li>
-    <a href="../ysql-entity-framework/" class="nav-link">
+    <a href="../ysql-entity-framework/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Entity Framework
     </a>

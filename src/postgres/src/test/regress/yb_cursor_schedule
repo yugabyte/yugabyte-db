@@ -6,9 +6,6 @@
 # Generic cursor test.
 test: yb_cursor
 
-# Test on cursor for temp table.
-test: yb_pg_combocid
-
 # Run portals tests.
 test: yb_pg_create_function_1
 test: yb_pg_create_type
@@ -16,3 +13,6 @@ test: yb_pg_create_table
 test: yb_pg_copy
 test: yb_pg_portals
 test: yb_pg_portals_p2
+
+# Test on cursor for temp table.
+test: yb_pg_combocid

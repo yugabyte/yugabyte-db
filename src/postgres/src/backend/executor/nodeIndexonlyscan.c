@@ -83,6 +83,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexOnlyScan *plan = castNode(IndexOnlyScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index only scan is not parallel, or if we're
 		 * serially executing an index only scan that was planned to be
@@ -95,7 +97,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 								   node->ioss_NumOrderByKeys);
 
 		node->ioss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
@@ -127,7 +131,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	 * OK, now that we have what we need, fetch the next tuple.
 	 */
 	MemoryContext oldcontext;
-	oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+	/*
+	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * in per-tuple memory context.
+	 */
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tid = index_getnext_tid(scandesc, direction)) != NULL)
 	{
 		HeapTuple	tuple = NULL;
@@ -230,7 +239,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			if (!ExecQual(node->indexqual, econtext))
+			ExprState *indexqual = node->yb_indexqual_for_recheck
+				? node->yb_indexqual_for_recheck : node->indexqual;
+			if (!ExecQual(indexqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				ResetExprContext(econtext);
@@ -265,10 +276,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);
-		MemoryContextSwitchTo(oldcontext);
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			MemoryContextSwitchTo(oldcontext);
 		return slot;
 	}
-	MemoryContextSwitchTo(oldcontext);
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * if we get here it means the index scan failed so we are at the end of
@@ -573,6 +586,10 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		ExecInitQual(node->scan.plan.qual, (PlanState *) indexstate);
 	indexstate->indexqual =
 		ExecInitQual(node->indexqual, (PlanState *) indexstate);
+
+	indexstate->yb_indexqual_for_recheck = node->yb_indexqual_for_recheck
+		? ExecInitQual(node->yb_indexqual_for_recheck, (PlanState *) indexstate)
+		: NULL;
 
 	/*
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop

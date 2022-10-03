@@ -8,8 +8,7 @@ menu:
     identifier: containment-operators
     parent: json-functions-operators
     weight: 16
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** the `@>` operator tests if the left-hand JSON value contains the right-hand JSON value. The `<@` operator tests if the right-hand JSON value contains the left-hand JSON value.

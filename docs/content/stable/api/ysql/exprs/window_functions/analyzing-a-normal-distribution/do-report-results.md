@@ -8,8 +8,7 @@ menu:
     identifier: do-report-results
     parent: analyzing-a-normal-distribution
     weight: 150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_report_results.sql`.
 ```plpgsql

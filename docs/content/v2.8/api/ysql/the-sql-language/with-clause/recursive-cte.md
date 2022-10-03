@@ -8,8 +8,7 @@ menu:
     identifier: recursive-cte
     parent: with-clause
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The optional `RECURSIVE` keyword fundamentally changes the meaning of a CTE. The recursive variant lets you implement SQL solutions that, without it, at best require verbose formulations involving, for example, self-joins. In the limit, the recursive CTE lets you implement SQL solutions that otherwise would require procedural programming.
@@ -63,7 +62,7 @@ Notice that the parentheses that surround the _non-recursive term_ and the _recu
 This is the result:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -95,10 +94,10 @@ The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantic
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" %}}
   </div>
 </div>
 
@@ -142,7 +141,7 @@ order by n desc;
 This is the result:
 
 ```
- n  
+ n
 ----
  99
  42
@@ -193,7 +192,7 @@ a1(n) as (
 then the statement executes without error to produce this result:
 
 ```
- n  
+ n
 ----
  99
   5
@@ -234,7 +233,7 @@ select n from r order by n;
 Notice that this is simply a _syntax_ example. Using `WITH` clauses within the recursive and non-recursive terms brings no value. The statement executes without error and produces this result:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -306,7 +305,7 @@ select n from r order by n;
 This is the results:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -339,15 +338,15 @@ A compact, and exact, formulation is given by using pseudocode. The _final_resul
 > - **while the _previous_results_ table is not empty loop**
 >
 >   - **Purge the _temp_results_ table.**
->   
+>
 >   - **Evaluate the recursive term using the current contents of the _previous_results_ table for the recursive self-reference, inserting the resulting rows into the _temp_results_ table.**
->   
+>
 >   - **Purge the _previous_results_ table and insert the contents of the _temp_results_ table.**
->   
+>
 >   - **Append the contents of the _temp_results_ table into the _final_results_ table.**
->   
+>
 >- **end loop**
-> 
+>
 >- **Deliver the present contents of the _final_results_ table so that whatever follows the recursive CTE can use them.**
 
 ### PL/pgSQL procedure implementation of the pseudocode : example 1
@@ -436,24 +435,24 @@ select c1, c2 from r order by c1, c2;
 This is the result:
 
 ```
- c1 | c2 
+ c1 | c2
 ----+----
   0 |  1
   0 |  2
   0 |  3
-  
+
   1 |  2
   1 |  3
   1 |  4
-  
+
   2 |  3
   2 |  4
   2 |  5
-  
+
   3 |  4
   3 |  5
   3 |  6
-  
+
   4 |  5
   4 |  6
   4 |  7
@@ -534,6 +533,3 @@ The remaining sections (in the overall main [WITH clause](../../with-clause/) pa
 - [Case study—Using a recursive CTE to traverse an employee hierarchy](../emps-hierarchy) describes the use case (traversing an employee hierarchy) that is most commonly used to illustrate a practical application of the recursive CTE. Different SQL databases with different variants of SQL use importantly different approaches. PostgreSQL, and therefore YSQL, have only standard SQL features here (and not, therefore, the `CONNECT BY PRIOR` feature that is typically used with Oracle Database). Neither do they have dedicated syntax to ask for breadth-first or depth-first traversal. Rather, these two kinds of traversal must be programmed explicitly. The explicit solutions use array functionality and are straightforward. Moreover, using this approach allows various second-order display choices easily to be implemented.
 
 - [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/) leading to [Using a recursive CTE to compute Bacon Numbers for actors listed in the IMDb](../bacon-numbers/). The approach to traversing graphs of all kinds is a natural extension of the approach shown for the employee hierarchy traversal. It adds logic to accommodate the fact that the edges are undirected and for cycle prevention. However, this straightforward approach collapses when, as is the case with the IMBd data, there are very many paths between most pairs of actors. This brings an exponential explosion in both time to completion and use of memory. The Bacon Numbers account shows how to avoid this collapse by implementing the algorithm that the recursive CTE implements using explicit SQL issued from a PL/pgSQL stored procedure. This allows early pruning to leave only the shortest paths with each repetition of the _recursive term_.
-
-
-

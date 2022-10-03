@@ -69,8 +69,21 @@ typedef struct YbScanDescData
 	Relation relation;
 	Relation index;
 
+	/*
+	 * In YB ScanKey could be one of two types:
+	 *  - key for regular column
+	 *  - key which represents the yb_hash_code function.
+	 * The keys array holds keys of both types.
+	 * All regular keys go before keys for yb_hash_code.
+	 * Keys in range [0, nkeys) are regular keys.
+	 * Keys in range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code
+	 * Such separation allows to process regular and non-regular keys independently.
+	 */
+	ScanKey keys[YB_MAX_SCAN_KEYS];
+	/* number of regular keys */
 	int nkeys;
-	ScanKey key;
+	/* number of keys which represents the yb_hash_code function */
+	int nhash_keys;
 
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
@@ -89,12 +102,17 @@ typedef struct YbScanDescData
 	YBCPgExecParameters *exec_params;
 
 	/*
-	 * Flag used for bailing out from scan early. Currently used to bail out from scans where
-	 * one of the bind conditions is a search array and is empty.
-	 * Consider an example query,
-	 * select c1,c2 from test where c1 = XYZ AND c2 = ANY(ARRAY[]::integer[]);
-	 * The second bind condition c2 = ANY(ARRAY[]::integer[]) will never be satisfied. Hence when,
-	 * this is detected, we bail out from creating and sending a request to docDB
+	 * Flag used for bailing out from scan early. Currently used to bail out
+	 * from scans where one of the bind conditions is:
+	 *   - A comparison operator with null, e.g.: c = null, etc.
+	 *   - A search array and is empty.
+	 *     Consider an example query,
+	 *       select c1,c2 from test
+	 *       where c1 = XYZ AND c2 = ANY(ARRAY[]::integer[]);
+	 *     The second bind condition c2 = ANY(ARRAY[]::integer[]) will never be
+	 *     satisfied.
+	 * Hence when, such condition is detected, we bail out from creating and
+	 * sending a request to docDB.
 	 */
 	bool quit_scan;
 } YbScanDescData;
@@ -126,18 +144,24 @@ extern HeapScanDesc ybc_heap_beginscan(Relation relation,
 									   bool temp_snap);
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
+extern HeapScanDesc ybc_remote_beginscan(Relation relation,
+										 Snapshot snapshot,
+										 Scan *pg_scan_plan,
+										 PushdownExprs *remote);
 
 /*
  * The ybc_idx API is used to process the following SELECT.
  *   SELECT data FROM heapRelation WHERE rowid IN
  *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
  */
-YbScanDesc ybcBeginScan(Relation relation,
-                        Relation index,
-                        bool xs_want_itup,
-                        int nkeys,
-                        ScanKey key,
-                        Scan *pg_scan_plan);
+extern YbScanDesc ybcBeginScan(Relation relation,
+							   Relation index,
+							   bool xs_want_itup,
+							   int nkeys,
+							   ScanKey key,
+							   Scan *pg_scan_plan,
+							   PushdownExprs *rel_remote,
+							   PushdownExprs *idx_remote);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
@@ -160,8 +184,6 @@ Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
 /*
  * Backwards scans are more expensive in DocDB.
- * TODO: the ysql_backward_prefetch_scale_factor gflag is correlated to this
- * but is too low (1/16 implying 16x slower) to be used here.
  */
 #define YBC_BACKWARDS_SCAN_COST_FACTOR 1.1
 
@@ -175,8 +197,8 @@ Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
-extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
-								 Cost *startup_cost, Cost *total_cost);
+extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
+								 Selectivity *selectivity, Cost *startup_cost, Cost *total_cost);
 
 /*
  * Fetch a single tuple by the ybctid.
@@ -204,5 +226,7 @@ typedef struct YbSampleData *YbSample;
 YbSample ybBeginSample(Relation rel, int targrows);
 bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
+TupleTableSlot *ybFetchNext(YBCPgStatement handle,
+			TupleTableSlot *slot, Oid relid);
 
 #endif							/* YB_SCAN_H */

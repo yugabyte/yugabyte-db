@@ -7,8 +7,7 @@ menu:
     identifier: dbeaver-2-ycql
     parent: tools
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -39,7 +38,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](/quick-start/install).
+  For more information, see [Quick Start](../../quick-start/).
 
 - Install JRE or JDK for Java 8 or later.
 

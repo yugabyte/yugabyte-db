@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
             SELECT [ ALL | 
                      DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 
@@ -18,7 +18,7 @@ select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ]
            [ OFFSET integer [ ROW | ROWS ] ]  
            [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]  
            [ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } 
-             [ OF table_name [ , ... ] ] [ SKIP LOCKED ] [ ... ] ]
+             [ OF table_name [ , ... ] ] [ NOWAIT | SKIP LOCKED ] [ ... ] ]
 
 common_table_expression ::= name [ ( name [ , ... ] ) ] AS ( 
                             { select

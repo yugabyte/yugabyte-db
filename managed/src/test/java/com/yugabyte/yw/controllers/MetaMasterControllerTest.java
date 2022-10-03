@@ -68,8 +68,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         isMultiAz ? getDefaultUserIntent(provider) : getDefaultUserIntentSingleAZ(provider);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(ui, true));
-    defaultCustomer.addUniverseUUID(universe.universeUUID);
-    defaultCustomer.save();
     return universe;
   }
 
@@ -156,7 +154,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(null);
 
     endpointPort.forEach(
@@ -185,7 +184,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIP() {
     Universe universe = getKubernetesUniverse(false);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn("12.13.14.15");
 
     endpointPortYSQL.forEach(
@@ -210,7 +210,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
     Universe universe = getKubernetesUniverse(true);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn("12.13.14.15");
 
     endpointPort.forEach(
@@ -236,7 +237,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
     Universe universe = getKubernetesUniverse(false);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn("56.78.90.1");
 
     endpointPort.forEach(
@@ -261,7 +263,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
     Universe universe = getKubernetesUniverse(false);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn("loadbalancer.hostname");
 
     endpointPort.forEach(
@@ -286,7 +289,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
     Universe universe = getKubernetesUniverse(false);
-    when(mockKubernetesManager.getPreferredServiceIP(any(), anyString(), anyBoolean()))
+    when(mockKubernetesManager.getPreferredServiceIP(
+            any(), anyString(), anyString(), anyBoolean(), anyBoolean()))
         .thenReturn("loadbalancer.hostname");
 
     endpointPort.forEach(
@@ -341,8 +345,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testServerGetWithValidUniverse(boolean isYql) {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host", aws));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(
@@ -361,8 +363,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testNoYSQLServers() {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(false));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(
@@ -382,8 +382,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testYSQLServers() {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(

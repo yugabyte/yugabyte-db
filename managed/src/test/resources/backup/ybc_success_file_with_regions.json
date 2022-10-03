@@ -1,0 +1,55 @@
+{
+    "dbtype": "ysql",
+    "backup_spec": "bar",
+    "backup_size": "396606",
+    "snapshot_details": [
+      {
+        "type": "NAMESPACE",
+        "id": "000033e1000030008000000000000000",
+        "data": {
+          "name": "bar",
+          "database_type": "YQL_DATABASE_PGSQL",
+          "next_pg_oid": "16640",
+          "colocated": "false",
+          "state": "RUNNING"
+        }
+      },
+      {
+        "type": "TABLE",
+        "id": "000033e1000030008000000000004010",
+        "data": {
+          "name": "tbl_r3",
+          "version": "0",
+          "state": "RUNNING",
+          "next_column_id": "2",
+          "table_type": "PGSQL_TABLE_TYPE",
+          "namespace_id": "000033e1000030008000000000000000",
+          "namespace_name": "bar"
+        }
+      }
+    ],
+    "cloud_store_spec": {
+      "default_backup_location": {
+        "bucket": "def_bucket",
+        "cloud_dir": "default\/foo\/keyspace-bar\/"
+      },
+      "region_location_map": {
+        "us-west1": {
+          "bucket": "reg1_bucket",
+          "cloud_dir": "region_1\/foo\/keyspace-bar\/"
+        },
+        "us-west2": {
+          "bucket": "reg2_bucket",
+          "cloud_dir": "region_2\/foo\/keyspace-bar\/"
+        }
+      }
+    },
+    "tablet_regions": {
+      "e7e2f359f16c41c2a6bc1310ea2fd68b": "us-west1",
+      "c4242558644247448c0834805c6de825": "us-west1",
+      "8484ebdc912f4bd5ae1cc63813c6e5b7": "us-west1",
+      "1d18510ecb904de1ac2e0f228c13bd19": "us-west2",
+      "64cb30c92a094433a348a5d15d503799": "us-west2"
+    },
+    "backup_config_data": ""
+  }

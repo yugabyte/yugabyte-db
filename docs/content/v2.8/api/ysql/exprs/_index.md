@@ -9,8 +9,7 @@ menu:
     identifier: api-ysql-exprs
     parent: api-ysql
     weight: 4300
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 YSQL supports all PostgreSQL-compatible built-in functions and operators. The following are the currently documented ones.

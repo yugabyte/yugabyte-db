@@ -1,7 +1,7 @@
 ---
 title: Explore YSQL, the Yugabyte SQL API
-headerTitle: 3. Explore Yugabyte SQL
-linkTitle: 3. Explore distributed SQL APIs
+headerTitle: Explore Yugabyte SQL
+linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
@@ -17,12 +17,10 @@ aliases:
 menu:
   preview:
     parent: quick-start
-    name: 3. Explore distributed SQL
+    name: Explore distributed SQL
     identifier: explore-dsql-1-ysql
     weight: 130
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -43,7 +41,7 @@ showAsideToc: true
 
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
+After [creating a local cluster](../../../quick-start/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
 
 ## Set up the sample database
 
@@ -82,16 +80,16 @@ Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connec
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/explore-ysql.md" /%}}
+  {{% includeMarkdown "binary/explore-ysql.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/explore-ysql.md" /%}}
+  {{% includeMarkdown "binary/explore-ysql.md" %}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/explore-ysql.md" /%}}
+  {{% includeMarkdown "docker/explore-ysql.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/explore-ysql.md" /%}}
+  {{% includeMarkdown "kubernetes/explore-ysql.md" %}}
   </div>
 </div>
 
@@ -234,7 +232,7 @@ UPDATE emp SET sal=sal+100
 ```
 
 ```output
- ename  | new_salary 
+ ename  | new_salary
 --------+------------
  SMITH  |        900
  ADAMS  |       1200
@@ -383,15 +381,16 @@ Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query 
     ```
 
     ```output
-                                                            QUERY PLAN
-    ---------------------------------------------------------------------------------------------------------------------------
-    Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=0.712..0.715 rows=2 loops=1)
-      ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=0.710..0.713 rows=2 loops=1)
-            Index Cond: (val = '5'::double precision)
-            Heap Fetches: 0
-    Planning Time: 0.086 ms
-    Execution Time: 0.750 ms
-    (6 rows)
+                                                              QUERY PLAN
+    -------------------------------------------------------------------------------------------------------------------------    --
+     Limit  (cost=0.00..3.19 rows=3 width=12) (actual time=1.757..1.765 rows=3 loops=1)
+       ->  Index Only Scan using demo_val on demo  (cost=0.00..4.47 rows=4 width=12) (actual time=1.754..1.758 rows=3     loops=1)
+             Index Cond: (val = '5'::double precision)
+             Heap Fetches: 0
+     Planning Time: 0.214 ms
+     Execution Time: 1.860 ms
+     Peak Memory Usage: 8 kB
+    (7 rows)
     ```
 
 1. Clean up the table for this exercise:
@@ -547,15 +546,15 @@ To send the e-mails to all employees in different batches, split them into three
 ```sql
 WITH groups AS (
     SELECT ntile(3) OVER (ORDER BY empno) group_num
-    ,* 
+    ,*
     FROM emp
 )
-SELECT string_agg(format('<%s> %s',ename,email),', ') 
+SELECT string_agg(format('<%s> %s',ename,email),', ')
 FROM groups GROUP BY group_num;
 ```
 
 ```output
-                                                          string_agg                                                           
+                                                          string_agg
 -------------------------------------------------------------------------------------------------------------------------------
  <ADAMS> ADAMS@acme.org, <JAMES> JAMES@acme.org, <FORD> FORD@acme.com, <MILLER> MILLER@acme.com
  <BLAKE> BLAKE@hotmail.com, <CLARK> CLARK@acme.com, <SCOTT> SCOTT@acme.com, <KING> KING@aol.com, <TURNER> TURNER@acme.com
@@ -833,7 +832,7 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     ```
 
     ```output
-    deptno |   dname    | sal_per_dept | num_of_employees |       distinct_jobs       
+    deptno |   dname    | sal_per_dept | num_of_employees |       distinct_jobs
     --------+------------+--------------+------------------+---------------------------
         10 | ACCOUNTING |         8750 |                3 | CLERK, MANAGER, PRESIDENT
         30 | SALES      |         9400 |                6 | CLERK, MANAGER, SALESMAN
@@ -851,15 +850,12 @@ To get fast on-demand reports, create a [materialized view](../../../explore/ysq
     ```
 
     ```output
-                                                                        QUERY PLAN                                                                       
+                                                                        QUERY PLAN
     --------------------------------------------------------------------------------------------------------------------------------------------------------
     Index Scan Backward using report_sal_per_dept_sal on report_sal_per_dept  (cost=0.00..5.33 rows=10 width=84) (actual time=1.814..1.821 rows=2 loops=1)
     Index Cond: (sal_per_dept <= 10000)
     Planning Time: 0.143 ms
     Execution Time: 1.917 ms
+    Peak Memory Usage: 8 kB
     (4 rows)
     ```
-
-## Next step
-
-[Build an application](../../build-apps/)

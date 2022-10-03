@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import pluralize from 'pluralize';
 
 import {
-  getUniverseNodes,
+  getUniverseNodeCount,
   getPlacementRegions,
   getClusterProviderUUIDs,
   getProviderMetadata
@@ -17,7 +17,7 @@ export const CellLocationPanel = (props) => {
     providers,
     isKubernetesUniverse
   } = props;
-  const numNodes = getUniverseNodes(universeDetails.clusters);
+  const numNodes = getUniverseNodeCount(universeDetails.nodeDetailsSet);
   const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
   const clusterProviders = providers.data.filter((p) => clusterProviderUUIDs.includes(p.uuid));
   const universeProviders = clusterProviders.map((provider) => {

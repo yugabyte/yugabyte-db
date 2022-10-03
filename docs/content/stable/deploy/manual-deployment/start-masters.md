@@ -8,8 +8,7 @@ menu:
     identifier: deploy-manual-deployment-start-masters
     parent: deploy-manual-deployment
     weight: 613
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="Note" >}}
@@ -25,9 +24,9 @@ This section covers deployment for a single region or data center in a multi-zon
 ## Example scenario
 
 - Create a six-node cluster with replication factor of `3`.
-      - YB-Master server should run on only three nodes, but as noted in the next section, the YB-TServer server should run on all six nodes.
-      - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
-      - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ. 
+  - YB-Master server should run on only three nodes, the YB-TServer server should run on all six nodes.
+  - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
+  - Cloud will be `aws`, region will be `us-west`, and the three AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that one replica for each tablet (aka shard) gets placed in any one node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
 ## Run YB-Master servers with command line flags
@@ -45,7 +44,7 @@ $ ./bin/yb-master \
   >& /home/centos/disk1/yb-master.out &
 ```
 
-For the full list of configuration flag), see the [YB-Master reference](../../../reference/configuration/yb-master/).
+For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ## Run YB-Master servers with configuration file
 
@@ -55,9 +54,9 @@ Alternatively, you can also create a `master.conf` file with the following flags
 --master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130:7100
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
---placement_cloud=aws 
---placement_region=us-west 
---placement_zone=us-west-2a 
+--placement_cloud=aws
+--placement_region=us-west
+--placement_zone=us-west-2a
 ```
 
 ```sh
@@ -76,13 +75,13 @@ You can see that the three YB-Masters were able to discover each other and were 
 
 For the masters that become followers, you will see the following line in the log.
 
-```
+```output
 I0912 16:11:07.419591  8030 sys_catalog.cc:332] T 00000000000000000000000000000000 P bc42e1c52ffe4419896a816af48226bc [sys.catalog]: This master's current role is: FOLLOWER
 ```
 
 For the master that becomes the leader, you will see the following line in the log.
 
-```
+```output
 I0912 16:11:06.899287 27220 raft_consensus.cc:738] T 00000000000000000000000000000000 P 21171528d28446c8ac0b1a3f489e8e4b [term 2 LEADER]: Becoming Leader. State: Replica: 21171528d28446c8ac0b1a3f489e8e4b, State: 1, Role: LEADER
 ```
 

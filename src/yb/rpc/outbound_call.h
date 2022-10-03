@@ -147,7 +147,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(CallData* data);
+  Status ParseFrom(CallData* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -240,7 +240,7 @@ class OutboundCall : public RpcCall {
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  virtual CHECKED_STATUS SetRequestParam(
+  virtual Status SetRequestParam(
       AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
@@ -310,7 +310,6 @@ class OutboundCall : public RpcCall {
   const ConnectionId& conn_id() const { return conn_id_; }
   const std::string& hostname() const { return *hostname_; }
   const RemoteMethod& remote_method() const { return *remote_method_; }
-  const ResponseCallback& callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
   AnyMessagePtr response() const { return response_; }
@@ -368,13 +367,13 @@ class OutboundCall : public RpcCall {
   void set_state_unlocked(State new_state);
 
   // return current status
-  CHECKED_STATUS status() const;
+  Status status() const;
 
   // Return the error protobuf, if a remote error occurred.
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  CHECKED_STATUS InitHeader(RequestHeader* header);
+  Status InitHeader(RequestHeader* header);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread

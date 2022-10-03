@@ -85,7 +85,7 @@ class TSManager {
   // If the TS has never registered, or this instance doesn't match the
   // current instance ID for the TS, then a NotFound status is returned.
   // Otherwise, *desc is set and OK is returned.
-  CHECKED_STATUS LookupTS(const NodeInstancePB& instance,
+  Status LookupTS(const NodeInstancePB& instance,
                           TSDescriptorPtr* desc);
 
   // Lookup the tablet server descriptor for the given UUID.
@@ -97,7 +97,7 @@ class TSManager {
   // Register or re-register a tablet server with the manager.
   //
   // If successful, *desc reset to the registered descriptor.
-  CHECKED_STATUS RegisterTS(const NodeInstancePB& instance,
+  Status RegisterTS(const NodeInstancePB& instance,
                             const TSRegistrationPB& registration,
                             CloudInfoPB local_cloud_info,
                             rpc::ProxyCache* proxy_cache,

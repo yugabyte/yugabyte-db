@@ -73,6 +73,7 @@ export default class YBTextInputWithLabel extends Component {
       infoContent,
       infoTitle,
       infoPlacement,
+      containerClassName,
       ...otherProps
     } = this.props;
     return (
@@ -83,6 +84,7 @@ export default class YBTextInputWithLabel extends Component {
         infoContent={infoContent}
         infoTitle={infoTitle}
         infoPlacement={infoPlacement}
+        classOverrides={containerClassName}
       >
         <YBTextInput {...otherProps} />
       </YBLabel>

@@ -85,6 +85,7 @@ target_link_libraries(server_base_proto
 #########################################
 
 set(SERVER_PROCESS_SRCS
+  call_home.cc
   default-path-handlers.cc
   generic_service.cc
   glog_metrics.cc

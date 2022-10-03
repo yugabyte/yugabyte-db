@@ -55,3 +55,9 @@ message TestObjectRepeatedPB {
   repeated TestStringRepeatedPB record = 2;
   repeated string string2 = 3;
 }
+
+message TestObjectOptionalPB {
+  optional string string1 = 1;
+  optional TestStringOptionalPB record = 2;
+  optional string string2 = 3;
+}

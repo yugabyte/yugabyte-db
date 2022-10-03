@@ -4,12 +4,11 @@ headerTitle: Uninstall the YugabyteDB Anywhere software
 linkTitle: Uninstall software
 description: Uninstall the YugabyteDB Anywhere software.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <!--
@@ -65,7 +64,7 @@ You can uninstall YugabyteDB Anywhere in Kubernetes, as follows:
     helm uninstall yw-test -n yw-test
     ```
 
-    <br>`-n` option specifies the namespace scope for this request.
+    `-n` option specifies the namespace scope for this request.
 
     You should see a message similar to the following, notifying you that the subject release has been removed:
 
@@ -79,7 +78,7 @@ You can uninstall YugabyteDB Anywhere in Kubernetes, as follows:
     kubectl delete namespace yw-test
     ```
 
-    <br>You should see a message similar to the following:
+    You should see a message similar to the following:
 
     ```output
     namespace "yw-test" deleted

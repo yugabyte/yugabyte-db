@@ -11,13 +11,12 @@ menu:
     identifier: api-cassandra
     parent: api
     weight: 3000
-isTocNested: false
-showAsideToc: true
+type: indexpage
 ---
 
 ## Introduction
 
-Yugabyte Cloud Query Language (YCQL) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
+Yugabyte Cloud Query Language (YCQL) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP applications needing massive data ingestion and blazing-fast queries. It supports strongly consistent secondary indexes, a native JSON column type, and distributed transactions. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html).
 
 This page covers the following YCQL features.
 
@@ -41,7 +40,7 @@ Statement | Description |
 ----------|-------------|
 [`ALTER TABLE`](ddl_alter_table) | Alter a table |
 [`ALTER KEYSPACE`](ddl_alter_keyspace) | Alter a keyspace |
-[`CREATE INDEX`](ddl_create_index) | Create a new index on a table |
+[`CREATE INDEX`](ddl_create_index/) | Create a new index on a table |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
 [`CREATE TYPE`](ddl_create_type) | Create a user-defined data type |
@@ -84,9 +83,9 @@ Data manipulation language (DML) statements are used to read from and write to t
 Statement | Description |
 ----------|-------------|
 [`INSERT`](dml_insert) | Insert rows into a table |
-[`SELECT`](dml_select) | Select rows from a table |
-[`UPDATE`](dml_update) | Update rows in a table |
-[`DELETE`](dml_delete) | Delete specific rows from a table |
+[`SELECT`](dml_select/) | Select rows from a table |
+[`UPDATE`](dml_update/) | Update rows in a table |
+[`DELETE`](dml_delete/) | Delete specific rows from a table |
 [`TRANSACTION`](dml_transaction) | Makes changes to multiple rows in one or more tables in a transaction |
 [`TRUNCATE`](dml_truncate) | Remove all rows from a table |
 
@@ -94,11 +93,11 @@ Statement | Description |
 
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expressions can be used in the following components.
 
-- The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM sample_table;`.
-- The WHERE clause in [`SELECT`](dml_select), [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).
-- The IF clause in [`DELETE`](dml_delete), [`INSERT`](dml_insert), or [`UPDATE`](dml_update).
+- The select list of [`SELECT`](dml_select/) statement. For example, `SELECT id + 1 FROM sample_table;`.
+- The WHERE clause in [`SELECT`](dml_select/), [`DELETE`](dml_delete/), [`INSERT`](dml_insert), or [`UPDATE`](dml_update/).
+- The IF clause in [`DELETE`](dml_delete/), [`INSERT`](dml_insert), or [`UPDATE`](dml_update/).
 - The VALUES clause in [`INSERT`](dml_insert).
-- The SET clause in [`UPDATE`](dml_update).
+- The SET clause in [`UPDATE`](dml_update/).
 
 Currently, the following expressions are supported.
 
@@ -107,7 +106,7 @@ Expression | Description |
 [Simple Value](expr_simple) | Column, constant, or null. Column alias cannot be used in expression yet. |
 [Subscript `[]`](expr_subscript) | Subscripting columns of collection data types |
 [Operator Call](expr_ocall) | Builtin operators only |
-[Function Call](expr_fcall) | Builtin function calls only |
+[Function Call](expr_fcall/) | Builtin function calls only |
 
 ## Data types
 
@@ -120,7 +119,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`BOOLEAN`](type_bool) | Yes | - | Boolean |
 [`COUNTER`](type_int) | No | - | 64-bit signed integer |
 [`DECIMAL`](type_number) | Yes | - | Exact, arbitrary-precision number, no upper-bound on decimal precision |
-[`DATE`](type_datetime) | Yes | - | Date |
+[`DATE`](type_datetime/) | Yes | - | Date |
 [`DOUBLE`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FLOAT`](type_number) | Yes | - | 64-bit, inexact, floating-point number |
 [`FROZEN`](type_frozen) | Yes | 1 | Collection in binary format |
@@ -131,8 +130,8 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`SET`](type_collection) | No | 1 | Collection of unique elements |
 [`SMALLINT`](type_int) | Yes | - | 16-bit signed integer |
 [`TEXT` &#124; `VARCHAR`](type_text) | Yes | - | String of Unicode characters |
-[`TIME`](type_datetime) | Yes | - | Time of day |
-[`TIMESTAMP`](type_datetime) | Yes | - | Date-and-time |
+[`TIME`](type_datetime/) | Yes | - | Time of day |
+[`TIMESTAMP`](type_datetime/) | Yes | - | Date-and-time |
 [`TIMEUUID`](type_uuid) | Yes | - | Timed UUID |
 [`TINYINT`](type_int) | Yes | - | 8-bit signed integer |
 [`UUID`](type_uuid) | Yes | - | Standard UUID |

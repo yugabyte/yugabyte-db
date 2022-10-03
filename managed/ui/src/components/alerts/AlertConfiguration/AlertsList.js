@@ -306,7 +306,7 @@ export const AlertsList = (props) => {
       ALERT_TARGET_TYPE: targetType,
       ALERT_UNIVERSE_LIST: univerList,
       ALERT_METRICS_CONDITION: row.template,
-      ALERT_METRICS_DURATION: row.durationSec,
+      ALERT_METRICS_DURATION: row.durationSec ? row.durationSec : '0',
       ALERT_METRICS_CONDITION_POLICY: condition,
       ALERT_DESTINATION_LIST: currentDestination,
       thresholdUnit: row.thresholdUnit,

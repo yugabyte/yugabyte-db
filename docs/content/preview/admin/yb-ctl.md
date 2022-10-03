@@ -9,9 +9,8 @@ menu:
     parent: admin
     weight: 2410
 aliases:
-  - admin/yb-ctl
-isTocNested: true
-showAsideToc: true
+  - /admin/yb-ctl
+type: docs
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
@@ -131,6 +130,8 @@ Default: `<yugabyte-installation-dir>/bin/`
 Specifies the data directory for YugabyteDB.
 
 Default: `$HOME/yugabyte-data/`
+
+Changing the value of this flag after the cluster has already been created is not supported.
 
 ##### --master_flags
 

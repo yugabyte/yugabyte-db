@@ -67,9 +67,9 @@ class Acceptor {
 
   // Setup acceptor to listen address.
   // Return bound address in bound_address.
-  CHECKED_STATUS Listen(const Endpoint& endpoint, Endpoint* bound_endpoint = nullptr);
+  Status Listen(const Endpoint& endpoint, Endpoint* bound_endpoint = nullptr);
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Shutdown();
 
  private:

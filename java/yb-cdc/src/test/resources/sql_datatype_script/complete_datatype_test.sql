@@ -264,3 +264,6 @@ begin;
 update testdaterange set b = '(2019-10-07, 2020-10-07)' where a = 1;
 delete from testdaterange where a = 1;
 commit;
+
+-- UDT
+insert into testdiscount values (1, 'FIXED');

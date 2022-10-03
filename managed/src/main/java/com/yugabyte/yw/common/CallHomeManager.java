@@ -8,17 +8,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.asynchttpclient.util.Base64;
 import org.slf4j.Logger;
@@ -88,15 +89,8 @@ public class CallHomeManager {
     ArrayNode errors = Json.newArray();
 
     // Build universe details json
-    List<UniverseResp> universes = new ArrayList<>();
-    for (UUID universeUUID : c.getUniverseUUIDs()) {
-      try {
-        Universe u = Universe.getOrBadRequest(universeUUID);
-        universes.add(new UniverseResp(u));
-      } catch (RuntimeException re) {
-        errors.add(re.getMessage());
-      }
-    }
+    List<UniverseResp> universes =
+        c.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
 
     payload.set("universes", Json.toJson(universes));
     // Build provider details json

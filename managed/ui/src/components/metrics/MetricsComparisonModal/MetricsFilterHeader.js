@@ -36,7 +36,6 @@ export const MetricsFilterHeader = ({ origin, selectedUniverse }) => {
   };
 
   const handleShowModal = () => {
-    console.log("!!");
     dispatch({
       type: 'SHOW_METRICS_MODAL'
     });

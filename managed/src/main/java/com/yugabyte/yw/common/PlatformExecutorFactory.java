@@ -14,30 +14,28 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
-
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
-import play.inject.ApplicationLifecycle;
 
 /** For easy and configurable creation of executor that will shutdown on app shutdown. */
 @Slf4j
 @Singleton
 public class PlatformExecutorFactory {
 
-  final Config config;
-  final ApplicationLifecycle lifecycle;
+  public static final int SHUTDOWN_TIMEOUT_MINUTES = 5;
+
+  private final Config config;
+  private final ShutdownHookHandler shutdownHookHandler;
 
   @Inject
-  public PlatformExecutorFactory(Config config, ApplicationLifecycle lifecycle) {
+  public PlatformExecutorFactory(Config config, ShutdownHookHandler shutdownHookHandler) {
     this.config = config;
-    this.lifecycle = lifecycle;
+    this.shutdownHookHandler = shutdownHookHandler;
   }
 
   private int ybCorePoolSize(String poolName) {
@@ -61,20 +59,49 @@ public class PlatformExecutorFactory {
   }
 
   public ExecutorService createExecutor(String configPoolName, ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        configPoolName,
+        ybCorePoolSize(configPoolName),
+        ybMaxPoolSize(configPoolName),
+        Duration.ofSeconds(keepAliveDuration(configPoolName).getSeconds()),
+        ybQueueCapacity(configPoolName),
+        namedThreadFactory);
+  }
+
+  public ExecutorService createExecutor(
+      String poolName, int corePoolSize, int maxPoolSize, ThreadFactory namedThreadFactory) {
+    return createExecutor(
+        poolName, corePoolSize, maxPoolSize, Duration.ZERO, 0, namedThreadFactory);
+  }
+
+  public ExecutorService createFixedExecutor(
+      String poolName, int poolSize, ThreadFactory namedThreadFactory) {
+    return createExecutor(poolName, poolSize, poolSize, Duration.ZERO, 0, namedThreadFactory);
+  }
+
+  public ExecutorService createExecutor(
+      String poolName,
+      int corePoolSize,
+      int maxPoolSize,
+      Duration keepAliveTime,
+      int queueCapacity,
+      ThreadFactory namedThreadFactory) {
     ThreadPoolExecutor executor =
         new PlatformThreadPoolExecutor(
-            ybCorePoolSize(configPoolName),
-            ybMaxPoolSize(configPoolName),
-            keepAliveDuration(configPoolName).getSeconds(),
+            corePoolSize,
+            maxPoolSize,
+            keepAliveTime.getSeconds(),
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(ybQueueCapacity(configPoolName)),
+            new LinkedBlockingQueue<>(queueCapacity == 0 ? Integer.MAX_VALUE : queueCapacity),
             namedThreadFactory);
-
-    lifecycle.addStopHook(
-        () ->
-            CompletableFuture.supplyAsync(
-                () -> MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES)));
-
+    shutdownHookHandler.addShutdownHook(
+        () -> {
+          log.debug("Shutting down thread pool - {}", poolName);
+          boolean isTerminated =
+              MoreExecutors.shutdownAndAwaitTermination(
+                  executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+          log.debug("Shutdown status for thread pool- {} is {}", poolName, isTerminated);
+        });
     return executor;
   }
 }

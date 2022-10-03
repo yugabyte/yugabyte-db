@@ -1,0 +1,130 @@
+{{ $anchorLink := "" }}
+{{ $activeMenu := "/" }}
+{{ $docDir := "" }}
+{{ $versionDir := "" }}
+
+{{ if .File.Dir }}
+  {{ $versionDir = index (split .File.Dir "/") 0 }}
+  {{ $docDir = index (split .File.Dir "/") 1 }}
+{{ end }}
+
+{{ if eq $versionDir "" }}
+  {{ $versionDir = .Site.Params.yb.preview_version_slug }}
+{{ end }}
+
+{{ $leftNavName := $versionDir }}
+{{ if $docDir }}
+  {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
+{{ end }}
+
+{{ $.Scratch.Set "docVersion" $versionDir }}
+{{ $.Scratch.Set "leftNavName" $leftNavName }}
+{{ range .Site.Menus.main.ByWeight.Reverse }}
+  {{ if in .URL $docDir }}
+    {{ $activeMenu = .URL }}
+  {{ end }}
+{{ end }}
+
+<nav id="nav_bar" class="js-navbar-scroll navbar navbar-expand navbar-dark flex-column td-navbar">
+  <div class="container-fluid top-nav">
+    {{ if .Site.Params.ui.navbar_logo }}
+      {{ if .Site.Params.yb.navbar_logo.url }}
+        <a class="navbar-brand" href="{{ .Site.Params.yb.navbar_logo.url }}"{{- if .Site.Params.yb.navbar_logo.title }} title="{{ .Site.Params.yb.navbar_logo.title }}"{{- end }}{{- if .Site.Params.yb.navbar_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
+      {{ end}}
+
+      <span class="navbar-logo">{{ with resources.Get "icons/logo.svg" }}{{ ( . | minify).Content | safeHTML }}{{ end }}</span>
+      <span class="font-weight-bold">{{ .Site.Title }}</span>
+
+      {{ if .Site.Params.yb.navbar_logo.url }}
+        </a>
+      {{ end}}
+    {{ end}}
+    <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
+      <ul class="navbar-nav mt-2 mt-lg-0">
+        {{ range .Site.Menus.top_nav }}
+          <li class="nav-item mr-4 mb-2 mb-lg-0">
+            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
+          </li>
+        {{ end }}
+      </ul>
+
+      <div class="activity-timeline">
+        <div class="switcher"></div>
+        <script>
+          !function(){let b=document.querySelector("html"),a=function(f){let c=`${f}=`,g=decodeURIComponent(document.cookie),d=g.split(";"),h=d.length,a="",b=0,e="";for(;b<h;){for(a=d[b];a.charAt(0);)if(" "===a.charAt(0))a=a.substring(1);else break;if(0===a.indexOf(c)){e=a.substring(c.length,a.length);break}b+=1}return e}("yb_docs_theme_color");if(b&&a){let d=b.getAttribute("data-theme"),c=document.querySelector(".switcher");d!==a&&(b.setAttribute("data-theme",a),c&&"orange"===a&&c.classList.toggle("change"))}}()
+        </script>
+      </div>
+	  	<div class="mobile-search desktop-hide fas fa-search search-icon"></div>
+      <div class="mobile-menu desktop-hide"></div>
+    </div>
+  </div>
+
+  <div class="page-header sticky container-fluid">
+    <button id="controls-header-menu" class="header-menu-mobile hidden-md-up" type="button">
+      <span class="header-menu-text">Documentation</span>
+    </button>
+
+    <ul class="header-menu ds-flex hide-mobile" id="header-menu-list">
+      {{ range .Site.Menus.main.ByWeight }}
+        {{ $anchorLink = "" }}
+        {{ if eq .URL "/" }}
+          {{ $anchorLink = "/" }}
+        {{ else }}
+          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+            {{ $anchorLink = .URL }}
+          {{ else }}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{ end }}
+        {{ end }}
+
+        <li class="header-link{{- if eq $activeMenu .URL }} active{{- end }}{{ if .HasChildren }} dropdown{{- end }}">
+          <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+            {{ if .Pre }}
+              {{ $menuIcon := printf "icons/nav-bar/%s.svg" .Pre }}
+              {{ with resources.Get $menuIcon }}
+                {{ ( . | minify).Content | safeHTML }}
+              {{ end }}
+            {{ end }}
+            <span class="header-menu-text">{{ .Name }}</span>
+          </a>
+
+          {{ if .HasChildren }}
+            {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir) }}
+          {{ end }}
+        </li>
+      {{ end }}
+    </ul>
+    <div class="navbar-nav d-none d-lg-block search-container-wrap">
+			<form action="/search" method="GET" id="search-form">
+				{{ partial "search-input.html" . }}
+			</form>
+		</div>
+  </div>
+</nav>
+
+{{ define "child-nav-section" -}}
+  {{ $childNav := .childNav }}
+  {{ $versionDir := .versionDir }}
+  <ul class="header-submenu">
+    {{ range $childNav }}
+      {{ $anchorLink := "" }}
+      {{ if eq .URL "/" }}
+        {{ $anchorLink = "/" }}
+      {{ else }}
+        {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+          {{ $anchorLink = .URL }}
+        {{ else }}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+        {{ end }}
+      {{ end }}
+
+      <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
+        <a{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
+
+        {{ if .HasChildren }}
+          {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir ) }}
+        {{ end }}
+      </li>
+    {{ end }}
+  </ul>
+{{ end }}

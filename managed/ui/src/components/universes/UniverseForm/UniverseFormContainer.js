@@ -55,7 +55,8 @@ import {
   isDefinedNotNull,
   isNonEmptyObject,
   isNonEmptyString,
-  isEmptyObject
+  isEmptyObject,
+  makeFirstLetterUpperCase
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
 import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
@@ -264,6 +265,7 @@ const formFieldNames = [
   'primary.mountPoints',
   'primary.awsArnString',
   'primary.useSystemd',
+  'primary.dedicatedNodes',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -287,6 +289,7 @@ const formFieldNames = [
   'async.throughput',
   'async.mountPoints',
   'async.useSystemd',
+  'async.dedicatedNodes',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -304,7 +307,8 @@ const portFields = [
   'yqlHttpPort',
   'yqlRpcPort',
   'ysqlHttpPort',
-  'ysqlRpcPort'
+  'ysqlRpcPort',
+  'nodeExporterPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -334,6 +338,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].ybcSoftwareVersion = userIntent.ybcSoftwareVersion;
     data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
@@ -343,6 +348,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
     data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
+    data[clusterType].dedicatedNodes = userIntent.dedicatedNodes;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return { value: item.uuid, name: item.name, label: item.name };
@@ -395,6 +401,7 @@ function mapStateToProps(state, ownProps) {
     primary: {
       universeName: '',
       ybSoftwareVersion: '',
+      ybcSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.4xlarge',
@@ -415,10 +422,13 @@ function mapStateToProps(state, ownProps) {
       awsArnString: '',
       selectEncryptionAtRestConfig: null,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     },
     async: {
       universeName: '',
+      ybSoftwareVersion: '',
+      ybcSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
@@ -434,7 +444,8 @@ function mapStateToProps(state, ownProps) {
       enableNodeToNodeEncrypt: true,
       enableClientToNodeEncrypt: true,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     }
   };
 
@@ -511,7 +522,10 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.nodeExporterPort',
       'primary.useSystemd',
+      'primary.ybcSoftwareVersion',
+      'primary.dedicatedNodes',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -521,6 +535,7 @@ function mapStateToProps(state, ownProps) {
       'async.instanceType',
       'async.deviceInfo',
       'async.ybSoftwareVersion',
+      'async.ybcSoftwareVersion',
       'async.accessKeyCode',
       'async.diskIops',
       'async.throughput',
@@ -540,6 +555,7 @@ function mapStateToProps(state, ownProps) {
       'async.mountPoints',
       'async.useTimeSync',
       'async.useSystemd',
+      'async.dedicatedNodes',
       'masterGFlags',
       'gFlags',
       'tserverGFlags',
@@ -574,31 +590,36 @@ const asyncValidate = (values, dispatch) => {
 
 const validateProviderFields = (values, props, clusterType) => {
   const errors = {};
-  if (isEmptyObject(values[clusterType])) {
+  const currentClusterData = values[clusterType];
+  if (isEmptyObject(currentClusterData)) {
     return errors;
   }
   const cloud = props.cloud;
   let currentProvider;
-  if (isNonEmptyObject(values[clusterType]) && isNonEmptyString(values[clusterType].provider)) {
+  if (isNonEmptyObject(currentClusterData) && isNonEmptyString(currentClusterData.provider)) {
     currentProvider = cloud.providers.data.find(
-      (provider) => provider.uuid === values[clusterType].provider
+      (provider) => provider.uuid === currentClusterData.provider
     );
   }
 
   if (clusterType === 'primary') {
-    if (!isNonEmptyString(values[clusterType].universeName)) {
+    const currentProviderCode = currentProvider?.code;
+    if (!isNonEmptyString(currentClusterData.universeName)) {
       errors.universeName = 'Universe Name is Required';
     }
-    if (currentProvider && currentProvider.code === 'gcp') {
+    if (currentProviderCode === 'gcp' || currentProviderCode === 'kubernetes') {
       const specialCharsRegex = /^[a-z0-9-]*$/;
-      if (!specialCharsRegex.test(values[clusterType].universeName)) {
+      const errorProviderName = currentProviderCode === 'gcp' ? 
+          currentProviderCode.toUpperCase() : makeFirstLetterUpperCase(currentProviderCode);
+
+      if (!specialCharsRegex.test(currentClusterData.universeName)) {
         errors.universeName =
-          'GCP Universe name cannot contain capital letters or special characters except dashes';
+          `${errorProviderName} Universe name cannot contain capital letters or special characters except dashes`;
       }
     }
     if (
-      values[clusterType].enableEncryptionAtRest &&
-      !values[clusterType].selectEncryptionAtRestConfig
+      currentClusterData.enableEncryptionAtRest &&
+      !currentClusterData.selectEncryptionAtRestConfig
     ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
@@ -606,13 +627,13 @@ const validateProviderFields = (values, props, clusterType) => {
     const notUniquePortError = 'Port number should be unique';
     const portMap = new Map();
     portFields.forEach((portField) => {
-      if (portMap.has(values[clusterType][portField])) {
-        if (!errors.hasOwnProperty(portMap.get(values[clusterType][portField]))) {
-          errors[portMap.get(values[clusterType][portField])] = notUniquePortError;
+      if (portMap.has(currentClusterData[portField])) {
+        if (!errors.hasOwnProperty(portMap.get(currentClusterData[portField]))) {
+          errors[portMap.get(currentClusterData[portField])] = notUniquePortError;
         }
         errors[portField] = notUniquePortError;
       } else {
-        portMap.set(values[clusterType][portField], portField);
+        portMap.set(currentClusterData[portField], portField);
       }
     });
   }
@@ -620,10 +641,10 @@ const validateProviderFields = (values, props, clusterType) => {
   if (isEmptyObject(currentProvider)) {
     errors.provider = 'Provider Value is Required';
   }
-  if (!isNonEmptyArray(values[clusterType].regionList)) {
+  if (!isNonEmptyArray(currentClusterData.regionList)) {
     errors.regionList = 'Region Value is Required';
   }
-  if (!isDefinedNotNull(values[clusterType].instanceType)) {
+  if (!isDefinedNotNull(currentClusterData.instanceType)) {
     errors.instanceType = 'Instance Type is Required';
   }
   return errors;

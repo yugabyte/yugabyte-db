@@ -7,8 +7,7 @@ menu:
     identifier: ysql-loader
     parent: integrations
     weight: 577
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YSQL Loader is a data migration tool based on [pgloader](https://pgloader.readthedocs.io/en/latest/intro.html). You can use YSQL Loader to load data from different sources into YugabyteDB. In addition to the functionality provided by pgloader, YSQL Loader supports dumping DDLs and reading modified DDLs which enables you to use YugabyteDB-specific constructs such as tablets, for example.
@@ -86,7 +85,7 @@ Before starting the migration, ensure that you have the following:
 
   ```sh
   docker pull yugabytedb/pgloader:v1.1
-  docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader --version
+  docker run --rm --name pgloader yugabytedb/pgloader:v1.1 pgloader --version
   ```
 
   Expect the following output:

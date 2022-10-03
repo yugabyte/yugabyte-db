@@ -191,11 +191,11 @@ class WritableFileMirror : public WritableFile {
     assert(as == b_->IsSyncThreadSafe());
     return as;
   }
-  void SetIOPriority(Env::IOPriority pri) override {
+  void SetIOPriority(yb::IOPriority pri) override {
     a_->SetIOPriority(pri);
     b_->SetIOPriority(pri);
   }
-  Env::IOPriority GetIOPriority() override {
+  yb::IOPriority GetIOPriority() override {
     // NOTE: we don't verify this one
     return a_->GetIOPriority();
   }

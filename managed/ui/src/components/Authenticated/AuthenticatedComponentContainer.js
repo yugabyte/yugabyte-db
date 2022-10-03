@@ -19,7 +19,8 @@ import {
   getAZUTypeList,
   getAZUTypeListResponse,
   listAccessKeysResponse,
-  listAccessKeys
+  listAccessKeys,
+  listAccessKeysReqCompleted
 } from '../../actions/cloud';
 import {
   fetchColumnTypes,
@@ -124,11 +125,13 @@ const mapDispatchToProps = (dispatch) => {
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status === 200) {
-          response.payload.data.forEach((provider) => {
-            dispatch(listAccessKeys(provider.uuid)).then((response) => {
+          Promise.all(response.payload.data.map((provider) => {
+            return dispatch(listAccessKeys(provider.uuid)).then((response) => {
               dispatch(listAccessKeysResponse(response.payload));
             });
-          });
+          })).then(()=>{
+            dispatch(listAccessKeysReqCompleted())
+          })
         }
         dispatch(getProviderListResponse(response.payload));
       });

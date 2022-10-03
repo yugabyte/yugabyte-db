@@ -4,12 +4,11 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable Yugabyte Platform's high-availability features
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte’s distributed architecture enables your database clusters (called universes) to have extremely high availability. And as the central source of database orchestration, monitoring, alerting, and more, Yugabyte Platform brings its own distributed architecture to the table in the form of the High Availability feature.

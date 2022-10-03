@@ -117,12 +117,12 @@ class ChangeMetadataOperation
   //
   // TODO: need a schema lock?
 
-  CHECKED_STATUS Prepare() override;
+  Status Prepare() override;
 
  private:
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 
   log::Log* const log_;
 
@@ -134,7 +134,7 @@ class ChangeMetadataOperation
   IndexMap index_map_;
 };
 
-CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+Status SyncReplicateChangeMetadataOperation(
     const ChangeMetadataRequestPB* req,
     tablet::TabletPeer* tablet_peer,
     int64_t term);

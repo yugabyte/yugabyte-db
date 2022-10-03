@@ -22,7 +22,7 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/rocksdb/db.h"
 

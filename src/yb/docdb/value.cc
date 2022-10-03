@@ -33,7 +33,7 @@ using strings::Substitute;
 
 const MonoDelta ValueControlFields::kMaxTtl = common::kMaxTtl;
 const MonoDelta ValueControlFields::kResetTtl = MonoDelta::FromNanoseconds(0);
-const int64_t ValueControlFields::kInvalidUserTimestamp = common::kInvalidUserTimestamp;
+const int64_t ValueControlFields::kInvalidTimestamp = common::kInvalidTimestamp;
 
 template <typename T>
 bool DecodeType(KeyEntryType expected_value_type, const T& default_value, Slice* slice, T* val) {
@@ -71,54 +71,40 @@ Result<MonoDelta> DecodeTTL(Slice* slice) {
   }
 }
 
-Result<UserTimeMicros> DecodeUserTimestamp(Slice* slice) {
-  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kUserTimestamp)) {
-    static constexpr int kBytesPerInt64 = sizeof(int64_t);
-    if (slice->size() < kBytesPerInt64) {
-      return STATUS(Corruption, Substitute(
-          "Failed to decode TTL from value, size too small: $1, need $2",
-          slice->size(), kBytesPerInt64));
-    }
-
-    slice->remove_prefix(kBytesPerInt64);
-    return BigEndian::Load64(slice->data() - kBytesPerInt64);
-  } else {
-    return ValueControlFields::kInvalidUserTimestamp;
+Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
+  if (!slice->TryConsumeByte(KeyEntryTypeAsChar::kUserTimestamp)) {
+    return ValueControlFields::kInvalidTimestamp;
   }
-}
 
-/*Status Value::DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
-  rocksdb::Slice value_copy = rocksdb_value;
-  uint64_t merge_flags;
-  RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
-  return DecodeTTL(&value_copy, ttl);
-}
+  static constexpr int kBytesPerInt64 = sizeof(int64_t);
+  if (slice->size() < kBytesPerInt64) {
+    return STATUS_FORMAT(
+        Corruption, "Failed to decode TTL from value, size too small: $1, need $2",
+        slice->size(), kBytesPerInt64);
+  }
 
-Result<UserTimeMicros> DecodeUserTimestamp(const Slice& rocksdb_value) {
-  MonoDelta ttl;
-  auto slice_copy = rocksdb_value;
-  RETURN_NOT_OK(DecodeTTL(&slice_copy, &ttl));
-  return DecodeUserTimestamp(&slice_copy, user_timestamp);
-}*/
+  auto result = BigEndian::Load64(slice->data());
+  slice->remove_prefix(kBytesPerInt64);
+  return result;
+}
 
 } // namespace
 
 Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
   Slice original = *slice;
-  ValueControlFields result = {
-    .merge_flags = VERIFY_RESULT_PREPEND(
-        DecodeMergeFlags(slice),
-        Format("Failed to decode merge flags in $0", original.ToDebugHexString())),
-    .intent_doc_ht = VERIFY_RESULT_PREPEND(
-        DecodeIntentDocHT(slice),
-        Format("Failed to decode intent ht in $0", original.ToDebugHexString())),
-    .ttl = VERIFY_RESULT_PREPEND(
-        DecodeTTL(slice),
-        Format("Failed to decode TTL in $0", original.ToDebugHexString())),
-    .user_timestamp = VERIFY_RESULT_PREPEND(
-        DecodeUserTimestamp(slice),
-        Format("Failed to decode user timestamp in $0", original.ToDebugHexString())),
-  };
+  ValueControlFields result;
+  result.merge_flags = VERIFY_RESULT_PREPEND(
+      DecodeMergeFlags(slice),
+      Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
+  result.intent_doc_ht = VERIFY_RESULT_PREPEND(
+      DecodeIntentDocHT(slice),
+      Format("Failed to decode intent ht in $0", original.ToDebugHexString()));
+  result.ttl = VERIFY_RESULT_PREPEND(
+      DecodeTTL(slice),
+      Format("Failed to decode TTL in $0", original.ToDebugHexString()));
+  result.timestamp = VERIFY_RESULT_PREPEND(
+      DecodeTimestamp(slice),
+      Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
   return result;
 }
 
@@ -136,9 +122,9 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
     util::FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
   }
-  if (fields.user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
+  if (fields.timestamp != ValueControlFields::kInvalidTimestamp) {
     out->push_back(KeyEntryTypeAsChar::kUserTimestamp);
-    util::AppendBigEndianUInt64(fields.user_timestamp, out);
+    util::AppendBigEndianUInt64(fields.timestamp, out);
   }
 }
 
@@ -161,18 +147,18 @@ std::string ValueControlFields::ToString() const {
   if (!ttl.Equals(kMaxTtl)) {
     result += Format("; ttl: $0", ttl);
   }
-  if (user_timestamp != kInvalidUserTimestamp) {
-    result += Format("; user timestamp: $0", user_timestamp);
+  if (timestamp != kInvalidTimestamp) {
+    result += Format("; timestamp: $0", timestamp);
   }
   return result;
 }
 
 Status Value::Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields) {
-  Slice slice = rocksdb_value;
   control_fields_ = control_fields;
   RETURN_NOT_OK_PREPEND(
-      primitive_value_.DecodeFromValue(slice),
-      Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
+      primitive_value_.DecodeFromValue(rocksdb_value),
+      Format("Failed to decode value after control fields $0 in $1",
+             control_fields, rocksdb_value.ToDebugHexString()));
   return Status::OK();
 }
 

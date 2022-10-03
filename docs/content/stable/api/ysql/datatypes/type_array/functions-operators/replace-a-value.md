@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: array-replace-a-value
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Each of the approaches described in this section, using the `array_replace()` function and setting an addressed array value explicitly and in place, can be used to change values in an array. But the two approaches differ importantly:
 
@@ -20,7 +19,7 @@ Each of the approaches described in this section, using the `array_replace()` fu
 
 **Purpose:** Return a new array that is derived from the input array by replacing _every_ array value that is equal to the specified value with the specified new value.
 
-**Signature** 
+**Signature**
 
 ```
 input value:       anyarray, anyelement, anyelement
@@ -44,11 +43,11 @@ select arr as "new value of arr" from t where k = 1;
 ```
 This is the result of the two queries:
 ```
-                   old value of arr                   
+                   old value of arr
 ------------------------------------------------------
  {"(1,rabbit)","(2,hare)","(3,squirrel)","(4,horse)"}
 
-                  new value of arr                  
+                  new value of arr
 ----------------------------------------------------
  {"(1,rabbit)","(2,hare)","(3,bobcat)","(4,horse)"}
 ```
@@ -89,11 +88,11 @@ declare
   new_val constant rt := (17, 'y');
 
   arr constant rt[] :=
-    array[(1, 'a')::rt, old_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(1, 'a')::rt, old_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
                         old_val, (4, 'd')::rt, (5, 'e')::rt];
 
   expected_modified_arr constant rt[] :=
-    array[(1, 'a')::rt, new_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(1, 'a')::rt, new_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
                         new_val, (4, 'd')::rt, (5, 'e')::rt];
 begin
   assert
@@ -176,7 +175,7 @@ $body$;
 
 **Purpose:** Change an array in place by changing an explicitly addressed value.
 
-**Signature** 
+**Signature**
 
 ```
 -- Uses the notation
@@ -198,7 +197,7 @@ select arr from t where k = 1;
 ```
 This is the result:
 ```
-    arr     
+    arr
 ------------
  {1,42,3,4}
 ```
@@ -237,11 +236,11 @@ declare
   new_val constant rt := (17, 'y');
 
   arr rt[] :=
-    array[(1, 'a')::rt, old_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(1, 'a')::rt, old_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
                         old_val, (4, 'd')::rt, (5, 'e')::rt];
 
   expected_modified_arr constant rt[] :=
-    array[(1, 'a')::rt, new_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(1, 'a')::rt, new_val, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
                         new_val, (4, 'd')::rt, (5, 'e')::rt];
 
   old_arr constant rt[] := arr;
@@ -287,7 +286,7 @@ begin
   assert
     (len_1 = 3) and (len_2 = 4),
   'unexpected';
-  
+
   -- OK to extract a slice. But, even though it's tempting to picture this as one row,
   -- it is nevertheless a 2-d array with "array_length(arr, 1)" equal to 1.
   assert
@@ -295,7 +294,7 @@ begin
   'unexpected';
 
   -- You cannot use the slice notation to specify the target of an assignment.
-  -- So this 
+  -- So this
   --   arr[2:2][1:4] = array[new_val];
   -- causes a compilation error.
 
@@ -309,7 +308,7 @@ begin
   -- Change the individual, addressable, values one by one.
   for j in array_lower(arr, 2)..array_upper(arr, 2) loop
     arr[2][j] := new_val[j];
-  end loop; 
+  end loop;
 
   assert
     arr = expected_modified_arr,

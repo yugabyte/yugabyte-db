@@ -5,17 +5,17 @@ linkTitle: CLIs
 description: Use these CLIs and command line tools to interact with YugabyteDB.
 image: /images/section_icons/index/admin.png
 headcontent: Command line interfaces (CLIs) and tools reference.
-type: page
-section: REFERENCE
 menu:
   stable:
     identifier: admin
+    parent: reference
     weight: 1400
+type: indexpage
 ---
 
 {{< note title="Note" >}}
 
-Information about configuring the [YB-Master](../reference/configuration/yb-master) and [YB-TServer](../reference/configuration/yb-tserver) services is in the [Configuration](../reference/configuration/) section.
+Information about configuring the [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services is in the [Configuration](../reference/configuration/) section.
 
 {{< /note >}}
 

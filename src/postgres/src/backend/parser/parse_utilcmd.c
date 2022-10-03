@@ -216,6 +216,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	if (stmt->if_not_exists && OidIsValid(existing_relid))
 	{
+		/*
+		 * If we are in an extension script, insist that the pre-existing
+		 * object be a member of the extension, to avoid security risks.
+		 */
+		ObjectAddress address;
+
+		ObjectAddressSet(address, RelationRelationId, existing_relid);
+		checkMembershipInCurrentExtension(&address);
+
+		/* OK to skip */
 		ereport(NOTICE,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists, skipping",
@@ -386,12 +396,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("users cannot create system catalog tables")));
-		}
-		else if (strcmp(def->defname, "tablegroup_oid") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup_oid through WITH clause")));
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
@@ -1029,8 +1033,8 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	ereport(ERROR,
 			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
-			 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1129. "
-			         "Click '+' on the description to raise its priority"),
+			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
+			         "React with thumbs up to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
 
@@ -2855,21 +2859,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup_oid") == 0)
-		{
-			/*
-			 * We must ensure that no tablegroup option was supplied in the
-			 * WITH clause.
-			 * Tablegroups cannot be supplied directly for indexes. We check
-			 * here instead of ybccmds as we supply the reloption for the
-			 * tablegroup of the indexed table in DefineIndex(.)
-			 * if one exists.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup_oid through WITH clause")));
-		}
-		else if (strcmp(def->defname, "table_oid") == 0)
+		if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!(yb_enable_create_with_table_oid || IsYsqlUpgrade))
 			{

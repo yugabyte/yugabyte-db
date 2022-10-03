@@ -19,9 +19,13 @@ public enum TaskType {
 
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
 
+  ReadOnlyKubernetesClusterDelete("ReadOnlyKubernetesClusterDelete"),
+
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
 
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
+
+  ReadOnlyKubernetesClusterCreate("ReadOnlyKubernetesClusterCreate"),
 
   DestroyUniverse("DestroyUniverse"),
 
@@ -41,6 +45,10 @@ public enum TaskType {
 
   CreateBackup("CreateBackup"),
 
+  CreatePitrConfig("CreatePitrConfig"),
+
+  RestoreSnapshot("RestoreSnapshot"),
+
   EditUniverse("EditUniverse"),
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
@@ -52,14 +60,20 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  RunApiTriggeredHooks("RunApiTriggeredHooks"),
+
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
 
   RestartUniverse("upgrade.RestartUniverse"),
 
+  RestartUniverseKubernetesUpgrade("upgrade.RestartUniverseKubernetesUpgrade"),
+
   SoftwareUpgrade("upgrade.SoftwareUpgrade"),
 
   SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  KubernetesOverridesUpgrade("upgrade.KubernetesOverridesUpgrade"),
 
   GFlagsUpgrade("upgrade.GFlagsUpgrade"),
 
@@ -74,6 +88,8 @@ public enum TaskType {
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   SystemdUpgrade("upgrade.SystemdUpgrade"),
+
+  RebootUniverse("upgrade.RebootUniverse"),
 
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
@@ -99,9 +115,15 @@ public enum TaskType {
 
   RemoveNodeFromUniverse("RemoveNodeFromUniverse"),
 
+  RebootNodeInUniverse("RebootNodeInUniverse"),
+
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
+  RotateAccessKey("RotateAccessKey"),
+
   SetUniverseKey("SetUniverseKey"),
+
+  CreateAndRotateAccessKey("CreateAndRotateAccessKey"),
 
   @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
@@ -120,6 +142,8 @@ public enum TaskType {
 
   EditXClusterConfig("EditXClusterConfig"),
 
+  RestartXClusterConfig("RestartXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
   SyncXClusterConfig("SyncXClusterConfig"),
@@ -127,6 +151,8 @@ public enum TaskType {
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
+  AddAuthorizedKey("subtasks.AddAuthorizedKey"),
+
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
@@ -169,6 +195,8 @@ public enum TaskType {
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 
+  DeleteTablesFromUniverse("subtasks.DeleteTablesFromUniverse"),
+
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 
   ModifyBlackList("subtasks.ModifyBlackList"),
@@ -187,9 +215,15 @@ public enum TaskType {
 
   UpdateAndPersistGFlags("subtasks.UpdateAndPersistGFlags"),
 
+  UpdateAndPersistKubernetesOverrides("subtasks.UpdateAndPersistKubernetesOverrides"),
+
   UpdatePlacementInfo("subtasks.UpdatePlacementInfo"),
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
+
+  UpdateUniverseYbcDetails("subtasks.UpdateUniverseYbcDetails"),
+
+  VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
 
   WaitForDataMove("subtasks.WaitForDataMove"),
 
@@ -203,6 +237,8 @@ public enum TaskType {
 
   WaitForServer("subtasks.WaitForServer"),
 
+  WaitForYbcServer("subtasks.WaitForYbcServer"),
+
   WaitForTServerHeartBeats("subtasks.WaitForTServerHeartBeats"),
 
   DeleteClusterFromUniverse("subtasks.DeleteClusterFromUniverse"),
@@ -213,7 +249,27 @@ public enum TaskType {
 
   RunExternalScript("subtasks.RunExternalScript"),
 
+  RemoveAuthorizedKey("subtasks.RemoveAuthorizedKey"),
+
+  UpdateUniverseAccessKey("subtasks.UpdateUniverseAccessKey"),
+
   // Tasks belonging to subtasks.xcluster classpath
+  BootstrapProducer("subtasks.xcluster.BootstrapProducer"),
+
+  CheckBootstrapRequired("subtasks.xcluster.CheckBootstrapRequired"),
+
+  DeleteBootstrapIds("subtasks.xcluster.DeleteBootstrapIds"),
+
+  DeleteReplication("subtasks.xcluster.DeleteReplication"),
+
+  DeleteXClusterConfigEntry("subtasks.xcluster.DeleteXClusterConfigEntry"),
+
+  ResetXClusterConfigEntry("subtasks.xcluster.ResetXClusterConfigEntry"),
+
+  SetReplicationPaused("subtasks.xcluster.SetReplicationPaused"),
+
+  SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
+
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
@@ -222,11 +278,11 @@ public enum TaskType {
 
   XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
 
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
-
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
   XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
+
+  XClusterInfoPersist("subtasks.xcluster.XClusterInfoPersist"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -247,13 +303,19 @@ public enum TaskType {
 
   BackupTableYb("subtasks.BackupTableYb"),
 
+  BackupTableYbc("subtasks.BackupTableYbc"),
+
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
   RestoreBackupYb("subtasks.RestoreBackupYb"),
 
+  RestoreBackupYbc("subtasks.RestoreBackupYbc"),
+
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
+
+  RestoreUniverseKeysYbc("subtasks.RestoreUniverseKeysYbc"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -318,7 +380,25 @@ public enum TaskType {
 
   CreateTableSpaces("subtasks.CreateTableSpaces"),
 
-  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
+
+  RebootServer("subtasks.RebootServer"),
+
+  RunHooks("subtasks.RunHooks"),
+
+  UpdateUniverseTags("subtasks.UpdateUniverseTags"),
+
+  UpgradeYbc("subtasks.UpgradeYbc"),
+
+  InstallYbcSoftware("InstallYbcSoftware"),
+
+  UpgradeUniverseYbc("UpgradeUniverseYbc"),
+
+  DisableYbc("DisableYbc"),
+
+  InstanceExistCheck("subtasks.InstanceExistCheck");
 
   private String relativeClassPath;
 

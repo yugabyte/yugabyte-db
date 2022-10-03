@@ -11,8 +11,7 @@ menu:
     identifier: explore-transactions-explicit-locking-1-ysql
     parent: explore-transactions
     weight: 245
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

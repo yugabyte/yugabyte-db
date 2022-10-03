@@ -1,11 +1,11 @@
-```ebnf
+```output.ebnf
 create_cast ::= create_cast_with_function
                 | create_cast_without_function
                 | create_cast_with_inout
 
 create_cast_with_function ::= CREATE CAST ( cast_signature ) WITH 
-                              FUNCTION function_name 
-                              [ ( function_signature ) ] 
+                              FUNCTION subprogram_name 
+                              [ ( subprogram_signature ) ] 
                               [ AS ASSIGNMENT | AS IMPLICIT ]
 
 create_cast_without_function ::= CREATE CAST ( cast_signature ) 

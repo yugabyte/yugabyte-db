@@ -98,6 +98,13 @@ bool		g_verbose;			/* User wants verbose narration of our
 static bool dosync = true;		/* Issue fsync() to make dump durable on disk. */
 static bool pg_tablegroup_exists = false;
 static bool pg_yb_tablegroup_exists = false;
+/*
+ * Array of pointers to extensions having configuration tables.
+ * Used to update pg_extension catalog tables.
+ */
+static ExtensionInfo **yb_dumpable_extensions_with_config_relations = NULL;
+/* Number of extensions in array: yb_dumpable_extensions_with_config_relations. */
+static int yb_num_dumpable_extensions_with_config_relations = 0;
 
 /* subquery used to convert user ID (eg, datdba) to user name */
 static const char *username_subquery;
@@ -288,7 +295,6 @@ static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static bool nonemptyReloptions(const char *reloptions);
-static bool YbHasReloptionsToInclude(const char *reloptions);
 static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 						const char *reloptions1, const char *reloptions1_prefix,
 						const char *reloptions2, const char *reloptions2_prefix,
@@ -303,13 +309,14 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
-static bool pgYbTablegroupTableExists(Archive *fout);
-static bool pgTablegroupTableExists(Archive *fout);
+static bool catalogTableExists(Archive *fout, char *tablename);
 
 static void getYbTablePropertiesAndReloptions(Archive *fout,
-						YBCPgTableProperties *properties,
+						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
+static char *getYbSplitClause(Archive *fout, TableInfo *tbinfo);
+static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 
 int
 main(int argc, char **argv)
@@ -627,7 +634,7 @@ main(int argc, char **argv)
 	 * mode.  This is not exposed as a separate option, but kept separate
 	 * internally for clarity.
 	 */
-	if (dopt.binary_upgrade)
+	if (dopt.binary_upgrade || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
 
 	if (dopt.dataOnly && dopt.schemaOnly)
@@ -834,8 +841,8 @@ main(int argc, char **argv)
 		dopt.outputBlobs = true;
 
 	/* Update pg_tablegroup existence variables */
-	pg_yb_tablegroup_exists = pgYbTablegroupTableExists(fout);
-	pg_tablegroup_exists = pgTablegroupTableExists(fout);
+	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
+	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
 
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
@@ -919,6 +926,11 @@ main(int argc, char **argv)
 	/* Now the rearrangeable objects. */
 	for (i = 0; i < numObjs; i++)
 		dumpDumpableObject(fout, dobjs[i]);
+
+	/* Add UPDATE Statement to update pg_extension catalog. */
+	if (dopt.include_yb_metadata &&
+		yb_num_dumpable_extensions_with_config_relations > 0)
+		ybDumpUpdatePgExtensionCatalog(fout);
 
 	/*
 	 * Set up options info to ensure we dump what we want.
@@ -1471,7 +1483,7 @@ checkExtensionMembership(DumpableObject *dobj, Archive *fout)
 	 * contents rather than replace the extension contents with something
 	 * different.
 	 */
-	if (fout->dopt->binary_upgrade)
+	if (fout->dopt->binary_upgrade || fout->dopt->include_yb_metadata)
 		dobj->dump = ext->dobj.dump;
 	else
 	{
@@ -3308,7 +3320,7 @@ getBlobs(Archive *fout)
 
 		buildACLQueries(acl_subquery, racl_subquery, init_acl_subquery,
 						init_racl_subquery, "l.lomacl", "l.lomowner", "'L'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(blobQry,
 						  "SELECT l.oid, (%s l.lomowner) AS rolname, "
@@ -4586,7 +4598,7 @@ getNamespaces(Archive *fout, int *numNamespaces)
 
 		buildACLQueries(acl_subquery, racl_subquery, init_acl_subquery,
 						init_racl_subquery, "n.nspacl", "n.nspowner", "'n'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query, "SELECT n.tableoid, n.oid, n.nspname, "
 						  "(%s nspowner) AS rolname, "
@@ -4737,6 +4749,12 @@ getExtensions(Archive *fout, int *numExtensions)
 
 	ntups = PQntuples(res);
 
+	if (dopt->include_yb_metadata && ntups > 0)
+	{
+		size_t size = ntups * sizeof(ExtensionInfo *);
+		yb_dumpable_extensions_with_config_relations = (ExtensionInfo **) pg_malloc(size);
+		memset(yb_dumpable_extensions_with_config_relations, 0, size);
+	}
 	extinfo = (ExtensionInfo *) pg_malloc(ntups * sizeof(ExtensionInfo));
 
 	i_tableoid = PQfnumber(res, "tableoid");
@@ -4763,6 +4781,26 @@ getExtensions(Archive *fout, int *numExtensions)
 
 		/* Decide whether we want to dump it */
 		selectDumpableExtension(&(extinfo[i]), dopt);
+
+		/*
+		 * Record dumpable extensions having configuration relations.
+		 * (1) Check if we are in the YB mode.
+		 * (2) Check if we need to dump the definition of an extension.
+		 *	   That is, check if there is a corresponding row in pg_extension
+		 *	   catalog for this extension.
+		 * (3) Check if an extension has configuration relations.
+		 *	   Configuration relations are recorded as an array of OID named
+		 *	   extconfig in pg_extension catalog. PQgetvalue() retrieves its
+		 *	   value as c-string. If the length of this c-string value is longer
+		 *     than 2("{}"), then this extension has configuration relations.
+		 */
+		if (dopt->include_yb_metadata &&
+			(extinfo[i].dobj.dump & DUMP_COMPONENT_DEFINITION) &&
+			strlen(extinfo[i].extconfig) > 2)
+		{
+			yb_dumpable_extensions_with_config_relations[yb_num_dumpable_extensions_with_config_relations] = &extinfo[i];
+			++yb_num_dumpable_extensions_with_config_relations;
+		}
 	}
 
 	PQclear(res);
@@ -4834,7 +4872,7 @@ getTypes(Archive *fout, int *numTypes)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "t.typacl", "t.typowner", "'T'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query, "SELECT t.tableoid, t.oid, t.typname, "
 						  "t.typnamespace, "
@@ -5537,7 +5575,7 @@ getAggregates(Archive *fout, int *numAggs)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "p.proacl", "p.proowner", "'f'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		agg_check = (fout->remoteVersion >= 110000 ? "p.prokind = 'a'"
 					 : "p.proisagg");
@@ -5567,7 +5605,7 @@ getAggregates(Archive *fout, int *numAggs)
 						  initacl_subquery->data,
 						  initracl_subquery->data,
 						  agg_check);
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			appendPQExpBufferStr(query,
 								 " OR EXISTS(SELECT 1 FROM pg_depend WHERE "
 								 "classid = 'pg_proc'::regclass AND "
@@ -5751,7 +5789,7 @@ getFuncs(Archive *fout, int *numFuncs)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "p.proacl", "p.proowner", "'f'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		not_agg_check = (fout->remoteVersion >= 110000 ? "p.prokind <> 'a'"
 						 : "NOT p.proisagg");
@@ -5793,7 +5831,7 @@ getFuncs(Archive *fout, int *numFuncs)
 						  not_agg_check,
 						  g_last_builtin_oid,
 						  g_last_builtin_oid);
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			appendPQExpBufferStr(query,
 								 "\n  OR EXISTS(SELECT 1 FROM pg_depend WHERE "
 								 "classid = 'pg_proc'::regclass AND "
@@ -5925,37 +5963,15 @@ getFuncs(Archive *fout, int *numFuncs)
 	return finfo;
 }
 
-/*
- * pgYbTablegroupTableExists returns true if the pg_yb_tablegroup table has been created.
- */
-static bool pgYbTablegroupTableExists(Archive *fout) {
+static bool catalogTableExists(Archive *fout, char *tablename)
+{
 	PQExpBuffer query = createPQExpBuffer();
 	PGresult   *res;
 
 	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_yb_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
-
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-	bool exists = (PQntuples(res) == 1);
-
-	destroyPQExpBuffer(query);
-	PQclear(res);
-
-	return exists;
-}
-
-/*
- * pgTablegroupTableExists returns true if the pg_tablegroup table has been created.
- */
-static bool pgTablegroupTableExists(Archive *fout) {
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult   *res;
-
-	appendPQExpBuffer(query,
-					  "SELECT 1 FROM pg_class WHERE relname = 'pg_tablegroup' "
-					  "AND relnamespace = 'pg_catalog'::regnamespace");
+					  "SELECT 1 FROM pg_class WHERE relname = '%s' "
+					  "AND relnamespace = 'pg_catalog'::regnamespace",
+					  tablename);
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -6082,11 +6098,11 @@ getTables(Archive *fout, int *numTables)
 						initracl_subquery, "c.relacl", "c.relowner",
 						"CASE WHEN c.relkind = " CppAsString2(RELKIND_SEQUENCE)
 						" THEN 's' ELSE 'r' END::\"char\"",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		buildACLQueries(attacl_subquery, attracl_subquery, attinitacl_subquery,
 						attinitracl_subquery, "at.attacl", "c.relowner", "'c'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query,
 						  "SELECT c.tableoid, c.oid, c.relname, "
@@ -6778,6 +6794,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	int			i_grpinitacl;
 	int			i_grpinitracl;
 	int			i_grpoptions;
+	int			i_grptablespace;
 
 	if (!pg_yb_tablegroup_exists && !pg_tablegroup_exists)
 	{
@@ -6799,21 +6816,25 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	/* Select all tablegroups from pg_tablegroup or pg_yb_tablegroup table */
 	appendPQExpBuffer(query,
-						"SELECT grpname, tg.oid, grpoptions, "
-						"(%s grpowner) AS owner, "
-						"%s AS acl, "
-						"%s AS racl, "
-						"%s AS initacl, "
-						"%s AS initracl "
-						"FROM %s AS tg "
-						"LEFT JOIN pg_init_privs pip ON "
-						"tg.oid = pip.objoid",
-						username_subquery,
-						acl_subquery->data,
-						racl_subquery->data,
-						init_acl_subquery->data,
-						init_racl_subquery->data,
-						pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
+					  "SELECT grpname, tg.oid, grpoptions, "
+					  "(%s grpowner) AS owner, "
+					  "(%s) AS grptablespace, "
+					  "%s AS acl, "
+					  "%s AS racl, "
+					  "%s AS initacl, "
+					  "%s AS initracl "
+					  "FROM %s AS tg "
+					  "LEFT JOIN pg_init_privs pip ON "
+					  "tg.oid = pip.objoid",
+					  username_subquery,
+					  pg_yb_tablegroup_exists ?
+						  "SELECT spcname FROM pg_tablespace t WHERE t.oid = grptablespace" :
+						  "NULL",
+					  acl_subquery->data,
+					  racl_subquery->data,
+					  init_acl_subquery->data,
+					  init_racl_subquery->data,
+					  pg_yb_tablegroup_exists ? "pg_yb_tablegroup" : "pg_tablegroup");
 
 	destroyPQExpBuffer(acl_subquery);
 	destroyPQExpBuffer(racl_subquery);
@@ -6835,6 +6856,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 	i_grpracl = PQfnumber(res, "racl");
 	i_grpinitacl = PQfnumber(res, "initacl");
 	i_grpinitracl = PQfnumber(res, "initracl");
+	i_grptablespace = PQfnumber(res, "grptablespace");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -6847,6 +6869,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 		tbinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_grpname));
 		tbinfo[i].grpowner = pg_strdup(PQgetvalue(res, i, i_grpowner));
+		tbinfo[i].grptablespace = pg_strdup(PQgetvalue(res, i, i_grptablespace));
 
 		tbinfo[i].grpacl = pg_strdup(PQgetvalue(res, i, i_grpacl));
 		tbinfo[i].grpracl = pg_strdup(PQgetvalue(res, i, i_grpracl));
@@ -8087,7 +8110,7 @@ getProcLangs(Archive *fout, int *numProcLangs)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "l.lanacl", "l.lanowner", "'l'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		/* pg_language has a laninline column */
 		appendPQExpBuffer(query, "SELECT l.tableoid, l.oid, "
@@ -9330,7 +9353,7 @@ getForeignDataWrappers(Archive *fout, int *numForeignDataWrappers)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "f.fdwacl", "f.fdwowner", "'F'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query, "SELECT f.tableoid, f.oid, f.fdwname, "
 						  "(%s f.fdwowner) AS rolname, "
@@ -9497,7 +9520,7 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 						initracl_subquery, "f.srvacl", "f.srvowner", "'S'",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query, "SELECT f.tableoid, f.oid, f.srvname, "
 						  "(%s f.srvowner) AS rolname, "
@@ -9661,7 +9684,7 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 						"	  CASE WHEN defaclobjtype = 'S' THEN 's'::\"char\""
 						"	  ELSE defaclobjtype END "
 						"ELSE NULL END",
-						dopt->binary_upgrade);
+						dopt->binary_upgrade || dopt->include_yb_metadata);
 
 		appendPQExpBuffer(query, "SELECT d.oid, d.tableoid, "
 						  "(%s d.defaclrole) AS defaclrole, "
@@ -10257,7 +10280,7 @@ dumpNamespace(Archive *fout, NamespaceInfo *nspinfo)
 
 	appendPQExpBuffer(q, "CREATE SCHEMA %s;\n", qnspname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &nspinfo->dobj,
 										"SCHEMA", qnspname, NULL);
 
@@ -10317,7 +10340,7 @@ dumpExtension(Archive *fout, ExtensionInfo *extinfo)
 
 	appendPQExpBuffer(delq, "DROP EXTENSION %s;\n", qextname);
 
-	if (!dopt->binary_upgrade)
+	if (!dopt->binary_upgrade && !dopt->include_yb_metadata)
 	{
 		/*
 		 * In a regular dump, we simply create the extension, intentionally
@@ -10542,7 +10565,7 @@ dumpEnumType(Archive *fout, TypeInfo *tyinfo)
 		}
 	}
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"TYPE", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -10669,7 +10692,7 @@ dumpRangeType(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBufferStr(q, "\n);\n");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"TYPE", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -10742,7 +10765,7 @@ dumpUndefinedType(Archive *fout, TypeInfo *tyinfo)
 	appendPQExpBuffer(q, "CREATE TYPE %s;\n",
 					  qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"TYPE", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -11024,7 +11047,7 @@ dumpBaseType(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBufferStr(q, "\n);\n");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"TYPE", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -11181,7 +11204,7 @@ dumpDomain(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBuffer(delq, "DROP DOMAIN %s;\n", qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"DOMAIN", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -11404,7 +11427,7 @@ dumpCompositeType(Archive *fout, TypeInfo *tyinfo)
 
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tyinfo->dobj,
 										"TYPE", qtypname,
 										tyinfo->dobj.namespace->dobj.name);
@@ -11708,7 +11731,7 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 	}
 	appendPQExpBufferStr(defqry, ";\n");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(defqry, &plang->dobj,
 										"LANGUAGE", qlanname, NULL);
 
@@ -12377,7 +12400,7 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 
 	appendPQExpBuffer(q, "\n    %s;\n", asPart->data);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &finfo->dobj,
 										keyword, funcsig,
 										finfo->dobj.namespace->dobj.name);
@@ -12513,7 +12536,7 @@ dumpCast(Archive *fout, CastInfo *cast)
 	appendPQExpBuffer(castargs, "(%s AS %s)",
 					  sourceType, targetType);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(defqry, &cast->dobj,
 										"CAST", castargs->data, NULL);
 
@@ -12641,7 +12664,7 @@ dumpTransform(Archive *fout, TransformInfo *transform)
 	appendPQExpBuffer(transformargs, "FOR %s LANGUAGE %s",
 					  transformType, lanname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(defqry, &transform->dobj,
 										"TRANSFORM", transformargs->data, NULL);
 
@@ -12853,7 +12876,7 @@ dumpOpr(Archive *fout, OprInfo *oprinfo)
 					  fmtId(oprinfo->dobj.namespace->dobj.name),
 					  oprinfo->dobj.name, details->data);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &oprinfo->dobj,
 										"OPERATOR", oprid->data,
 										oprinfo->dobj.namespace->dobj.name);
@@ -13024,7 +13047,7 @@ dumpAccessMethod(Archive *fout, AccessMethodInfo *aminfo)
 	appendPQExpBuffer(delq, "DROP ACCESS METHOD %s;\n",
 					  qamname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &aminfo->dobj,
 										"ACCESS METHOD", qamname, NULL);
 
@@ -13389,7 +13412,7 @@ dumpOpclass(Archive *fout, OpclassInfo *opcinfo)
 	appendPQExpBuffer(nameusing, " USING %s",
 					  fmtId(amname));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &opcinfo->dobj,
 										"OPERATOR CLASS", nameusing->data,
 										opcinfo->dobj.namespace->dobj.name);
@@ -13656,7 +13679,7 @@ dumpOpfamily(Archive *fout, OpfamilyInfo *opfinfo)
 	appendPQExpBuffer(nameusing, " USING %s",
 					  fmtId(amname));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &opfinfo->dobj,
 										"OPERATOR FAMILY", nameusing->data,
 										opfinfo->dobj.namespace->dobj.name);
@@ -13799,7 +13822,7 @@ dumpCollation(Archive *fout, CollInfo *collinfo)
 
 	appendPQExpBufferStr(q, ");\n");
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &collinfo->dobj,
 										"COLLATION", qcollname,
 										collinfo->dobj.namespace->dobj.name);
@@ -13894,7 +13917,7 @@ dumpConversion(Archive *fout, ConvInfo *convinfo)
 	/* regproc output is already sufficiently quoted */
 	appendPQExpBuffer(q, " FROM %s;\n", conproc);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &convinfo->dobj,
 										"CONVERSION", qconvname,
 										convinfo->dobj.namespace->dobj.name);
@@ -14382,7 +14405,7 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 					  fmtId(agginfo->aggfn.dobj.namespace->dobj.name),
 					  aggfullsig ? aggfullsig : aggsig, details->data);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &agginfo->aggfn.dobj,
 										"AGGREGATE", aggsig,
 										agginfo->aggfn.dobj.namespace->dobj.name);
@@ -14481,7 +14504,7 @@ dumpTSParser(Archive *fout, TSParserInfo *prsinfo)
 	appendPQExpBuffer(delq, "DROP TEXT SEARCH PARSER %s;\n",
 					  fmtQualifiedDumpable(prsinfo));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &prsinfo->dobj,
 										"TEXT SEARCH PARSER", qprsname,
 										prsinfo->dobj.namespace->dobj.name);
@@ -14561,7 +14584,7 @@ dumpTSDictionary(Archive *fout, TSDictInfo *dictinfo)
 	appendPQExpBuffer(delq, "DROP TEXT SEARCH DICTIONARY %s;\n",
 					  fmtQualifiedDumpable(dictinfo));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &dictinfo->dobj,
 										"TEXT SEARCH DICTIONARY", qdictname,
 										dictinfo->dobj.namespace->dobj.name);
@@ -14622,7 +14645,7 @@ dumpTSTemplate(Archive *fout, TSTemplateInfo *tmplinfo)
 	appendPQExpBuffer(delq, "DROP TEXT SEARCH TEMPLATE %s;\n",
 					  fmtQualifiedDumpable(tmplinfo));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tmplinfo->dobj,
 										"TEXT SEARCH TEMPLATE", qtmplname,
 										tmplinfo->dobj.namespace->dobj.name);
@@ -14742,7 +14765,7 @@ dumpTSConfig(Archive *fout, TSConfigInfo *cfginfo)
 	appendPQExpBuffer(delq, "DROP TEXT SEARCH CONFIGURATION %s;\n",
 					  fmtQualifiedDumpable(cfginfo));
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &cfginfo->dobj,
 										"TEXT SEARCH CONFIGURATION", qcfgname,
 										cfginfo->dobj.namespace->dobj.name);
@@ -14808,7 +14831,7 @@ dumpForeignDataWrapper(Archive *fout, FdwInfo *fdwinfo)
 	appendPQExpBuffer(delq, "DROP FOREIGN DATA WRAPPER %s;\n",
 					  qfdwname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &fdwinfo->dobj,
 										"FOREIGN DATA WRAPPER", qfdwname,
 										NULL);
@@ -14900,7 +14923,7 @@ dumpForeignServer(Archive *fout, ForeignServerInfo *srvinfo)
 	appendPQExpBuffer(delq, "DROP SERVER %s;\n",
 					  qsrvname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &srvinfo->dobj,
 										"SERVER", qsrvname, NULL);
 
@@ -15582,7 +15605,7 @@ dumpTable(Archive *fout, TableInfo *tbinfo)
 
 			buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
 							initracl_subquery, "at.attacl", "c.relowner", "'c'",
-							dopt->binary_upgrade);
+							dopt->binary_upgrade || dopt->include_yb_metadata);
 
 			appendPQExpBuffer(query,
 							  "SELECT at.attname, "
@@ -15789,8 +15812,7 @@ dumpTablegroup(Archive *fout, TablegroupInfo *tginfo)
 					 tginfo->dobj.dumpId,	/* dump ID */
 					 tginfo->dobj.name,		/* Name */
 					 NULL,  				/* Namespace */
-					 /* TODO: timothy-e: dump tablespaces for tablegroups */
-					 NULL,					/* Tablespace */
+					 tginfo->grptablespace,	/* Tablespace */
 					 tginfo->grpowner,		/* Owner */
 					 false,					/* with oids */
 					 "TABLEGROUP",			/* Desc */
@@ -15939,8 +15961,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
 		if (dopt->binary_upgrade)
+		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+		}
 
 		appendPQExpBuffer(q, "CREATE %s%s %s",
 						  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
@@ -16195,11 +16219,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		/* Get the table properties from YB, if relevant. */
-		YBCPgTableProperties *yb_properties = NULL;
+		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
-			yb_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
@@ -16222,10 +16246,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			else if (yb_properties->num_tablets > 1)
 			{
 				/* For range-table. */
-				write_msg(NULL, "WARNING: exporting SPLIT clause for range-split relations is not "
-								"yet supported. Table '%s' will be created with default (1) "
-								"tablets instead of %" PRIu64 ".\n",
-						  qualrelname, yb_properties->num_tablets);
+				char *range_split_clause = getYbSplitClause(fout, tbinfo);
+				appendPQExpBuffer(q, "\n%s", range_split_clause);
 			}
 			/* else - single shard table - supported, no need to add anything */
 
@@ -16606,7 +16628,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		appendPQExpBuffer(q, "\nALTER TABLE ONLY %s FORCE ROW LEVEL SECURITY;\n",
 						  qualrelname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tbinfo->dobj,
 										reltypename, qrelname,
 										tbinfo->dobj.namespace->dobj.name);
@@ -17013,6 +17035,26 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
+		const bool is_unique_index_constraint =
+			coninfo->contype == 'u' && indxinfo->indexdef;
+
+		/*
+		 * If the constraint type is unique and index definition (indexdef)
+		 * exists, it means a constraint exists for this table which is
+		 * backed by an unique index.
+		 * Note: when indexdef is not set to null, it means either
+		 * unique or non-unique index exists for a table. The indexdef
+		 * contains the full YSQL command to create the index.
+		 */
+		if (is_unique_index_constraint)
+		{
+			static const char index_def_prefix[] = "CREATE UNIQUE INDEX ";
+			Assert(strncmp(indxinfo->indexdef, index_def_prefix,
+						   strlen(index_def_prefix)) == 0);
+			appendPQExpBuffer(q, "%sNONCONCURRENTLY %s;\n\n",
+							  index_def_prefix, &indxinfo->indexdef[20]);
+		}
+
 		appendPQExpBuffer(q, "ALTER TABLE ONLY %s\n",
 						  fmtQualifiedDumpable(tbinfo));
 		appendPQExpBuffer(q, "    ADD CONSTRAINT %s ",
@@ -17025,49 +17067,71 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 		}
 		else
 		{
-			appendPQExpBuffer(q, "%s (",
+			appendPQExpBuffer(q, "%s ",
 							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
-			for (k = 0; k < indxinfo->indnkeyattrs; k++)
+
+			/*
+			 * If a table has an unique constraint with index definition,
+			 * then ALTER TABLE ADD CONSTRAINT UNIQUE command must append
+			 * the USING INDEX syntax followed by the unique index name in
+			 * order to attach the index as a constraint type.
+			 */
+			if (is_unique_index_constraint)
 			{
-				int			indkey = (int) indxinfo->indkeys[k];
-				const char *attname;
-
-				if (indkey == InvalidAttrNumber)
-					break;
-				attname = getAttrName(indkey, tbinfo);
-
-				appendPQExpBuffer(q, "%s%s",
-								  (k == 0) ? "" : ", ",
-								  fmtId(attname));
+				appendPQExpBuffer(q, "USING INDEX %s",
+								  indxinfo->dobj.name);
 			}
-
-			if (indxinfo->indnkeyattrs < indxinfo->indnattrs)
-				appendPQExpBuffer(q, ") INCLUDE (");
-
-			for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
+			/*
+			 * If a table has a non-unique constraint or does not have an
+			 * index definition, the original ALTER TABLE ADD CONSTRAINT
+			 * command is used and the rest of the query is constructed.
+			 */
+			else
 			{
-				int			indkey = (int) indxinfo->indkeys[k];
-				const char *attname;
+				appendPQExpBufferChar(q, '(');
 
-				if (indkey == InvalidAttrNumber)
-					break;
-				attname = getAttrName(indkey, tbinfo);
+				for (k = 0; k < indxinfo->indnkeyattrs; k++)
+				{
+					int			indkey = (int) indxinfo->indkeys[k];
+					const char *attname;
 
-				appendPQExpBuffer(q, "%s%s",
-								  (k == indxinfo->indnkeyattrs) ? "" : ", ",
-								  fmtId(attname));
+					if (indkey == InvalidAttrNumber)
+						break;
+					attname = getAttrName(indkey, tbinfo);
+
+					appendPQExpBuffer(q, "%s%s",
+									(k == 0) ? "" : ", ",
+									fmtId(attname));
+				}
+
+				if (indxinfo->indnkeyattrs < indxinfo->indnattrs)
+					appendPQExpBuffer(q, ") INCLUDE (");
+
+				for (k = indxinfo->indnkeyattrs; k < indxinfo->indnattrs; k++)
+				{
+					int			indkey = (int) indxinfo->indkeys[k];
+					const char *attname;
+
+					if (indkey == InvalidAttrNumber)
+						break;
+					attname = getAttrName(indkey, tbinfo);
+
+					appendPQExpBuffer(q, "%s%s",
+									(k == indxinfo->indnkeyattrs) ? "" : ", ",
+									fmtId(attname));
+				}
+
+				appendPQExpBufferChar(q, ')');
 			}
-
-			appendPQExpBufferChar(q, ')');
 
 			/* Get the table and index properties from YB, if relevant. */
-			YBCPgTableProperties *yb_table_properties = NULL;
-			YBCPgTableProperties *yb_index_properties = NULL;
+			YbTableProperties yb_table_properties = NULL;
+			YbTableProperties yb_index_properties = NULL;
 			if (dopt->include_yb_metadata &&
 				(coninfo->contype == 'u'))
 			{
-				yb_table_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
-				yb_index_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+				yb_table_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+				yb_index_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 			}
 			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
 			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
@@ -17519,7 +17583,7 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 	/* binary_upgrade:	no need to clear TOAST table oid */
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(query, &tbinfo->dobj,
 										"SEQUENCE", qseqname,
 										tbinfo->dobj.namespace->dobj.name);
@@ -17950,7 +18014,7 @@ dumpEventTrigger(Archive *fout, EventTriggerInfo *evtinfo)
 	appendPQExpBuffer(delqry, "DROP EVENT TRIGGER %s;\n",
 					  qevtname);
 
-	if (dopt->binary_upgrade)
+	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(query, &evtinfo->dobj,
 										"EVENT TRIGGER", qevtname, NULL);
 
@@ -18849,56 +18913,6 @@ nonemptyReloptions(const char *reloptions)
 	return (reloptions != NULL && strlen(reloptions) > 2);
 }
 
-/*
- * Check if a reloptions array is nonempty and has any options
- * except for the excluded ones.
- */
-static bool
-YbHasReloptionsToInclude(const char *reloptions)
-{
-	if (!nonemptyReloptions(reloptions))
-		return false;
-
-	char	  **options;
-	int			noptions;
-
-	if (!parsePGArray(reloptions, &options, &noptions))
-	{
-		if (options)
-			free(options);
-		return false;
-	}
-
-	bool has_included_values = false;
-
-	for (int i = 0; i < noptions && !has_included_values; i++)
-	{
-		char	   *option = options[i];
-
-		/*
-		 * Each array element should have the form name=value.  If the "=" is
-		 * missing for some reason, treat it like an empty value.
-		 */
-		char	   *name = option;
-		char	   *separator = strchr(option, '=');
-		if (separator)
-			*separator = '\0';
-
-		/*
-		 * We ignore the reloption for tablegroup_oid.
-		 * It is appended seperately as a TABLEGROUP clause.
-		 */
-		if (strcmp(name, "tablegroup_oid") != 0)
-			has_included_values = true;
-	}
-
-	if (options)
-		free(options);
-
-	return has_included_values;
-}
-
-
 static void
 YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 				   const char *reloptions1, const char *reloptions1_prefix,
@@ -18924,14 +18938,14 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 
 	const char *with = newline_before ? "\nWITH (" : " WITH (";
 
-	if (YbHasReloptionsToInclude(reloptions1))
+	if (nonemptyReloptions(reloptions1))
 	{
 		appendPQExpBufferStr(buffer, with);
 		appendReloptionsArrayAH(buffer, reloptions1, reloptions1_prefix, fout);
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions2))
+	if (nonemptyReloptions(reloptions2))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);
@@ -18941,7 +18955,7 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions3))
+	if (nonemptyReloptions(reloptions3))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);
@@ -18981,7 +18995,7 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
  * 					reloptions, will be '{}' if properties are not allocated.
  */
 static void
-getYbTablePropertiesAndReloptions(Archive *fout, YBCPgTableProperties *properties,
+getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 								  PQExpBuffer reloptions_buf,
 								  Oid reloid, const char* relname)
 {
@@ -19065,4 +19079,107 @@ isDatabaseColocated(Archive *fout)
 	PQclear(res);
 	destroyPQExpBuffer(query);
 	return is_colocated;
+}
+
+/*
+ * Load the YB range-partitioned table SPLIT AT Clause from the YB server.
+ * The table is identified by the Relation OID.
+ */
+static char *
+getYbSplitClause(Archive *fout, TableInfo *tbinfo)
+{
+	PQExpBuffer query = createPQExpBuffer();
+
+	/* Retrieve the range split SPLIT AT clause from the YB server. */
+	appendPQExpBuffer(query,
+					  "SELECT * FROM yb_get_range_split_clause(%u)",
+					  tbinfo->dobj.catId.oid);
+	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
+	int i_range_split_clause = PQfnumber(res, "range_split_clause");
+
+	char *range_split_clause = PQgetvalue(res, 0, i_range_split_clause);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	return range_split_clause;
+}
+
+/*
+ * Update pg_extension catalog to record correct configuration relations' OID.
+ * This function is called after sortDumpableObjects() functions to ensure all
+ * configuration relations has been created before we update pg_extension
+ * catalog.
+ * Add a TOC entry for each extension containing configuration relations. Use
+ * SECTION_POST_DATA as the section parameter value to respect established
+ * sorted ordering before this function call.
+ * Since all TOCs created in this funciton are added to the end, we can ensure
+ * that all of their dependencies: configuration relations have been created.
+ */
+static void
+ybDumpUpdatePgExtensionCatalog(Archive *fout)
+{
+	ExtensionInfo *extinfo;
+	PQExpBuffer	   update_query = createPQExpBuffer();
+	char		 **extconfigarray = NULL;
+	int			   nconfigitems;
+	Oid			   tbloid;
+	TableInfo	  *tblinfo;
+
+	Assert(yb_dumpable_extensions_with_config_relations &&
+		   yb_num_dumpable_extensions_with_config_relations > 0);
+	for (int i = 0; i < yb_num_dumpable_extensions_with_config_relations; ++i)
+	{
+		extinfo = yb_dumpable_extensions_with_config_relations[i];
+		appendPQExpBuffer(update_query, "-- YB: ensure extconfig field for "
+						  "extension: %s in pg_extension catalog is correct\n",
+						  fmtId(extinfo->dobj.name));
+		appendPQExpBuffer(update_query,
+						  "UPDATE pg_extension SET extconfig = ARRAY[");
+		/* Shouldn't happen. */
+		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
+			exit_horribly(NULL, "error parsing OIDs of configuration relations "
+						  "of extension with OID %u\n", extinfo->dobj.catId.oid);
+
+		for (int j = 0; j < nconfigitems; ++j)
+		{
+			tbloid = atooid(extconfigarray[j]);
+			tblinfo = findTableByOid(tbloid);
+			if (!tblinfo)
+				exit_horribly(NULL, "configuration relation with OID %u of extension with OID %u "
+							  "not found\n", tblinfo->dobj.catId.oid, extinfo->dobj.catId.oid);
+			if (j)
+				appendPQExpBuffer(update_query, ",");
+			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
+			appendPQExpBuffer(update_query, "::regclass::oid");
+		}
+		appendPQExpBuffer(update_query,
+						  "]::oid[] WHERE extname = ");
+		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);
+		appendPQExpBuffer(update_query, ";\n");
+
+		/* Add a TOC entry to UPDATE pg_extension catalog. */
+		ArchiveEntry(fout,
+					 extinfo->dobj.catId, /* catalog ID */
+					 extinfo->dobj.dumpId, /* dump ID */
+					 extinfo->dobj.name, /* Name */
+					 NULL, /* Namespace */
+					 NULL, /* Tablespace */
+					 "", /* Owner */
+					 false, /* with oids */
+					 "EXTENSION", /* Desc */
+					 SECTION_POST_DATA, /* Section */
+					 update_query->data, /* Create */
+					 "", /* Del */
+					 NULL, /* Copy */
+					 NULL, /* Deps */
+					 0,	/* # Deps */
+					 NULL, /* Dumper */
+					 NULL); /* Dumper Arg */
+
+		resetPQExpBuffer(update_query);
+		if (extconfigarray)
+			free(extconfigarray);
+	}
+
+	destroyPQExpBuffer(update_query);
 }

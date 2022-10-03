@@ -193,13 +193,18 @@ class PostgresBuilder(YbBuildToolBase):
     @overrides
     def add_command_line_args(self) -> None:
         parser = self.arg_parser
-        parser.add_argument('--cflags', help='C compiler flags')
         parser.add_argument('--clean',
                             action='store_true',
                             help='Clean PostgreSQL build and installation directories.')
+
+        # These flags automatically get propagated to the appropriate environment variables,
+        # such as CFLAGS, CXXFLAGS, LDFLAGS, LDFLAGS_EX, CPPFLAGS.
+        parser.add_argument('--cflags', help='C compiler flags')
         parser.add_argument('--cxxflags', help='C++ compiler flags')
         parser.add_argument('--ldflags', help='Linker flags for all binaries')
         parser.add_argument('--ldflags_ex', help='Linker flags for executables')
+        parser.add_argument('--cppflags', help='C/C++ preprocessor flags')
+
         parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
         parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
         parser.add_argument('--run_tests',
@@ -240,6 +245,7 @@ class PostgresBuilder(YbBuildToolBase):
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
+        self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.args.thirdparty_dir
@@ -298,7 +304,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
-        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX']:
+        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'CPPFLAGS']:
             arg_value = getattr(self.args, var_name.lower())
             self.set_env_var(var_name, arg_value)
 
@@ -324,7 +330,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '-Wno-error=unused-function'
             ]
 
-            if self.build_type == 'release':
+            if self.build_type in ['release', 'prof_gen', 'prof_use']:
                 if self.is_clang():
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
@@ -478,7 +484,7 @@ class PostgresBuilder(YbBuildToolBase):
             # TODO: do we still need this limitation?
             configure_cmd_line += ['--without-readline']
 
-        if self.build_type != 'release':
+        if self.build_type not in ['release', 'prof_gen', 'prof_use']:
             configure_cmd_line += ['--enable-cassert']
         # Unset YB_SHOW_COMPILER_COMMAND_LINE when configuring postgres to avoid unintended side
         # effects from additional compiler output.
@@ -566,6 +572,8 @@ class PostgresBuilder(YbBuildToolBase):
                     ':(glob,exclude)src/postgres/**/specs/*.spec',
                     ':(glob,exclude)src/postgres/**/sql/*.sql',
                     ':(glob,exclude)src/postgres/.clang-format',
+                    ':(glob,exclude)src/postgres/src/test/regress/README',
+                    ':(glob,exclude)src/postgres/src/test/regress/yb_lint_regress_schedule.sh',
                 ])
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
@@ -709,7 +717,7 @@ class PostgresBuilder(YbBuildToolBase):
                             "Not running 'make install' in the %s directory since we are only "
                             "generating the compilation database", work_dir)
 
-                if self.export_compile_commands:
+                if self.export_compile_commands and not self.skip_pg_compile_commands:
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
 
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
@@ -826,7 +834,7 @@ class PostgresBuilder(YbBuildToolBase):
         logging.info("PostgreSQL build stamp:\n%s", initial_build_stamp)
 
         if initial_build_stamp == saved_build_stamp:
-            if self.export_compile_commands:
+            if self.export_compile_commands and not self.skip_pg_compile_commands:
                 logging.info(
                     "Even though PostgreSQL is already up-to-date in directory %s, we still need "
                     "to create compile_commands.json, so proceeding with %s",

@@ -8,8 +8,7 @@ menu:
     identifier: yb-ts-cli
     parent: admin
     weight: 2466
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin/). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.
@@ -31,7 +30,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ts-cli
+./bin/yb-ts-cli
 ```
 
 ## Commands
@@ -50,6 +49,7 @@ The following commands are available:
 * [flush_tablet](#flush-tablet)
 * [list_tablets](#list-tablets)
 * [reload_certificates](#reload-certificates)
+* [remote_bootstrap](#remote-bootstrap)
 * [set_flag](#set-flag)
 * [status](#status)
 
@@ -60,7 +60,7 @@ If all tablets are running, returns "All tablets are running".
 **Syntax**
 
 ```sh
-$ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
+yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -73,7 +73,7 @@ If all tablets have bootstrapped, returns "Tablet server is ready".
 **Syntax**
 
 ```sh
-$ yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -122,7 +122,7 @@ Prints the value of the current [hybrid time](../../../architecture/transactions
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
+yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -134,7 +134,7 @@ Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -203,6 +203,22 @@ yb-ts-cli [ --server_address=<host>:<port> ] reload_certificates
 
 * *host*:*port*: The *host* and *port* of the master or tablet server. Default is `localhost:9100`.
 
+##### remote_bootstrap
+
+Trigger a remote bootstrap of a tablet from another tablet server to the specified tablet server.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
+* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+
+See [Manual remote bootstrap of failed peer](../../troubleshoot/cluster/replace_failed_peers/) for example usage.
+
 ##### set_flag
 
 Sets the specified configuration flag for the tablet server.
@@ -210,7 +226,7 @@ Sets the specified configuration flag for the tablet server.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
+yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -235,7 +251,7 @@ Prints the status of the tablet server, including information on the node instan
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] status
+yb-ts-cli [ --server_address=<host>:<port> ] status
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -269,7 +285,7 @@ Default: `60000` (1000 ms = 1 sec)
 ### Return the status of a tablet server
 
 ```sh
-$ ./bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli -server_address=127.0.0.1 status
 ```
 
 ```output
@@ -301,7 +317,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
 ```
 
 ```output

@@ -97,11 +97,11 @@ class ClusterVerifier {
                                 const MonoDelta& timeout);
 
  private:
-  CHECKED_STATUS DoYsck();
+  Status DoYsck();
 
   // Implementation for CheckRowCount -- returns a Status instead of firing
   // gtest assertions.
-  CHECKED_STATUS DoCheckRowCount(const client::YBTableName& table_name,
+  Status DoCheckRowCount(const client::YBTableName& table_name,
                                  ComparisonMode mode,
                                  size_t expected_row_count,
                                  YBConsistencyLevel consistency);

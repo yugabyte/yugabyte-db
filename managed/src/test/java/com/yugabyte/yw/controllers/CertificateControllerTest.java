@@ -10,14 +10,15 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
-import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -43,29 +44,28 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
-import play.mvc.Http;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CertificateControllerTest extends FakeDBApplication {
-  @Mock play.Configuration mockAppConfig;
-
   private Customer customer;
   private Users user;
-  private List<String> test_certs = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
-  private List<UUID> test_certs_uuids = new ArrayList<>();
+  private final List<String> test_certs = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
+  private final List<UUID> test_certs_uuids = new ArrayList<>();
+  private Config spyConf;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
+    spyConf = spy(app.config());
+    doReturn("/tmp/" + getClass().getSimpleName() + "/certs")
+        .when(spyConf)
+        .getString("yb.storage.path");
     for (String cert : test_certs) {
-      test_certs_uuids.add(
-          CertificateHelper.createRootCA(
-              cert, customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs"));
+      test_certs_uuids.add(CertificateHelper.createRootCA(spyConf, cert, customer.uuid));
     }
   }
 
@@ -333,7 +333,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateClientCertificate() throws IOException {
+  public void testCreateClientCertificate() {
     String cert_content = TestUtils.readResource("platform.dev.crt");
     ObjectNode bodyJson = Json.newObject();
     Date date = new Date();
@@ -341,9 +341,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certContent", cert_content);
-    UUID rootCA =
-        CertificateHelper.createRootCA(
-            "test-universe", customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs");
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.uuid);
     Result result = createClientCertificate(customer.uuid, rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -356,9 +354,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA =
-        CertificateHelper.createRootCA(
-            "test-universe", customer.uuid, "/tmp/" + getClass().getSimpleName() + "/certs");
+    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.uuid);
     Result result = getRootCertificate(customer.uuid, rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

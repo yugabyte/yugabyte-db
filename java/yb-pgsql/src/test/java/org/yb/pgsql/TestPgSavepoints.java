@@ -59,7 +59,6 @@ public class TestPgSavepoints extends BasePgSQLTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
-    // TODO(savepoints) -- enable by default.
     Map<String, String> flags = super.getTServerFlags();
     flags.put("txn_max_apply_batch_records", String.format("%d", LARGE_BATCH_ROW_THRESHOLD));
     return flags;
@@ -134,7 +133,7 @@ public class TestPgSavepoints extends BasePgSQLTest {
   }
 
   @Test
-  public void testAbortsIntentOfReleasedSavepoint() throws Exception {
+  public void testIgnoresIntentOfRolledBackSavepointSameTxn() throws Exception {
     createTable();
 
     for (IsolationLevel isoLevel: isoLevels) {
@@ -153,6 +152,41 @@ public class TestPgSavepoints extends BasePgSQLTest {
         conn.rollback();
       }
     }
+  }
+
+  @Test
+  public void testIgnoresLockOnlyConflictOfCommittedTxn() throws Exception {
+    createTable();
+
+    getConnectionBuilder().connect().createStatement()
+        .execute("INSERT INTO t SELECT generate_series(1, 10), 0");
+
+    Connection conn1 = getConnectionBuilder()
+                                  .withIsolationLevel(IsolationLevel.REPEATABLE_READ)
+                                  .withAutoCommit(AutoCommit.DISABLED)
+                                  .connect();
+    Connection conn2 = getConnectionBuilder()
+                                  .withIsolationLevel(IsolationLevel.REPEATABLE_READ)
+                                  .withAutoCommit(AutoCommit.DISABLED)
+                                  .connect();
+
+    Statement s1 = conn1.createStatement();
+    Statement s2 = conn2.createStatement();
+
+    s1.execute("SELECT * FROM t");
+    s2.execute("SELECT * FROM t");
+
+    s1.execute("SAVEPOINT a");
+    s1.execute("UPDATE t SET v=1 WHERE k=1");
+    s1.execute("ROLLBACK TO a");
+    s1.execute("SELECT * FROM t WHERE k=1 FOR UPDATE");
+    s1.execute("UPDATE t SET v=1 WHERE k=3");
+    conn1.commit();
+
+    s2.execute("UPDATE t SET v=2 WHERE k=1");
+    conn2.commit();
+
+    assertEquals(OptionalInt.of(2), getSingleValue(conn1, 1));
   }
 
   @Test

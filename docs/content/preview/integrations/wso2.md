@@ -2,13 +2,12 @@
 title: WSO2 Identity Server
 linkTitle: WSO2 Identity Server
 description: WSO2 Identity Server
-section: INTEGRATIONS
 menu:
   preview:
     identifier: wso2
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [WSO2 Identity Server](https://wso2.com/identity-and-access-management/) to manage access to YugabyteDB.

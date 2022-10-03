@@ -223,6 +223,24 @@ public class EncryptionAtRestManager {
     }
   }
 
+  /**
+   * Function to get universe keys history as ObjectNode, for use in YB-Controller extended args.
+   *
+   * @param universeUUID
+   * @return ObjectNode consisting of universe key history.
+   * @throws Exception
+   */
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+    ObjectNode backup = Json.newObject();
+    ArrayNode universeKeys = backup.putArray("universe_keys");
+    List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
+    if (universeKeyRefs.size() > 0) {
+      universeKeyRefs.forEach(universeKeys::add);
+      return backup;
+    }
+    return null;
+  }
+
   // Restore universe keys from metadata file
   public RestoreKeyResult restoreUniverseKeyHistory(
       String storageLocation, Consumer<JsonNode> restorer) {
@@ -249,10 +267,24 @@ public class EncryptionAtRestManager {
       JsonNode backup = mapper.readTree(backupContents);
       JsonNode universeKeys = backup.get("universe_keys");
       if (universeKeys != null && universeKeys.isArray()) {
-        universeKeys.forEach(restorer);
 
         // Cleanup encrypted key metadata file since it is no longer needed
         backupKeysFile.delete();
+        result = restoreUniverseKeyHistory(universeKeys, restorer);
+      }
+    } catch (Exception e) {
+      LOG.error("Error occurred restoring universe key history", e);
+    }
+
+    return result;
+  }
+
+  public RestoreKeyResult restoreUniverseKeyHistory(
+      JsonNode universeKeys, Consumer<JsonNode> restorer) {
+    RestoreKeyResult result = RestoreKeyResult.RESTORE_FAILED;
+    try {
+      if (universeKeys != null && universeKeys.isArray()) {
+        universeKeys.forEach(restorer);
 
         LOG.info("Restore universe keys succeeded!");
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
@@ -260,7 +292,6 @@ public class EncryptionAtRestManager {
     } catch (Exception e) {
       LOG.error("Error occurred restoring universe key history", e);
     }
-
     return result;
   }
 }

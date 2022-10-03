@@ -43,7 +43,7 @@ class Parser {
   // Returns 0 if Bison successfully parses SQL statements, and the compiler can continue on to
   // semantic analysis. Otherwise, it returns one of the errcodes that are defined in file
   // "yb/yql/cql/ql/errcodes.h", and the caller (QL API) should stop the compiling process.
-  CHECKED_STATUS Parse(const std::string& stmt, bool reparsed,
+  Status Parse(const std::string& stmt, bool reparsed,
                        const MemTrackerPtr& mem_tracker = nullptr, const bool internal = false);
 
   // Returns the generated parse tree.

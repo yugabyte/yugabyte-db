@@ -446,8 +446,8 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
 
   // 500ms deadline / 50 ms wait ~= 10 Tablets processed before Master hits deadline
   FLAGS_catalog_manager_report_batch_size = 1;
-  FLAGS_TEST_inject_latency_during_tablet_report_ms = 50;
-  FLAGS_heartbeat_rpc_timeout_ms = 500;
+  FLAGS_TEST_inject_latency_during_tablet_report_ms = 50 * kTimeMultiplier;
+  FLAGS_heartbeat_rpc_timeout_ms = 500 * kTimeMultiplier;
   FLAGS_num_test_tablets = 60;
 
   // Create a Table with 60 tablets, so ~20 per TS.

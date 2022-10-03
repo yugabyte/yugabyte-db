@@ -90,6 +90,8 @@ class TypeInfo {
   void CopyMinValue(void* dst) const {
     memcpy(dst, min_value, size);
   }
+
+  bool is_collection() const;
 };
 
 template<DataType Type> struct DataTypeTraits {};
@@ -448,6 +450,15 @@ struct DataTypeTraits<FROZEN> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "frozen";
   }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use QLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
+template <>
+struct DataTypeTraits<TUPLE> : public DerivedTypeTraits<BINARY> {
+  static const char *name() { return "tuple"; }
 
   // using the default implementation inherited from BINARY for AppendDebugStringForValue
   // TODO much of this codepath should be retired and we should systematically use QLValue instead

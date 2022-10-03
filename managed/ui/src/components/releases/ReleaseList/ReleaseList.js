@@ -15,7 +15,7 @@ import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
 // Sort descending
-const sortVersion = (a, b) => {
+export const sortVersion = (a, b) => {
   const matchA = versionReg.exec(a);
   const matchB = versionReg.exec(b);
 

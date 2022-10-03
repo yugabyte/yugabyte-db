@@ -600,7 +600,8 @@ assign_XactIsoLevel(const char *newval, void *extra)
 	XactIsoLevel = *((int *) extra);
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+		HandleYBStatus(
+			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 	}
 }
 
@@ -614,6 +615,26 @@ show_XactIsoLevel(void)
 			return "read uncommitted";
 		case XACT_READ_COMMITTED:
 			return "read committed";
+		case XACT_REPEATABLE_READ:
+			return "repeatable read";
+		case XACT_SERIALIZABLE:
+			return "serializable";
+		default:
+			return "bogus";
+	}
+}
+
+const char *
+show_yb_effective_transaction_isolation_level(void)
+{
+	switch (XactIsoLevel)
+	{
+		case XACT_READ_UNCOMMITTED:
+			switch_fallthrough();
+		case XACT_READ_COMMITTED:
+			if (IsYBReadCommitted())
+				return "read committed";
+			switch_fallthrough();
 		case XACT_REPEATABLE_READ:
 			return "repeatable read";
 		case XACT_SERIALIZABLE:

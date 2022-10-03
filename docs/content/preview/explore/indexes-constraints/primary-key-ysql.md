@@ -8,12 +8,11 @@ menu:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints
     weight: 200
-isTocNested: true
-showAsideToc: true
 aliases:
-   - /preview/explore/ysql-language-features/constraints/
-   - /preview/explore/indexes-constraints/constraints/
-   - /preview/explore/indexes-constraints/indexes-1/
+  - /preview/explore/ysql-language-features/constraints/
+  - /preview/explore/indexes-constraints/constraints/
+  - /preview/explore/indexes-constraints/indexes-1/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -32,13 +31,11 @@ aliases:
   </li>
 </ul>
 
-The Primary Key constraint is a means to identify a specific row in a table uniquely via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
 
 ## Syntax and examples
 
-- To run the examples below, follow these steps to create a local [cluster](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-connect/).
-
-- Use the [YSQL shell](../../../admin/ysqlsh/) for local clusters, or [Connect using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed, and create the yb_demo [database](../../../yugabyte-cloud/cloud-quickstart/qs-data/#create-a-database).
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 ### Primary key for a single column
 
@@ -53,7 +50,7 @@ CREATE TABLE (
 );
 ```
 
-The following example creates the `employee` table with `employee_no` as the primary key, which uniquely identifies an employee. Try the examples using the YSQL shell and
+The following example creates the `employees` table with `employee_no` as the primary key, which uniquely identifies an employee.
 
 ```sql
 CREATE TABLE employees (
@@ -75,7 +72,6 @@ CREATE TABLE (
   …
   PRIMARY KEY (column1, column2)
 );
-
 ```
 
 The following example creates the `employees` table in which the primary key is a combination of `employee_no` and `name` columns:
@@ -105,13 +101,13 @@ CONSTRAINT employee_no_pkey PRIMARY KEY(employee_no);
 
 ### ALTER TABLE
 
-- Use the `ALTER TABLE` statement to create a primary key on an existing table with following syntax:
+Use the `ALTER TABLE` statement to create a primary key on an existing table with following syntax:
 
 ```sql
 ALTER TABLE table_name ADD PRIMARY KEY (column1, column2);
 ```
 
-The following example creates the `employee` table first and then alters it to add a primary key on the `employee_no` column:
+The following example creates the `employees` table first and then alters it to add a primary key on the `employee_no` column:
 
 ```sql
 CREATE TABLE employees (

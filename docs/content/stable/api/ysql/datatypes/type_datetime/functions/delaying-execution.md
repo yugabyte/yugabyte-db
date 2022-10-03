@@ -8,8 +8,7 @@ menu:
     identifier: delaying-execution
     parent: date-time-functions
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The three functions _pg_sleep(double precision)_, _pg_sleep_for(interval)_, and _pg_sleep_until(timestamp_tz)_ are understood simply. The argument of _pg_sleep()_ is interpreted as the number of seconds for which to sleep. Because each has a formal parameter with a different data type, they could all have been implemented as overloads of a single function. Presumably, somebody chose to use different names somewhat whimsically. The fact that they are functions allows them to be invoked within the same SQL statement, just as the demonstration of the semantic difference between _statement_timestamp()_ and _clock_timestamp()_ does above. It's probably more common to use them within PL/pgSQL code. A procedure would have been more natural here than a function. But this has no practical consequence because the invocation _perform pg_sleep(n)_ comes to the rescue.

@@ -8,8 +8,7 @@ menu:
   v2.8:
     identifier: api-ysql-datatypes-binary
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

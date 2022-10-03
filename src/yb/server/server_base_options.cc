@@ -84,6 +84,8 @@ DEFINE_int32(master_discovery_timeout_ms, 3600000,
              "Timeout for masters to discover each other during cluster creation/startup");
 TAG_FLAG(master_discovery_timeout_ms, hidden);
 
+DECLARE_bool(TEST_mini_cluster_mode);
+
 namespace yb {
 namespace server {
 
@@ -155,6 +157,10 @@ WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
     if (!bind_addresses.empty()) {
       webserver_opts.bind_interface = bind_addresses.at(0).host();
     }
+  }
+
+  if (FLAGS_TEST_mini_cluster_mode &&  !fs_opts.data_paths.empty()) {
+    webserver_opts.TEST_custom_varz = "\nfs_data_dirs\n" + JoinStrings(fs_opts.data_paths, ",");
   }
 
   return webserver_opts;

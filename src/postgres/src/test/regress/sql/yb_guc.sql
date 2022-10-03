@@ -53,6 +53,39 @@ EXPLAIN SELECT j FROM test_scan;
 set enable_indexonlyscan = off;
 EXPLAIN SELECT j FROM test_scan;
 
+-- Show transaction priority. As it is not possible to have a deterministic
+-- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
+-- yb_transaction_priority_upper_bound to be the same, which forces
+-- yb_transaction_priority to be equal to those two.
+set yb_transaction_priority_lower_bound = 0.4;
+set yb_transaction_priority_upper_bound = 0.4;
+BEGIN TRANSACTION;
+INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
+show yb_transaction_priority;
+COMMIT;
+
+-- Trying to set yb_transaction_priority will be an error
+set yb_transaction_priority = 0.3; -- ERROR
+
+-- High priority transaction
+set yb_transaction_priority_lower_bound = 0.4;
+set yb_transaction_priority_upper_bound = 0.4;
+BEGIN TRANSACTION;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+show yb_transaction_priority;
+COMMIT;
+
+-- Highest priority transaction
+set yb_transaction_priority_upper_bound = 1;
+set yb_transaction_priority_lower_bound = 1;
+BEGIN TRANSACTION;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+show yb_transaction_priority;
+COMMIT;
+
+-- Showing yb_transaction_priority outside a transaction block
+show yb_transaction_priority;
+
 -- SET LOCAL is restricted by a function SET option
 create or replace function myfunc(int) returns text as $$
 begin
@@ -70,6 +103,14 @@ SET foo = false;  -- no such setting
 -- test setting a parameter with a registered prefix (plpgsql)
 SET plpgsql.extra_foo_warnings = false;  -- no such setting
 SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+
+-- test temp_file_limit default
+SHOW temp_file_limit;
+-- test temp_File_limit update
+SET temp_file_limit="100MB";
+SHOW temp_file_limit;
+SET temp_file_limit=-1;
+SHOW temp_file_limit;
 
 -- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
 SET SESSION AUTHORIZATION yb_db_admin;

@@ -21,7 +21,7 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 

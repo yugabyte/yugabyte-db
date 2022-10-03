@@ -8,8 +8,7 @@ menu:
     identifier: advanced-features-collations
     parent: advanced-features
     weight: 240
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Collation basics

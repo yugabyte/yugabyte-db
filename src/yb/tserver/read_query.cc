@@ -66,6 +66,11 @@ DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
+METRIC_DEFINE_coarse_histogram(server, read_time_wait,
+                               "Read Time Wait",
+                               yb::MetricUnit::kMicroseconds,
+                               "Number of microseconds read queries spend waiting for safe time");
+
 namespace yb {
 namespace tserver {
 
@@ -88,7 +93,12 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
       TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
       ReadResponsePB* resp, rpc::RpcContext context)
       : server_(*server), read_tablet_provider_(*read_tablet_provider), req_(req), resp_(resp),
-        context_(std::move(context)) {}
+        context_(std::move(context)) {
+    auto metric_entity = server->MetricEnt();
+    if (metric_entity) {
+      read_time_wait_ = METRIC_read_time_wait.Instantiate(metric_entity);
+    }
+  }
 
   void Perform() {
     RespondIfFailed(DoPerform());
@@ -107,10 +117,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   virtual ~ReadQuery() = default;
 
  private:
-  CHECKED_STATUS DoPerform();
+  Status DoPerform();
 
   // Picks read based for specified read context.
-  CHECKED_STATUS DoPickReadTime(server::Clock* clock);
+  Status DoPickReadTime(server::Clock* clock);
 
   bool transactional() const;
 
@@ -118,7 +128,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   ReadHybridTime FormRestartReadHybridTime(const HybridTime& restart_time) const;
 
-  CHECKED_STATUS PickReadTime(server::Clock* clock);
+  Status PickReadTime(server::Clock* clock);
 
   bool IsForBackfill() const;
   bool IsPgsqlFollowerReadAtAFollower() const;
@@ -128,7 +138,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   Result<ReadHybridTime> DoRead();
   Result<ReadHybridTime> DoReadImpl();
 
-  CHECKED_STATUS Complete();
+  Status Complete();
 
   void UpdateConsistentPrefixMetrics();
 
@@ -166,6 +176,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
+
+  scoped_refptr<Histogram> read_time_wait_;
 };
 
 bool ReadQuery::transactional() const {
@@ -185,7 +197,7 @@ ReadHybridTime ReadQuery::FormRestartReadHybridTime(const HybridTime& restart_ti
   return result;
 }
 
-CHECKED_STATUS ReadQuery::PickReadTime(server::Clock* clock) {
+Status ReadQuery::PickReadTime(server::Clock* clock) {
   auto result = DoPickReadTime(clock);
   if (!result.ok()) {
     TRACE(result.ToString());
@@ -206,7 +218,11 @@ bool ReadQuery::IsForBackfill() const {
   return false;
 }
 
-CHECKED_STATUS ReadQuery::DoPerform() {
+Status ReadQuery::DoPerform() {
+  if (req_->include_trace()) {
+    context_.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
   VLOG(2) << "Received Read RPC: " << req_->DebugString();
@@ -279,6 +295,7 @@ CHECKED_STATUS ReadQuery::DoPerform() {
   const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
+  auto tablet_peer = peer_tablet.tablet_peer;
 
   if (serializable_isolation || has_row_mark) {
     // At this point we expect that we don't have pure read serializable transactions, and
@@ -302,16 +319,16 @@ CHECKED_STATUS ReadQuery::DoPerform() {
     }
   }
 
-  tablet::TabletPeerPtr tablet_peer;
-  auto tablet_peer_status =
-      server_.tablet_peer_lookup()->GetTabletPeer(req_->tablet_id(), &tablet_peer);
   // For virtual tables held at master the tablet peer may not be found.
-  reading_from_non_leader_ = tablet_peer_status.ok() && !CheckPeerIsLeader(*tablet_peer).ok();
+  if (!tablet_peer) {
+    tablet_peer = ResultToValue(
+        server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});
+  }
+  reading_from_non_leader_ = tablet_peer && !CheckPeerIsLeader(*tablet_peer).ok();
   if (PREDICT_FALSE(FLAGS_TEST_assert_reads_served_by_follower)) {
     CHECK_NE(req_->consistency_level(), YBConsistencyLevel::STRONG)
         << "--TEST_assert_reads_served_by_follower is true but consistency level is "
            "invalid: YBConsistencyLevel::STRONG";
-    RETURN_NOT_OK(tablet_peer_status);
     CHECK(reading_from_non_leader_)
         << "--TEST_assert_reads_served_by_follower is true but read is being served by "
         << " peer " << tablet_peer->permanent_uuid() << " which is the leader for tablet "
@@ -351,7 +368,7 @@ CHECKED_STATUS ReadQuery::DoPerform() {
   if (transactional) {
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    request_scope_ = RequestScope(tablet()->transaction_participant());
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
     read_time_.serial_no = request_scope_.request_id();
   }
 
@@ -376,6 +393,10 @@ CHECKED_STATUS ReadQuery::DoPerform() {
     write.set_unused_tablet_id(""); // For backward compatibility.
     write_batch.set_deprecated_may_have_metadata(true);
     write.set_batch_idx(req_->batch_idx());
+    if (req_->has_subtransaction() && req_->subtransaction().has_subtransaction_id()) {
+      write_batch.mutable_subtransaction()->set_subtransaction_id(
+          req_->subtransaction().subtransaction_id());
+    }
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(
@@ -399,7 +420,11 @@ CHECKED_STATUS ReadQuery::DoPerform() {
   return Complete();
 }
 
-CHECKED_STATUS ReadQuery::DoPickReadTime(server::Clock* clock) {
+Status ReadQuery::DoPickReadTime(server::Clock* clock) {
+  MonoTime start_time;
+  if (read_time_wait_) {
+    start_time = MonoTime::Now();
+  }
   if (!read_time_) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
@@ -432,6 +457,10 @@ CHECKED_STATUS ReadQuery::DoPickReadTime(server::Clock* clock) {
              : VERIFY_RESULT(abstract_tablet_->SafeTime(
                    require_lease_, read_time_.read, context_.GetClientDeadline())));
   }
+  if (read_time_wait_) {
+    auto safe_time_wait = MonoTime::Now() - start_time;
+    read_time_wait_->Increment(safe_time_wait.ToMicroseconds());
+  }
   return Status::OK();
 }
 
@@ -441,7 +470,7 @@ bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
           req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX);
 }
 
-CHECKED_STATUS ReadQuery::Complete() {
+Status ReadQuery::Complete() {
   for (;;) {
     resp_->Clear();
     context_.ResetRpcSidecars();

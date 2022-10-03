@@ -23,6 +23,7 @@
  */
 
 #include "postgres.h"
+#include "pgstat.h"
 
 #include "miscadmin.h"
 #include "access/nbtree.h"
@@ -362,7 +363,18 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	ybcIndexCostEstimate(path, indexSelectivity, indexStartupCost, indexTotalCost);
+	/*
+	 * Information is lacking for hypothetical index in order for estimation
+	 * in YB to work.
+	 * So we skip hypothetical index.
+	 */
+	if (path->indexinfo->hypothetical)
+		return;
+	ybcIndexCostEstimate(root,
+						 path,
+						 indexSelectivity,
+						 indexStartupCost,
+						 indexTotalCost);
 }
 
 bytea *
@@ -397,7 +409,7 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	/* get the scan */
 	scan = RelationGetIndexScan(rel, nkeys, norderbys);
 	scan->opaque = NULL;
-
+	pgstat_count_index_scan(rel);
 	return scan;
 }
 
@@ -411,8 +423,10 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
-	                                 nscankeys, scankey, scan->yb_scan_plan);
+	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
+									 scan->xs_want_itup, nscankeys, scankey,
+									 scan->yb_scan_plan, scan->yb_rel_pushdown,
+									 scan->yb_idx_pushdown);
 	scan->opaque = ybScan;
 }
 

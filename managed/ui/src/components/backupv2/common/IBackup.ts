@@ -7,6 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { TableType } from '../../../redesign/helpers/dtos';
+import { OptionTypeBase } from 'react-select';
+
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
   COMPLETED = 'Completed',
@@ -29,18 +32,6 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
   Stopped: 'Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
-};
-
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
-}
-
-export const TABLE_TYPE_MAP: Record<TableType, string> = {
-  YQL_TABLE_TYPE: 'YCQL',
-  PGSQL_TABLE_TYPE: 'YSQL',
-  REDIS_TABLE_TYPE: 'REDIS'
 };
 
 export interface Keyspace_Table {
@@ -77,6 +68,7 @@ export interface IUniverse {
   name: string;
   universeDetails: {
     universePaused: boolean;
+    [key: string]: any;
   };
 }
 
@@ -102,6 +94,7 @@ export interface IStorageConfig {
   name: string;
   data: {
     BACKUP_LOCATION: string;
+    REGION_LOCATIONS: any[];
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;
@@ -113,9 +106,23 @@ export interface ITable {
   keySpace: string;
   tableUUID: string;
   tableType: BACKUP_API_TYPES;
+  isIndexTable: boolean;
 }
 
 export enum Backup_Options_Type {
   ALL = 'all',
   CUSTOM = 'custom'
 }
+
+export interface ThrottleParameters {
+  max_concurrent_uploads: number;
+  per_upload_num_objects: number;
+  max_concurrent_downloads: number;
+  per_download_num_objects: number;
+}
+
+interface IOptionType extends OptionTypeBase {
+  value: string;
+  label: string;
+}
+export type SELECT_VALUE_TYPE = IOptionType;

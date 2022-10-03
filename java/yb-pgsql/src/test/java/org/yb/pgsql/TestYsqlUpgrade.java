@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -33,10 +34,13 @@ import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -44,7 +48,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
-import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +56,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
+import org.yb.util.CatchingThread;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.google.common.collect.ImmutableMap;
@@ -78,7 +82,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String SHARED_ENTITY_PREFIX = "pg_yb_test_";
 
   private static final String CATALOG_VERSION_TABLE = "pg_yb_catalog_version";
-  private static final String MIGRATIONS_TABLE = "pg_yb_migration";
+  private static final String MIGRATIONS_TABLE      = "pg_yb_migration";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
   private static final long PLACEHOLDER_OID = 1234567890L;
@@ -90,7 +94,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private final String customDbName = SHARED_ENTITY_PREFIX + "sys_tables_db";
 
   private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
-  private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
+  private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS   = 60 * 1000;
 
   private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
       ImmutableMap.of(
@@ -108,20 +112,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Since shared relations aren't cleared between tests, we can't reuse names. */
   private String sharedRelName;
-
-  private final String createPgTablegroupTable =
-      "CREATE TABLE IF NOT EXISTS pg_catalog.pg_tablegroup (\n" +
-      "  grpname    name        NOT NULL,\n" +
-      "  grpowner   oid         NOT NULL,\n" +
-      "  grpacl     aclitem[],\n" +
-      "  grpoptions text[],\n" +
-      "  CONSTRAINT pg_tablegroup_oid_index PRIMARY KEY (oid ASC)\n" +
-      "    WITH (table_oid = 8001)\n" +
-      ") WITH (\n" +
-      "  oids = true,\n" +
-      "  table_oid = 8000,\n" +
-      "  row_type_oid = 8002\n" +
-      ")";
 
   @Rule
   public TestName name = new TestName();
@@ -751,60 +741,60 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotent() throws Exception {
-    final int lastHardcodedMigrationVersion = 8;
-
-    // Start with an early version of the db, apply migrations.
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
-    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
-         Statement stmt = conn.createStatement()) {
-      stmt.execute("CREATE DATABASE " + customDbName);
-    }
-    runMigrations();
 
-    // Ignore pg_yb_catalog_version because we bump current_version disregarding
-    // IF NOT EXISTS clause (whether the entity is actually created doesn't matter).
-    // For pg_yb_migration, verify that all migrations were applied.
-    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
-         Statement stmt = conn.createStatement()) {
-      SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
-      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
-        .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0);
-      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
-        .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1);
-      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+    upgradeCheckingIdempotency(false /* useSingleConnection */);
+  }
 
-      // Make sure the latest version is at least as big as the last hardcoded one (it will be
-      // greater if more migrations were introduced after YSQL upgrade is released).
-      assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
-      preSnapshot.catalog.remove(MIGRATIONS_TABLE);
-      preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+  /**
+   * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
+   * migrations.
+   * <p>
+   * Single-connection variant of {@code upgradeIsIdempotent} test, also ensures there's never too
+   * many connections opened.
+   */
+  @Test
+  public void upgradeIsIdempotentSingleConn() throws Exception {
+    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
 
-      executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
-      runMigrations();
+    // Ensures there's never more that one connection opened by an upgrade.
+    CatchingThread connCounter = new CatchingThread("Connection counter", () -> {
+      assertEquals(3, miniCluster.getNumTServers());
 
-      SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
-      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
-      assertEquals("Expected an entry for the last hardcoded migration"
-          + " and each migration past that!",
-          totalMigrations - lastHardcodedMigrationVersion + 1,
-          appliedMigrations.size());
-      assertEquals(
-          lastHardcodedMigrationVersion,
-          appliedMigrations
-              .get(0).getInt(0).intValue());
-      assertEquals(
-          latestMajorVersion,
-          appliedMigrations
-              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
-      assertEquals(
-          latestMinorVersion,
-          appliedMigrations
-              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1).intValue());
-      postSnapshot.catalog.remove(MIGRATIONS_TABLE);
-      postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+      String countOtherConnsSql = "SELECT COUNT(*) from pg_stat_activity"
+          + " WHERE backend_type = 'client backend'"
+          + " AND pid <> pg_backend_pid()";
 
-      assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
-    }
+      try (Connection conn1 = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt1 = conn1.createStatement();
+           Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+           Statement stmt2 = conn2.createStatement();
+           Connection conn3 = getConnectionBuilder().withTServer(2).connect();
+           Statement stmt3 = conn3.createStatement()) {
+        List<Statement> stmts = Arrays.asList(stmt1, stmt2, stmt3);
+
+        while (!Thread.interrupted()) {
+          long totalNumConns = 0;
+          for (int tserverIdx = 0; tserverIdx < 3; ++tserverIdx) {
+            long numConns = getSingleRow(stmts.get(tserverIdx), countOtherConnsSql).getLong(0);
+            LOG.info("Tserver #{} has {} connections", tserverIdx, numConns);
+            totalNumConns += numConns;
+          }
+
+          // We expect to have up to 3 other connections:
+          // * BasePgSQLTest#connection (always active).
+          // * An upgrade connection (picks an arbitrary tserver once, and connects/disconnects
+          //   to it during work).
+          // * Idempotency checking worker connection.
+          assertLessThanOrEqualTo(totalNumConns, 3L);
+          Thread.sleep(500);
+        }
+      }
+    });
+
+    connCounter.start();
+    upgradeCheckingIdempotency(true /* useSingleConnection */);
+    connCounter.finish();
   }
 
   /**
@@ -816,6 +806,20 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
+    final String createPgTablegroupTable =
+        "CREATE TABLE IF NOT EXISTS pg_catalog.pg_tablegroup (\n" +
+            "  grpname    name        NOT NULL,\n" +
+            "  grpowner   oid         NOT NULL,\n" +
+            "  grpacl     aclitem[],\n" +
+            "  grpoptions text[],\n" +
+            "  CONSTRAINT pg_tablegroup_oid_index PRIMARY KEY (oid ASC)\n" +
+            "    WITH (table_oid = 8001)\n" +
+            ") WITH (\n" +
+            "  oids = true,\n" +
+            "  table_oid = 8000,\n" +
+            "  row_type_oid = 8002\n" +
+            ")";
+
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
@@ -849,7 +853,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmt.execute("CREATE DATABASE " + customDbName);
     }
 
-    runMigrations();
+    runMigrations(false /* useSingleConnection */);
 
     final SysCatalogSnapshot postSnapshotCustom, postSnapshotTemplate1;
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
@@ -860,6 +864,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Statement stmt = conn.createStatement()) {
       postSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
+
+    assertYbbasectidIsConsistent("template1");
+    assertYbbasectidIsConsistent(customDbName);
 
     assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
     assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
@@ -874,7 +881,55 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   @Test
   public void migrationInGeoPartitionedSetup() throws Exception {
     setupGeoPartitioning();
-    runMigrations();
+    runMigrations(false /* useSingleConnection */);
+  }
+
+  /** Ensure migration filename comment makes sense. */
+  @Test
+  public void migrationFilenameComment() throws Exception {
+    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)(\\.\\d+)?__\\S+__\\S+.sql)$");
+    Pattern recordRe = Pattern.compile("^\\{ major => '(\\d+)', minor => '(\\d+)',");
+
+    File datFile = new File(
+        TestUtils.getBuildRootDir(), "postgres_build/src/include/catalog/pg_yb_migration.dat");
+    assertTrue(datFile + " does not exist", datFile.exists());
+
+    LineIterator it = FileUtils.lineIterator(datFile);
+    try {
+      String filename = null, commentMajor = null, commentMinor = null;
+      while (it.hasNext()) {
+        Matcher matcher = commentRe.matcher(it.nextLine());
+        if (matcher.find()) {
+          filename     = matcher.group(1);
+          commentMajor = matcher.group(2);
+          commentMinor = matcher.group(3) == null ? "0" : matcher.group(3);
+          break;
+        }
+      }
+      assertNotNull("Failed to find migration filename comment line", filename);
+
+      // Check that a file with that filename exists.
+      File migrationFile = new File(TestUtils.getBuildRootDir(),
+                                    "share/ysql_migrations/" + filename);
+      assertTrue("Migration file " + filename + " does not exist", migrationFile.exists());
+
+      // Get record version.  Record line comes right after comment line:
+      //         | # For better version control conflict detection, list latest migration filename
+      // comment | # here: V19__6560__pg_collation_icu_70.sql
+      // record  | { major => '19', minor => '0', name => '<baseline>', time_applied => '_null_' }
+      assertTrue("Expected line after filename comment line", it.hasNext());
+      String recordLine = it.nextLine();
+      Matcher matcher = recordRe.matcher(recordLine);
+      assertTrue(recordLine + " does not match regex " + recordRe, matcher.find());
+      String recordMajor = matcher.group(1);
+      String recordMinor = matcher.group(2);
+
+      // Check comment version matches record version.
+      assertEquals("Major version mismatch between comment and record:", commentMajor, recordMajor);
+      assertEquals("Minor version mismatch between comment and record:", commentMinor, recordMinor);
+    } finally {
+      it.close();
+    }
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */
@@ -892,6 +947,61 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   //
   // Helpers
   //
+
+  /** Helper for upgradeIsIdempotent test. */
+  public void upgradeCheckingIdempotency(boolean useSingleConnection) throws Exception {
+    final int lastHardcodedMigrationVersion = 8;
+    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE DATABASE " + customDbName);
+    }
+    runMigrations(useSingleConnection);
+
+    // Ignore pg_yb_catalog_version because we bump current_version disregarding
+    // IF NOT EXISTS clause (whether the entity is actually created doesn't matter).
+    // For pg_yb_migration, verify that all migrations were applied.
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
+      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0);
+      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+
+      // Make sure the latest version is at least as big as the last hardcoded one (it will be
+      // greater if more migrations were introduced after YSQL upgrade is released).
+      assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
+      preSnapshot.catalog.remove(MIGRATIONS_TABLE);
+      preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
+      runMigrations(useSingleConnection);
+
+      SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
+      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
+      assertEquals("Expected an entry for the last hardcoded migration"
+          + " and each migration past that!",
+          totalMigrations - lastHardcodedMigrationVersion + 1,
+          appliedMigrations.size());
+      assertEquals(
+          lastHardcodedMigrationVersion,
+          appliedMigrations
+              .get(0).getInt(0).intValue());
+      assertEquals(
+          latestMajorVersion,
+          appliedMigrations
+              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
+      assertEquals(
+          latestMinorVersion,
+          appliedMigrations
+              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1).intValue());
+      postSnapshot.catalog.remove(MIGRATIONS_TABLE);
+      postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
+    }
+  }
 
   /**
    * Assert that tables (represented by two instancs of {@link TableInfo}) are the same, minus
@@ -1249,7 +1359,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Whether this OID looks like it was auto-generated during initdb. */
   private boolean isSysGeneratedOid(Long oid) {
-    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+    return oid >= FIRST_BOOTSTRAP_OID && oid < FIRST_NORMAL_OID;
   }
 
   private void assertAllOidsAreSysGenerated(Statement stmt, String tableName) throws Exception {
@@ -1415,6 +1525,43 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     });
   }
 
+  /**
+   * In issue #12258 we found that index's ybbasectid referencing table's ybctid was broken for
+   * shared inserts (operations used to insert a row across all databases) and indexed tables
+   * without primary key.
+   * <p>
+   * This test ensures this is no longer the case.
+   */
+  private void assertYbbasectidIsConsistent(String databaseName) throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(databaseName).connect();
+         Statement stmt = conn.createStatement()) {
+      // pg_depend has no primary key, so we use it and its pg_depend_reference_index to ensure
+      // index consistency after upgrade.
+      String seqScanSql = "SELECT * FROM pg_depend";
+      assertFalse(isIndexScan(stmt, seqScanSql, "" /* should not use any index */));
+      List<Row> seqScanRows =
+          getRowList(stmt, seqScanSql)
+              .stream()
+              .filter(r -> r.getLong(3) == 1259L /* pg_class oid*/)
+              .filter(r -> r.getLong(4) >= FIRST_YB_OID && r.getLong(4) < FIRST_BOOTSTRAP_OID)
+              .sorted()
+              .collect(Collectors.toList());
+      assertFalse(seqScanRows.isEmpty());
+
+      // Without a fix for #12258, this query results in "DocKey(...) not found in indexed table".
+      String indexScanSql =
+          "SELECT * FROM pg_depend"
+              + " WHERE refclassid = 1259"
+              + " AND refobjid >= " + FIRST_YB_OID
+              + " AND refobjid < " + FIRST_BOOTSTRAP_OID;
+      assertTrue(isIndexScan(stmt, indexScanSql, "pg_depend_reference_index"));
+      List<Row> indexScanRows = getRowList(stmt, indexScanSql);
+      Collections.sort(indexScanRows);
+
+      assertEquals(seqScanRows, indexScanRows);
+    }
+  }
+
   /** Returns the deep copy with referenced OIDs replaced with entity names. */
   private List<Row> copyWithResolvedOids(
       String tableName,
@@ -1556,16 +1703,21 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     return copy;
   }
 
-  private void runMigrations() throws Exception {
-    // Set migrations timeout to 6 min, adjusted
-    long timeoutMs = BuildTypeUtil.adjustTimeout(360 * 1000);
-    List<String> lines = runProcess(
+  private void runMigrations(boolean useSingleConnection) throws Exception {
+    // Set upgrade timeout to 6 (10) minutes, adjusted.
+    // Single-connection upgrade takes longer because of new connection overhead.
+    long timeoutMs = BuildTypeUtil.adjustTimeout((useSingleConnection ? 10 : 6) * 60 * 1000);
+    List<String> command = new ArrayList<>(Arrays.asList(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",
         masterAddresses,
         "-timeout_ms",
         String.valueOf(timeoutMs),
-        "upgrade_ysql");
+        "upgrade_ysql"));
+    if (useSingleConnection) {
+      command.add("use_single_connection");
+    }
+    List<String> lines = runProcess(command);
     String joined = String.join("\n", lines);
     if (!joined.toLowerCase().contains("successfully upgraded")) {
       throw new IllegalStateException("Unexpected migrations result: " + joined);

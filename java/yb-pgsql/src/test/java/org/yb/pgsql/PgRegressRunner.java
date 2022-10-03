@@ -13,7 +13,7 @@
 package org.yb.pgsql;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -30,7 +30,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * A wrapper for running the pg_regress utility.
@@ -39,20 +38,13 @@ public class PgRegressRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(PgRegressRunner.class);
 
-  private File pgRegressInputDir;
-  private File pgRegressOutputDir;
-  private Process pgRegressProc;
-  private LogPrinter stdoutLogPrinter, stderrLogPrinter;
-  private String label;
-  private File regressionDiffsPath;
-
-  private int exitCode = -1;
-  private int pgRegressPid;
-
   private Set<String> failedTests = new ConcurrentSkipListSet<>();
 
+  private File pgRegressInputDir;
+  private File pgRegressOutputDir;
+  private File diffsFilePath;
+  private String label;
   private long maxRuntimeMillis;
-  private long startTimeMillis;
 
   public PgRegressRunner(File pgRegressInputDir, String schedule, long maxRuntimeMillis) {
     this.pgRegressInputDir = pgRegressInputDir;
@@ -61,20 +53,30 @@ public class PgRegressRunner {
     this.maxRuntimeMillis = maxRuntimeMillis;
 
     File testDir = new File(TestUtils.getBaseTmpDir(), "pgregress_output");
-    pgRegressOutputDir = new File(testDir, schedule);
-    regressionDiffsPath = new File(pgRegressOutputDir, "regression.diffs");
+    this.pgRegressOutputDir = new File(testDir, schedule);
+    this.diffsFilePath = new File(pgRegressOutputDir, "regression.diffs");
   }
 
-  private Pattern FAILED_TEST_LINE_RE =
-      Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED\\s*$");
+  /**
+   * Failed test line example:
+   *
+   * <pre>
+   * test yb_tablegroup                ... FAILED
+   * test yb_tablegroup_dml            ... FAILED (test process exited with exit code 2)
+   * </pre>
+   *
+   * (We don't care about the optional exit code suffix.)
+   */
+  private final Pattern failedTestLineRe =
+      Pattern.compile("^test\\s+([a-zA-Z0-9_-]+)\\s+[.]+\\s+FAILED");
 
-  private LogErrorListener createLogErrorListener() {
-    return new ExternalDaemonLogErrorListener("pg_regress with pid " + pgRegressPid) {
+  private LogErrorListener createLogErrorListener(int pid) {
+    return new ExternalDaemonLogErrorListener("pg_regress with pid " + pid) {
       @Override
       public void handleLine(String line) {
         super.handleLine(line);
-        Matcher matcher = FAILED_TEST_LINE_RE.matcher(line);
-        if (matcher.matches()) {
+        Matcher matcher = failedTestLineRe.matcher(line);
+        if (matcher.find()) {
           failedTests.add(matcher.group(1));
         }
       }
@@ -85,70 +87,64 @@ public class PgRegressRunner {
     return pgRegressOutputDir;
   }
 
-  public void start(ProcessBuilder procBuilder)
-        throws IOException, NoSuchFieldException, IllegalAccessException {
-    if (regressionDiffsPath.exists()) {
-      regressionDiffsPath.delete();
+  public void run(ProcessBuilder procBuilder) throws Exception {
+    if (diffsFilePath.exists()) {
+      diffsFilePath.delete();
     }
 
-    startTimeMillis = System.currentTimeMillis();
-    pgRegressProc = procBuilder.start();
-    pgRegressPid = ProcessUtil.pidOfProcess(pgRegressProc);
-    String logPrefix = "pg_regress|pid" + pgRegressPid;
-    stdoutLogPrinter = new LogPrinter(
-        pgRegressProc.getInputStream(),
-        logPrefix + "|stdout ",
-        createLogErrorListener());
-    stderrLogPrinter = new LogPrinter(
-        pgRegressProc.getErrorStream(),
-        logPrefix + "|stderr ",
-        createLogErrorListener());
-  }
+    long    startTimeMillis = System.currentTimeMillis();
+    Process pgRegressProc   = procBuilder.start();
+    int     pgRegressPid    = ProcessUtil.pidOfProcess(pgRegressProc);
+    String  logPrefix       = "pg_regress|pid" + pgRegressPid;
+    int     exitCode        = -1;
+    long    runtimeMillis;
 
-  public void stop() throws InterruptedException, IOException {
-    exitCode = pgRegressProc.waitFor();
-    long runtimeMillis = System.currentTimeMillis() - startTimeMillis;
-    stdoutLogPrinter.stop();
-    stderrLogPrinter.stop();
-    if (regressionDiffsPath.exists()) {
-      BufferedReader reader = new BufferedReader(new InputStreamReader(
-          new FileInputStream(regressionDiffsPath.getPath())));
-      String line;
-      StringBuilder diffs = new StringBuilder();
-      while ((line = reader.readLine()) != null) {
-        diffs.append(line);
-        diffs.append("\n");
+    try (LogPrinter stdoutLogPrinter =
+             new LogPrinter(pgRegressProc.getInputStream(), logPrefix + "|stdout ",
+                 createLogErrorListener(pgRegressPid));
+         LogPrinter stderrLogPrinter =
+             new LogPrinter(pgRegressProc.getErrorStream(), logPrefix + "|stderr ",
+                 createLogErrorListener(pgRegressPid))) {
+
+      exitCode = pgRegressProc.waitFor();
+      runtimeMillis = System.currentTimeMillis() - startTimeMillis;
+    } finally {
+      if (diffsFilePath.exists()) {
+        List<String> diffsLines = FileUtil.readLinesFrom(diffsFilePath);
+        String diffsContent = StringUtils.join(diffsLines.iterator(), "\n");
+        LOG.warn("Contents of {}:\n{}", diffsFilePath, diffsContent);
+      } else if (exitCode != 0) {
+        LOG.error("File does not exist: {}", diffsFilePath);
       }
-      LOG.warn("Contents of " + regressionDiffsPath + ":\n" + diffs);
-    } else if (exitCode != 0) {
-      LOG.info("File does not exist: " + regressionDiffsPath);
     }
 
     Set<String> sortedFailedTests = new TreeSet<>();
     sortedFailedTests.addAll(failedTests);
     if (!sortedFailedTests.isEmpty()) {
-      LOG.info("Failed tests: " + sortedFailedTests);
+      LOG.warn("Failed tests: {}", sortedFailedTests);
       for (String testName : sortedFailedTests) {
         File expectedFile = new File(new File(pgRegressOutputDir, "expected"), testName + ".out");
         File resultFile = new File(new File(pgRegressOutputDir, "results"), testName + ".out");
         if (!expectedFile.exists()) {
-          LOG.warn("Expected test output file " + expectedFile + " not found.");
+          LOG.warn("Expected test output file {} not found.", expectedFile);
           continue;
         }
         if (!resultFile.exists()) {
-          LOG.warn("Actual test output file " + resultFile + " not found.");
+          LOG.warn("Actual test output file {} not found.", resultFile);
           continue;
         }
-        LOG.warn("Side-by-side diff between expected output and actual output:\n" +
-            new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
+        LOG.warn("Side-by-side diff between expected output and actual output of {}:\n{}",
+            testName, new SideBySideDiff(expectedFile, resultFile).getSideBySideDiff());
       }
+    } else if (exitCode != 0) {
+      LOG.error("No failed tests detected!");
     }
 
     if (!ConfForTesting.isCI()) {
       final Path pgRegressOutputPath = Paths.get(pgRegressOutputDir.toString());
 
-      LOG.info("Copying test result files and generated SQL and expected output " +
-               pgRegressOutputPath + " back to " + pgRegressInputDir);
+      LOG.info("Copying test result files and generated SQL and expected output {} back to {}",
+          pgRegressOutputPath, pgRegressInputDir);
       Files.find(
           pgRegressOutputPath,
           Integer.MAX_VALUE,
@@ -160,11 +156,11 @@ public class PgRegressRunner {
             !relPathStr.startsWith("expected/")) {
           File srcFile = pathToCopy.toFile();
           File destFile = new File(pgRegressInputDir, relPathStr);
-          LOG.info("Copying file " + srcFile + " to " + destFile);
+          LOG.info("Copying file {} to {}", srcFile, destFile);
           try {
             FileUtils.copyFile(srcFile, destFile);
           } catch (IOException ex) {
-            LOG.warn("Failed copying file " + srcFile + " to " + destFile, ex);
+            LOG.error("Failed copying file " + srcFile + " to " + destFile, ex);
           }
         }
       });
@@ -188,8 +184,6 @@ public class PgRegressRunner {
                                "Max time = " + maxRuntimeMillis + " msecs.");
     }
 
-    LOG.info(String.format("Completed pg_regress (%s). Elapsed time = %d msecs",
-                           label, runtimeMillis));
+    LOG.info("Completed pg_regress ({}). Elapsed time = {} msecs", label, runtimeMillis);
   }
-
 }

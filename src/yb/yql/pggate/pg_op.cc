@@ -27,6 +27,7 @@
 #include "yb/docdb/primitive_value_util.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/util/scope_exit.h"
 
@@ -107,6 +108,15 @@ bool PrepareNextRequest(PgsqlReadOp* read_op) {
   if (res.has_backfill_spec()) {
     *req->mutable_backfill_spec() = std::move(*res.mutable_backfill_spec());
   }
+
+  // Limit is set lower than default if upper plan is estimated to consume no more than this
+  // number of rows. Here the operation fetches next page, so the estimation is proven incorrect.
+  // So resetting the limit to prevent excessive RPCs due to too small fetch size, if the estimation
+  // is too far from reality.
+  if (req->limit() < FLAGS_ysql_prefetch_limit) {
+    req->set_limit(FLAGS_ysql_prefetch_limit);
+  }
+
   return true;
 }
 
@@ -127,7 +137,7 @@ PgsqlReadOp::PgsqlReadOp(Arena* arena, const PgTableDesc& desc, bool is_region_l
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
 }
 
-CHECKED_STATUS PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
+Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
   return client::InitPartitionKey(
        table.schema(), table.partition_schema(), table.LastPartition(), &read_request_);
 }
@@ -149,7 +159,7 @@ PgsqlWriteOp::PgsqlWriteOp(Arena* arena, bool need_transaction, bool is_region_l
       need_transaction_(need_transaction) {
 }
 
-CHECKED_STATUS PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
+Status PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
   return client::InitPartitionKey(table.schema(), table.partition_schema(), &write_request_);
 }
 

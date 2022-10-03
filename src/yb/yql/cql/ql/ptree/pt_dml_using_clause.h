@@ -45,7 +45,7 @@ class PTDmlUsingClause: public TreeListNode<PTDmlUsingClauseElement> {
     return MCMakeShared<PTDmlUsingClause>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   const PTExprPtr& ttl_seconds() const;
 

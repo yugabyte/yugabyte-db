@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: cmd_reset
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `RESET` statement to restore the value of a run-time parameter to the de
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/reset_stmt.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/reset_stmt.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/reset_stmt.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/reset_stmt.diagram.md" %}}
   </div>
 </div>
 

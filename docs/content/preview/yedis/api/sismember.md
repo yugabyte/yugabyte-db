@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/sismember
   - /preview/api/yedis/sismember
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

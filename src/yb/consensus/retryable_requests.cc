@@ -34,7 +34,7 @@
 
 using namespace std::literals;
 
-DEFINE_int32(retryable_request_timeout_secs, 120,
+DEFINE_int32(retryable_request_timeout_secs, 660,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
 TAG_FLAG(retryable_request_timeout_secs, runtime);
 

@@ -1,15 +1,17 @@
 ---
-title: case study—using aggregate functions to demonstrate the "68–95–99.7" rule
-linkTitle: case study—percentile_cont() and the "68–95–99.7" rule
-headerTitle: Case study—using aggregate functions to demonstrate the "68–95–99.7" rule
+title: >
+  Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
+linkTitle: >
+  Case study: percentile_cont() and the "68–95–99.7" rule
+headerTitle: >
+  Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
 description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution.
 menu:
   preview:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study focuses on just one part of the rule:

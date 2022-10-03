@@ -413,3 +413,32 @@ SELECT ALL t4.c0 FROM t4 ORDER BY t4.c0 ASC;
 ------
  0.05
 (1 row)
+
+CREATE TEMP TABLE tempt (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON tempt (v1);
+INSERT INTO tempt VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO tempt VALUES (2, 2, 3);
+ERROR:  duplicate key value violates unique constraint "tempt_v1_idx"
+DETAIL:  Key (v1)=(2) already exists.
+SELECT * FROM tempt ORDER BY k;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  3
+ 4 |  5 |  6
+(2 rows)
+
+-- types in temp schema
+set search_path = pg_temp, public;
+create domain pg_temp.nonempty as text check (value <> '');
+-- function-syntax invocation of types matches rules for functions
+select nonempty('');
+ERROR:  function nonempty(unknown) does not exist
+LINE 1: select nonempty('');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+select pg_temp.nonempty('');
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+-- other syntax matches rules for tables
+select ''::nonempty;
+ERROR:  value for domain nonempty violates check constraint "nonempty_check"
+reset search_path;

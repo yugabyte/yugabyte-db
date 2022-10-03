@@ -8,8 +8,7 @@ menu:
     identifier: architecture-transactions-overview
     parent: architecture-acid-transactions
     weight: 1151
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Transactions and strong consistency are a fundamental requirement for any RDBMS. DocDB has been designed for strong consistency. It supports fully distributed ACID transactions across rows, multiple tablets and multiple nodes at any scale. Transactions can span across tables in DocDB.

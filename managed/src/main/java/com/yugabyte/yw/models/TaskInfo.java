@@ -199,7 +199,7 @@ public class TaskInfo extends Model {
     return taskState;
   }
 
-  boolean hasCompleted() {
+  public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
   }
 
@@ -374,6 +374,17 @@ public class TaskInfo extends Model {
         .eq("task_type", TaskType.DeleteBackup)
         .ne("task_state", State.Failure)
         .ne("task_state", State.Aborted)
+        .eq("details->>'customerUUID'", customerUUID.toString())
+        .eq("details->>'backupUUID'", backupUUID.toString())
+        .findList();
+  }
+
+  public static List<TaskInfo> findIncompleteDeleteBackupTasks(UUID customerUUID, UUID backupUUID) {
+    return TaskInfo.find
+        .query()
+        .where()
+        .in("task_type", TaskType.DeleteBackup, TaskType.DeleteBackupYb)
+        .in("task_state", INCOMPLETE_STATES)
         .eq("details->>'customerUUID'", customerUUID.toString())
         .eq("details->>'backupUUID'", backupUUID.toString())
         .findList();

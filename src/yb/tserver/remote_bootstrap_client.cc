@@ -197,6 +197,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& met
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
+                                    const ServerRegistrationPB& tablet_leader_conn_info,
                                     RaftGroupMetadataPtr* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
@@ -211,6 +212,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
+  // if tablet_leader_conn_info is populated, then propagate it through
+  // the BeginRemoteBootstrapSessionRequestPB req.
+  if (tablet_leader_conn_info.has_cloud_info()) {
+    *req.mutable_tablet_leader_conn_info() = tablet_leader_conn_info;
+  }
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(
@@ -346,13 +352,17 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
-    auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
-        .fs_manager = &fs_manager(),
-        .table_info = table_info,
-        .raft_group_id = tablet_id_,
-        .partition = partition,
-        .tablet_data_state = tablet::TABLET_DATA_COPYING,
-        .colocated = colocated }, data_root_dir, wal_root_dir);
+    auto create_result = RaftGroupMetadata::CreateNew(
+        tablet::RaftGroupMetadataData {
+            .fs_manager = &fs_manager(),
+            .table_info = table_info,
+            .raft_group_id = tablet_id_,
+            .partition = partition,
+            .tablet_data_state = tablet::TABLET_DATA_COPYING,
+            .colocated = colocated,
+            .snapshot_schedules = {},
+        },
+        data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
       ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
     }
@@ -538,12 +548,12 @@ Status RemoteBootstrapClient::Remove() {
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
 
-  RemoveSessionRequestPB req;
+  RemoveRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id());
-  RemoveSessionResponsePB resp;
+  RemoveRemoteBootstrapSessionResponsePB resp;
 
   LOG_WITH_PREFIX(INFO) << "Removing remote bootstrap session " << session_id();
-  const auto status = proxy_->RemoveSession(req, &resp, &controller);
+  const auto status = proxy_->RemoveRemoteBootstrapSession(req, &resp, &controller);
   if (status.ok()) {
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id() << " removed successfully";
     return Status::OK();
@@ -696,10 +706,8 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
     }
   });
 
-  WritableFileOptions opts;
-  opts.sync_on_close = true;
   std::unique_ptr<WritableFile> writer;
-  RETURN_NOT_OK_PREPEND(env().NewWritableFile(opts, temp_dest_path, &writer),
+  RETURN_NOT_OK_PREPEND(env().NewWritableFile(temp_dest_path, &writer),
                         "Unable to open file for writing");
 
   auto start = MonoTime::Now();

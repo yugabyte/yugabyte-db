@@ -8,8 +8,7 @@ menu:
     identifier: extract
     parent: miscellaneous
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The function _extract()_, and the alternative syntax that the function _date_part()_ supports for the same semantics, return a _double precision_ value corresponding to a nominated so-called _field_, like _year_ or _second_, from the input _date-time_ value.
@@ -83,7 +82,7 @@ Three rows were removed manually:
 The remaining rows were re-ordered, and blank lines were added, to improve the readability.
 
 {{< tip title="Avoid using the 'abstime' and 'reltime' fields." >}}
-The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a> says this:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) says this:
 
 > The data types _abstime_ and _reltime_ are lower precision types which are used internally. Don't use these types in applications; these internal types might disappear in a future release.
 {{< /tip >}}

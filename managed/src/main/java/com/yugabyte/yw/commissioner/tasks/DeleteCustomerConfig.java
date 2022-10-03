@@ -16,15 +16,16 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -85,43 +86,15 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
           List<String> backupLocations;
           switch (customerConfig.name) {
             case S3:
-              for (Backup backup : backupList) {
-                try {
-                  backupLocations = backupUtil.getBackupLocations(backup);
-                  AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-                  AWSUtil.deleteStorage(customerConfig.data, backupLocations);
-                } catch (Exception e) {
-                  log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
-                  backup.transitionState(Backup.BackupState.FailedToDelete);
-                } finally {
-                  if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.delete();
-                  }
-                }
-              }
-              break;
             case GCS:
-              for (Backup backup : backupList) {
-                try {
-                  backupLocations = backupUtil.getBackupLocations(backup);
-                  GCPUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-                  GCPUtil.deleteStorage(customerConfig.data, backupLocations);
-                } catch (Exception e) {
-                  log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
-                  backup.transitionState(Backup.BackupState.FailedToDelete);
-                } finally {
-                  if (backup.state != Backup.BackupState.FailedToDelete) {
-                    backup.delete();
-                  }
-                }
-              }
-              break;
             case AZ:
               for (Backup backup : backupList) {
                 try {
+                  CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
                   backupLocations = backupUtil.getBackupLocations(backup);
-                  AZUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-                  AZUtil.deleteStorage(customerConfig.data, backupLocations);
+                  cloudUtil.deleteKeyIfExists(
+                      customerConfig.getDataObject(), backupLocations.get(0));
+                  cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
                 } catch (Exception e) {
                   log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
                   backup.transitionState(Backup.BackupState.FailedToDelete);

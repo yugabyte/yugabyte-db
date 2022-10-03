@@ -187,7 +187,8 @@ CreateEventTrigger(CreateEventTrigStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create event trigger \"%s\"",
 						stmt->trigname),
-				 errhint("Must be superuser to create an event trigger.")));
+				 errhint("Must be superuser or a member of the yb_db_admin "
+				 		 "role to create an event trigger.")));
 
 	/* Validate event name. */
 	if (strcmp(stmt->eventname, "ddl_command_start") != 0 &&
@@ -620,7 +621,8 @@ AlterEventTriggerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to change owner of event trigger \"%s\"",
 						NameStr(form->evtname)),
-				 errhint("The owner of an event trigger must be a superuser.")));
+				 errhint("The owner of an event trigger must be a superuser "
+				 		 "or a member of the yb_db_admin role.")));
 
 	form->evtowner = newOwnerId;
 	CatalogTupleUpdate(rel, &tup->t_self, tup);

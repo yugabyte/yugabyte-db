@@ -364,13 +364,16 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
     ASSERT_TRUE(s.IsTimedOut());
   }
 
-  // Verify that the Schema is the old one
+  LOG(INFO) << "Original " << schema_.ToString();
+  // Verify that the Schema is the new one.
   YBSchema schema;
   PartitionSchema partition_schema;
   bool alter_in_progress = false;
   string table_id;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
-  ASSERT_TRUE(schema_.Equals(schema));
+  LOG(INFO) << "Got " << schema.ToString();
+  ASSERT_EQ(3, schema.num_columns()); // New schema.
+
   ASSERT_OK(client_->IsAlterTableInProgress(kTableName, table_id, &alter_in_progress));
   ASSERT_TRUE(alter_in_progress);
 
@@ -481,11 +484,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
 }
 
 std::vector<string> AlterTableTest::ScanToStrings() {
-  client::TableHandle table;
-  EXPECT_OK(table.Open(kTableName, client_.get()));
-  auto result = ScanTableToStrings(table);
-  std::sort(result.begin(), result.end());
-  return result;
+  return ScanTableToStrings(kTableName, client_.get());
 }
 
 // Verify that the 'num_rows' starting with 'start_row' fit the given pattern.

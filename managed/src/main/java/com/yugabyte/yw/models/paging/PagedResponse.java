@@ -11,4 +11,12 @@ public class PagedResponse<E> {
   boolean hasNext;
   boolean hasPrev;
   Integer totalCount;
+
+  public <D, T extends PagedResponse<D>> T setData(List<D> data, T response) {
+    response.setEntities(data);
+    response.setHasNext(hasNext);
+    response.setHasPrev(hasPrev);
+    response.setTotalCount(totalCount);
+    return response;
+  }
 }

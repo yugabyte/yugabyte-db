@@ -87,7 +87,7 @@ namespace docdb {
 namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
-CHECKED_STATUS ApplyIntent(RefCntPrefix key,
+Status ApplyIntent(RefCntPrefix key,
                            const IntentTypeSet intent_types,
                            LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
@@ -155,7 +155,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
                              doc_path.as_slice().ToDebugHexString());
       }
-      // We will acquire strong lock on entire doc_path, so remove it from list of weak locks.
+      // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
       // Acquire weak lock on empty key for transactional tables,
@@ -340,13 +340,13 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
 
 namespace {
 
-CHECKED_STATUS NotEnoughBytes(size_t present, size_t required, const Slice& full) {
+Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
   return STATUS_FORMAT(
       Corruption, "Not enough bytes in external intents $0 while $1 expected, full: $2",
       present, required, full.ToDebugHexString());
 }
 
-CHECKED_STATUS PrepareApplyExternalIntentsBatch(
+Status PrepareApplyExternalIntentsBatch(
     HybridTime commit_ht,
     const Slice& original_input_value,
     rocksdb::WriteBatch* regular_batch,
@@ -389,7 +389,7 @@ CHECKED_STATUS PrepareApplyExternalIntentsBatch(
 
 // Reads all stored external intents for provided transactions and prepares batches that will apply
 // them into regular db and remove from intents db.
-CHECKED_STATUS PrepareApplyExternalIntents(
+Status PrepareApplyExternalIntents(
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db,
@@ -458,13 +458,23 @@ ExternalTxnApplyState ProcessApplyExternalTransactions(const KeyValueWriteBatchP
 
 } // namespace
 
+IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  return map_[txn_id]++;
+}
+
+void ExternalTxnIntentsState::EraseEntry(const TransactionId& txn_id) {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  map_.erase(txn_id);
+}
+
 bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
-    int write_id,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch) {
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txns_intents_state) {
   DocHybridTimeBuffer doc_ht_buffer;
   DocHybridTimeWordBuffer inverted_doc_ht_buffer;
 
@@ -484,13 +494,6 @@ bool AddExternalPairToWriteBatch(
   // DocHybridTime encoding) that helps disambiguate between different updates to the
   // same key (row/column) within a transaction. We set it based on the position of the write
   // operation in its write batch.
-
-  hybrid_time = kv_pair.has_external_hybrid_time() ?
-      HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
-  std::array<Slice, 2> key_parts = {{
-      Slice(kv_pair.key()),
-      doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
-  }};
   Slice key_value = kv_pair.value();
   // This entry contains external intents.
   Slice key = kv_pair.key();
@@ -501,8 +504,23 @@ bool AddExternalPairToWriteBatch(
     // The same write operation could contain external intents and instruct us to apply them.
     CHECK_OK(PrepareApplyExternalIntentsBatch(
         it->second.commit_ht, key_value, regular_write_batch, &it->second.write_id));
+    if (external_txns_intents_state) {
+      external_txns_intents_state->EraseEntry(txn_id);
+    }
     return false;
   }
+
+  int write_id = 0;
+  if (external_txns_intents_state) {
+    write_id = external_txns_intents_state->GetWriteIdAndIncrement(txn_id);
+  }
+
+  hybrid_time = kv_pair.has_external_hybrid_time() ?
+      HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
+  std::array<Slice, 2> key_parts = {{
+      Slice(kv_pair.key()),
+      doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
+  }};
   key_parts[1] = InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
   constexpr size_t kNumValueParts = 1;
   intents_write_batch->Put(key_parts, { &key_value, kNumValueParts });
@@ -532,7 +550,8 @@ bool PrepareExternalWriteBatch(
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch) {
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txns_intents_state) {
   CHECK(put_batch.read_pairs().empty());
 
   auto apply_external_transactions = ProcessApplyExternalTransactions(put_batch);
@@ -541,10 +560,10 @@ bool PrepareExternalWriteBatch(
       &apply_external_transactions, regular_write_batch, intents_db, intents_write_batch));
 
   bool has_non_external_kvs = false;
-  for (int write_id = 0; write_id < put_batch.write_pairs_size(); ++write_id) {
+  for (const auto& write_pair : put_batch.write_pairs()) {
     has_non_external_kvs = AddExternalPairToWriteBatch(
-        put_batch.write_pairs(write_id), hybrid_time, write_id, &apply_external_transactions,
-        regular_write_batch, intents_write_batch) || has_non_external_kvs;
+        write_pair, hybrid_time, &apply_external_transactions, regular_write_batch,
+        intents_write_batch, external_txns_intents_state) || has_non_external_kvs;
   }
   return has_non_external_kvs;
 }
@@ -809,13 +828,15 @@ Result<ApplyTransactionState> GetIntentsBatch(
           return ApplyTransactionState{
               .key = key_slice.ToBuffer(),
               .write_id = write_id,
+              .aborted = {},
           };
         }
         {
           intent_iter.Seek(reverse_index_value);
           if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
-                        << " for " << key_slice.ToDebugHexString();
+                         << " for " << key_slice.ToDebugHexString()
+                         << ", transactionId: " << transaction_id;
             return ApplyTransactionState{};
           }
 
@@ -837,15 +858,18 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 decoded_value.body,
             }};
 
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
+
             IntentKeyValueForCDC intent_metadata;
             intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
             intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
+            intent_metadata.intent_ht = doc_ht;
             (*key_value_intents).push_back(intent_metadata);
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
-                      << (*key_value_intents).size();
+                    << (*key_value_intents).size();
             ++write_id;
           }
         }

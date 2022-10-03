@@ -47,7 +47,7 @@ class PTBcall : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Access API for arguments.
   const MCList<PTExprPtr>& args() const {
@@ -78,11 +78,11 @@ class PTBcall : public PTExpr {
   // BCall result set column type in QL format.
   void rscol_type_PB(QLTypePB *pb_type) const override;
 
-  virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
+  virtual Status CheckOperator(SemContext *sem_context) override;
 
-  virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const override;
+  virtual Status CheckCounterUpdateSupport(SemContext *sem_context) const override;
 
-  CHECKED_STATUS CheckOperatorAfterArgAnalyze(SemContext *sem_context);
+  Status CheckOperatorAfterArgAnalyze(SemContext *sem_context);
 
   void CollectReferencedIndexColnames(MCSet<std::string> *col_names) const override;
 
@@ -134,10 +134,10 @@ class PTToken : public PTBcall {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Check if token call is well formed before analyzing it
-  virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
+  virtual Status CheckOperator(SemContext *sem_context) override;
 
   bool is_partition_key_ref() const {
     return is_partition_key_ref_;

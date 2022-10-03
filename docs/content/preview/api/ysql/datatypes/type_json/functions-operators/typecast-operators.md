@@ -8,15 +8,14 @@ menu:
     identifier: typecast-operators
     parent: json-functions-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Typecast between any pair of `text`, `json`, and `jsonb` values in both directions.
 
 **Signature for the `jsonb` overload of `::text`:**
 
-```
+```ebnf
 input value:       jsonb
 return value:      text
 ```
@@ -27,7 +26,7 @@ you can use the `::json` operator on both a `jsonb` value and a `text` value.
 
 Consider this round trip:
 
-```
+```ebnf
 new_rfc_7159_text := (orig_rfc_7159_text::jsonb)::text
 ```
 
@@ -58,7 +57,7 @@ $body$;
 
 In contrast, this:
 
-```
+```ebnf
 new_rfc_7159_text := (orig_rfc_7159_text::json)::text
 ```
 
@@ -112,7 +111,7 @@ The `jsonb` representation is semantics-aware, and so it applies the "rightmost 
 
 This last example shows that the round trip:
 
-```
+```ebnf
 new_json_value := (json_value::jsonb)::json;
 ```
 

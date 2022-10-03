@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-object-agg
     parent: json-functions-operators
     weight: 155
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** This is an aggregate function. (Aggregate functions compute a single result from a `SETOF` input values.) It creates a JSON _object_ whose values are the JSON representations of the aggregated SQL values. It is most useful when these to-be-aggregated values are _"row"_ type values with two fields. The first represents the _key_ and the second represents the _value_ of the intended JSON _object_'s _key-value_ pair.
@@ -21,7 +20,8 @@ input value:       anyelement
 return value:      jsonb
 ```
 
-**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance. (The `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the key_.
+**Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance. (The `::text` typecast of a `jsonb` _object_ uses the convention of ordering the pairs alphabetically by the _key_.
+
 ```plpgsql
 do $body$
 declare
@@ -51,7 +51,7 @@ select ('{"f2": 42, "f7": 7, "f2": null}'::jsonb)::text;
 ```
 It shows this:
 ```
-         text          
+         text
 -----------------------
  {"f2": null, "f7": 7}
 ```

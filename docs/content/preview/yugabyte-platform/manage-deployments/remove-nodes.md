@@ -6,12 +6,11 @@ description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 aliases:
   - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:

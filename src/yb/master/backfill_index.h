@@ -109,11 +109,11 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
                 std::vector<IndexInfoPB> indexes,
                 const scoped_refptr<NamespaceInfo> &ns_info);
 
-  void Launch();
+  Status Launch();
 
   Status UpdateSafeTime(const Status& s, HybridTime ht);
 
-  void Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
+  Status Done(const Status& s, const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return master_; }
 
@@ -155,36 +155,40 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
  private:
-  void LaunchComputeSafeTimeForRead();
-  void LaunchBackfill();
+  void LaunchBackfillOrAbort();
+  Status WaitForTabletSplitting();
+  Status DoLaunchBackfill();
+  Status LaunchComputeSafeTimeForRead();
+  Status DoBackfill();
 
-  CHECKED_STATUS MarkAllIndexesAsFailed();
-  CHECKED_STATUS MarkAllIndexesAsSuccess();
+  Status MarkAllIndexesAsFailed();
+  Status MarkAllIndexesAsSuccess();
 
-  CHECKED_STATUS MarkIndexesAsFailed(
+  Status MarkIndexesAsFailed(
       const std::unordered_set<TableId>& indexes, const std::string& message);
-  CHECKED_STATUS MarkIndexesAsDesired(
+  Status MarkIndexesAsDesired(
       const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
       const string message);
 
-  CHECKED_STATUS AlterTableStateToAbort();
-  CHECKED_STATUS AlterTableStateToSuccess();
+  Status AlterTableStateToAbort();
+  Status AlterTableStateToSuccess();
 
-  void CheckIfDone();
-  CHECKED_STATUS UpdateIndexPermissionsForIndexes();
-  CHECKED_STATUS ClearCheckpointStateInTablets();
+  Status Abort();
+  Status CheckIfDone();
+  Status UpdateIndexPermissionsForIndexes();
+  Status ClearCheckpointStateInTablets();
 
   // We want to prevent major compactions from garbage collecting delete markers
   // on an index table, until the backfill process is complete.
   // This API is used at the end of a successful backfill to enable major compactions
   // to gc delete markers on an index table.
-  CHECKED_STATUS AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
+  Status AllowCompactionsToGCDeleteMarkers(const TableId& index_table_id);
 
   // Send the "backfill done request" to all tablets of the specified table.
-  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+  Status SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TableInfo> &index_table);
   // Send the "backfill done request" to the specified tablet.
-  CHECKED_STATUS SendRpcToAllowCompactionsToGCDeleteMarkers(
+  Status SendRpcToAllowCompactionsToGCDeleteMarkers(
       const scoped_refptr<TabletInfo> &index_table_tablet, const std::string &table_id);
 
   Master* master_;
@@ -215,7 +219,9 @@ class BackfillTableJob : public server::MonitoredTask {
         backfill_table_(backfill_table),
         requested_index_names_(backfill_table_->requested_index_names()) {}
 
-  Type type() const override { return BACKFILL_TABLE; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTable;
+  }
 
   std::string type_name() const override { return "Backfill Table"; }
 
@@ -254,10 +260,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   BackfillTablet(
       std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet);
 
-  void Launch() { LaunchNextChunkOrDone(); }
+  Status Launch() { return LaunchNextChunkOrDone(); }
 
-  void LaunchNextChunkOrDone();
-  void Done(
+  Status LaunchNextChunkOrDone();
+  Status Done(
       const Status& status,
       const boost::optional<string>& backfilled_until,
       const uint64_t number_rows_processed,
@@ -292,7 +298,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
 
  private:
-  CHECKED_STATUS UpdateBackfilledUntil(
+  Status UpdateBackfilledUntil(
       const string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
@@ -315,16 +321,19 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
       HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
-            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
+            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get(),
+            /* async_task_throttler */ nullptr),
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
-  void Launch();
+  Status Launch();
 
-  Type type() const override { return ASYNC_GET_SAFE_TIME; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kGetSafeTime;
+  }
 
   std::string type_name() const override { return "Get SafeTime for Tablet"; }
 
@@ -357,9 +366,11 @@ class BackfillChunk : public RetryingTSRpcTask {
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                 const std::string& start_key);
 
-  void Launch();
+  Status Launch();
 
-  Type type() const override { return ASYNC_BACKFILL_TABLET_CHUNK; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTabletChunk;
+  }
 
   std::string type_name() const override { return "Backfill Index Table"; }
 

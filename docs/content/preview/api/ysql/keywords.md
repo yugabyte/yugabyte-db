@@ -9,11 +9,10 @@ menu:
   preview:
     identifier: api-ysql-keywords
     parent: api-ysql
-    weight: 4500
+    weight: 500
 aliases:
   - /preview/api/ysql/keywords
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 | Keywords | Usage | Exceptions |

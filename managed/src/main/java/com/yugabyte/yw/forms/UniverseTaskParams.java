@@ -3,18 +3,24 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class UniverseTaskParams extends AbstractTaskParams {
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
+
+  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
+  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {
@@ -35,6 +41,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
     @ApiModelProperty(value = "Tablet server RPC port")
     public int tserverRpcPort;
+
+    @ApiModelProperty(value = "Yb controller HTTP port")
+    public int ybControllerHttpPort;
+
+    @ApiModelProperty(value = "Yb controller RPC port")
+    public int ybControllerrRpcPort;
 
     @ApiModelProperty(value = "Redis HTTP port")
     public int redisServerHttpPort;
@@ -71,6 +83,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.masterRpcPort = node.masterRpcPort;
       portsObj.tserverHttpPort = node.tserverHttpPort;
       portsObj.tserverRpcPort = node.tserverRpcPort;
+      portsObj.ybControllerHttpPort = node.ybControllerHttpPort;
+      portsObj.ybControllerrRpcPort = node.ybControllerRpcPort;
       portsObj.redisServerHttpPort = node.redisServerHttpPort;
       portsObj.redisServerRpcPort = node.redisServerRpcPort;
       portsObj.yqlServerHttpPort = node.yqlServerHttpPort;
@@ -87,6 +101,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.masterRpcPort = ports.masterRpcPort;
       node.tserverHttpPort = ports.tserverHttpPort;
       node.tserverRpcPort = ports.tserverRpcPort;
+      node.ybControllerHttpPort = ports.ybControllerHttpPort;
+      node.ybControllerRpcPort = ports.ybControllerrRpcPort;
       node.redisServerHttpPort = ports.redisServerHttpPort;
       node.redisServerRpcPort = ports.redisServerRpcPort;
       node.yqlServerHttpPort = ports.yqlServerHttpPort;
@@ -104,30 +120,40 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
-  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getTargetXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getTargetXClusterConfigs() {
     if (universeUUID == null) {
       return new ArrayList<>();
     }
-    return new ArrayList<>(
-        XClusterConfig.getByTargetUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getByTargetUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
-  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getSourceXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getSourceXClusterConfigs() {
     if (universeUUID == null) {
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
-    return new ArrayList<>(
-        XClusterConfig.getBySourceUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getBySourceUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
   // Which user to run the node exporter service on nodes with
@@ -145,6 +171,14 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Previous version used for task info.
   @ApiModelProperty(value = "Previous software version")
   public String ybPrevSoftwareVersion;
+
+  @ApiModelProperty public boolean enableYbc = false;
+
+  @ApiModelProperty public String ybcSoftwareVersion = null;
+
+  @ApiModelProperty public boolean installYbc = false;
+
+  @ApiModelProperty public boolean ybcInstalled = false;
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
@@ -178,13 +212,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Whether this task has been tried before or not. Awkward naming because we cannot use
   // `isRetry` due to play reading the "is" prefix differently.
   @ApiModelProperty(value = "Whether this task has been tried before")
+  @Deprecated
   public boolean firstTry = true;
 
-  // Previous task UUID for a retry.
-  @ApiModelProperty(value = "Previous task UUID only if this task is a retry")
-  public UUID previousTaskUUID;
-
-  public static boolean isFirstTryForTask(UniverseTaskParams params) {
-    return params.firstTry && params.previousTaskUUID == null;
-  }
+  // The user that created the task
+  public Users creatingUser;
 }

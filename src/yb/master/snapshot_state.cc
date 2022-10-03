@@ -113,12 +113,15 @@ std::string SnapshotState::ToString() const {
       InitialStateName(), tablets());
 }
 
-Status SnapshotState::ToPB(SnapshotInfoPB* out) {
+Status SnapshotState::ToPB(
+    SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) {
   out->set_id(id_.data(), id_.size());
-  return ToEntryPB(out->mutable_entry(), ForClient::kTrue);
+  return ToEntryPB(out->mutable_entry(), ForClient::kTrue, options);
 }
 
-Status SnapshotState::ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client) {
+Status SnapshotState::ToEntryPB(
+    SysSnapshotEntryPB* out, ForClient for_client,
+    ListSnapshotsDetailOptionsPB options) {
   out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   out->set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
   if (previous_snapshot_hybrid_time_) {
@@ -126,8 +129,14 @@ Status SnapshotState::ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client) {
   }
 
   TabletsToPB(out->mutable_tablet_snapshots());
-
-  *out->mutable_entries() = entries_.entries();
+  for (const auto& entry : entries_.entries()) {
+    if ((entry.type() == SysRowEntryType::NAMESPACE && options.show_namespace_details()) ||
+        (entry.type() == SysRowEntryType::UDTYPE && options.show_udtype_details()) ||
+        (entry.type() == SysRowEntryType::TABLE && options.show_table_details()) ||
+        (entry.type() == SysRowEntryType::TABLET && options.show_tablet_details())) {
+      *out->add_entries() = entry;
+    }
+  }
 
   if (schedule_id_) {
     out->set_schedule_id(schedule_id_.data(), schedule_id_.size());
@@ -146,7 +155,7 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   faststring value;
   value.push_back(docdb::ValueEntryTypeAsChar::kString);
   SysSnapshotEntryPB entry;
-  RETURN_NOT_OK(ToEntryPB(&entry, ForClient::kFalse));
+  RETURN_NOT_OK(ToEntryPB(&entry, ForClient::kFalse, ListSnapshotsDetailOptionsPB()));
   RETURN_NOT_OK(pb_util::AppendToString(entry, &value));
   pair->set_value(value.data(), value.size());
   return Status::OK();

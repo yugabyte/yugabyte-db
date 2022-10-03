@@ -94,6 +94,7 @@ import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Deprecated
 public class UpgradeUniverseTest extends CommissionerBaseTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
@@ -956,7 +957,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     String updateQuery =
         "INSERT INTO instance_type ("
             + "provider_uuid, instance_type_code, active, num_cores, mem_size_gb,"
-            + "instance_type_details_json )"
+            + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
     SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
@@ -1163,6 +1164,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
           userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
+          userIntent.provider = defaultProvider.uuid.toString();
 
           PlacementInfo pi = primaryCluster.placementInfo;
           PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);

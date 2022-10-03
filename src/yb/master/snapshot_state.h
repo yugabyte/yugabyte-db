@@ -19,6 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -92,10 +93,15 @@ class SnapshotState : public StateWithTablets {
       const tablet::SnapshotOperation& operation) const;
 
   std::string ToString() const;
-  CHECKED_STATUS ToPB(SnapshotInfoPB* out);
-  CHECKED_STATUS ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
-  CHECKED_STATUS TryStartDelete();
+  // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
+  // Pass `nullopt` to serialize all entry types.
+  Status ToPB(
+      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options);
+  Status ToEntryPB(
+      SysSnapshotEntryPB* out, ForClient for_client,
+      ListSnapshotsDetailOptionsPB options);
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
+  Status TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
@@ -104,7 +110,7 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override;
-  CHECKED_STATUS CheckDoneStatus(const Status& status) override;
+  Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;

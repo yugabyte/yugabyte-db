@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/type_frozen
   - /preview/api/ycql/type_frozen
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

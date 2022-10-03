@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_delete
   - /preview/api/ycql/ddl_delete
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

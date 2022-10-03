@@ -12,6 +12,7 @@ menu:
     identifier: authorization
     parent: secure
     weight: 722
+type: indexpage
 ---
 
 <div class="row">

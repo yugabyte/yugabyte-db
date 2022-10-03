@@ -3,11 +3,12 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +23,8 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -270,6 +273,27 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(false));
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareUpgradeNoSystemCatalogUpgrade() {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.upgradeSystemCatalog = false;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    List<TaskType> expectedTasks = new ArrayList<>(UPGRADE_TASK_SEQUENCE);
+    expectedTasks.remove(TaskType.RunYsqlUpgrade);
+    assertTaskSequence(subTasksByPosition, expectedTasks, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
   }
 }

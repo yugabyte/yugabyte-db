@@ -10,8 +10,7 @@ menu:
     identifier: large-datasets-2-ysql
     parent: benchmark
     weight: 7
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

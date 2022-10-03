@@ -14,6 +14,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -40,13 +45,12 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -73,7 +77,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private String exampleStreamID1;
   private String exampleTableID2;
   private String exampleStreamID2;
-  private HashSet<String> exampleTables;
+  private Set<String> exampleTables;
   private HashMap<String, String> exampleTablesAndStreamIDs;
   private ObjectNode createRequest;
   private UUID taskUUID;
@@ -170,7 +174,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private void setupMockMetricQueryHelperResponse() {
     // Note: This is completely fake, unlike the real metric response
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
-    when(mockMetricQueryHelper.query(any(), any(), any())).thenReturn(fakeMetricResponse);
+    doReturn(fakeMetricResponse)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   private void validateGetXClusterResponse(
@@ -189,7 +195,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     Iterator<JsonNode> i = actual.get("tables").elements();
     while (i.hasNext()) {
-      XClusterTableConfig tableConfig = new XClusterTableConfig(i.next().asText());
+      XClusterTableConfig tableConfig =
+          new XClusterTableConfig(actualXClusterConfig, i.next().asText());
       actualXClusterConfig.tables.add(tableConfig);
     }
 
@@ -242,14 +249,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
     assertEquals(xClusterConfig.name, configName);
-    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Init);
-    assertEquals(
-        xClusterConfig
-            .tables
-            .stream()
-            .map(XClusterTableConfig::getTableID)
-            .collect(Collectors.toSet()),
-        exampleTables);
+    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Initialized);
+    assertEquals(xClusterConfig.getTables(), exampleTables);
 
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", taskUUID.toString());
@@ -261,7 +262,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
@@ -453,7 +454,13 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testGetUsesStreamIDCache() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
-    xClusterConfig.setTables(exampleTablesAndStreamIDs);
+    // Set streamIds.
+    exampleTables.forEach(
+        tableId ->
+            xClusterConfig
+                .maybeGetTableById(tableId)
+                .ifPresent(
+                    tableConfig -> tableConfig.streamId = exampleTablesAndStreamIDs.get(tableId)));
 
     setupMockMetricQueryHelperResponse();
 
@@ -518,11 +525,18 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testGetMetricFailure() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
-    xClusterConfig.setTables(exampleTablesAndStreamIDs);
+    // Set streamIds.
+    exampleTables.forEach(
+        tableId ->
+            xClusterConfig
+                .maybeGetTableById(tableId)
+                .ifPresent(
+                    tableConfig -> tableConfig.streamId = exampleTablesAndStreamIDs.get(tableId)));
 
     String fakeErrMsg = "failed to fetch metric data";
-    when(mockMetricQueryHelper.query(any(), any(), any()))
-        .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg));
+    doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
+        .when(mockMetricQueryHelper)
+        .query(any(), any(), any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
 
@@ -535,130 +549,6 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         String.format(
             "Failed to get lag metric data for XClusterConfig(%s): %s",
             xClusterConfig.uuid, fakeErrMsg);
-    assertGetXClusterLagError(expectedErrMsg, result);
-    assertAuditEntry(0, customer.uuid);
-
-    xClusterConfig.delete();
-  }
-
-  @Test
-  public void testGetClusterConfigError() {
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
-
-    setupMockMetricQueryHelperResponse();
-
-    String fakeErrMsg = "failed to fetch cluster config";
-    try {
-      when(mockClient.getMasterClusterConfig()).thenThrow(new Exception(fakeErrMsg));
-    } catch (Exception e) {
-    }
-
-    String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
-
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
-    assertOk(result);
-
-    validateGetXClusterResponse(xClusterConfig, result);
-    String expectedErrMsg =
-        String.format(
-            "Failed to get lag metric data for XClusterConfig(%s): "
-                + "Failed to get universe config, skipping cache update: %s",
-            xClusterConfig.uuid, fakeErrMsg);
-    assertGetXClusterLagError(expectedErrMsg, result);
-    assertAuditEntry(0, customer.uuid);
-
-    xClusterConfig.delete();
-  }
-
-  @Test
-  public void testGetClusterConfigNoReplicationGroup() {
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
-
-    setupMockMetricQueryHelperResponse();
-
-    ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder = ConsumerRegistryPB.newBuilder();
-
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
-            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
-
-    GetMasterClusterConfigResponse fakeClusterConfigResponse =
-        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
-
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
-    }
-
-    String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
-
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
-    assertOk(result);
-
-    validateGetXClusterResponse(xClusterConfig, result);
-    String expectedErrMsg =
-        String.format(
-            "Failed to get lag metric data for XClusterConfig(%s): "
-                + "No replication group found, skipping cache update",
-            xClusterConfig.uuid);
-    assertGetXClusterLagError(expectedErrMsg, result);
-    assertAuditEntry(0, customer.uuid);
-
-    xClusterConfig.delete();
-  }
-
-  @Test
-  public void testGetClusterConfigTableSetMismatch() {
-    // simplify table set so error message is predictable
-    createFormData.tables = new HashSet<>();
-    createFormData.tables.add(exampleTableID1);
-
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
-
-    setupMockMetricQueryHelperResponse();
-
-    String unknownTableId = "unknown-table-id";
-    StreamEntryPB.Builder fakeStreamEntry1 =
-        StreamEntryPB.newBuilder().setProducerTableId(unknownTableId);
-
-    ProducerEntryPB.Builder fakeProducerEntry =
-        ProducerEntryPB.newBuilder().putStreamMap(exampleStreamID1, fakeStreamEntry1.build());
-
-    ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
-        ConsumerRegistryPB.newBuilder()
-            .putProducerMap(xClusterConfig.getReplicationGroupName(), fakeProducerEntry.build());
-
-    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
-        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
-            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
-
-    GetMasterClusterConfigResponse fakeClusterConfigResponse =
-        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
-
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
-    }
-
-    String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
-
-    Result result =
-        FakeApiHelper.doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
-    assertOk(result);
-
-    validateGetXClusterResponse(xClusterConfig, result);
-    String expectedErrMsg =
-        String.format(
-            "Failed to get lag metric data for XClusterConfig(%s): "
-                + "Detected table set mismatch (cached missing=%s, actual missing=%s).",
-            xClusterConfig.uuid,
-            Collections.singletonList(unknownTableId),
-            Collections.singletonList(exampleTableID1));
     assertGetXClusterLagError(expectedErrMsg, result);
     assertAuditEntry(0, customer.uuid);
 
@@ -688,7 +578,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -725,7 +615,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -759,7 +649,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -834,7 +724,10 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editMultipleOperations));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("Must perform one edit operation at a time", result);
+    assertResponseError(
+        "Exactly one edit request (either editName, editStatus, "
+            + "editTables) is allowed in one call.",
+        result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 
@@ -904,7 +797,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("Table set must be non-empty", result);
+    assertResponseError("Must specify an edit operation", result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.uuid);
 
@@ -982,7 +875,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Delete)));

@@ -12,7 +12,13 @@ import { Dictionary, groupBy } from 'lodash';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
-import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from './IBackup';
+import {
+  BACKUP_API_TYPES,
+  Backup_Options_Type,
+  IStorageConfig,
+  ITable,
+  ThrottleParameters
+} from './IBackup';
 
 export function getBackupsList(
   page = 0,
@@ -85,10 +91,7 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
     parallelism: values['parallelThreads']
   };
   if (values['kmsConfigUUID']) {
-    payload['encryptionAtRestConfig'] = {
-      encryptionAtRestEnabled: true,
-      kmsConfigUUID: values['kmsConfigUUID'].value
-    };
+    payload['kmsConfigUUID'] = values['kmsConfigUUID'].value;
   }
   return axios.post(`${ROOT_URL}/customers/${cUUID}/restore`, payload);
 }
@@ -142,10 +145,7 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
 
   const filteredTableList = values['tablesList'].filter((t: ITable) => t.tableType === backup_type);
 
-  if (values['db_to_backup'].value === null) {
-    // All database/ keyspace selected
-    dbMap = groupBy(filteredTableList, 'keySpace');
-  } else {
+  if (values['db_to_backup'].value !== null) {
     dbMap = {
       [values['db_to_backup'].value]: filteredTableList.filter(
         (t: ITable) => t.keySpace === values['db_to_backup'].value
@@ -168,8 +168,14 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     }
     return {
       keyspace,
-      tableNameList: dbMap[keyspace].map((t: ITable) => t.tableName),
-      tableUUIDList: dbMap[keyspace].map((t: ITable) => t.tableUUID)
+      tableNameList:
+        values['backup_tables'] === Backup_Options_Type.ALL
+          ? []
+          : dbMap[keyspace].map((t: ITable) => t.tableName),
+      tableUUIDList:
+        values['backup_tables'] === Backup_Options_Type.ALL
+          ? []
+          : dbMap[keyspace].map((t: ITable) => t.tableUUID)
     };
   });
 
@@ -190,5 +196,25 @@ export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConf
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.backupUUID}`;
   return axios.put(requestUrl, {
     storageConfigUUID: storageConfig.configUUID
+  });
+};
+
+export const fetchThrottleParameters = (universeUUID: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
+  return axios.get<ThrottleParameters>(requestUrl);
+};
+
+export const setThrottleParameters = (universeUUID: string, values: ThrottleParameters) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
+  return axios.post<ThrottleParameters>(requestUrl, values);
+};
+
+export const resetThrottleParameterToDefaults = (universeUUID: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
+  return axios.post(requestUrl, {
+    resetDefaults: true
   });
 };

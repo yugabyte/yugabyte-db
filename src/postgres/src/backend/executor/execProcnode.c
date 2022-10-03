@@ -113,6 +113,8 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbBatchedNestloop.h"
+#include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "miscadmin.h"
 
@@ -209,6 +211,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												   estate, eflags);
 			break;
 
+		case T_YbSeqScan:
+			result = (PlanState *) ExecInitYbSeqScan((YbSeqScan *) node,
+													 estate, eflags);
+			break;
+
 		case T_SampleScan:
 			result = (PlanState *) ExecInitSampleScan((SampleScan *) node,
 													  estate, eflags);
@@ -290,6 +297,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_NestLoop:
 			result = (PlanState *) ExecInitNestLoop((NestLoop *) node,
 													estate, eflags);
+			break;
+
+		case T_YbBatchedNestLoop:
+			result = (PlanState *) ExecInitYbBatchedNestLoop(
+				(YbBatchedNestLoop *) node,
+				estate, eflags);
 			break;
 
 		case T_MergeJoin:
@@ -601,6 +614,10 @@ ExecEndNode(PlanState *node)
 			ExecEndSeqScan((SeqScanState *) node);
 			break;
 
+		case T_YbSeqScanState:
+			ExecEndYbSeqScan((YbSeqScanState *) node);
+			break;
+
 		case T_SampleScanState:
 			ExecEndSampleScan((SampleScanState *) node);
 			break;
@@ -674,6 +691,10 @@ ExecEndNode(PlanState *node)
 			 */
 		case T_NestLoopState:
 			ExecEndNestLoop((NestLoopState *) node);
+			break;
+
+		case T_YbBatchedNestLoopState:
+			ExecEndYbBatchedNestLoop((YbBatchedNestLoopState *) node);
 			break;
 
 		case T_MergeJoinState:

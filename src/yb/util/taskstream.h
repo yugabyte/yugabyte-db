@@ -58,12 +58,12 @@ class TaskStream {
                       const MonoDelta& queue_max_wait);
   ~TaskStream();
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
 
-  CHECKED_STATUS Submit(T* item);
+  Status Submit(T* item);
 
-  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func);
+  Status TEST_SubmitFunc(const std::function<void()>& func);
 
   std::string GetRunThreadStack() {
     auto result = ThreadStack(run_tid_);

@@ -8,8 +8,7 @@ menu:
     identifier: type-date
     parent: date-time-data-types-semantics
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Values whose data type is _date_ represent the date component of some moment (the year, the month, and the day) in the "local" (a.k.a. "wall-clock") regime. _Date_ values know nothing about timezones, and represent the date at some unspecified location. You can picture a _date_ value as the number of days (or microseconds, if you prefer) to the start of the day in question from the start of some epoch—which number is then mapped using the [proleptic Gregorian calendar](https://www.postgresql.org/docs/11/datetime-units-history.html) to a date in the familiar year-month-day representation.
@@ -23,7 +22,7 @@ select pg_typeof('2019-02-14'::date - '2018-02-14'::date)::text as "data type of
 This is the result:
 
 ```output
- data type of difference between dates 
+ data type of difference between dates
 ---------------------------------------
  integer
 ```
@@ -41,7 +40,7 @@ select
 This is the result:
 
 ```output
- not spanning a leap year | spanning a leap year 
+ not spanning a leap year | spanning a leap year
 --------------------------+----------------------
                       730 |                  731
 ```

@@ -17,8 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H
-#define ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H
+#define YB_ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H
 
 #pragma once
 
@@ -43,7 +43,7 @@ class BlockPrefixIndex {
   // the key, based on the prefix.
   // Returns the total number of relevant blocks, 0 means the key does
   // not exist.
-  uint32_t GetBlocks(const Slice& key, uint32_t** blocks);
+  uint32_t GetBlocks(const Slice& key, uint32_t** blocks) const;
 
   size_t ApproximateMemoryUsage() const {
     return sizeof(BlockPrefixIndex) +
@@ -86,4 +86,4 @@ class BlockPrefixIndex {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H
+#endif // YB_ROCKSDB_TABLE_BLOCK_PREFIX_INDEX_H

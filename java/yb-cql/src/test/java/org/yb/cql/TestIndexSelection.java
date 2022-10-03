@@ -144,6 +144,8 @@ public class TestIndexSelection extends BaseCQLTest {
     // Index.
     session.execute("CREATE INDEX second_idx ON test_secondary_index((i1, i2), j);");
 
+    waitForReadPermsOnAllIndexes("yugatest", "test_secondary_index");
+
     // Insert data.
     session.execute("INSERT INTO test_secondary_index(h1, h2, r, i1, i2, j, val)" +
                     "  VALUES (1, 1, 1, 1, 1, 1, 101);");
@@ -214,9 +216,12 @@ public class TestIndexSelection extends BaseCQLTest {
     // Index.
     session.execute("CREATE INDEX second_idx1 ON test_secondary_index1(r1, i1, i2)");
 
+    waitForReadPermsOnAllIndexes("yugatest", "test_secondary_index1");
+
     // Insert data.
     session.execute("INSERT INTO test_secondary_index1(h1, r1, i1, i2)" +
                     "  VALUES (1, 2, null, 3)");
+
     // Make sure secondary index is chosen.
     assertQuery("EXPLAIN SELECT * FROM test_secondary_index1" +
                 "  WHERE r1 = 2 AND i1 = null AND i2 IN (1,3,2)",
@@ -240,6 +245,8 @@ public class TestIndexSelection extends BaseCQLTest {
     // Indexes.
     session.execute("CREATE INDEX jdx1 ON t_orderby_scan (j, m);");
     session.execute("CREATE INDEX jdx2 ON t_orderby_scan (j, n);");
+
+    waitForReadPermsOnAllIndexes("yugatest", "t_orderby_scan");
 
     // Insert data.
     session.execute("INSERT INTO t_orderby_scan(i, j, m, n) VALUES (1, 1, 1, 4);");

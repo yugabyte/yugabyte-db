@@ -8,18 +8,16 @@ menu:
     parent: multi-dc
     identifier: 3dc-deployment
     weight: 632
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Recommended Reading" >}}
 
-[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies (including 3DC deployments) for a distributed SQL database like YugabyteDB. 
+[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies (including 3DC deployments) for a distributed SQL database like YugabyteDB.
 
 {{< /tip >}}
 
-Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are now placed in each data center of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication which requires majority quorum for continuous availability of write requests, deploying a single cluster across an even number of AZs or data centers is not recommended. 
+Three data center deployments of YugabyteDB are essentially a natural extension of the three availability zone (AZ) deployments documented in the [Manual deployment](../../manual-deployment/) section. Equal number of nodes are now placed in each data center of the three data centers. Inside a single data center, a multi-AZ deployment is recommended to ensure resilience against zone failures. This approach works fine for any odd number of AZs or data centers. Given YugabyteDB's distributed consensus-based replication which requires majority quorum for continuous availability of write requests, deploying a single cluster across an even number of AZs or data centers is not recommended.
 
 ## Example scenario
 
@@ -66,7 +64,7 @@ Run the [yb-tserver](../../../reference/configuration/yb-tserver/) server on eac
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
-  --start_pgsql_proxy \
+  --enable_ysql \
   --pgsql_proxy_bind_address 172.151.17.130:5433 \
   --cql_proxy_bind_address 172.151.17.130:9042 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
@@ -134,8 +132,8 @@ replication_info {
 }
 ```
 
-One additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../admin/yb-admin#set-preferred-zones) command. 
-For multi-row or multi-table transactional operations, colocating the leaders within a single zone or region can help reduce the number 
+One additional option to consider is to set a preferred location for all the tablet leaders using the [yb-admin set_preferred_zones](../../../admin/yb-admin#set-preferred-zones) command.
+For multi-row or multi-table transactional operations, colocating the leaders within a single zone or region can help reduce the number
 of cross-region network hops involved in executing a transaction and, as a result, improve performance.
 
 The following command sets the preferred zone to `aws.us-west.us-west-2a`:

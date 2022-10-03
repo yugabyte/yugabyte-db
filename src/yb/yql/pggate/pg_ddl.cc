@@ -15,7 +15,6 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -38,16 +37,11 @@ DECLARE_int32(max_num_tablets_for_table);
 namespace yb {
 namespace pggate {
 
-using std::make_shared;
-using std::shared_ptr;
-using std::string;
 using namespace std::literals;  // NOLINT
-
-using client::YBSession;
-using client::YBMetaDataCache;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
+static MonoDelta kCreateDatabaseTimeout = 1s * RegularBuildVsDebugVsSanitizers(60, 150, 180);
 
 namespace {
 
@@ -55,6 +49,15 @@ CoarseTimePoint DdlDeadline() {
   auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
   if (timeout == MonoDelta::kZero) {
     timeout = kDdlTimeout;
+  }
+  return CoarseMonoClock::now() + timeout;
+}
+
+// Make a special case for create database because it is a well-known slow operation in YB.
+CoarseTimePoint CreateDatabaseDeadline() {
+  auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
+  if (timeout == MonoDelta::kZero) {
+    timeout = kCreateDatabaseTimeout;
   }
   return CoarseMonoClock::now() + timeout;
 }
@@ -83,7 +86,7 @@ PgCreateDatabase::~PgCreateDatabase() {
 }
 
 Status PgCreateDatabase::Exec() {
-  return pg_session_->pg_client().CreateDatabase(&req_, DdlDeadline());
+  return pg_session_->pg_client().CreateDatabase(&req_, CreateDatabaseDeadline());
 }
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
@@ -172,6 +175,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& tablegroup_oid,
                              const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
+                             bool is_matview,
                              const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
@@ -189,6 +193,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
     req_.set_colocation_id(colocation_id);
   }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
+  req_.set_is_matview(is_matview);
   matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
@@ -371,6 +376,11 @@ Status PgAlterTable::RenameTable(const char *db_name, const char *newname) {
   auto& rename = *req_.mutable_rename_table();
   rename.set_database_name(db_name);
   rename.set_table_name(newname);
+  return Status::OK();
+}
+
+Status PgAlterTable::IncrementSchemaVersion() {
+  req_.set_increment_schema_version(true);
   return Status::OK();
 }
 

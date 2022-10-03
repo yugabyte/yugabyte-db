@@ -76,7 +76,8 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
 
 // Test that we replay from the recovery directory, if it exists.
 TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
-  ASSERT_NO_FATALS(StartCluster({ "--TEST_fault_crash_during_log_replay=0.05" }));
+  const std::string crash_flag = "--TEST_fault_crash_during_log_replay=0.05";
+  ASSERT_NO_FATALS(StartCluster({ crash_flag }));
 
   TestWorkload work(cluster_.get());
   work.set_num_write_threads(4);
@@ -105,10 +106,12 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
   }
   ASSERT_FALSE(cluster_->tablet_server(0)->IsProcessAlive()) << "TS didn't crash!";
 
+  cluster_->tablet_server(0)->Shutdown();
   // Now remove the crash flag, so the next replay will complete, and restart
   // the server once more.
-  cluster_->tablet_server(0)->Shutdown();
-  cluster_->tablet_server(0)->mutable_flags()->clear();
+  auto& flags = *cluster_->tablet_server(0)->mutable_flags();
+  flags.erase(std::remove_if(flags.begin(), flags.end(),
+      [&](std::string& flag){ return flag == crash_flag; }));
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
   ClusterVerifier cluster_verifier(cluster_.get());

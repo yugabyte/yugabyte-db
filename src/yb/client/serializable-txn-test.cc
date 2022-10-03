@@ -20,6 +20,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -161,7 +162,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
     Entry entry;
     entry.txn = transactional ? CreateTransaction() : nullptr;
     entry.session = CreateSession(entry.txn, clock_);
-    entry.session->SetReadPoint(Restart::kFalse);
+    entry.session->RestartNonTxnReadPoint(Restart::kFalse);
     entries.push_back(entry);
   }
 
@@ -197,7 +198,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
               if (transactional) {
                 entry.txn = ASSERT_RESULT(entry.txn->CreateRestartedTransaction());
               } else {
-                entry.session->SetReadPoint(Restart::kTrue);
+                entry.session->RestartNonTxnReadPoint(Restart::kTrue);
               }
               entry.op = nullptr;
             } else {
@@ -367,7 +368,7 @@ void SerializableTxnTest::TestColoring() {
       continue;
     }
 
-    session->SetReadPoint(Restart::kFalse);
+    session->RestartNonTxnReadPoint(Restart::kFalse);
     auto values = ASSERT_RESULT(SelectAllRows(session));
     ASSERT_EQ(values.size(), kKeys);
     LOG(INFO) << "Values: " << yb::ToString(values);

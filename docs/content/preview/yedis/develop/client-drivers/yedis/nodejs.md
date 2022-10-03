@@ -9,8 +9,7 @@ menu:
   preview:
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Installation

@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.tserver.Tserver;
 import org.yb.util.Pair;

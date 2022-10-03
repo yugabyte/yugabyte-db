@@ -21,11 +21,13 @@
 namespace yb {
 namespace docdb {
 
+// Value could contain extra attributes, such as TTL or user timestamp.
+// They are represented in this struct.
 struct ValueControlFields {
   static const MonoDelta kMaxTtl;
   // kResetTtl is useful for CQL when zero TTL indicates no TTL.
   static const MonoDelta kResetTtl;
-  static const int64_t kInvalidUserTimestamp;
+  static const int64_t kInvalidTimestamp;
 
   static const uint64_t kTtlFlag = 0x1;
 
@@ -43,8 +45,8 @@ struct ValueControlFields {
   // The unit is milliseconds.
   MonoDelta ttl = kMaxTtl;
 
-  // The timestamp provided by the user as part of a 'USING TIMESTAMP' clause in CQL.
-  UserTimeMicros user_timestamp = kInvalidUserTimestamp;
+  // The timestamp assigned to this value, if it was externally specified.
+  UserTimeMicros timestamp = kInvalidTimestamp;
 
   void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
@@ -57,8 +59,8 @@ struct ValueControlFields {
     return !ttl.Equals(kMaxTtl);
   }
 
-  bool has_user_timestamp() const {
-    return user_timestamp != kInvalidUserTimestamp;
+  bool has_timestamp() const {
+    return timestamp != kInvalidTimestamp;
   }
 };
 
@@ -83,11 +85,11 @@ class Value {
 
   MonoDelta* mutable_ttl() { return &control_fields_.ttl; }
 
-  UserTimeMicros user_timestamp() const { return control_fields_.user_timestamp; }
+  UserTimeMicros timestamp() const { return control_fields_.timestamp; }
 
   bool has_ttl() const { return control_fields_.has_ttl(); }
 
-  bool has_user_timestamp() const { return control_fields_.has_user_timestamp(); }
+  bool has_timestamp() const { return control_fields_.has_timestamp(); }
 
   ValueEntryType value_type() const { return primitive_value_.value_type(); }
 
@@ -104,8 +106,8 @@ class Value {
   }
 
   // Decode the entire value
-  CHECKED_STATUS Decode(const Slice& rocksdb_value);
-  CHECKED_STATUS Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
+  Status Decode(const Slice& rocksdb_value);
+  Status Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields);
 
   std::string ToString() const;
 

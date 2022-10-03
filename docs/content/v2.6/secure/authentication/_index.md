@@ -10,6 +10,7 @@ menu:
     identifier: authentication
     parent: secure
     weight: 720
+type: indexpage
 ---
 
 Authentication is the process by which the database server establishes the identity of the client, and by extension determines whether the client application (or the user who runs the client application) is permitted to connect with the database user name that was requested. YugabyteDB offers a number of different client authentication methods. The method used to authenticate a particular client connection can be selected on the basis of (client) host address, database, and user.

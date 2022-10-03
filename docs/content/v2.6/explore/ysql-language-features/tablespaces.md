@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-tablespaces
     parent: explore-ysql-language-features
     weight: 320
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document provides an overview of YSQL Tablespaces and demonstrates how they can be used to specify data placement for tables and indexes in the cloud.
@@ -69,10 +68,10 @@ The differences between single-zone, multi-zone and multi-region configuration b
 
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
-    {{% includeMarkdown "./tablespaces-yugabyted.md" /%}}
+  {{% includeMarkdown "./tablespaces-yugabyted.md" %}}
   </div>
   <div id="platform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="platform-tab">
-    {{% includeMarkdown "./tablespaces-platform.md" /%}}
+  {{% includeMarkdown "./tablespaces-platform.md" %}}
   </div>
 </div>
 

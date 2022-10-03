@@ -43,7 +43,7 @@
 //   return result;
 // }
 // 3c) Action implementation:
-// CHECKED_STATUS ApplyPatchExecute(const ApplyPatchArguments& args) {
+// Status ApplyPatchExecute(const ApplyPatchArguments& args) {
 //   ApplyPatch apply_patch;
 //   return apply_patch.Execute(args);
 // }
@@ -143,7 +143,7 @@ struct OptionsDescriptionImpl : OptionsDescription {
     } \
     FATAL_INVALID_ENUM_VALUE(enum_name, action); \
   } \
-  CHECKED_STATUS Execute(enum_name action, const OptionsDescription& description) { \
+  Status Execute(enum_name action, const OptionsDescription& description) { \
     switch (action) { \
       BOOST_PP_SEQ_FOR_EACH(YB_TOOL_ARGUMENTS_EXECUTE, enum_name, actions); \
     } \

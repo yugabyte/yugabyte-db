@@ -17,7 +17,7 @@ import org.yb.master.CatalogEntityInfo;
 
 public class ModifyClusterConfigIncrementVersion extends AbstractModifyMasterClusterConfig {
   // The current version of the cluster config
-  // (RPC will fail if this does does not match current version in cluster config)
+  // (RPC will fail if this does not match current version in cluster config)
   int version;
 
   public ModifyClusterConfigIncrementVersion(YBClient client, int version) {

@@ -161,8 +161,8 @@ struct BootstrapTabletData {
   TabletStatusListener* listener = nullptr;
   ThreadPool* append_pool = nullptr;
   ThreadPool* allocation_pool = nullptr;
+  ThreadPool* log_sync_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
-
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
 };
 
@@ -172,7 +172,7 @@ struct BootstrapTabletData {
 //
 // This is a synchronous method, but is typically called within a thread pool by
 // TSTabletManager.
-CHECKED_STATUS BootstrapTablet(
+Status BootstrapTablet(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
     log::LogPtr* rebuilt_log,

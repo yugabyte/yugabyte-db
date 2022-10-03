@@ -82,17 +82,17 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(size_t max_running_tasks);
+  explicit PriorityThreadPool(size_t max_running_tasks, bool use_group_no_priority = false);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
   // On success task ownership is transferred to the pool, i.e. `task` would point to nullptr.
-  CHECKED_STATUS Submit(
+  Status Submit(
       int task_priority, std::unique_ptr<PriorityThreadPoolTask>* task,
       const uint64_t group_no = kDefaultGroupNo);
 
   template <class Task>
-  CHECKED_STATUS Submit(
+  Status Submit(
       int task_priority, std::unique_ptr<Task>* task, const uint64_t group_no = kDefaultGroupNo) {
     std::unique_ptr<PriorityThreadPoolTask> temp_task = std::move(*task);
     auto result = Submit(task_priority, &temp_task, group_no);

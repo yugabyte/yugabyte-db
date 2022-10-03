@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <boost/algorithm/string.hpp>
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
@@ -19,17 +20,23 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+#include "yb/util/auto_flags.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+using gflags::CommandLineFlagInfo;
+using yb::StatusFromPB;
 using yb::master::FlushTablesRequestPB;
 using yb::master::FlushTablesResponsePB;
 using yb::master::IsFlushTablesDoneRequestPB;
 using yb::master::IsFlushTablesDoneResponsePB;
-using yb::StatusFromPB;
 
 using std::string;
 using std::vector;
@@ -39,6 +46,8 @@ using yb::client::YBTableName;
 using yb::rpc::RpcController;
 
 using namespace std::literals;
+
+DECLARE_int32(ysql_log_min_duration_statement);
 
 namespace yb {
 namespace pgwrapper {
@@ -348,6 +357,155 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+}
+
+class PgWrapperFlagsTest : public PgWrapperTest {
+ public:
+  void ValidateDefaultGucValue(const string& guc_name, const string& expected_value) {
+    const auto result = ASSERT_RESULT(RunPsqlCommand(
+        Format("SELECT boot_val FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
+        TuplesOnly::kTrue));
+
+    ASSERT_EQ(expected_value, result)
+        << "Pg guc variable '" << guc_name << "' default value '" << result
+        << "' does not match the gFlag default value '" << expected_value << "'";
+  }
+
+  void ValidateCurrentGucValue(const string& guc_name, const string& expected_value) {
+    const auto result = ASSERT_RESULT(RunPsqlCommand(
+        Format("SELECT reset_val FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
+        TuplesOnly::kTrue));
+
+    ASSERT_EQ(expected_value, result)
+        << "Pg guc variable '" << guc_name << "' current value is '" << result
+        << "' but is expected to be '" << expected_value << "'";
+  }
+
+  void ValidateGucIsRuntime(const string& guc_name, const bool runtime_expected) {
+    // internal and postmaster context flags cannot be updated after process startup. See GucContext
+    // in guc.h for more information
+    const std::unordered_set<string> disallowed_context = {"internal", "postmaster"};
+
+    const auto result = ASSERT_RESULT(RunPsqlCommand(
+        Format("SELECT context FROM pg_settings WHERE LOWER(name)='$0'", guc_name),
+        TuplesOnly::kTrue));
+
+    const bool is_runtime = !disallowed_context.contains(result);
+    EXPECT_EQ(is_runtime, runtime_expected)
+        << "Pg guc variable '" << guc_name << "' is tagged as context '" << result << "' which "
+        << (is_runtime ? "can" : "cannot") << " be modified at runtime, but its gFlag "
+        << (runtime_expected ? "has" : "does not have") << " a runtime tag";
+  }
+
+  Status SetFlagOnAllTServers(const string& flag, const string& value) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      auto proxy = cluster_->GetTServerProxy<server::GenericServiceProxy>(i);
+
+      rpc::RpcController controller;
+      controller.set_timeout(MonoDelta::FromSeconds(30));
+      server::SetFlagRequestPB req;
+      server::SetFlagResponsePB resp;
+      req.set_flag(flag);
+      req.set_value(value);
+      req.set_force(false);
+      RETURN_NOT_OK_PREPEND(proxy.SetFlag(req, &resp, &controller), "rpc failed");
+      if (resp.result() != server::SetFlagResponsePB::SUCCESS) {
+        return STATUS(RemoteError, "failed to set flag", resp.ShortDebugString());
+      }
+    }
+    return Status::OK();
+  }
+};
+
+// Verify the gFlag defaults match the guc defaults for PG gFlags.
+TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagDefaults)) {
+  vector<CommandLineFlagInfo> flags;
+  GetAllFlags(&flags);
+
+  const string pg_flag_prefix = "ysql_";
+  for (const CommandLineFlagInfo& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+
+    ASSERT_TRUE(flag.name.starts_with(pg_flag_prefix))
+        << "Flag " << flag.name << " does not start with prefix " << pg_flag_prefix;
+
+    auto expected_val = flag.default_value;
+
+    if (tags.contains(FlagTag::kAuto)) {
+      auto* desc = GetAutoFlagDescription(flag.name);
+      CHECK_NOTNULL(desc);
+      expected_val = desc->target_val;
+    }
+
+    // Its ok for empty string and 0 to not match guc defaults. Certain GUC parameters like
+    // max_connections and timezone are assigned at runtime, so we use these as undefined values
+    // instead of using an incorrect one.
+    if (expected_val.empty() || expected_val == "0") {
+      continue;
+    }
+
+    if (boost::iequals(expected_val, "true")) {
+      expected_val = "on";
+    } else if (boost::iequals(expected_val, "false")) {
+      expected_val = "off";
+    }
+
+    auto guc_name = flag.name.substr(pg_flag_prefix.length());
+    boost::to_lower(guc_name);
+
+    ValidateDefaultGucValue(guc_name, expected_val);
+  }
+}
+
+TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
+  vector<CommandLineFlagInfo> flags;
+  GetAllFlags(&flags);
+
+  const string pg_flag_prefix = "ysql_";
+  for (const CommandLineFlagInfo& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (!tags.contains(FlagTag::kPg)) {
+      continue;
+    }
+
+    ASSERT_TRUE(flag.name.starts_with(pg_flag_prefix))
+        << "Flag " << flag.name << " does not start with prefix " << pg_flag_prefix;
+
+    auto guc_name = flag.name.substr(pg_flag_prefix.length());
+    boost::to_lower(guc_name);
+
+    ValidateGucIsRuntime(guc_name, tags.contains(FlagTag::kRuntime));
+  }
+
+  // Verify runtime flag is actually updated
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("log_min_duration_statement", "-1"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_log_min_duration_statement", "47"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("log_min_duration_statement", "47"));
+
+  // Verify changing non-runtime flag fails
+  ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
+}
+
+class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgWrapperFlagsTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_max_connections=42");
+    options->extra_tserver_flags.emplace_back("--ysql_log_min_duration_statement=13");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown");
+  }
+};
+
+TEST_F_EX(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(TestGFlagOverrides),
+          PgWrapperOverrideFlagsTest) {
+  ValidateCurrentGucValue("max_connections", "42");
+  ValidateCurrentGucValue("log_min_duration_statement", "13");
+  ValidateCurrentGucValue("yb_enable_expression_pushdown", "on");
 }
 
 }  // namespace pgwrapper

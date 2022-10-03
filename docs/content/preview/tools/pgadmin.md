@@ -8,8 +8,7 @@ menu:
     identifier: pgadmin
     parent: tools
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [pgAdmin](https://pgadmin.org) is a popular open source administration and management tool for PostgreSQL databases. It simplifies the creation, maintenance, and use of database objects. PgAdmin includes a connection wizard, built-in SQL editor to import SQL scripts, and a mechanism to auto-generate SQL scripts if you need to run them on the database command line shell. You can run PgAdmin through the web interface, or as a downloadable application that is locally installed. Because YugabyteDB is PostgreSQL-compatible, you can also use pgAdmin to work with YugabyteDB.

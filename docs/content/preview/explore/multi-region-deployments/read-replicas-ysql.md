@@ -3,14 +3,14 @@ title: Read replicas
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
+headContent: Replicate data asynchronously to one or more read replica clusters
 menu:
   preview:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ysql
     parent: explore-multi-region-deployments
     weight: 750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -31,6 +31,4 @@ showAsideToc: true
 
 </ul>
 
-YSQL read replicas support is currently in Beta.
-
-No documentation is available at this time.
+Documentation for YSQL read replicas is forthcoming.

@@ -59,6 +59,7 @@
 #include "yb/gutil/spinlock.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 
@@ -177,28 +178,6 @@ void DumpStackTraceAndExit() {
   abort();
 }
 
-void CustomGlogFailureWriter(const char* data, int size) {
-  if (size == 0) {
-    return;
-  }
-
-  std::smatch match;
-  string line = string(data, size);
-  if (std::regex_match(line, match, kStackTraceLineFormatRe)) {
-    size_t pos;
-    uintptr_t addr = std::stoul(match[1], &pos, 16);
-    string symbolized_line = SymbolizeAddress(reinterpret_cast<void*>(addr));
-    if (symbolized_line.find(':') != string::npos) {
-      // Only replace the output line if we failed to find the line number.
-      line = symbolized_line;
-    }
-  }
-
-  if (write(STDERR_FILENO, line.data(), line.size()) < 0) {
-    // Ignore errors.
-  }
-}
-
 #ifndef NDEBUG
 void ReportRefCountedDebugEvent(
     const char* type_name,
@@ -222,13 +201,6 @@ void ApplyFlagsInternal() {
 } // anonymous namespace
 
 void InitializeGoogleLogging(const char *arg) {
-  // TODO: re-enable this when we make stack trace symbolization async-safe, which means we have
-  // to get rid of memory allocations there. We also need to make sure that libbacktrace is
-  // async-safe.
-  static constexpr bool kUseCustomFailureWriter = false;
-  if (kUseCustomFailureWriter) {
-    google::InstallFailureWriter(CustomGlogFailureWriter);
-  }
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
@@ -240,11 +212,10 @@ void InitGoogleLoggingSafe(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
 
-  google::InstallFailureWriter(CustomGlogFailureWriter);
   google::InstallFailureSignalHandler();
 
   // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.
-  FLAGS_logbuflevel = -1;
+  CHECK_OK(SetFlagDefaultAndCurrent("logbuflevel", std::to_string(-1)));
 
   if (!FLAGS_log_filename.empty()) {
     for (int severity = google::INFO; severity <= google::FATAL; ++severity) {
@@ -257,7 +228,7 @@ void InitGoogleLoggingSafe(const char* arg) {
   // can reliably construct the log file name without duplicating the
   // complex logic that glog uses to guess at a temporary dir.
   if (FLAGS_log_dir.empty()) {
-    FLAGS_log_dir = "/tmp";
+    CHECK_OK(SetFlagDefaultAndCurrent("log_dir", "/tmp"));
   }
 
   if (!FLAGS_logtostderr) {
@@ -399,11 +370,6 @@ void ShutdownLoggingSafe() {
   google::ShutdownGoogleLogging();
 
   logging_initialized = false;
-}
-
-void LogCommandLineFlags() {
-  LOG(INFO) << "Flags (see also /varz are on debug webserver):" << endl
-            << google::CommandlineFlagsIntoString();
 }
 
 // Support for the special THROTTLE_MSG token in a log message stream.

@@ -86,36 +86,6 @@
       user: "yugabyte"
       state: absent
 
-  - name: Stop existing running master
-    shell:
-      cmd: "sudo systemctl stop yb-master"
-
-  - name: Stop existing running tserver
-    shell:
-      cmd: "sudo systemctl stop yb-tserver"
-
-  # Systemd daemon-reload for yb-master and yb-tserver service files
-  - name: Perform daemon-reload for the new services
-    shell:
-      cmd: "sudo systemctl daemon-reload"
-
-  # Enabling master and tserver using systemd services
-  - name: Run yb-master.service to start the master
-    shell:
-      cmd: "sudo systemctl enable yb-master"
-
-  - name: Run yb-tserver.service to start the tserver
-    shell:
-      cmd: "sudo systemctl enable yb-tserver"
-
-  # Starting master and tserver using systemd services
-  - name: Run yb-master.service to start the master
-    shell:
-      cmd: "sudo systemctl start yb-master"
-
-  - name: Run yb-tserver.service to start the tserver
-    shell:
-      cmd: "sudo systemctl start yb-tserver"
   tags:
     - override_gflags
     - systemd_upgrade

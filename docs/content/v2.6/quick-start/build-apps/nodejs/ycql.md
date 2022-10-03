@@ -9,9 +9,7 @@ menu:
     name: NodeJS
     identifier: nodejs-3
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

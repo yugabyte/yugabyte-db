@@ -347,6 +347,11 @@ class QLType {
     return !(*this == other);
   }
 
+  void add_param(std::shared_ptr<QLType> param) {
+    params_.push_back(param);
+    return;
+  }
+
   //------------------------------------------------------------------------------------------------
   // Logging supports.
   std::string ToString() const;

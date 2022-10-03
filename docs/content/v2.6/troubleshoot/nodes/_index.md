@@ -9,6 +9,7 @@ menu:
     identifier: troubleshoot-nodes
     parent: troubleshoot
     weight: 840
+type: indexpage
 ---
 
 <div class="row">
@@ -27,7 +28,7 @@ menu:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="check-logs">
       <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />  
+        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
         <div class="title">Inspect logs</div>
       </div>
       <div class="body">

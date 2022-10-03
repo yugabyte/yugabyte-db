@@ -79,6 +79,7 @@ DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
+DECLARE_bool(disable_auto_flags_management);
 
 namespace yb {
 namespace tserver {
@@ -120,6 +121,11 @@ class TsTabletManagerTest : public YBTest {
       ASSERT_OK(env_->CreateDirs(s));
       paths.push_back(s);
     }
+
+    // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
+    // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
+    FLAGS_disable_auto_flags_management = true;
+
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
 
@@ -232,7 +238,7 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   tablet_manager_ = mini_server_->server()->tablet_manager();
 
   // Ensure that the tablet got re-loaded and re-opened off disk.
-  ASSERT_TRUE(tablet_manager_->LookupTablet(kTabletId, &peer));
+  peer = ASSERT_RESULT(tablet_manager_->GetTablet(kTabletId));
   ASSERT_EQ(kTabletId, peer->tablet()->tablet_id());
 }
 
@@ -303,7 +309,8 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
       tablet::TABLET_DATA_TOMBSTONED,
       tablet::ShouldAbortActiveTransactions::kFalse,
       cas_config_opid_index_less_or_equal,
-      false,
+      false /* hide_only */,
+      false /* keep_data */,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -318,7 +325,8 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
                                           tablet::TABLET_DATA_DELETED,
                                           tablet::ShouldAbortActiveTransactions::kFalse,
                                           cas_config_opid_index_less_or_equal,
-                                          false,
+                                          false /* hide_only */,
+                                          false /* keep_data */,
                                           &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -368,8 +376,7 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     tablet_manager->tablet_memory_manager()->FlushTabletIfLimitExceeded();
     ASSERT_OK(mini_server_->WaitStarted());
     for (auto& tablet_id : tablet_ids) {
-      std::shared_ptr<TabletPeer> peer;
-      ASSERT_TRUE(tablet_manager->LookupTablet(tablet_id, &peer));
+      auto peer = ASSERT_RESULT(tablet_manager->GetTablet(tablet_id));
       ASSERT_EQ(tablet_id, peer->tablet()->tablet_id());
     }
   }

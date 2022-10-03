@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -257,7 +258,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       PlacementInfo pi) {
     taskParams.upsertPrimaryCluster(userIntent, pi);
     taskParams.nodePrefix = NODE_PREFIX;
-
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
     try {
       UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
       return waitForTask(taskUUID);

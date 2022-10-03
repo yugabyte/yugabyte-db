@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX util)
-set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+set(YB_PCH_DEP_LIBS cds gmock gtest gutil icui18n icuuc libev protoc)
 
 #######################################
 # protoc-gen-insertions
@@ -130,9 +130,12 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  auto_flags.cc
+  auto_flags_util.cc
   async_task_util.cc
   atomic.cc
   background_task.cc
+  backoff_waiter.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
@@ -237,6 +240,7 @@ set(UTIL_SRCS
   subprocess.cc
   sync_point.cc
   test_graph.cc
+  test_kill.cc
   thread.cc
   thread_restrictions.cc
   threadlocal.cc
@@ -279,6 +283,7 @@ set(UTIL_LIBS
   ${OPENSSL_SSL_LIBRARY})
 
 if(NOT APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt
@@ -308,7 +313,8 @@ add_dependencies(yb_util gen_version_info)
 ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
-  DEPS gflags glog gmock yb_util)
+       multi_drive_test_env.cc
+  DEPS gflags glog gmock gtest yb_util)
 
 #######################################
 # yb_test_main
@@ -316,7 +322,7 @@ ADD_YB_TEST_LIBRARY(
 
 ADD_YB_TEST_LIBRARY(yb_test_main
                     SRCS test_main.cc
-                    DEPS gflags glog gmock yb_util yb_test_util)
+                    DEPS gflags glog gmock gtest yb_util yb_test_util)
 
 if(NOT APPLE)
   target_link_libraries(yb_test_main rt)
@@ -326,9 +332,12 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest ${YB_TEST_LINK_LIBS_EXTENSIONS}
+    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(auto_flags-test)
 ADD_YB_TEST(background_task-test)
+ADD_YB_TEST(backoff_waiter-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
@@ -367,6 +376,7 @@ ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
 ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
+ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)

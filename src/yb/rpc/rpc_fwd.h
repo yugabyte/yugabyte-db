@@ -48,6 +48,7 @@ class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
 class LightweightMessage;
 class MessengerBuilder;
+class PeriodicTimer;
 class Proxy;
 class ProxyCache;
 class ProxyContext;

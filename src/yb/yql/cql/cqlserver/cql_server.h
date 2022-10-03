@@ -64,7 +64,7 @@ class CQLServer : public server::RpcAndWebServerBase {
             boost::asio::io_service* io,
             tserver::TabletServerIf* tserver);
 
-  CHECKED_STATUS Start();
+  Status Start();
 
   void Shutdown();
 

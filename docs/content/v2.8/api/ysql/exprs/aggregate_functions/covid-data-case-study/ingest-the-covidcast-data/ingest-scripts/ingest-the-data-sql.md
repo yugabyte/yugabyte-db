@@ -8,8 +8,7 @@ menu:
     identifier: ingest-the-data-sql
     parent: ingest-scripts
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Save this script as "ingest-the-data.sql"**

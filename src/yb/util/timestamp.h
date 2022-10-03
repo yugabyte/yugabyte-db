@@ -26,7 +26,7 @@ class Timestamp {
   explicit Timestamp(int64_t value) : value_(value) {}
   Timestamp() : value_(0) {}
   int64_t ToInt64() const;
-  CHECKED_STATUS FromInt64(int64_t value);
+  Status FromInt64(int64_t value);
 
   std::string ToString() const;
 

@@ -8,7 +8,7 @@ import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { getUniverseNodes } from '../../../utils/UniverseUtils';
+import { getUniverseNodeCount } from '../../../utils/UniverseUtils';
 import { isAvailable } from '../../../utils/LayoutUtils';
 
 export default class HighlightedStatsPanel extends Component {
@@ -29,7 +29,7 @@ export default class HighlightedStatsPanel extends Component {
     if (universeList.data) {
       universeList.data.forEach(function (universeItem) {
         if (isNonEmptyObject(universeItem.universeDetails)) {
-          numNodes += getUniverseNodes(universeItem.universeDetails.clusters);
+          numNodes += getUniverseNodeCount(universeItem.universeDetails.nodeDetailsSet);
         }
         if (isDefinedNotNull(universeItem.pricePerHour)) {
           totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();

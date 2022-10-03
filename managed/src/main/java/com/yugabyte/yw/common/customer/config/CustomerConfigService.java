@@ -14,10 +14,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,7 +36,7 @@ import org.apache.commons.collections.CollectionUtils;
 @Singleton
 public class CustomerConfigService {
 
-  private final CustomerConfigValidator configValidator;
+  private CustomerConfigValidator configValidator;
 
   @Inject
   public CustomerConfigService(CustomerConfigValidator configValidator) {
@@ -168,5 +168,25 @@ public class CustomerConfigService {
 
   private UUID getUniverseUuid(Schedule schedule) {
     return UUID.fromString(schedule.getTaskParams().get("universeUUID").asText());
+  }
+
+  /**
+   * masks the data in the passed configuration
+   *
+   * @param unmaskedConfig
+   * @param maskStr
+   * @return
+   */
+  public CustomerConfig getConfigMasked(CustomerConfig unmaskedConfig) {
+    if (unmaskedConfig == null) return null;
+    CustomerConfig maskedConfig = unmaskedConfig;
+    maskedConfig.setData(unmaskedConfig.getMaskedData());
+    return maskedConfig;
+  }
+
+  // For test purposes only.
+  @Deprecated
+  public void setConfigValidator(CustomerConfigValidator configValidator) {
+    this.configValidator = configValidator;
   }
 }

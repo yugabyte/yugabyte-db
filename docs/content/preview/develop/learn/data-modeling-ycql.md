@@ -12,8 +12,7 @@ menu:
     identifier: data-modeling-1-ycql
     parent: learn
     weight: 562
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

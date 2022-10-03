@@ -20,7 +20,7 @@
 #ifndef ROCKSDB_LITE
 
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/sst_dump_tool.h"

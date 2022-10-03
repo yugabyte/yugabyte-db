@@ -158,7 +158,13 @@ public class MetricStorage {
               new Pair<>(metric.getCustomerUUID(), metric.getSourceUuid()),
               MetricSourceState.ACTIVE);
       PlatformMetrics platformMetric = PlatformMetrics.fromMetricName(metric.getName());
-      if (!platformMetric.getValidForSourceStates().contains(metricSourceState)) {
+      // All metrics, collected through YB Anywhere as a backup scenario from external systems
+      // - are only valid for active source
+      boolean validForSourceState =
+          platformMetric != null
+              ? platformMetric.getValidForSourceStates().contains(metricSourceState)
+              : metricSourceState == MetricSourceState.ACTIVE;
+      if (!validForSourceState) {
         log.debug(
             "Skipping metric {} from source {} as it's marked {}",
             metric.getName(),

@@ -399,7 +399,7 @@ Result<std::pair<size_t, bool>> DocKey::EncodedSizeAndHashPresent(Slice slice, D
   return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
 }
 
-Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
+Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     Slice slice,
     AllowSpecial allow_special) {
   auto initial_begin = slice.data();
@@ -407,8 +407,10 @@ Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
   EncodedSizesCallback callback(&decoder);
   RETURN_NOT_OK(DoDecode(
       &decoder, DocKeyPart::kWholeDocKey, allow_special, callback));
-  return std::make_pair(callback.range_group_start() - initial_begin,
-                        decoder.left_input().data() - initial_begin);
+  return DocKeySizes {
+    .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
+    .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
+  };
 }
 
 class DocKey::DecodeFromCallback {
@@ -703,7 +705,7 @@ class DecodeSubDocKeyCallback {
  public:
   explicit DecodeSubDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return DocKey::PartiallyDecode(slice, out_);
   }
 
@@ -736,7 +738,7 @@ class SubDocKey::DecodeCallback {
  public:
   explicit DecodeCallback(SubDocKey* key) : key_(key) {}
 
-  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice) const {
     return key_->doc_key_.DecodeFrom(slice);
   }
 
@@ -876,8 +878,8 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     SCHECK_GE(slice.size(), id_size + 1, Corruption,
               Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
     // Identify table tombstone.
-    if (slice[0] == KeyEntryTypeAsChar::kColocationId &&
-        slice[id_size] == KeyEntryTypeAsChar::kGroupEnd) {
+    if ((slice[0] == KeyEntryTypeAsChar::kColocationId || slice[0] == KeyEntryTypeAsChar::kTableId)
+        && slice[id_size] == KeyEntryTypeAsChar::kGroupEnd) {
       SCHECK_GE(slice.size(), id_size + 2, Corruption,
                 Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
       SCHECK_EQ(slice[id_size + 1], KeyEntryTypeAsChar::kHybridTime, Corruption,
@@ -1326,8 +1328,8 @@ bool DocKeyDecoder::GroupEnded() const {
   return input_.empty() || input_[0] == KeyEntryTypeAsChar::kGroupEnd;
 }
 
-Result<bool> DocKeyDecoder::HasPrimitiveValue() {
-  return docdb::HasPrimitiveValue(&input_, AllowSpecial::kFalse);
+Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
+  return docdb::HasPrimitiveValue(&input_, allow_special);
 }
 
 Status DocKeyDecoder::DecodeToRangeGroup() {

@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/type_inet
   - /preview/api/ycql/type_inet
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

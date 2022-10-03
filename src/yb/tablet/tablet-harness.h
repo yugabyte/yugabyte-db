@@ -85,9 +85,9 @@ class TabletHarness {
 
   virtual ~TabletHarness() = default;
 
-  CHECKED_STATUS Create(bool first_time);
+  Status Create(bool first_time);
 
-  CHECKED_STATUS Open();
+  Status Open();
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id);
 

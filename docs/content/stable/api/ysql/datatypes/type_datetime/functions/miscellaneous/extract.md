@@ -8,8 +8,7 @@ menu:
     identifier: extract
     parent: miscellaneous
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The function _extract()_, and the alternative syntax that the function _date_part()_ supports for the same semantics, return a _double precision_ value corresponding to a nominated so-called _field_, like _year_ or _second_, from the input _date-time_ value.
@@ -66,12 +65,12 @@ The \\_df_ metacommand produces output for _date_part()_ in the normal way; but 
  Result data type |        Argument data types
 ------------------+-----------------------------------
  double precision | text, date
- 
+
  double precision | text, time without time zone
- 
+
  double precision | text, timestamp without time zone
  double precision | text, timestamp with time zone
- 
+
  double precision | text, interval
 ```
 
@@ -83,7 +82,7 @@ Three rows were removed manually:
 The remaining rows were re-ordered, and blank lines were added, to improve the readability.
 
 {{< tip title="Avoid using the 'abstime' and 'reltime' fields." >}}
-The <a href="https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE" target="_blank">PostgreSQL documentation <i class="fas fa-external-link-alt"></i></a> says this:
+The [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) says this:
 
 > The data types _abstime_ and _reltime_ are lower precision types which are used internally. Don't use these types in applications; these internal types might disappear in a future release.
 {{< /tip >}}
@@ -199,7 +198,7 @@ select
 This is the result:
 
 ```output
-         y:d 1         |         y:d 2         |         y:d 3         
+         y:d 1         |         y:d 2         |         y:d 3
 -----------------------+-----------------------+-----------------------
  2005-01-01 -> 2004:53 | 2006-01-01 -> 2005:52 | 2012-12-31 -> 2013:01
 ```
@@ -332,7 +331,7 @@ This is the result:
  ts:               2016-09-18 13:17:53.123456
  tstz:             2016-09-18 03:17:53.123456-07
  interval:         1221 years 1 mon 99 days 01:36:07.123456
- 
+
                                  date              time                ts              tstz          interval
                      ----------------  ----------------  ----------------  ----------------  ----------------
  millennium:                        3                                   3                 3                 1
@@ -347,16 +346,16 @@ This is the result:
  second:                            0         53.123456         53.123456         53.123456          7.123456
  milliseconds:                      0         53123.456         53123.456         53123.456          7123.456
  microseconds:                      0          53123456          53123456          53123456           7123456
- timezone_hour:                                                                          -7                  
- timezone_minute:                                                                         0                  
- timezone:                                                                           -25200                  
- doy:                             262                                 262               262                  
- dow:                               0                                   0                 0                  
- isodow:                            7                                   7                 7                  
- week:                             37                                  37                37                  
- isoyear:                        2016                                2016              2016                  
+ timezone_hour:                                                                          -7
+ timezone_minute:                                                                         0
+ timezone:                                                                           -25200
+ doy:                             262                                 262               262
+ dow:                               0                                   0                 0
+ isodow:                            7                                   7                 7
+ week:                             37                                  37                37
+ isoyear:                        2016                                2016              2016
  epoch:                    1474156800      47873.123456  1474204673.12346  1474193873.12346  38542980967.1235
- julian:                      2457650                    2457650.55408708  2457650.13742041                  
+ julian:                      2457650                    2457650.55408708  2457650.13742041
 ```
 
 Notice that an illegal extraction attempt with all data types apart from _time_ causes the _0A000_ error (_feature_not_supported_). But an illegal extraction attempt on a _time_ value might cause the _22023_ error (_invalid_parameter_value_) with a message like _"time" units "millennium" not recognized_.

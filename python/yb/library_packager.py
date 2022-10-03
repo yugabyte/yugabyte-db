@@ -295,9 +295,11 @@ class LibraryPackager:
         dependencies: Set[Dependency] = set()
 
         ldd_result_stdout_str = ldd_result.stdout
+        ldd_result_stderr_str = ldd_result.stderr
         if ldd_result.returncode != 0:
-            # Interestingly, the below error message is printed to stdout, not stderr.
-            if ldd_result_stdout_str == 'not a dynamic executable':
+            # The below error message is printed to stdout on some platforms (CentOS) and
+            # stderr on other platforms (Ubuntu).
+            if 'not a dynamic executable' in (ldd_result_stdout_str, ldd_result_stderr_str):
                 logging.debug(
                     "Not a dynamic executable: {}, ignoring dependency tracking".format(
                         elf_file_path))
@@ -365,9 +367,13 @@ class LibraryPackager:
                 raise RuntimeError("No files found matching the pattern '{}'".format(
                     seed_executable_glob))
             for executable in glob_results:
+                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
+                if 'gobin' in seed_executable_glob:
+                    # This is a statically linked go binary
+                    shutil.copy(executable, dest_bin_dir)
+                    continue
                 deps = self.find_elf_dependencies(executable)
                 all_deps += deps
-                dest_bin_dir = self.get_dest_bin_dir_for_executable(executable)
                 if deps:
                     self.install_dyn_linked_binary(executable, dest_bin_dir)
                     executable_basename = os.path.basename(executable)

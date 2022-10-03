@@ -66,7 +66,7 @@ Result<RefCntBuffer> SerializeRequest(
 
 size_t SerializedMessageSize(size_t body_size, size_t additional_size);
 
-CHECKED_STATUS SerializeMessage(
+Status SerializeMessage(
     AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
     size_t additional_size, size_t offset);
 
@@ -84,12 +84,12 @@ struct ParsedRequestHeader {
 // Out: parsed_header PB initialized,
 //      parsed_main_message pointing to offset in original buffer containing
 //      the main payload.
-CHECKED_STATUS ParseYBMessage(const Slice& buf,
+Status ParseYBMessage(const Slice& buf,
                               google::protobuf::MessageLite* parsed_header,
                               Slice* parsed_main_message);
 
 
-CHECKED_STATUS ParseYBMessage(const Slice& buf,
+Status ParseYBMessage(const Slice& buf,
                               ParsedRequestHeader* parsed_header,
                               Slice* parsed_main_message);
 

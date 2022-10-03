@@ -409,7 +409,8 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	if (!(IsYbExtensionUser(GetUserId()) && creating_extension) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create an operator class")));
+				 errmsg("must be superuser or a member of the yb_extension "
+				 		"role to create an operator class")));
 
 	/* Look up the datatype */
 	typeoid = typenameTypeId(NULL, stmt->datatype);
@@ -807,10 +808,11 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 	 *
 	 * XXX re-enable NOT_USED code sections below if you remove this test.
 	 */
-	if (!superuser())
+	if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to alter an operator family")));
+				 errmsg("must be superuser or a member of the yb_extension "
+				 		"role to alter an operator family")));
 
 	/*
 	 * ADD and DROP cases need separate code from here on down.

@@ -70,6 +70,8 @@ class YBTableCreator {
 
   YBTableCreator& tablespace_id(const std::string& tablespace_id);
 
+  YBTableCreator& is_matview(bool is_matview);
+
   YBTableCreator& matview_pg_table_id(const std::string& matview_pg_table_id);
 
   // Sets the schema with which to create the table. Must remain valid for
@@ -161,7 +163,7 @@ class YBTableCreator {
   // The return value may indicate an error in the create table operation,
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
-  CHECKED_STATUS Create();
+  Status Create();
 
   Result<int> NumTabletsForUserTable();
 
@@ -217,6 +219,8 @@ class YBTableCreator {
 
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
+
+  boost::optional<bool> is_matview_;
 
   std::string matview_pg_table_id_;
 

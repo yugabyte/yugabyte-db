@@ -9,8 +9,7 @@ menu:
     weight: 1320
 aliases:
   - /preview/api/ycql/explain/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

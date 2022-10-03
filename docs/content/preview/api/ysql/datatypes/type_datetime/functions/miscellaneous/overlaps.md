@@ -8,8 +8,7 @@ menu:
     identifier: overlaps
     parent: miscellaneous
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## The function modeled_overlaps(timestamp, timestamp, timestamp, timestamp) returns boolean

@@ -48,6 +48,10 @@ message TestStringRepeatedPB {
   repeated string text = 1;
 }
 
+message TestStringOptionalPB {
+  optional string text = 1;
+}
+
 enum TestPBEnum {
   FOO = 1;
   BAR = 2;

@@ -45,6 +45,10 @@ void YBMiniClusterTestBase<T>::SetUp() {
   YBTest::SetUp();
   HybridTime::TEST_SetPrettyToString(true);
 
+  // Save default value of use_priority_thread_pool_for_flushes flag for tests that aim to test
+  // the default behaviour rather then overridden one we configure here.
+  // Also see https://github.com/yugabyte/yugabyte-db/issues/8935.
+  saved_use_priority_thread_pool_for_flushes_ = FLAGS_use_priority_thread_pool_for_flushes;
   FLAGS_use_priority_thread_pool_for_flushes = true;
   FLAGS_allow_preempting_compactions = true;
 

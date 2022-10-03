@@ -9,9 +9,7 @@ menu:
     name: Python
     identifier: python-4
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -68,7 +66,7 @@ YugabyteDB is up and running. If you are new to YugabyteDB, you can have Yugabyt
 ## Clone the orm-examples repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
 This repository has a Django ORM example that implements a simple REST API server. Database access in this application is managed through the Django ORM. The e-commerce database `ysql_django` includes the following tables:

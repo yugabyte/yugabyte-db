@@ -51,7 +51,6 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
 
-DECLARE_bool(enable_tracing);
 DECLARE_bool(use_monotime_for_traces);
 DECLARE_int32(tracing_level);
 
@@ -64,17 +63,15 @@ DECLARE_int32(tracing_level);
 // Like the above, but takes the trace pointer as an explicit argument.
 #define TRACE_TO_WITH_TIME(trace, time, format, substitutions...) \
   do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
-      if ((trace)) { \
-        (trace)->SubstituteAndTrace( \
-            __FILE__, __LINE__, (time), (format), ##substitutions); \
-      } \
+    if ((trace)) { \
+      (trace)->SubstituteAndTrace( \
+          __FILE__, __LINE__, (time), (format), ##substitutions); \
     } \
   } while (0)
 
 #define VTRACE_TO(level, trace, format, substitutions...) \
   do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing) && level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
+    if ((trace) && level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
       const bool use_fine_ts = GetAtomicFlag(&FLAGS_use_monotime_for_traces); \
       auto time = (use_fine_ts ? ToCoarse(MonoTime::Now()) : CoarseMonoClock::Now()); \
       TRACE_TO_WITH_TIME(trace, time, format, ##substitutions); \
@@ -104,7 +101,7 @@ DECLARE_int32(tracing_level);
 
 #define PLAIN_TRACE_TO(trace, message) \
   do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
+    if ((trace)) { \
       (trace)->Trace(__FILE__, __LINE__, (message)); \
     } \
   } while (0)
@@ -114,11 +111,9 @@ DECLARE_int32(tracing_level);
 #define PRINT_THIS_TRACE() \
   TRACE("Requesting to print this trace"); \
   do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
-      yb::Trace* _trace = Trace::CurrentTrace(); \
-      if (_trace) { \
-        _trace->set_must_print(true); \
-      } \
+    yb::Trace* _trace = Trace::CurrentTrace(); \
+    if (_trace) { \
+      _trace->set_must_print(true); \
     } \
   } while (0)
 
@@ -189,6 +184,9 @@ class Trace : public RefCountedThreadSafe<Trace> {
   static Trace* CurrentTrace() {
     return threadlocal_trace_;
   }
+
+  static scoped_refptr<Trace> NewTrace();
+  static scoped_refptr<Trace> NewTraceForParent(Trace* parent);
 
   // Simple function to dump the current trace to stderr, if one is
   // available. This is meant for usage when debugging in gdb via

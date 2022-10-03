@@ -46,6 +46,10 @@ export function isEmptyString(str) {
   return _.isString(str) && str.trim().length === 0;
 }
 
+export function makeFirstLetterUpperCase(str) {
+  return _.isString(str) && _.upperFirst(str);
+}
+
 export function removeNullProperties(obj) {
   for (const propName in obj) {
     if (obj[propName] === null || obj[propName] === undefined) {
@@ -107,6 +111,7 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     _.isEqual(userIntent1.accessKeyCode, userIntent2.accessKeyCode) &&
     _.isEqual(userIntent1.instanceType, userIntent2.instanceType) &&
     _.isEqual(userIntent1.gflags, userIntent2.gflags) &&
+    _.isEqual(userIntent1.dedicatedNodes, userIntent2.dedicatedNodes) &&
     _.isEqual(normalizeFlags(userIntent1.instanceTags), normalizeFlags(userIntent2.instanceTags))
   );
 }

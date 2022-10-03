@@ -8,8 +8,7 @@ menu:
     identifier: type-time
     parent: date-time-data-types-semantics
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Values whose data type is _time_ represent the time-of-day component of some moment (the hours and minutes as integer values and the seconds as a real number value with microsecond precision) in the "local" (a.k.a. "wall-clock") regime. _Time_ values know nothing about timezones, and represent the time of day at some unspecified location. You can picture a _time_ value as the number of microseconds from the exact midnight that starts the day. And because _time_ values know nothing about timezones, they know nothing about Daylight Savings regimes, either: every day ought to run from midnight (inclusive) through the next midnight (exclusive). But notice this quirk:

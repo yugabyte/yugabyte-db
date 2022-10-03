@@ -77,6 +77,7 @@ struct TransactionApplyData {
   TabletId status_tablet;
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
+  bool is_external = false;
 
   std::string ToString() const;
 };
@@ -128,15 +129,20 @@ class TransactionParticipant : public TransactionStatusManager {
   // he should just append it to appropriate value.
   //
   // Returns boost::none when transaction is unknown.
+  //
+  // When external_transaction is set for xcluster transactions, the function ignores the start time
+  // of the txn when fetching the transaction since the txn status record and intent bach can come
+  // out of order.
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool external_transaction = false);
 
   void BatchReplicated(const TransactionId& id, const TransactionalBatchData& data);
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
@@ -158,16 +164,20 @@ class TransactionParticipant : public TransactionStatusManager {
     std::string ToString() const;
   };
 
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter);
 
-  CHECKED_STATUS CheckAborted(const TransactionId& id);
+  Status CheckAborted(const TransactionId& id);
 
   void FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
+
+  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
+
+  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override;
 
   void GetStatus(const TransactionId& transaction_id,
                  size_t required_num_replicated_batches,
@@ -193,13 +203,13 @@ class TransactionParticipant : public TransactionStatusManager {
   // After this function returns with success:
   // - All intents of committed transactions will have been applied.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
-  CHECKED_STATUS ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
 
   // Attempts to abort all transactions that started prior to cutoff time.
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(
+  Status StopActiveTxnsPriorTo(
       HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
@@ -210,7 +220,13 @@ class TransactionParticipant : public TransactionStatusManager {
 
   std::string DumpTransactions() const;
 
-  void SetRetainOpId(const OpId& op_id) const;
+  void SetIntentRetainOpIdAndTime(const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+
+  OpId GetRetainOpId() const;
+
+  CoarseTimePoint GetCheckpointExpirationTime() const;
+
+  OpId GetLatestCheckPoint() const;
 
   const TabletId& tablet_id() const override;
 
@@ -222,7 +238,7 @@ class TransactionParticipant : public TransactionStatusManager {
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 
  private:
-  int64_t RegisterRequest() override;
+  Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
   class Impl;

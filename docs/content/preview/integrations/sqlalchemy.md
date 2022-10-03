@@ -3,13 +3,12 @@ title: Using SQLAlchemy with YugabyteDB
 linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: sqlalchemy
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a Python SQL tool and object-relational mapping (ORM) tool, with YugabetyDB.
@@ -17,8 +16,6 @@ This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a 
 ## Prerequisites
 
 - YugabyteDB version 2.6 or later (see [YugabyteDB Quick Start Guide](/preview/quick-start/)).
-
-- Yugabyte cluster (see [Create a local cluster](/preview/quick-start/create-local-cluster/macos/)).
 
 - Python version 2.7 or later.
 

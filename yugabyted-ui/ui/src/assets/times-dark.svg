@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>06F96665-8B17-44ED-B0A9-64EC110C1B2D</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="800" height="600" rx="8"></rect>
+        <filter x="-1.9%" y="-2.5%" width="103.8%" height="105.0%" filterUnits="objectBoundingBox" id="filter-3">
+            <feOffset dx="0" dy="0" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="5" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.25 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Clusters---Connect" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Layout/Modal-(Default)" transform="translate(-1088.000000, -84.000000)">
+            <g id="Group" fill="#0B1117" opacity="0.75">
+                <g id="Rectangle-2">
+                    <rect id="Rectangle" x="0" y="0" width="1456" height="1024"></rect>
+                </g>
+            </g>
+            <g id="Modal" transform="translate(328.000000, 64.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <g id="Mask">
+                    <use fill="black" fill-opacity="1" filter="url(#filter-3)" xlink:href="#path-1"></use>
+                    <use fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+                </g>
+                <g id="Group" mask="url(#mask-2)">
+                    <g id="Header/Modal">
+                        <rect id="Fill" fill="#E1E9EE" x="0" y="0" width="800" height="64"></rect>
+                        <circle id="Oval" fill="#E1E9EE" cx="772" cy="32" r="16"></circle>
+                        <g id="Icon/X-(Large)" transform="translate(760.000000, 20.000000)">
+                            <polygon id="Path" points="0 0 24 0 24 24 0 24"></polygon>
+                            <path d="M12,4 C12.2454599,4 12.4496084,4.17687516 12.4919443,4.41012437 L12.5,4.5 L12.5,11.5 L19.5,11.5 C19.7761424,11.5 20,11.7238576 20,12 C20,12.2454599 19.8231248,12.4496084 19.5898756,12.4919443 L19.5,12.5 L12.5,12.5 L12.5,19.5 C12.5,19.7761424 12.2761424,20 12,20 C11.7545401,20 11.5503916,19.8231248 11.5080557,19.5898756 L11.5,19.5 L11.5,12.5 L4.5,12.5 C4.22385763,12.5 4,12.2761424 4,12 C4,11.7545401 4.17687516,11.5503916 4.41012437,11.5080557 L4.5,11.5 L11.5,11.5 L11.5,4.5 C11.5,4.22385763 11.7238576,4 12,4 Z" id="Combined-Shape" fill="#25323D" transform="translate(12.000000, 12.000000) rotate(45.000000) translate(-12.000000, -12.000000) "></path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

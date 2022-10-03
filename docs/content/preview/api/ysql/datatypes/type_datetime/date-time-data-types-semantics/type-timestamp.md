@@ -8,8 +8,7 @@ menu:
     identifier: type-timestamp
     parent: date-time-data-types-semantics
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Understanding this section depends on understanding the 'Timezones' section." >}}

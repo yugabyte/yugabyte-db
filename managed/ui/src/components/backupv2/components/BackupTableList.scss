@@ -7,20 +7,28 @@
   border: 1px solid $YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
   padding: 16px;
+
   .dropdown {
     z-index: 10000;
   }
+
   .table-bordered {
     thead th {
       font-weight: 700;
+      text-transform: unset !important;
+      font-style: normal;
+      font-size: 12px;
+      line-height: 16px;
     }
   }
+
   .copy-location-button {
     height: 30px;
     padding: 5px 10px;
     font-size: 12px;
     margin-left: 10px;
   }
+
   #table-list-actions-dropdown {
     width: 50px !important;
     border: 0;
@@ -30,20 +38,38 @@
     padding: 0;
     font-size: 12px;
   }
+
   .inset-table {
     margin-left: 75px;
     margin-top: 15px;
+    thead th,
+    tbody td {
+      padding-left: 8px !important;
+    }
   }
+
   &.ycql-table {
     height: 350px;
     overflow: auto;
   }
+
   .clickable {
     cursor: pointer;
   }
+
   .restore-detail-button {
     height: 30px;
     padding: 5px 10px;
     font-size: 12px;
+  }
+
+  .expand-keyspace-icon {
+    font-size: 18px;
+  }
+
+  .table-list-header {
+    thead {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    }
   }
 }

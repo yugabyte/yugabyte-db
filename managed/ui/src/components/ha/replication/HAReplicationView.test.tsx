@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../../../test-utils';
 import { HAReplicationView } from './HAReplicationView';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import { mockRuntimeConfigs } from './mockUtils';
 
 const mockConfig: HAConfig = {
   uuid: 'config-id-1',
@@ -42,11 +43,16 @@ const mockSchedule: HAReplicationSchedule = {
 };
 
 const setup = (config?: HAConfig) => {
+  const fetchRunTimeConfigs = jest.fn();
+  const setRunTimeConfig = jest.fn();
   return render(
     <HAReplicationView
       config={config || mockConfig}
       schedule={mockSchedule}
       editConfig={() => {}}
+      runtimeConfigs={mockRuntimeConfigs}
+      fetchRuntimeConfigs={fetchRunTimeConfigs}
+      setRuntimeConfig={setRunTimeConfig}
     />
   );
 };
@@ -62,20 +68,22 @@ describe('HA replication configuration overview', () => {
 
   it('should render standby configuration properly', () => {
     const config = _.cloneDeep(mockConfig);
-    config.instances.forEach(item => item.is_leader = false); // mark all instances as standby
+    config.instances.forEach((item) => (item.is_leader = false)); // mark all instances as standby
     const component = setup(config);
 
     expect(component.queryByText(/replication frequency/i)).not.toBeInTheDocument();
     expect(component.queryByText(/enable replication/i)).not.toBeInTheDocument();
-    expect(component.queryByRole('button', { name: /edit configuration/i })).not.toBeInTheDocument();
+    expect(
+      component.queryByRole('button', { name: /edit configuration/i })
+    ).not.toBeInTheDocument();
     expect(component.getByRole('button', { name: /make active/i })).toBeInTheDocument();
   });
 
   it('should render cluster topology in correct order', () => {
     const component = setup();
-    const instances = Array
-      .from(component.container.querySelectorAll('.ha-replication-view__topology-col--address'))
-      .map(item => item.textContent);
+    const instances = Array.from(
+      component.container.querySelectorAll('.ha-replication-view__topology-col--address')
+    ).map((item) => item.textContent);
 
     // should put active instance on top and sort standby instances by address
     expect(instances).toEqual([
@@ -99,7 +107,7 @@ describe('HA replication configuration overview', () => {
 
   it('should render a modal on click at the promotion button', () => {
     const config = _.cloneDeep(mockConfig);
-    config.instances.forEach(item => item.is_leader = false); // mark all instances as standby
+    config.instances.forEach((item) => (item.is_leader = false)); // mark all instances as standby
     const component = setup(config);
 
     // check if modal opens

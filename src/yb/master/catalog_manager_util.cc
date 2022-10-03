@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/common/partition.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_util.h"
 
@@ -24,6 +26,8 @@ DEFINE_double(balancer_load_max_standard_deviation, 2.0,
     "The standard deviation among the tserver load, above which that distribution "
     "is considered not balanced.");
 TAG_FLAG(balancer_load_max_standard_deviation, advanced);
+
+DECLARE_bool(transaction_tables_use_preferred_zones);
 
 namespace yb {
 namespace master {
@@ -238,7 +242,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
   }
 }
 
-CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
+Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
   static const auto stringify_partition_key = [](const Slice& key) {
     return key.empty() ? "{empty}" : key.ToDebugString();
@@ -326,7 +330,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
   return ComputeCloudInfoSimilarity(ci1, ci2) == ZONE_MATCH;
 }
 
-CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
+Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
   std::unordered_set<string> cloud_info_string;
 
@@ -402,7 +406,7 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
   return Status::OK();
 }
 
-CHECKED_STATUS ValidateAndAddPreferredZone(
+Status ValidateAndAddPreferredZone(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info,
     std::set<string>* visited_zones, CloudInfoListPB* zone_set) {
   auto cloud_info_str = TSDescriptor::generate_placement_id(cloud_info);
@@ -428,7 +432,7 @@ CHECKED_STATUS ValidateAndAddPreferredZone(
   return Status::OK();
 }
 
-CHECKED_STATUS CatalogManagerUtil::SetPreferredZones(
+Status CatalogManagerUtil::SetPreferredZones(
     const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info) {
   replication_info->clear_affinitized_leaders();
   replication_info->clear_multi_affinitized_leaders();
@@ -500,6 +504,18 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   }
 
   return Status::OK();
+}
+
+void CatalogManagerUtil::FillTableInfoPB(
+    const TableId& table_id, const std::string& table_name, const TableType& table_type,
+    const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
+    tablet::TableInfoPB* pb) {
+  pb->set_table_id(table_id);
+  pb->set_table_name(table_name);
+  pb->set_table_type(table_type);
+  SchemaToPB(schema, pb->mutable_schema());
+  pb->set_schema_version(schema_version);
+  partition_schema.ToPB(pb->mutable_partition_schema());
 }
 
 bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {

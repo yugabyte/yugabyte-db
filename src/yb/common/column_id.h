@@ -68,7 +68,7 @@ class ColumnId {
 
   uint64_t ToUint64() const;
 
-  static CHECKED_STATUS FromInt64(int64_t value, ColumnId *column_id);
+  static Status FromInt64(int64_t value, ColumnId *column_id);
 
   size_t hash() const {
     return t_;

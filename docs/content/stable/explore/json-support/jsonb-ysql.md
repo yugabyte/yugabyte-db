@@ -11,8 +11,7 @@ menu:
     identifier: explore-json-support-1-ysql
     parent: explore
     weight: 260
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. There are also assorted JSON-specific functions and operators available for data stored in these data types.
@@ -20,21 +19,20 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/json-support/jsonb-ysql/" class="nav-link active">
+    <a href="../jsonb-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/json-support/jsonb-ycql/" class="nav-link">
+    <a href="../jsonb-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 
 </ul>
-
 
 See the section [JSON data types and functionality](../../../api/ysql/datatypes/type_json/) for the YSQL reference documentation on the topic.
 
@@ -50,7 +48,7 @@ There are two JSON data types supported in YSQL: `json` and `jsonb`.
 
 
 {{< tip title="Tip" >}}
-**When to use `jbonb` vs `json`?** In general, most applications should prefer to store JSON data as `jsonb`, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
+**When to use `jsonb` vs `json`?** In general, most applications should prefer to store JSON data as `jsonb`, unless there are quite specialized needs, such as legacy assumptions about ordering of object keys.
 
 They accept *almost* identical sets of values as input. The major practical difference is one of efficiency:
 * The `json` data type stores an exact copy of the input text, which processing functions must reparse on each execution

@@ -18,9 +18,10 @@ import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
 
-import org.apache.log4j.Logger;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -35,7 +36,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestBase extends CDCBaseClass {
-  private Logger LOG = Logger.getLogger(TestBase.class);
+  private Logger LOG = LoggerFactory.getLogger(TestBase.class);
 
   private void executeScriptAssertRecords(ExpectedRecordYSQL<?>[] expectedRecords,
                                           String sqlScript) throws Exception {

@@ -11,9 +11,7 @@ menu:
     identifier: enable-authentication
     parent: secure
     weight: 715
-type: page
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">

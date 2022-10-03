@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-export
     parent: migrate-from-postgresql
     weight: 750
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is using the CSV format.
@@ -28,7 +27,7 @@ The `ysql_dump` approach has been tested on PostgreSQL v11.2, and may not work o
 
 ## Export using COPY
 
-This is an alternative to using ysql_dump in order to export a single table from the source PostgreSQL database into CSV files. This tool allows extracting a subset of rows and/or columns from a table. This can be achieved by connecting to the source DB using psql and using the `COPY TO` command, as shown below. 
+This is an alternative to using ysql_dump in order to export a single table from the source PostgreSQL database into CSV files. This tool allows extracting a subset of rows and/or columns from a table. This can be achieved by connecting to the source DB using psql and using the `COPY TO` command, as shown below.
 
 ```sql
 COPY mytable TO 'export-1.csv' DELIMITER ',' CSV HEADER;
@@ -54,13 +53,13 @@ An example of running multiple exports in parallel is shown below. Remember to u
 ```sql
 COPY (
   SELECT * FROM mytable
-    ORDER BY primary_key_col 
+    ORDER BY primary_key_col
     LIMIT num_rows_per_export OFFSET 0
 ) TO 'export-1.csv' DELIMITER ',' CSV HEADER;
 
 COPY (
   SELECT * FROM mytable
-    ORDER BY primary_key_col 
+    ORDER BY primary_key_col
     LIMIT num_rows_per_export OFFSET num_rows_per_export
 ) TO 'export-2.csv' WITH CSV;
 

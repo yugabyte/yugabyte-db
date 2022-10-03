@@ -1,7 +1,7 @@
-```ebnf
+```output.ebnf
 create_operator ::= CREATE OPERATOR operator_name ( 
-                    { FUNCTION = function_name
-                      | PROCEDURE = procedure_name } 
+                    { FUNCTION = subprogram_name
+                      | PROCEDURE = subprogram_name } 
                     [ , operator_option [ ... ] ] )
 
 operator_option ::= LEFTARG = left_type

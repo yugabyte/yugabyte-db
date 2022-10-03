@@ -8,8 +8,7 @@ menu:
     identifier: row
     parent: array-literals
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The word "row" has two different uses; but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the `CREATE TABLE` statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.

@@ -303,12 +303,12 @@ DEFINE_int32(kill_random_test, 0,
              "probability 1/this");
 static const bool FLAGS_kill_random_test_dummy __attribute__((unused)) =
     RegisterFlagValidator(&FLAGS_kill_random_test, &ValidateInt32Positive);
-extern int rocksdb_kill_odds;
+extern int test_kill_odds;
 
 DEFINE_string(kill_prefix_blacklist, "",
               "If non-empty, kill points with prefix in the list given will be"
               " skipped. Items are comma-separated.");
-extern std::vector<std::string> rocksdb_kill_prefix_blacklist;
+extern std::vector<std::string> test_kill_prefix_blacklist;
 
 DEFINE_bool(disable_wal, false, "If true, do not write WAL for write.");
 
@@ -1961,10 +1961,10 @@ class StressTest {
 
     fprintf(stdout, "Memtablerep               : %s\n", memtablerep);
 
-    fprintf(stdout, "Test kill odd             : %d\n", rocksdb_kill_odds);
-    if (!rocksdb_kill_prefix_blacklist.empty()) {
+    fprintf(stdout, "Test kill odd             : %d\n", test_kill_odds);
+    if (!test_kill_prefix_blacklist.empty()) {
       fprintf(stdout, "Skipping kill points prefixes:\n");
-      for (auto& p : rocksdb_kill_prefix_blacklist) {
+      for (auto& p : test_kill_prefix_blacklist) {
         fprintf(stdout, "  %s\n", p.c_str());
       }
     }
@@ -2243,8 +2243,8 @@ int main(int argc, char** argv) {
       FLAGS_db = default_db_path;
   }
 
-  rocksdb_kill_odds = FLAGS_kill_random_test;
-  rocksdb_kill_prefix_blacklist = SplitString(FLAGS_kill_prefix_blacklist);
+  test_kill_odds = FLAGS_kill_random_test;
+  test_kill_prefix_blacklist = SplitString(FLAGS_kill_prefix_blacklist);
 
   rocksdb::StressTest stress;
   if (stress.Run()) {

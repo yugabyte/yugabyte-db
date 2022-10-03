@@ -10,8 +10,7 @@ menu:
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Sometimes there might be a need to move a YugabyteDB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:

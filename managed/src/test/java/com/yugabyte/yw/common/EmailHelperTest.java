@@ -14,7 +14,7 @@ import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
@@ -181,7 +181,7 @@ public class EmailHelperTest extends FakeDBApplication {
   @Test
   public void testGetSmtpData_DbConfigExistsAndEmailFromFilled() {
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData));
+    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
 
     SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
     assertEquals(testSmtpData.emailFrom, smtpData.emailFrom);
@@ -194,7 +194,7 @@ public class EmailHelperTest extends FakeDBApplication {
   public void testGetSmtpData_DbConfigExistsAndEmailEmpty_AppConfigHasDefaultEmail() {
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
     testSmtpData.emailFrom = "";
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData));
+    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
 
     SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
     assertEquals(YB_DEFAULT_EMAIL, smtpData.emailFrom);
@@ -209,7 +209,7 @@ public class EmailHelperTest extends FakeDBApplication {
 
     SmtpData testSmtpData = EmailFixtures.createSmtpData();
     testSmtpData.emailFrom = "";
-    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData));
+    CustomerConfig.createSmtpConfig(defaultCustomer.uuid, Json.toJson(testSmtpData)).save();
 
     assertNull(emailHelper.getSmtpData(defaultCustomer.uuid));
   }

@@ -16,6 +16,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/index.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_expr.h"
@@ -26,7 +27,6 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -38,6 +38,7 @@
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/rocksdb/write_batch.h"
+#include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/util/format.h"
@@ -52,11 +53,12 @@ namespace master {
 
 namespace {
 
-CHECKED_STATUS ApplyWriteRequest(
+Status ApplyWriteRequest(
     const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion);
-  docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
+  docdb::DocOperationApplyData apply_data{
+      .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());
@@ -70,6 +72,24 @@ bool TableDeleted(const SysTablesEntryPB& table) {
          table.state() == SysTablesEntryPB::DELETING ||
          table.hide_state() == SysTablesEntryPB::HIDING ||
          table.hide_state() == SysTablesEntryPB::HIDDEN;
+}
+
+bool TabletDeleted(const SysTabletsEntryPB& tablet) {
+  return tablet.state() == SysTabletsEntryPB::REPLACED ||
+         tablet.state() == SysTabletsEntryPB::DELETED ||
+         tablet.hide_hybrid_time() != 0;
+}
+
+bool IsSequencesDataObject(const NamespaceId& id, const SysNamespaceEntryPB& pb) {
+  return id == kPgSequencesDataNamespaceId;
+}
+
+bool IsSequencesDataObject(const TableId& id, const SysTablesEntryPB& pb) {
+  return id == kPgSequencesDataTableId;
+}
+
+bool IsSequencesDataObject(const TabletId& id, const SysTabletsEntryPB& pb) {
+  return pb.table_id() == kPgSequencesDataTableId;
 }
 
 Result<bool> MatchNamespace(
@@ -110,10 +130,241 @@ template<> struct GetEntryType<SysTablesEntryPB>
 template<> struct GetEntryType<SysTabletsEntryPB>
     : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLET> {};
 
+Status ValidateSysCatalogTables(
+    const std::unordered_set<TableId>& restoring_tables,
+    const std::unordered_map<TableId, TableName>& existing_tables) {
+  if (existing_tables.size() != restoring_tables.size()) {
+    return STATUS(NotSupported, "Snapshot state and current state have different system catalogs");
+  }
+  for (const auto& current_table : existing_tables) {
+    auto restoring_table = restoring_tables.find(current_table.first);
+    if (restoring_table == restoring_tables.end()) {
+      return STATUS(
+          NotSupported, Format(
+                            "Sys catalog at restore state is missing a table: id $0, name $1",
+                            current_table.first, current_table.second));
+    }
+  }
+  return Status::OK();
+}
+
+struct PgCatalogTableData {
+  std::array<uint8_t, kUuidSize + 1> prefix;
+  const TableName* name;
+  uint32_t pg_table_oid;
+
+  Status SetTableId(const TableId& table_id) {
+    Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
+    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
+    cotable_id.EncodeToComparable(&prefix[1]);
+    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    return Status::OK();
+  }
+
+  bool IsPgYbCatalogMeta() const {
+    // We reset name to nullptr for pg_yb_catalog_meta table.
+    return name == nullptr;
+  }
+};
+
+class PgCatalogRestorePatch : public RestorePatch {
+ public:
+  PgCatalogRestorePatch(
+      FetchState* existing_state, FetchState* restoring_state,
+      docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
+      tablet::TableInfo* pg_yb_catalog_meta)
+      : RestorePatch(existing_state, restoring_state, doc_batch),
+        table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
+
+  Status Finish() {
+    if (!catalog_version_doc_path_) {
+      return Status::OK();
+    }
+    QLValuePB value_pb;
+    value_pb.set_int64_value(catalog_version_);
+    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to " << catalog_version_;
+    return DocBatch()->SetPrimitive(
+        *catalog_version_doc_path_, docdb::ValueRef(value_pb, SortingType::kNotSpecified));
+  }
+
+ private:
+  Status ProcessCommonEntry(
+      const Slice& key, const Slice& existing_value, const Slice& restoring_value) override {
+    if (!table_.IsPgYbCatalogMeta()) {
+      return RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value);
+    }
+    return ProcessCatalogVersionEntry(key, existing_value);
+  }
+
+  Status ProcessExistingOnlyEntry(
+      const Slice& existing_key, const Slice& existing_value) override {
+    if (!table_.IsPgYbCatalogMeta()) {
+      return RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value);
+    }
+    return ProcessCatalogVersionEntry(existing_key, existing_value);
+  }
+
+  Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
+    return false;
+  }
+
+  Status HandleSchemaVersionValue(
+      const docdb::DocKey& doc_key, ColumnId column_id, const Slice& existing_value) {
+    docdb::Value value;
+    RETURN_NOT_OK(value.Decode(existing_value));
+    auto new_version = value.primitive_value().GetInt64() + 1;
+    if (!catalog_version_doc_path_ || catalog_version_ < new_version) {
+      catalog_version_doc_path_.emplace(
+          doc_key.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      catalog_version_ = new_version;
+    }
+    return Status::OK();
+  }
+
+  Status ProcessCatalogVersionEntry(const Slice& key, const Slice& full_value) {
+    docdb::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    if (sub_doc_key.subkeys().empty()) {
+      auto value_slice = full_value;
+      RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
+      SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
+             Corruption, "Packed row expected: $0", full_value.ToDebugHexString());
+      const docdb::SchemaPacking& packing = VERIFY_RESULT(
+          pg_yb_catalog_meta_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
+      auto column_id = VERIFY_RESULT(
+          pg_yb_catalog_meta_->schema().ColumnIdByName(kCurrentVersionColumnName));
+      auto value = packing.GetValue(column_id, value_slice);
+      if (!value) {
+        return STATUS_FORMAT(
+            Corruption, "$0 missing in $1", kCurrentVersionColumnName,
+            full_value.ToDebugHexString());
+      }
+      return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, *value);
+    }
+    SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
+    const auto& first_subkey = sub_doc_key.subkeys()[0];
+    if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
+      auto column_id = first_subkey.GetColumnId();
+      const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta_->schema().column_by_id(
+          column_id));
+      if (column.name() == kCurrentVersionColumnName) {
+        return HandleSchemaVersionValue(sub_doc_key.doc_key(), column_id, full_value);
+      }
+    }
+    return Status::OK();
+  }
+
+  // Should be alive while this object is alive.
+  const PgCatalogTableData& table_;
+  // Should be alive while this object is alive.
+  tablet::TableInfo* pg_yb_catalog_meta_;
+  std::optional<docdb::DocPath> catalog_version_doc_path_;
+  int64_t catalog_version_;
+};
+
 } // namespace
 
 RestoreSysCatalogState::RestoreSysCatalogState(SnapshotScheduleRestoration* restoration)
     : restoration_(*restoration) {}
+
+Status RestoreSysCatalogState::PatchAndAddRestoringTablets() {
+  faststring buffer;
+  for (auto& split_tablet : restoration_.non_system_tablets_to_restore) {
+    auto& split_info = split_tablet.second;
+    // CASE: 1
+    // If master has fewer than 2 children registered then writes (if any) are still
+    // going to the parent and it is safe to restore the parent and hide the children (if any).
+    // Some examples:
+    //
+    // Example#1: Non-colocated split tablet that has finished split completely as of restore time
+    /*                                 t1
+                                     /   \
+                                    t11   t12       <-- Restoring time
+                                    / \    /  \
+                                t111 t112 t121 t122 <-- Present time
+    */
+    // If we are restoring to a state when t1 was completely split into t11 and t12 then
+    // in the restoring state, the split map will contain two entries
+    // one each for t11 and t12. Both the entries will only have the parent
+    // but no children. It is safe to restore just the parent.
+    //
+    // Example#2: Colocated or not split tablet
+    //                                 t1 (colocated or not split) <-- Present and Restoring time
+    // If we are restoring a colocated tablet then the split map will only contain one entry
+    // for t1 that will only have the parent but no children.
+    //
+    // Example#3: Non-colocated split tablet in the middle of a split as of restore time
+    // If both the children are not registered on the master as of the time to restore
+    // then all the writes are still going to the parent and it is safe to restore
+    // the parent. We also HIDE the children if any.
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Parent tablet id " << split_info.parent.first
+              << ", pb " << split_info.parent.second->ShortDebugString();
+      for (const auto& child : split_info.children) {
+        VLOG(3) << "Child tablet id " << child.first
+                << ", pb " << child.second->ShortDebugString();
+      }
+    }
+    if (split_info.children.size() < 2) {
+      // Clear the children info from the protobuf.
+      split_info.parent.second->clear_split_tablet_ids();
+      // If it is a colocated tablet, then set the schedules that prevent
+      // its colocated tables from getting deleted. Also, add to-be hidden table ids
+      // in its colocated list as they won't be present previously.
+      RETURN_NOT_OK(PatchColocatedTablet(split_info.parent.first, split_info.parent.second));
+      RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second,
+                                      &buffer, SysRowEntryType::TABLET));
+      // Hide the child tablets.
+      for (auto& child : split_info.children) {
+        FillHideInformation(child.second->table_id(), child.second);
+        RETURN_NOT_OK(AddRestoringEntry(child.first, child.second, &buffer,
+                                        SysRowEntryType::TABLET, DoTsRestore::kFalse));
+      }
+    } else {
+      // CASE: 2
+      // If master has both the children registered then we restore as if this split
+      // is complete i.e. we restore both the children and hide the parent.
+      // This works because at the time when restore was initiated, we waited
+      // for splits to complete, so at current time split children are ready and parent is hidden.
+      // Thus it's safe to restore the children and use hybrid time filter to
+      // ensure only restored rows are visible. This takes care of all the race conditions
+      // associated with selectively restoring either only the parent or children depending on
+      // the stage at which splitting is at.
+
+      // There should be exactly 2 children.
+      RSTATUS_DCHECK_EQ(split_info.children.size(), 2, IllegalState,
+                        "More than two children tablets exist for the parent tablet");
+
+      // Restore the child tablets.
+      for (const auto& child : split_info.children) {
+        child.second->clear_split_tablet_ids();
+        child.second->set_split_parent_tablet_id(split_info.parent.first);
+        RETURN_NOT_OK(AddRestoringEntry(child.first, child.second,
+                                        &buffer, SysRowEntryType::TABLET));
+      }
+      // Hide the parent tablet.
+      FillHideInformation(split_info.parent.second->table_id(), split_info.parent.second);
+      RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second, &buffer,
+                                      SysRowEntryType::TABLET, DoTsRestore::kFalse));
+    }
+  }
+
+  return Status::OK();
+}
+
+void RestoreSysCatalogState::FillHideInformation(
+    TableId table_id, SysTabletsEntryPB* pb, bool set_hide_time) {
+  auto it = retained_existing_tables_.find(table_id);
+  if (it != retained_existing_tables_.end()) {
+    if (set_hide_time) {
+      pb->set_hide_hybrid_time(restoration_.write_time.ToUint64());
+    }
+    auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
+    for (const auto& schedule_id : it->second) {
+      out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
+    }
+  }
+}
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysNamespaceEntryPB* pb) {
@@ -123,13 +374,7 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    if (restoration_.system_tables_to_restore.count(id) == 0) {
-      return STATUS_FORMAT(
-          NotFound,
-          "PG Catalog table $0 not found in the present set of tables"
-          " but found in the objects to restore.",
-          pb->name());
-    }
+    restoration_.restoring_system_tables.emplace(id);
     return false;
   }
 
@@ -140,13 +385,13 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 
   if (pb->version() != it->second.version()) {
     // Force schema update after restoration, if schema has changes.
-    pb->set_version(it->second.version() + 1);
     LOG(INFO) << "PITR: Patching the schema version for table " << id
               << ". Existing version " << it->second.version()
               << ", restoring version " << pb->version();
+    pb->set_version(it->second.version() + 1);
   }
 
-  // Patch the partition version if changed.
+  // Patch the partition version.
   if (pb->partition_list_version() != it->second.partition_list_version()) {
     LOG(INFO) << "PITR: Patching the partition list version for table " << id
               << ". Existing version " << it->second.partition_list_version()
@@ -157,21 +402,16 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   return true;
 }
 
-Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+Status RestoreSysCatalogState::PatchColocatedTablet(
     const std::string& id, SysTabletsEntryPB* pb) {
   if (!pb->colocated()) {
-    return true;
+    return Status::OK();
   }
-  // If it is a colocated tablet, then set the schedules that prevent
-  // its colocated tables from getting deleted. Also, add to-be hidden table ids
-  // in its colocated list as they won't be present previously.
   auto it = existing_objects_.tablets.find(id);
-  // Since we are not allowed to drop the database on which schedule was set,
-  // it implies that the colocated tablet for the colocated database must always be present.
-  // TODO(Sanket): Probably these semantics will change for tablegroups.
-  if (it == existing_objects_.tablets.end()) {
-    return STATUS(Corruption, "Colocated tablet should be present.");
+  if (TabletDeleted(it->second)) {
+    return Status::OK();
   }
+
   bool colocated_table_deleted = false;
   TableId found_table_id;
   for (const auto& table_id : it->second.table_ids()) {
@@ -195,20 +435,62 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
   }
   if (colocated_table_deleted) {
     // Set schedules that retain.
-    auto it = retained_existing_tables_.find(found_table_id);
-    if (it != retained_existing_tables_.end()) {
-      auto& out_schedules = *pb->mutable_retained_by_snapshot_schedules();
-      for (const auto& schedule_id : it->second) {
-        LOG(INFO) << "PITR: " << schedule_id << " schedule retains colocated tablet " << id;
-        out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
-      }
+    FillHideInformation(found_table_id, pb, false /* set_hide_time */);
+  }
+  return Status::OK();
+}
+
+void RestoreSysCatalogState::AddTabletToSplitRelationshipsMap(
+    const std::string& id, SysTabletsEntryPB* pb) {
+  // If this tablet has a parent tablet then add it as a child of that parent.
+  // Otherwise add it as a parent.
+  VLOG_WITH_FUNC(1) << "Tablet id " << id << ", pb " << pb->ShortDebugString();
+  bool has_live_parent = false;
+  if (pb->has_split_parent_tablet_id()) {
+    auto it = restoring_objects_.tablets.find(pb->split_parent_tablet_id());
+    if (it != restoring_objects_.tablets.end()) {
+      has_live_parent = !TabletDeleted(it->second);
     }
   }
-  return true;
+  if (has_live_parent) {
+    restoration_.non_system_tablets_to_restore[pb->split_parent_tablet_id()]
+        .children.emplace(id, pb);
+  } else {
+    auto& split_info = restoration_.non_system_tablets_to_restore[id];
+    split_info.parent.first = id;
+    split_info.parent.second = pb;
+  }
+}
+
+Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
+    const std::string& id, SysTabletsEntryPB* pb) {
+  AddTabletToSplitRelationshipsMap(id, pb);
+  // Don't add this entry to the write batch yet, we write
+  // them once split relationships are known for all tablets
+  // as a separate step.
+  return false;
 }
 
 template <class PB>
 Status RestoreSysCatalogState::AddRestoringEntry(
+    const std::string& id, PB* pb, faststring* buffer, SysRowEntryType type,
+    DoTsRestore send_restore_rpc) {
+  VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
+
+  auto& entry = *entries_.mutable_entries()->Add();
+  entry.set_type(type);
+  entry.set_id(id);
+  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
+  entry.set_data(buffer->data(), buffer->size());
+  if (send_restore_rpc) {
+    restoration_.non_system_objects_to_restore.emplace(id, type);
+  }
+
+  return Status::OK();
+}
+
+template <class PB>
+Status RestoreSysCatalogState::PatchAndAddRestoringEntry(
     const std::string& id, PB* pb, faststring* buffer) {
   auto type = GetEntryType<PB>::value;
   VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
@@ -216,14 +498,72 @@ Status RestoreSysCatalogState::AddRestoringEntry(
   if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
     return Status::OK();
   }
-  auto& entry = *entries_.mutable_entries()->Add();
-  entry.set_type(type);
-  entry.set_id(id);
-  RETURN_NOT_OK(pb_util::SerializeToString(*pb, buffer));
-  entry.set_data(buffer->data(), buffer->size());
-  restoration_.non_system_objects_to_restore.emplace(id, type);
 
+  return AddRestoringEntry(id, pb, buffer, type);
+}
+
+bool RestoreSysCatalogState::AreAllSequencesDataObjectsEmpty(
+    Objects* existing_objects, Objects* restoring_objects) {
+  return existing_objects->sequences_namespace.empty() &&
+         existing_objects->sequences_table.empty() &&
+         existing_objects->sequences_tablets.empty() &&
+         restoring_objects->sequences_namespace.empty() &&
+         restoring_objects->sequences_table.empty() &&
+         restoring_objects->sequences_tablets.empty();
+}
+
+bool RestoreSysCatalogState::AreSequencesDataObjectsValid(
+    Objects* existing_objects, Objects* restoring_objects) {
+  return existing_objects->sequences_namespace.size() <= 1 &&
+         existing_objects->sequences_table.size() <= 1 &&
+         restoring_objects->sequences_namespace.size() <= 1 &&
+         restoring_objects->sequences_table.size() <= 1;
+}
+
+Status RestoreSysCatalogState::AddSequencesDataEntries(
+    std::unordered_map<NamespaceId, SysNamespaceEntryPB>* seq_namespace,
+    std::unordered_map<TableId, SysTablesEntryPB>* seq_table,
+    std::unordered_map<TabletId, SysTabletsEntryPB>* seq_tablets) {
+  faststring buffer;
+  RETURN_NOT_OK(AddRestoringEntry(
+      seq_namespace->begin()->first, &seq_namespace->begin()->second,
+      &buffer, SysRowEntryType::NAMESPACE));
+  RETURN_NOT_OK(AddRestoringEntry(
+      seq_table->begin()->first, &seq_table->begin()->second,
+      &buffer, SysRowEntryType::TABLE));
+  for (auto& id_and_pb : *seq_tablets) {
+    RETURN_NOT_OK(AddRestoringEntry(
+        id_and_pb.first, &id_and_pb.second, &buffer, SysRowEntryType::TABLET));
+  }
   return Status::OK();
+}
+
+Status RestoreSysCatalogState::PatchSequencesDataObjects(
+    Objects* existing_objects, Objects* restoring_objects) {
+  if (!AreSequencesDataObjectsValid(existing_objects, restoring_objects)) {
+    return STATUS(Corruption, "sequences_data table contents invalid.");
+  }
+  if (existing_objects->sequences_table.empty()) {
+    if (!AreAllSequencesDataObjectsEmpty(existing_objects, restoring_objects)) {
+      return STATUS(IllegalState, "Existing state has no sequences_data table, "
+                    "so restoring state should also not contain this table.");
+    }
+    return Status::OK();
+  }
+  // sequences_data table is never dropped once it gets created.
+  if (restoring_objects->sequences_table.empty()) {
+    LOG(INFO) << "PITR: Retaining sequences_data table";
+    return AddSequencesDataEntries(
+        &existing_objects->sequences_namespace, &existing_objects->sequences_table,
+        &existing_objects->sequences_tablets);
+  }
+  return AddSequencesDataEntries(
+      &restoring_objects->sequences_namespace, &restoring_objects->sequences_table,
+      &restoring_objects->sequences_tablets);
+}
+
+Status RestoreSysCatalogState::PatchSequencesDataObjects() {
+  return PatchSequencesDataObjects(&existing_objects_, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::Process() {
@@ -253,8 +593,10 @@ Status RestoreSysCatalogState::Process() {
   RETURN_NOT_OK_PREPEND(DetermineEntries(
       &restoring_objects_, nullptr,
       [this, &buffer](const auto& id, auto* pb) {
-        return AddRestoringEntry(id, pb, &buffer);
+        return PatchAndAddRestoringEntry(id, pb, &buffer);
   }), "Determine restoring entries failed");
+
+  RETURN_NOT_OK(PatchAndAddRestoringTablets());
 
   return Status::OK();
 }
@@ -323,6 +665,11 @@ Status RestoreSysCatalogState::DetermineEntries(
     if (it == tables.end()) {
       continue;
     }
+    // We could have DELETED/HIDDEN tablets for a RUNNING table,
+    // for instance in the case of tablet splitting.
+    if (TabletDeleted(id_and_metadata.second)) {
+      continue;
+    }
     RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
     VLOG(2) << "Tablet to restore: " << id_and_metadata.first << ", "
             << id_and_metadata.second.ShortDebugString();
@@ -365,16 +712,24 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
-    std::unordered_map<std::string, PB>* map) {
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    HybridTime read_time, std::unordered_map<std::string, PB>* map,
+    std::unordered_map<std::string, PB>* sequences_data_map) {
   auto iter = std::make_unique<docdb::DocRowwiseIterator>(
       doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
-  return EnumerateSysCatalog(iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map](
+  return EnumerateSysCatalog(
+      iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
       return Status::OK();
+    }
+    if (IsSequencesDataObject(id.ToBuffer(), pb)) {
+      if (!sequences_data_map->emplace(id.ToBuffer(), pb).second) {
+        return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
+                             SysRowEntryType_Name(GetEntryType<PB>::value), id.ToBuffer());
+      }
     }
     if (!map->emplace(id.ToBuffer(), std::move(pb)).second) {
       return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
@@ -387,9 +742,12 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 Status RestoreSysCatalogState::LoadObjects(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
     Objects* objects) {
-  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->namespaces));
-  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tables));
-  RETURN_NOT_OK(IterateSysCatalog(doc_read_context, doc_db, read_time, &objects->tablets));
+  RETURN_NOT_OK(IterateSysCatalog(
+      doc_read_context, doc_db, read_time, &objects->namespaces, &objects->sequences_namespace));
+  RETURN_NOT_OK(IterateSysCatalog(
+      doc_read_context, doc_db, read_time, &objects->tables, &objects->sequences_table));
+  RETURN_NOT_OK(IterateSysCatalog(
+      doc_read_context, doc_db, read_time, &objects->tablets, &objects->sequences_tablets));
   return Status::OK();
 }
 
@@ -416,13 +774,13 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysTablesEntryPB& pb) {
+  VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
     LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
-    restoration_.system_tables_to_restore.emplace(id, pb.name());
+    restoration_.existing_system_tables.emplace(id, pb.name());
 
     return Status::OK();
   }
-  VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (restoring_objects_.tables.count(id)) {
     return Status::OK();
   }
@@ -467,14 +825,8 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
 
   QLWriteRequestPB write_request;
 
-  auto it = retained_existing_tables_.find(pb.table_id());
-  if (it != retained_existing_tables_.end()) {
-    pb.set_hide_hybrid_time(restoration_.write_time.ToUint64());
-    auto& out_schedules = *pb.mutable_retained_by_snapshot_schedules();
-    for (const auto& schedule_id : it->second) {
-      out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
-    }
-  }
+  FillHideInformation(pb.table_id(), &pb);
+
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
       SysRowEntryType::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
@@ -509,159 +861,10 @@ Result<bool> RestoreSysCatalogState::TEST_MatchTable(
 
 void RestoreSysCatalogState::WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const docdb::KeyValuePairPB& restore_kv,
-    const HybridTime& write_time, const OpId& op_id, tablet::Tablet* tablet) {
-  docdb::KeyValueWriteBatchPB kv_write_batch;
-  write_batch->MoveToWriteBatchPB(&kv_write_batch);
-
-  // Append restore entry to the write batch.
-  *kv_write_batch.mutable_write_pairs()->Add() = restore_kv;
-
-  docdb::NonTransactionalWriter writer(kv_write_batch, write_time);
-  rocksdb::WriteBatch rocksdb_write_batch;
-  rocksdb_write_batch.SetDirectWriter(&writer);
-  docdb::ConsensusFrontiers frontiers;
-  set_op_id(op_id, &frontiers);
-  set_hybrid_time(write_time, &frontiers);
-
-  tablet->WriteToRocksDB(
-      &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
+    const HybridTime& write_time, const OpId& op_id,
+    tablet::Tablet* tablet) {
+  yb::WriteToRocksDB(write_batch, write_time, op_id, tablet, restore_kv);
 }
-
-class FetchState {
- public:
-  explicit FetchState(const docdb::DocDB& doc_db, const ReadHybridTime& read_time)
-      : iterator_(CreateIntentAwareIterator(
-          doc_db,
-          docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none,
-          rocksdb::kDefaultQueryId,
-          TransactionOperationContext(),
-          CoarseTimePoint::max(),
-          read_time)) {
-  }
-
-  CHECKED_STATUS SetPrefix(const Slice& prefix) {
-    if (prefix_.empty()) {
-      iterator_->Seek(prefix);
-    } else {
-      iterator_->SeekForward(prefix);
-    }
-    prefix_ = prefix;
-    finished_ = false;
-    last_deleted_key_bytes_.clear();
-    last_deleted_key_write_time_ = DocHybridTime::kInvalid;
-    RETURN_NOT_OK(Update());
-    return NextNonDeletedEntry();
-  }
-
-  bool finished() const {
-    return finished_;
-  }
-
-  Slice key() const {
-    return key_.key;
-  }
-
-  Slice value() const {
-    return iterator_->value();
-  }
-
-  docdb::FetchKeyResult FullKey() const {
-    return key_;
-  }
-
-  CHECKED_STATUS NextEntry() {
-    iterator_->SeekPastSubKey(key_.key);
-    return Update();
-  }
-
-  CHECKED_STATUS Next() {
-    RETURN_NOT_OK(NextEntry());
-    return NextNonDeletedEntry();
-  }
-
-  // Returns true if the entry corresponds to a deleted row
-  // in rocksdb.
-  Result<bool> IsDeletedRowEntry() {
-    bool is_tombstoned = false;
-    is_tombstoned = VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
-
-    // Because Postgres doesn't have a concept of frozen types, kGroupEnd will only demarcate the
-    // end of hashed and range components. It is reasonable to assume then that if the last byte
-    // is kGroupEnd then it does not have any subkeys.
-    bool no_subkey =
-        key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
-
-    return no_subkey && is_tombstoned;
-  }
-
-  // Returns true if it has been deleted since the time it was inserted.
-  bool IsDeletedSinceInsertion() {
-    if (last_deleted_key_bytes_.size() == 0) {
-      return false;
-    }
-    return key().starts_with(last_deleted_key_bytes_.AsSlice()) &&
-           FullKey().write_time < last_deleted_key_write_time_;
-  }
-
- private:
-  CHECKED_STATUS Update() {
-    if (!iterator_->valid()) {
-      finished_ = true;
-      return Status::OK();
-    }
-    key_ = VERIFY_RESULT(iterator_->FetchKey());
-    if (VERIFY_RESULT(IsDeletedRowEntry())) {
-      last_deleted_key_write_time_ = key_.write_time;
-      last_deleted_key_bytes_ = key_.key;
-    }
-    if (!key_.key.starts_with(prefix_)) {
-      finished_ = true;
-      return Status::OK();
-    }
-
-    return Status::OK();
-  }
-
-  CHECKED_STATUS NextNonDeletedEntry() {
-    while (!finished()) {
-      if (VERIFY_RESULT(IsDeletedRowEntry()) ||
-          IsDeletedSinceInsertion()) {
-        RETURN_NOT_OK(NextEntry());
-        continue;
-      }
-      break;
-    }
-    return Status::OK();
-  }
-
-  std::unique_ptr<docdb::IntentAwareIterator> iterator_;
-  Slice prefix_;
-  docdb::FetchKeyResult key_;
-  KeyBuffer last_deleted_key_bytes_;
-  DocHybridTime last_deleted_key_write_time_;
-  bool finished_ = false;
-};
-
-void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch) {
-  auto& pair = write_batch->AddRaw();
-  pair.first.assign(key.cdata(), key.size());
-  pair.second.assign(value.cdata(), value.size());
-}
-
-struct PgCatalogTableData {
-  std::array<uint8_t, kUuidSize + 1> prefix;
-  const TableName* name;
-  uint32_t pg_table_oid;
-
-  CHECKED_STATUS SetTableId(const TableId& table_id) {
-    Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
-    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
-    cotable_id.EncodeToComparable(&prefix[1]);
-    pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
-    return Status::OK();
-  }
-};
 
 Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
@@ -698,14 +901,16 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
 }
 
 Status RestoreSysCatalogState::ProcessPgCatalogRestores(
-    yb::tablet::TableInfo* pg_yb_catalog_meta,
+    tablet::TableInfo* pg_yb_catalog_meta,
     const docdb::DocDB& restoring_db,
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
     const docdb::DocReadContext& doc_read_context) {
-  if (restoration_.system_tables_to_restore.empty()) {
+  if (restoration_.existing_system_tables.empty()) {
     return Status::OK();
   }
+  RETURN_NOT_OK(ValidateSysCatalogTables(
+      restoration_.restoring_system_tables, restoration_.existing_system_tables));
   // For backwards compatibility.
   if (!pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table not found. "
@@ -718,17 +923,17 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
   char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
 
-  std::vector<PgCatalogTableData> tables(restoration_.system_tables_to_restore.size());
+  std::vector<PgCatalogTableData> tables(restoration_.existing_system_tables.size());
   size_t idx = 0;
   if (pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table found with schema "
               << pg_yb_catalog_meta->schema().ToString();
-    tables.resize(restoration_.system_tables_to_restore.size() + 1);
+    tables.resize(restoration_.existing_system_tables.size() + 1);
     RETURN_NOT_OK(tables[0].SetTableId(kPgYbCatalogVersionTableId));
     tables[0].name = nullptr;
     ++idx;
   }
-  for (auto& id_and_name : restoration_.system_tables_to_restore) {
+  for (auto& id_and_name : restoration_.existing_system_tables) {
     auto& table = tables[idx];
     RETURN_NOT_OK(table.SetTableId(id_and_name.first));
     table.name = &id_and_name.second;
@@ -740,87 +945,47 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
   });
 
   for (auto& table : tables) {
-    size_t num_updates = 0;
-    size_t num_inserts = 0;
-    size_t num_deletes = 0;
     Slice prefix(table.prefix);
 
     RETURN_NOT_OK(restoring_state.SetPrefix(prefix));
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
 
-    while (!restoring_state.finished() && !existing_state.finished()) {
-      auto compare_result = restoring_state.key().compare(existing_state.key());
-      if (compare_result == 0) {
-        if (table.name != nullptr) {
-          if (restoring_state.value().compare(existing_state.value())) {
-            ++num_updates;
-            AddKeyValue(restoring_state.key(), restoring_state.value(), write_batch);
-          }
-        } else {
-          docdb::SubDocKey sub_doc_key;
-          RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-              restoring_state.key(), docdb::HybridTimeRequired::kFalse));
-          SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-          if (sub_doc_key.subkeys()[0].type() == docdb::KeyEntryType::kColumnId) {
-            auto column_id = sub_doc_key.subkeys()[0].GetColumnId();
-            const ColumnSchema& column = VERIFY_RESULT(pg_yb_catalog_meta->schema().column_by_id(
-                column_id));
-            if (column.name() == "current_version") {
-              docdb::Value value;
-              RETURN_NOT_OK(value.Decode(existing_state.value()));
-              docdb::DocPath path(sub_doc_key.doc_key().Encode(), sub_doc_key.subkeys());
-              QLValuePB value_pb;
-              value_pb.set_int64_value(value.primitive_value().GetInt64() + 1);
-              LOG(INFO) << "PITR: Incrementing pg_yb_catalog version to "
-                        << value.primitive_value().GetInt64() + 1;
-              RETURN_NOT_OK(write_batch->SetPrimitive(
-                  path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
-            }
-          }
-        }
-        RETURN_NOT_OK(restoring_state.Next());
-        RETURN_NOT_OK(existing_state.Next());
-      } else if (compare_result < 0) {
-        ++num_inserts;
-        AddKeyValue(restoring_state.key(), restoring_state.value(), write_batch);
-        RETURN_NOT_OK(restoring_state.Next());
-      } else {
-        ++num_deletes;
-        AddKeyValue(existing_state.key(), tombstone, write_batch);
-        RETURN_NOT_OK(existing_state.Next());
-      }
-    }
+    PgCatalogRestorePatch restore_patch(
+        &existing_state, &restoring_state, write_batch, table, pg_yb_catalog_meta);
 
-    while (!restoring_state.finished()) {
-      ++num_inserts;
-      AddKeyValue(restoring_state.key(), restoring_state.value(), write_batch);
-      RETURN_NOT_OK(restoring_state.Next());
-    }
+    RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 
-    while (!existing_state.finished()) {
-      ++num_deletes;
-      AddKeyValue(existing_state.key(), tombstone, write_batch);
-      RETURN_NOT_OK(existing_state.Next());
-    }
+    RETURN_NOT_OK(restore_patch.Finish());
 
-    size_t total_changes = num_updates + num_inserts + num_deletes;
-    if (table.pg_table_oid == kPgSequencesTableOid && total_changes != 0) {
-      LOG(INFO) << "PITR: Pg sequences were updated since the Restore time"
-                << ", updates: " << num_updates
-                << ", inserts: " << num_inserts
-                << ", deletes: " << num_deletes;
+    size_t total_changes = restore_patch.TotalTickerCount();
+
+    LOG_IF(INFO, total_changes || VLOG_IS_ON(3))
+        << "PITR: Pg system table " << AsString(table.name) << ": "
+        << restore_patch.TickersToString();
+
+    // During migration we insert a new row to migration table, so it is enough to check number of
+    // rows in this table to understand whether it was modified or not.
+    if (table.pg_table_oid == kPgYbMigrationTableOid &&
+        restoring_state.num_rows() != existing_state.num_rows()) {
+      LOG(INFO) << "PITR: YSQL upgrade was performed since the restore time, restoring rows: "
+                << restoring_state.num_rows() << ", existing rows: " << existing_state.num_rows();
       return STATUS(
-          NotSupported,
-          "Unable to restore as Pg sequences were updated since the Restore time.");
-    }
-
-    if (total_changes != 0 || VLOG_IS_ON(3)) {
-      LOG(INFO) << "PITR: Pg system table: " << AsString(table.name) << ", updates: " << num_updates
-                << ", inserts: " << num_inserts << ", deletes: " << num_deletes;
+          NotSupported, "Unable to restore as YSQL upgrade was performed since the restore time");
     }
   }
 
   return Status::OK();
+}
+
+bool RestoreSysCatalogState::IsYsqlRestoration() {
+  const auto& filter = restoration_.schedules[0].second;
+
+  for (const auto& tables : filter.tables().tables()) {
+    if (tables.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace master

@@ -532,6 +532,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->utilityStmt = parse->utilityStmt;
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
+	result->yb_num_referenced_relations = root->yb_num_referenced_relations;
 
 	result->jitFlags = PGJIT_NONE;
 	if (jit_enabled && jit_above_cost >= 0 &&
@@ -625,12 +626,16 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->qual_security_level = 0;
 	root->inhTargetKind = INHKIND_NONE;
 	root->hasRecursion = hasRecursion;
+	root->yb_curbatchedrelids = parent_root ? parent_root->yb_curbatchedrelids
+											: NULL;
+	root->yb_cur_batch_no = -1;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);
 	else
 		root->wt_param_id = -1;
 	root->non_recursive_path = NULL;
 	root->partColsUpdated = false;
+	root->yb_num_referenced_relations = 0;
 
 	/*
 	 * If there is a WITH list, process each WITH query and build an initplan
@@ -987,6 +992,14 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 */
 	set_cheapest(final_rel);
 
+	/*
+	 * For the top-level query, parent_root is NULL. In all other cases,
+	 * update the number of relations that survived constraint exclusion
+	 * and partition pruning.
+	 */
+	if (parent_root)
+		parent_root->yb_num_referenced_relations +=
+			root->yb_num_referenced_relations;
 	return root;
 }
 
@@ -1497,6 +1510,8 @@ inheritance_planner(PlannerInfo *root)
 		 */
 		if (IS_DUMMY_PATH(subpath))
 			continue;
+
+		root->yb_num_referenced_relations++;
 
 		/*
 		 * Add the current parent's RT index to the partitioned_relids set if

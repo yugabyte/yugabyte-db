@@ -8,8 +8,7 @@ menu:
     identifier: interval-utilities
     parent: type-interval
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the kit to create all of the code that this section describes." >}}
@@ -73,15 +72,15 @@ When you define an _interval_ value using either the _::interval_ typecast of a 
 
 ```plpgsql
 select
-  '5 years 4 months'              ::interval as i1,  
-  '40 days'                       ::interval as i2,  
+  '5 years 4 months'              ::interval as i1,
+  '40 days'                       ::interval as i2,
   '9 hours 30 minutes 45 seconds' ::interval as i3;
 ```
 
 This is the result:
 
 ```output
-       i1       |   i2    |    i3    
+       i1       |   i2    |    i3
 ----------------+---------+----------
  5 years 4 mons | 40 days | 09:30:45
 ```
@@ -90,8 +89,8 @@ And try this, using the _make_interval()_ approach:
 
 ```plpgsql
 select
-  make_interval(years=>5, months=>4)          as i1,  
-  make_interval(days=>40)                     as i2,  
+  make_interval(years=>5, months=>4)          as i1,
+  make_interval(days=>40)                     as i2,
   make_interval(hours=>9, mins=>30, secs=>45) as i3;
 ```
 
@@ -158,7 +157,7 @@ select interval_parameterization(yy=>5, mm=>6)::text;
 This is the result:
 
 ```output
- interval_parameterization 
+ interval_parameterization
 ---------------------------
  (5,6,0,0,0,0)
 ```
@@ -181,7 +180,7 @@ declare
   hh constant interval not null := p.hh::text ||' hours';
   mi constant interval not null := p.mi::text ||' minutes';
   ss constant interval not null := p.ss::text ||' seconds';
-begin  
+begin
   return yy + mm + dd + hh + mi + ss;
 end;
 $body$;
@@ -198,7 +197,7 @@ select interval_value(interval_parameterization(mm=>2.345, dd=>3.456))::text;
 This is the result:
 
 ```output
-      interval_value       
+      interval_value
 ---------------------------
  2 mons 13 days 19:20:38.4
 ```
@@ -236,7 +235,7 @@ select parameterization('2 months 13 days 19:20:38.4')::text;
 This is the result:
 
 ```output
- parameterization 
+ parameterization
 --------------------------------------
  (0,2,13,19,20,38.400000)
 ```
@@ -301,7 +300,7 @@ create function interval_value(i in interval_mm_dd_ss_t)
   returns interval
   language plpgsql
 as $body$
-begin  
+begin
   return make_interval(months=>i.mm, days=>i.dd, secs=>i.ss);
 end;
 $body$;
@@ -332,7 +331,7 @@ select extract(hours from '123 months 234 days 34567.123456 seconds'::interval) 
 This is the result:
 
 ```output
- extracted hours 
+ extracted hours
 -----------------
                9
 ```
@@ -376,7 +375,7 @@ select parameterization((123, 234, 34567.123456)::interval_mm_dd_ss_t)::text;
 This is the result:
 
 ```output
- parameterization 
+ parameterization
 -----------------------------------------
  (10,3,234,9,36,7.123456)
 ```
@@ -472,7 +471,7 @@ Yugabyte staff members have carefully considered the practical value of the nati
 They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_&#91;mm, dd, ss&#93;_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
 {{< /tip >}}
 
-See the section [Comparing two interval values for equality](../interval-arithmetic/interval-interval-equality/) for the larger discussion on this topic. 
+See the section [Comparing two interval values for equality](../interval-arithmetic/interval-interval-equality/) for the larger discussion on this topic.
 
 Create the _strict_equals()_ function thus:
 
@@ -637,7 +636,7 @@ select
 This is the result:
 
 ```output
- all the same 
+ all the same
 --------------
  true
 ```

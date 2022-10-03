@@ -16,6 +16,8 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   public String ybSoftwareVersion = null;
   // Previous software version.
   public String ybPrevSoftwareVersion = null;
+  // Whenever we run system catalog upgrade after software upgrade or not
+  public boolean upgradeSystemCatalog = true;
 
   public final Map<UUID, String> machineImages = new HashMap<>();
   public boolean forceVMImageUpgrade;

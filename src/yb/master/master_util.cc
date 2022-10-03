@@ -13,7 +13,7 @@
 
 #include "yb/master/master_util.h"
 
-#include <boost/container/stable_vector.hpp>
+#include <deque>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -78,8 +78,7 @@ Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
                               ServerEntryPB* e) {
   CHECK(!hostports.empty());
 
-  boost::container::stable_vector<GetMasterRegistrationData> datas;
-  datas.reserve(hostports.size());
+  std::deque<GetMasterRegistrationData> datas;
   std::atomic<GetMasterRegistrationData*> last_data{nullptr};
   CountDownLatch latch(hostports.size());
   for (size_t i = 0; i != hostports.size(); ++i) {
@@ -218,7 +217,7 @@ Result<bool> TableMatchesIdentifier(
     InvalidArgument, "Wrong table identifier format: $0", table_identifier);
 }
 
-CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
+Status SetupError(MasterErrorPB* error, const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
   return s;

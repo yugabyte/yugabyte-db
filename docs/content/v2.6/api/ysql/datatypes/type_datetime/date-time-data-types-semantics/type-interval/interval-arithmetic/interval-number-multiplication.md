@@ -8,8 +8,7 @@ menu:
     identifier: interval-number-multiplication
     parent: interval-arithmetic
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section presents a PL/pgSQL implementation of the model that explains how multiplying or dividing an _interval_ value by a number works. Make sure that you have read the section [Adding or subtracting a pair of interval values](../interval-interval-addition/) before reading this section.
@@ -83,7 +82,7 @@ This is the multiplication result:
  intermediate model mm_dd_ss:          2.4691 months         0.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              2.0000 months        14.0000 days      6399.4752 seconds
  actual mm_dd_ss:                      2.0000 months        14.0000 days      6399.4752 seconds
- 
+
  ultimate model result: 2 mons 14 days 01:46:39.4752
 ```
 
@@ -94,7 +93,7 @@ And this is the division result:
  intermediate model mm_dd_ss:          1.9753 months         0.0000 days         0.0000 seconds
  ultimate model mm_dd_ss:              1.0000 months        29.0000 days     22399.8912 seconds
  actual mm_dd_ss:                      1.0000 months        29.0000 days     22399.8912 seconds
- 
+
  ultimate model result: 1 mon 29 days 06:13:19.8912
 ```
 
@@ -247,7 +246,7 @@ select
 This is the result:
 
 ```output
-         actual         |         model          
+         actual         |         model
 ------------------------+------------------------
  1 mon 28 days 21:36:00 | 1 mon 28 days 21:36:00
 ```
@@ -263,7 +262,7 @@ select
 This is the result:
 
 ```output
-         actual         |         model          
+         actual         |         model
 ------------------------+------------------------
  1 mon 29 days 12:28:48 | 1 mon 28 days 36:28:48
 ```
@@ -285,7 +284,7 @@ select
 This is the result:
 
 ```output
-   add then multiply    |   multiply then add    
+   add then multiply    |   multiply then add
 ------------------------+------------------------
  1 mon 29 days 12:28:48 | 1 mon 28 days 36:28:48
 ```
@@ -301,7 +300,7 @@ select
 This is the result:
 
 ```output
-   add then multiply    |   multiply then add    
+   add then multiply    |   multiply then add
 ------------------------+------------------------
  1 mon 28 days 36:28:48 | 1 mon 28 days 36:28:48
 ```

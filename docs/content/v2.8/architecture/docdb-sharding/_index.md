@@ -10,6 +10,7 @@ menu:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130
+type: indexpage
 ---
 
 {{< note title="Note" >}}

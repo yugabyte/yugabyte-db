@@ -18,11 +18,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/tablet_server.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -39,7 +41,6 @@
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -126,28 +127,29 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
+  [[nodiscard]] bool HasCatalogReadPoint() const;
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS ConnectDatabase(const std::string& database_name);
+  Status ConnectDatabase(const std::string& database_name);
 
-  CHECKED_STATUS IsDatabaseColocated(const PgOid database_oid, bool *colocated);
+  Status IsDatabaseColocated(const PgOid database_oid, bool *colocated);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Database Objects.
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
+  Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
-  CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
+  Status GetCatalogMasterVersion(uint64_t *version);
 
   // API for sequences data operations.
-  CHECKED_STATUS CreateSequencesDataTable();
+  Status CreateSequencesDataTable();
 
-  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+  Status InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
                                      int64_t last_val,
@@ -165,41 +167,42 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version);
 
-  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
-  CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
+  Status DeleteDBSequences(int64_t db_oid);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS DropTablegroup(const PgOid database_oid,
+  Status DropTablegroup(const PgOid database_oid,
                                 PgOid tablegroup_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
-  CHECKED_STATUS CreateSchema(const std::string& schema_name, bool if_not_exist);
-  CHECKED_STATUS DropSchema(const std::string& schema_name, bool if_exist);
+  Status CreateSchema(const std::string& schema_name, bool if_not_exist);
+  Status DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  CHECKED_STATUS DropTable(const PgObjectId& table_id);
-  CHECKED_STATUS DropIndex(
+  Status DropTable(const PgObjectId& table_id);
+  Status DropIndex(
       const PgObjectId& index_id,
       client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
       const PgObjectId& table_id, InvalidateOnPgClient invalidate_on_pg_client);
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   // Start operation buffering. Buffering must not be in progress.
-  CHECKED_STATUS StartOperationsBuffering();
+  Status StartOperationsBuffering();
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
-  CHECKED_STATUS StopOperationsBuffering();
+  Status StopOperationsBuffering();
   // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
   void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
-  CHECKED_STATUS FlushBufferedOperations();
+  Status FlushBufferedOperations();
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   void DropBufferedOperations();
 
@@ -294,14 +297,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
 
-  CHECKED_STATUS PatchStatus(const Status& status, const PgObjectIds& relations);
-
   Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS ValidatePlacement(const string& placement_info);
+  Status ValidatePlacement(const string& placement_info);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
@@ -311,11 +312,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool ShouldUseFollowerReads() const;
 
-  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+  Status SetActiveSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
 
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
+
+  Result<bool> CheckIfPitrActive();
 
  private:
   Result<PerformFuture> FlushOperations(
@@ -323,8 +326,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   class RunHelper;
 
-  Result<PerformFuture> Perform(
-      BufferableOperations ops, UseCatalogSession use_catalog_session);
+  Result<PerformFuture> Perform(BufferableOperations ops,
+                                UseCatalogSession use_catalog_session,
+                                bool ensure_read_time_set_for_current_txn_serial_no = false);
+
+  void ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
+                                   bool force_set_read_time_for_current_txn_serial_no,
+                                   tserver::PgPerformOptionsPB* options);
+
+  struct TxnSerialNoPerformInfo {
+    TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}
+
+    TxnSerialNoPerformInfo(uint64_t txn_serial_no_, const ReadHybridTime& read_time_)
+        : txn_serial_no(txn_serial_no_), read_time(read_time_) {
+    }
+
+    const uint64_t txn_serial_no;
+    const ReadHybridTime read_time;
+  };
 
   PgClient& pg_client_;
 
@@ -336,8 +355,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const scoped_refptr<server::HybridClock> clock_;
 
-  // YBSession to read data from catalog tables.
-  boost::optional<ReadHybridTime> catalog_read_time_;
+  ReadHybridTime catalog_read_time_;
 
   // Execution status.
   Status status_;
@@ -358,6 +376,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
+  std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 };
 
 }  // namespace pggate

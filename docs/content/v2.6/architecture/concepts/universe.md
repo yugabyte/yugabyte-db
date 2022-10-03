@@ -1,5 +1,5 @@
 ---
-title: Universe 
+title: Universe
 headerTitle: Universe
 linkTitle: Universe
 description: Learn about the YugabyteDB universe (or cluster).
@@ -8,8 +8,7 @@ menu:
     identifier: architecture-concepts-universe
     parent: key-concepts
     weight: 1122
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A YugabyteDB universe is a group of nodes (VMs, physical machines, or containers) that collectively function as a resilient and scalable distributed database.
@@ -70,7 +69,7 @@ Below is an illustration of a simple 4-node YugabyteDB universe:
 
 ## Universe vs cluster
 
-A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters. 
+A YugabyteDB universe comprises of exactly one primary cluster and zero or more read replica clusters.
 
 - A primary cluster can perform both writes and reads. Replication between nodes in a primary cluster is performed synchronously.
 

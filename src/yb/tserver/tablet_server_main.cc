@@ -52,7 +52,7 @@
 #include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/call_home.h"
+#include "yb/tserver/tserver_call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/server/skewed_clock.h"
@@ -75,6 +75,13 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#if defined(YB_PROFGEN) && defined(__clang__)
+extern "C" int __llvm_profile_write_file(void);
+extern "C" void __llvm_profile_set_filename(const char *);
+extern "C" void __llvm_profile_reset_counters();
+#endif
+
+
 using namespace std::placeholders;
 
 using yb::redisserver::RedisServer;
@@ -84,7 +91,6 @@ using yb::cqlserver::CQLServer;
 using yb::cqlserver::CQLServerOptions;
 
 using yb::pgwrapper::PgProcessConf;
-using yb::pgwrapper::PgWrapper;
 using yb::pgwrapper::PgSupervisor;
 
 using namespace yb::size_literals;  // NOLINT
@@ -95,6 +101,13 @@ DEFINE_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet ser
 DEFINE_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
+
+DEFINE_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
+DEFINE_bool(enable_ysql, true,
+            "Enable YSQL on cluster. Whether to run a PostgreSQL server as a child process of the"
+                  " tablet server.");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
@@ -110,7 +123,6 @@ DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
-DECLARE_bool(enable_ysql);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
@@ -152,6 +164,18 @@ void SetProxyAddresses() {
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
   SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
+
+#if defined(YB_PROFGEN) && defined(__clang__)
+// Force profile dumping
+void PeriodicDumpLLVMProfileFile() {
+  __llvm_profile_set_filename("tserver-%p-%m.profraw");
+  while (true) {
+    __llvm_profile_write_file();
+    __llvm_profile_reset_counters();
+    SleepFor(MonoDelta::FromSeconds(60));
+  }
+}
+#endif
 
 int TabletServerMain(int argc, char** argv) {
 #ifndef NDEBUG
@@ -208,8 +232,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
+  std::unique_ptr<TserverCallHome> call_home;
+  call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
@@ -268,6 +292,13 @@ int TabletServerMain(int argc, char** argv) {
     LOG(INFO) << "Redis server successfully started.";
   }
 
+#if defined(YB_PROFGEN) && defined(__clang__)
+  // TODO After the TODO below is fixed the call of
+  // PeriodicDumpLLVMProfileFile can be moved to the infinite while loop
+  //  at the end of the function.
+  std::thread llvm_profile_dump_thread(PeriodicDumpLLVMProfileFile);
+#endif
+
   // TODO(neil): After CQL server is starting, it blocks this thread from moving on.
   // This should be fixed such that all processes or service by tablet server are treated equally
   // by using different threads for each process.
@@ -303,6 +334,11 @@ int TabletServerMain(int argc, char** argv) {
   while (true) {
     SleepFor(MonoDelta::FromSeconds(60));
   }
+
+#if defined(YB_PROFGEN) && defined(__clang__)
+  // Currently unreachable
+  llvm_profile_dump_thread.join();
+#endif
 
   return 0;
 }

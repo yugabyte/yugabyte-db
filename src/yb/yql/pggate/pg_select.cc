@@ -15,8 +15,6 @@
 
 #include "yb/yql/pggate/pg_select.h"
 
-#include "yb/client/yb_op.h"
-
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 

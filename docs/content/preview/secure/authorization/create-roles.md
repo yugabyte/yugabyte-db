@@ -9,8 +9,7 @@ menu:
     identifier: create-roles
     parent: authorization
     weight: 717
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,6 +33,12 @@ showAsideToc: true
 Roles in YSQL can represent individual users or a group of users. Users are a role that has login permissions.
 
 You manage roles and users using the CREATE ROLE, GRANT, REVOKE, and DROP ROLE statements.
+
+{{< note title="YSQL and case sensitivity" >}}
+
+Like SQL, YSQL is case-insensitive by default. When specifying an identifier, such as the name of a table or role, YSQL automatically converts the identifier to lowercase. For example, `CREATE ROLE Alice` creates the role "alice". To use a case-sensitive name for an identifier, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
+{{< /note >}}
 
 ## Create roles
 

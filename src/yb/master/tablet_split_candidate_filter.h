@@ -26,10 +26,12 @@ class TabletSplitCandidateFilterIf {
 
   // Table-level checks for whether we can split tablets in this table.
   virtual bool IsCdcEnabled(const TableInfo& table_info) const = 0;
+  virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const = 0;
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) = 0;
 
-  // Returns true if we should split a tablet based on the provided drive_info.
-  virtual bool ShouldSplitValidCandidate(
+  // Returns Status::OK if we should split a tablet based on the provided drive_info, and a status
+  // explaining why not otherwise.
+  virtual Status ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
 };
 

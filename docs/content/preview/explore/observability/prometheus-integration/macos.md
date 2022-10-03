@@ -1,15 +1,14 @@
 ---
-title: Prometheus Integration
-headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration
+title: Prometheus integration
+headerTitle: Prometheus integration
+linkTitle: Prometheus integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   preview:
     identifier: observability-1-macos
     parent: explore-observability
     weight: 235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
  <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -240,4 +239,4 @@ $ ./bin/yugabyted destroy \
 
 ## What's next?
 
-You can [setup Grafana](https://prometheus.io/docs/visualization/grafana/) and import the [YugabyteDB dashboard](https://grafana.com/grafana/dashboards/12620 "YugabyteDB dashboard on grafana.com") for better visualization of the metrics being collected by Prometheus.
+Set up [Grafana dashboards](../../grafana-dashboard/grafana/) for better visualization of the metrics being collected by Prometheus.

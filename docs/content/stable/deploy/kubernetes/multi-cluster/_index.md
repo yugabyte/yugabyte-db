@@ -10,11 +10,10 @@ menu:
     identifier: deploy-kubernetes-mc
     parent: deploy-kubernetes
     weight: 623
+type: indexpage
 ---
 
-As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multiple-zones/">Kubernetes documentation</a>, a single Kubernetes cluster can run only inside a single zone of a single region. This means workloads will be distributed across multiple nodes of a single Kubernetes cluster running in a single region. When geo-distributed SQL workloads like YugabyteDB need to run on Kubernetes, the preferred approach is to create a single YugabyteDB cluster that spans <a href="../multi-zone">multiple zones of a single Kubernetes cluster</a> or multiple geo-distributed Kubernetes clusters. This page documents the latter configuration.
-
-<p>
+As highlighted in the <a href="https://kubernetes.io/docs/setup/best-practices/multiple-zones/">Kubernetes documentation</a>, a single Kubernetes cluster can run only inside a single zone of a single region. This means workloads will be distributed across multiple nodes of a single Kubernetes cluster running in a single region. When geo-distributed SQL workloads like YugabyteDB need to run on Kubernetes, the preferred approach is to create a single YugabyteDB cluster that spans <a href="../multi-zone">multiple zones of a single Kubernetes cluster</a> or multiple geo-distributed Kubernetes clusters. This page documents the latter configuration.
 
 <a href="https://cloud.google.com/kubernetes-engine/docs/concepts/types-of-clusters">Google Kubernetes Engine</a> can be easily configured to support global DNS across multiple Kubernetes clusters. Following instructions highlight how to deploy a 3-region YugabyteDB cluster on 3 Kubernetes clusters, each deployed in a different region. It uses the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 clusters.
 

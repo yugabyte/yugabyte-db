@@ -36,7 +36,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/singleton.h"
@@ -45,7 +44,6 @@ using std::multimap;
 using std::pair;
 using std::string;
 using std::unordered_set;
-using std::vector;
 
 DEFINE_test_flag(bool, running_test, false, "Flag that is set to true when we running a test");
 
@@ -59,18 +57,18 @@ class FlagTagRegistry {
     return Singleton<FlagTagRegistry>::get();
   }
 
-  void Tag(const string& name, const string& tag) {
+  void Tag(const string& name, const FlagTag& tag) {
     tag_map_.insert(TagMap::value_type(name, tag));
   }
 
-  void GetTags(const string& name, unordered_set<string>* tags) {
+  void GetTags(const string& name, unordered_set<FlagTag>* tags) {
     tags->clear();
     pair<TagMap::const_iterator, TagMap::const_iterator> range =
       tag_map_.equal_range(name);
     for (auto it = range.first; it != range.second; ++it) {
       if (!InsertIfNotPresent(tags, it->second)) {
         LOG(DFATAL) << "Flag " << name << " was tagged more than once with the tag '"
-                    << it->second << "'";
+                    << ToString(it->second) << "'";
       }
     }
   }
@@ -79,14 +77,13 @@ class FlagTagRegistry {
   friend class Singleton<FlagTagRegistry>;
   FlagTagRegistry() {}
 
-  typedef multimap<string, string> TagMap;
+  typedef multimap<string, FlagTag> TagMap;
   TagMap tag_map_;
 
   DISALLOW_COPY_AND_ASSIGN(FlagTagRegistry);
 };
 
-
-FlagTagger::FlagTagger(const char* name, const char* tag) {
+FlagTagger::FlagTagger(const char* name, const FlagTag& tag) {
   FlagTagRegistry::GetInstance()->Tag(name, tag);
 }
 
@@ -97,8 +94,7 @@ FlagTagger::~FlagTagger() {
 
 using flag_tags_internal::FlagTagRegistry;
 
-void GetFlagTags(const string& flag_name,
-                 unordered_set<string>* tags) {
+void GetFlagTags(const string& flag_name, unordered_set<FlagTag>* tags) {
   FlagTagRegistry::GetInstance()->GetTags(flag_name, tags);
 }
 

@@ -8,8 +8,7 @@ menu:
     identifier: current-date-time-moment
     parent: date-time-functions
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Each of the nine functions in this group returns a moment value of the specified data type that honors the "moment kind" semantics. (See the note "Don't use "_timeofday()_" above. For the reasons that it explains, that function is not included in the count of ten that the table in the subsection [Functions that return the current date-time moment](../#functions-that-return-the-current-date-time-moment-current-date-time-moment) presents. This is why the present paragraph starts with "Each of the _nine_ functions...")
@@ -308,7 +307,7 @@ select
 Of course, the result will depend on when you do this. Here's the result when it was done at about 20:00 local time on 30-Sep-2021 in the _America/Los_Angeles_ timezone.
 
 ```output
-        today()         |       tomorrow()       |      yesterday()       
+        today()         |       tomorrow()       |      yesterday()
 ------------------------+------------------------+------------------------
  2021-10-01 00:00:00+00 | 2021-10-02 00:00:00+00 | 2021-09-30 00:00:00+00
 ```

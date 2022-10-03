@@ -216,20 +216,51 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
     const uint32_t num_tablets,
     const bool add_primary_key,
     bool colocated,
-    const int table_oid) {
+    const int table_oid,
+    const bool enum_value,
+    const std::string& enum_suffix,
+    const std::string& schema_name,
+    uint32_t num_cols) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+
+  if (enum_value) {
+    if (schema_name != "public") {
+      RETURN_NOT_OK(conn.ExecuteFormat("create schema $0;", schema_name));
+    }
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TYPE $0.coupon_discount_type$1 AS ENUM ('FIXED$2','PERCENTAGE$3');",
+        schema_name, enum_suffix, enum_suffix, enum_suffix));
+  }
+
   std::string table_oid_string = "";
   if (table_oid > 0) {
     // Need to turn on session flag to allow for CREATE WITH table_oid.
-        RETURN_NOT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
+    RETURN_NOT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
     table_oid_string = Format("table_oid = $0,", table_oid);
   }
-  RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0($1 int $2, $3 int) WITH ($4colocated = $5) "
-      "SPLIT INTO $6 TABLETS",
-      table_name, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
-      table_oid_string, colocated, num_tablets));
-  return GetTable(cluster, namespace_name, table_name);
+
+  if (num_cols > 2) {
+    std::stringstream statement_buff;
+    statement_buff << "CREATE TABLE $0.$1(col1 int PRIMARY KEY, col2 int";
+    std::string rem_statement(" ) WITH ($2colocated = $3) SPLIT INTO $4 TABLETS");
+    for (uint32_t col_num = 3; col_num <= num_cols; ++col_num) {
+      statement_buff << ", col" << col_num << " int";
+    }
+    std::string statement(statement_buff.str() + rem_statement);
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        statement, schema_name, table_name, table_oid_string, colocated, num_tablets));
+  } else {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0.$1($2 int $3, $4 $5) WITH ($6colocated = $7) "
+        "SPLIT INTO $8 TABLETS",
+        schema_name, table_name + enum_suffix, kKeyColumnName,
+        (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
+        enum_value ? (schema_name + "." + "coupon_discount_type" + enum_suffix) : "int",
+        table_oid_string, colocated, num_tablets));
+  }
+
+  return GetTable(cluster, namespace_name, table_name + enum_suffix);
 }
 
 Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_name) {

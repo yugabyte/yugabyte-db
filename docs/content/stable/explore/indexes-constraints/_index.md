@@ -1,21 +1,21 @@
 ---
-title: Indexes and Constraints
-headerTitle: Indexes and Constraints
-linkTitle: Indexes and Constraints
-description: Explore Indexes and Constraints in YSQL and YCQL
-headcontent: Explore Indexes and Constraints in YSQL and YCQL
+title: Indexes and constraints
+headerTitle: Indexes and constraints
+linkTitle: Indexes and constraints
+description: Explore indexes and constraints in YSQL and YCQL
+headcontent: Explore indexes and constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:
   stable:
     identifier: explore-indexes-constraints
     parent: explore
     weight: 245
+type: indexpage
 ---
-
 
 <div class="row">
 
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="primary-key-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
@@ -38,15 +38,14 @@ menu:
       </div>
     </a>
   </div>
-
  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="overview/">
+    <a class="section-link icon-offset" href="secondary-indexes/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
         <div class="title">Secondary indexes</div>
       </div>
       <div class="body">
-          Explore Secondary indexes to optimize your database performance.
+          Explore Indexes to optimize your database performance.
       </div>
     </a>
   </div>
@@ -87,6 +86,18 @@ menu:
     </a>
   </div>
 
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="covering-index-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
+        <div class="title">Covering indexes</div>
+      </div>
+      <div class="body">
+          Explore Covering indexes in YSQL with examples.
+      </div>
+    </a>
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="gin/">
       <div class="head">
@@ -106,7 +117,7 @@ menu:
         <div class="title">Other constraints</div>
       </div>
       <div class="body">
-          Explore CHECK and NOT NULL constraints to optimize your database performance.
+          Explore CHECK, UNIQUE, and NOT NULL constraints to optimize your database performance.
       </div>
     </a>
  </div>

@@ -8,8 +8,7 @@ menu:
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Sometimes there might be a need to move a YugabyteDB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
@@ -79,7 +78,7 @@ Refer to [starting master servers](../../deploy/manual-deployment/start-masters/
 
 ## 3. Start YB-TServer servers
 
-Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`. 
+Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`.
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100

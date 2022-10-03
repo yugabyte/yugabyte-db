@@ -10,8 +10,7 @@ menu:
     identifier: architecture-concepts-yb-tserver
     parent: key-concepts
     weight: 1124
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YB-TServer (short for YugabyteDB Tablet Server) service is responsible for the actual IO for end user requests in a YugabyteDB cluster. Recall from the previous section that data for a table is split, or sharded, into tablets. Each tablet is composed of one or more tablet-peers, depending on the replication factor. And each YB-TServer hosts one or more tablet-peers.

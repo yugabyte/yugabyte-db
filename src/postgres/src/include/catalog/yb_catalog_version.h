@@ -13,13 +13,12 @@
 #ifndef YB_CATALOG_VERSION_H
 #define YB_CATALOG_VERSION_H
 
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * Enum representing how the catalog version is stored on this cluster.
  * Needed for backwards-compatibility with old clusters.
- * Should only be set once per process (first time the catalog version is 
+ * Should only be set once per process (first time the catalog version is
  * requested) and never modified afterwards.
  * TODO: Once cluster/initdb upgrade is supported (#2272) we should use it
  * to upgrade old cluster and remove the now-obsolete protobuf-based paths.
@@ -39,7 +38,20 @@ extern uint64_t YbGetMasterCatalogVersion();
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
 
+/* Send a request to create the master catalog version for the given database. */
+extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
+
+/* Send a request to delete the master catalog version for the given database. */
+extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
+
 /* Annotate an DML request if it changes the catalog data (if needed). */
-bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel);
+bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
+											  Relation rel);
+
+/* Return the catalog version type. */
+YbCatalogVersionType YbGetCatalogVersionType();
+
+/* Get actual db_oid for pg_yb_catalog_version */
+Oid YbMasterCatalogVersionTableDBOid();
 
 #endif							/* YB_CATALOG_VERSION_H */

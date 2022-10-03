@@ -4,12 +4,11 @@ headerTitle: Install YugabyteDB Anywhere software - Airgapped
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-3-airgapped
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -66,7 +65,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{< yb-version version="preview">}}/yugaware-{{< yb-version version="preview" format="build">}}-linux-x86_64.airgap
+  wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview">}}/yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:

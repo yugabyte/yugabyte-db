@@ -8,13 +8,12 @@ menu:
     identifier: yugabyted
     parent: configuration
     weight: 2451
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `yugabyted` is a new database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. Since its inception, YugabyteDB has relied on a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. yugabyted is the answer to this user need. It also adds a new UI similar to the Yugabyte Platform UI so that users can experience a richer data placement map and metrics dashboard.
 
-The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
+The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
 {{< note title="Note" >}}
 
@@ -33,7 +32,7 @@ yugabyted [-h] [ <command> ] [ <flags> ]
 - *command*: command to run
 - *flags*: one or more flags, separated by spaces.
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yugabyted start
@@ -214,11 +213,11 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 ##### -h | --help
 
 Print the command line help and exit.
-  
+
 ##### --config *config-file*
 
 The path to the configuration file of the yugabyted server that needs to be stopped.
-  
+
 ##### --data_dir *data-directory*
 
 The data directory for the yugabtyed server that needs to be stopped.
@@ -245,11 +244,11 @@ Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
 ##### -h | --help
 
 Print the command line help and exit.
-  
+
 ##### --config *config-file*
 
 The path to the configuration file of the yugabyted server whose status is desired.
-  
+
 ##### --data_dir *data-directory*
 
 The data directory for the yugabtyed server whose status is desired.
@@ -276,11 +275,11 @@ Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
 ##### -h | --help
 
 Print the command line help and exit.
-  
+
 ##### --config *config-file*
 
 The path to the configuration file of the yugabyted server whose version is desired.
-  
+
 ##### --data_dir *data-directory*
 
 The data directory for the yugabtyed server whose version is desired.
@@ -308,11 +307,11 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 ##### -h | --help
 
 Print the command line help and exit.
-  
+
 ##### --config *config-file*
 
 The path to the configuration file of the yugabyted server whose logs are desired.
-  
+
 ##### --data_dir *data-directory*
 
 The data directory for the yugabtyed server whose logs are desired.
@@ -343,11 +342,11 @@ Commands:
 ##### -h | --help
 
 Print the command line help and exit.
-  
+
 ##### --ysql
 
 Connect with `ysqlsh` cli.
-  
+
 ##### --ycql
 
 Connect with `ycqlsh` cli.
@@ -356,7 +355,7 @@ Connect with `ycqlsh` cli.
 
 ### demo
 
-Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
+Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/).
 
 #### Syntax
 
@@ -388,10 +387,10 @@ Deletes the `yb_demo_northwind` northwind database.
 
 Set `YSQL_PASSWORD` to use the cluster in enforced authentication mode.
 
-Combinations of environment variables and their uses. 
+Combinations of environment variables and their uses.
 
 - `YSQL_PASSWORD`
-   
+
   Update the default yugabyte user's password.
 
 - `YSQL_PASSWORD, YSQL_DB`
@@ -415,7 +414,7 @@ Combinations of environment variables and their uses.
   Create `YSQL_DB` named DB.
 
 - `YSQL_USER, YSQL_PASSWORD, YSQL_DB`
-  
+
   Create `YSQL_USER` named user with password `YSQL_PASSWORD` and `YSQL_DB` named DB.
 
 ### For YCQL:  `YCQL_USER` `YCQL_PASSWORD` `YCQL_KEYSPACE`
@@ -425,7 +424,7 @@ Set `YCQL_USER` or `YCQL_PASSWORD` to use the cluster in enforced authentication
 Combinations of environment variables and their uses.
 
 - `YCQL_PASSWORD`
-   
+
   Update the default cassandra user's password.
 
 - `YCQL_PASSWORD, YCQL_KEYSPACE`
@@ -449,11 +448,11 @@ Combinations of environment variables and their uses.
   Create `YCQL_KEYSPACE` named keyspace.
 
 - `YCQL_USER, YCQL_PASSWORD, YCQL_KEYSPACE`
-  
+
   Create `YCQL_USER` named user with password `YCQL_PASSWORD` and `YCQL_KEYSPACE` named keyspace.
 
 **Note**
-- In the case of multi-node deployment, all nodes should have similar environment variables. 
+- In the case of multi-node deployment, all nodes should have similar environment variables.
 - Changing the values of the environment variables after the first run has no effect.
 -----
 

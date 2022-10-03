@@ -55,6 +55,7 @@
 
 #include "yb/common/index.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -132,35 +133,6 @@ using internal::GetColocatedTabletSchemaRpc;
 using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
-
-Status RetryFunc(
-    CoarseTimePoint deadline,
-    const string& retry_msg,
-    const string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait) {
-  DCHECK(deadline != CoarseTimePoint());
-
-  CoarseBackoffWaiter waiter(deadline, max_wait);
-
-  if (waiter.ExpiredNow()) {
-    return STATUS(TimedOut, timeout_msg);
-  }
-  for (;;) {
-    bool retry = true;
-    Status s = func(deadline, &retry);
-    if (!retry) {
-      return s;
-    }
-
-    VLOG(1) << retry_msg << " attempt=" << waiter.attempt() << " status=" << s.ToString();
-    if (!waiter.Wait()) {
-      break;
-    }
-  }
-
-  return STATUS(TimedOut, timeout_msg);
-}
 
 template<class ProxyClass, class RespClass>
 class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
@@ -280,7 +252,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
+YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTransactionStatusTablets);
@@ -288,6 +262,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ListLiveTabletServers);
@@ -306,7 +281,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -368,7 +345,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
         }
       } else if (selection == CLOSEST_REPLICA) {
         // Choose the closest replica.
-        internal::LocalityLevel best_locality_level = internal::LocalityLevel::kNone;
+        LocalityLevel best_locality_level = LocalityLevel::kNone;
         for (RemoteTabletServer* rts : filtered) {
           if (IsTabletServerLocal(*rts)) {
             ret = rts;
@@ -1072,7 +1049,7 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
               alter_name, table_id, _1, _2));
 }
 
-CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
+Status YBClient::Data::FlushTablesHelper(YBClient* client,
                                                 const CoarseTimePoint deadline,
                                                 const FlushTablesRequestPB& req) {
   FlushTablesResponsePB resp;
@@ -1092,7 +1069,7 @@ CHECKED_STATUS YBClient::Data::FlushTablesHelper(YBClient* client,
   return Status::OK();
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<YBTableName>& table_names,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -1107,7 +1084,7 @@ CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
   return FlushTablesHelper(client, deadline, req);
 }
 
-CHECKED_STATUS YBClient::Data::FlushTables(YBClient* client,
+Status YBClient::Data::FlushTables(YBClient* client,
                                            const vector<TableId>& table_ids,
                                            bool add_indexes,
                                            const CoarseTimePoint deadline,
@@ -1873,6 +1850,20 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
   return sync.Wait();
 }
 
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const YBTableName& table_name,
+                                      CoarseTimePoint deadline,
+                                      std::shared_ptr<YBTableInfo> info,
+                                      StatusCallback callback) {
+  auto rpc = StartRpc<GetTableSchemaRpc>(
+      client,
+      callback,
+      table_name,
+      info.get(),
+      deadline);
+  return Status::OK();
+}
+
 Status YBClient::Data::GetTableSchemaById(YBClient* client,
                                           const TableId& table_id,
                                           CoarseTimePoint deadline,
@@ -2385,6 +2376,39 @@ Status YBClient::Data::ValidateReplicationInfo(
   }
 
   return Status::OK();
+}
+
+Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
+    const TableId& table_id, CoarseTimePoint deadline) {
+  master::GetTableDiskSizeRequestPB req;
+  master::GetTableDiskSizeResponsePB resp;
+
+  req.mutable_table()->set_table_id(table_id);
+
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetTableDiskSize",
+      &master::MasterDdlProxy::GetTableDiskSizeAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+}
+
+Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
+  CheckIfPitrActiveRequestPB req;
+  CheckIfPitrActiveResponsePB resp;
+
+  Status status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "CheckIfPitrActive",
+      &master::MasterAdminProxy::CheckIfPitrActiveAsync);
+  RETURN_NOT_OK(status);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.is_pitr_active();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

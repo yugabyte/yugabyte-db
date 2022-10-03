@@ -1,0 +1,42 @@
+openapi: 3.0.0
+info:
+  title: Yugabyte Cloud
+  description: YugabyteDB as a Service
+  termsOfService: https://www.yugabyte.com/yugabyte-cloud-terms-of-service
+  version: v1
+  contact:
+    name: Yugabyte Cloud Support
+    url: https://support.yugabyte.com/
+    email: support@yugabyte.com
+  license:
+    name: Properietary (TBD)
+    url: https://www.yugabyte.com/yugabyte-cloud-terms-of-service
+servers:
+  - url: '{protocol}://{host_port}/api'
+    variables:
+      protocol:
+        enum:
+          - http
+          - https
+        default: http
+      host_port:
+        default: localhost:1323
+    description: Endpoint of the API server
+tags:
+  $ref: "./tags/_index.yaml"
+paths:
+  $ref: "./paths/_index.yaml"
+components:
+  schemas:
+    $ref: "./schemas/_index.yaml"
+  requestBodies:
+    $ref: "./request_bodies/_index.yaml"
+  responses:
+    $ref: "./responses/_index.yaml"
+  securitySchemes:
+    BearerAuthToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - BearerAuthToken: []

@@ -81,7 +81,7 @@ class PgsqlOp {
 
   std::string ToString() const;
 
-  virtual CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) = 0;
+  virtual Status InitPartitionKey(const PgTableDesc& table) = 0;
 
  private:
   virtual std::string RequestToString() const = 0;
@@ -129,7 +129,7 @@ class PgsqlReadOp : public PgsqlOp {
   std::string RequestToString() const override;
 
  private:
-  CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;
+  Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlReadRequestPB read_request_;
   bool read_from_followers_ = false;
@@ -173,14 +173,14 @@ class PgsqlWriteOp : public PgsqlOp {
   std::string RequestToString() const override;
 
  private:
-  CHECKED_STATUS InitPartitionKey(const PgTableDesc& table) override;
+  Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlWriteRequestPB write_request_;
   bool need_transaction_;
   HybridTime write_time_;
 };
 
-CHECKED_STATUS ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
+Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
 bool PrepareNextRequest(PgsqlReadOp* read_op);
 

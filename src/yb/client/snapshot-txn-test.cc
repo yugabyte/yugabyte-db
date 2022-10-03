@@ -46,6 +46,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
@@ -61,6 +62,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(TEST_disallow_lmp_failures);
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
@@ -74,6 +76,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
+DECLARE_bool(enable_load_balancing);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -358,7 +361,7 @@ void SnapshotTxnTest::TestBankAccounts(
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
   FLAGS_TEST_disallow_lmp_failures = true;
-  FLAGS_enable_multi_raft_heartbeat_batcher = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
@@ -378,6 +381,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
+  SetAtomicFlag(true, &FLAGS_enable_lease_revocation);
   FLAGS_fail_on_out_of_range_clock_skew = false;
 
   TestBankAccounts(
@@ -395,7 +399,7 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
 
 TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
   FLAGS_TEST_disallow_lmp_failures = true;
-  FLAGS_enable_multi_raft_heartbeat_batcher = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
@@ -490,7 +494,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
           total_values += written_value[j];
         }
         bool failed = false;
-        session->SetReadPoint(client::Restart::kFalse);
+        session->RestartNonTxnReadPoint(client::Restart::kFalse);
         session->SetForceConsistentRead(ForceConsistentRead::kFalse);
 
         for (;;) {
@@ -933,6 +937,9 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 }
 
 TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
+  // Disable load balancing to avoid leader change after getting the leader peer.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
   SetIgnoreApplyingProbability(0.5);
 
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);

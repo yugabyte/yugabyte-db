@@ -4,12 +4,11 @@ headerTitle: Create a multi-zone universe with Kubernetes
 linkTitle: Multi-zone universe
 description: Use YugabyteDB Anywhere and Kubernetes to create a YugabyteDB universe that spans multiple availability zones.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
   <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -82,12 +81,12 @@ Complete the **G-Flags** section as follows:
 - Click **Add Flags > Add to T-Server** to specify the YugabyteDB T-Servers parameters, one parameter per field.<br>
 
   For details, see the following:
-  
+
   - [Edit configuration flags](/preview/yugabyte-platform/manage-deployments/edit-config-flags)
-  
+
   - [YB Master Configuration Flags](/preview/reference/configuration/yb-master/#configuration-flags)
-  
-  - [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags) 
+
+  - [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags)
 
 Accept default values for all of the remaining fields.
 

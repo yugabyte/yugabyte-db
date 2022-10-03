@@ -23,6 +23,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/docdb/deadlock_detector.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/server/server_fwd.h"
@@ -30,6 +32,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -87,7 +90,8 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         Counter* expired_metric);
+                         Counter* expired_metric,
+                         const MetricEntityPtr& metrics);
   ~TransactionCoordinator();
 
   // Used to pass arguments to ProcessReplicated.
@@ -101,7 +105,7 @@ class TransactionCoordinator {
   };
 
   // Process new transaction state.
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
     const TransactionStatePB& state;
@@ -112,9 +116,8 @@ class TransactionCoordinator {
 
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
-
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC(std::string* details = nullptr);
@@ -126,7 +129,13 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+  // Prepares tablet for deletion. This waits until the transaction coordinator has stopped
+  // accepting new transactions, all running transactions have finished, and all intents
+  // for committed transactions have been applied. This does not ensure that all aborted
+  // transactions' intents have been cleaned up.
+  Status PrepareForDeletion(const CoarseTimePoint& deadline);
+
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);
 
@@ -136,6 +145,16 @@ class TransactionCoordinator {
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;
+
+  void ProcessWaitForReport(
+      const tserver::UpdateTransactionWaitingForStatusRequestPB& req,
+      tserver::UpdateTransactionWaitingForStatusResponsePB* resp,
+      DeadlockDetectorRpcCallback&& callback);
+
+  void ProcessProbe(
+      const tserver::ProbeTransactionDeadlockRequestPB& req,
+      tserver::ProbeTransactionDeadlockResponsePB* resp,
+      DeadlockDetectorRpcCallback&& callback);
 
  private:
   class Impl;

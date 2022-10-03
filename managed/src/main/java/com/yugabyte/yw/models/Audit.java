@@ -67,6 +67,9 @@ public class Audit extends Model {
     @EnumValue("Alert")
     Alert,
 
+    @EnumValue("Alert Template Settings")
+    AlertTemplateSettings,
+
     @EnumValue("Alert Channel")
     AlertChannel,
 
@@ -126,6 +129,18 @@ public class Audit extends Model {
 
     @EnumValue("GFlags")
     GFlags,
+
+    @EnumValue("Hook")
+    Hook,
+
+    @EnumValue("Hook Scope")
+    HookScope,
+
+    @EnumValue("NodeAgent")
+    NodeAgent,
+
+    @EnumValue("CustomerLicense")
+    CustomerLicense
   }
 
   public enum ActionType {
@@ -207,6 +222,9 @@ public class Audit extends Model {
     @EnumValue("Configure")
     Configure,
 
+    @EnumValue("Update Options")
+    UpdateOptions,
+
     @EnumValue("Refresh Pricing")
     RefreshPricing,
 
@@ -215,6 +233,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
+
+    @EnumValue("Upgrade Kubernetes Overrides")
+    UpgradeKubernetesOverrides,
 
     @EnumValue("Upgrade Certs")
     UpgradeCerts,
@@ -227,6 +248,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade Systemd")
     UpgradeSystemd,
+
+    @EnumValue("Reboot Universe")
+    RebootUniverse,
 
     @EnumValue("Resize Node")
     ResizeNode,
@@ -333,6 +357,15 @@ public class Audit extends Model {
     @EnumValue("Create Backup Schedule")
     CreateBackupSchedule,
 
+    @EnumValue("Create PITR Config")
+    CreatePitrConfig,
+
+    @EnumValue("Restore Snapshot")
+    RestoreSnapshot,
+
+    @EnumValue("Delete PITR Config")
+    DeletePitrConfig,
+
     @EnumValue("Edit Backup Schedule")
     EditBackupSchedule,
 
@@ -389,6 +422,60 @@ public class Audit extends Model {
 
     @EnumValue("Create TableSpaces")
     CreateTableSpaces,
+
+    @EnumValue("Create Hook")
+    CreateHook,
+
+    @EnumValue("Delete Hook")
+    DeleteHook,
+
+    @EnumValue("Update Hook")
+    UpdateHook,
+
+    @EnumValue("Create Hook Scope")
+    CreateHookScope,
+
+    @EnumValue("Delete Hook Scope")
+    DeleteHookScope,
+
+    @EnumValue("Add Hook to Hook Scope")
+    AddHook,
+
+    @EnumValue("Remove Hook from Hook Scope")
+    RemoveHook,
+
+    @EnumValue("Rotate AccessKey")
+    RotateAccessKey,
+
+    @EnumValue("Create And Rotate Access Key")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("Run Hook")
+    RunHook,
+
+    @EnumValue("Run API Triggered Tasks")
+    RunApiTriggeredHooks,
+
+    @EnumValue("Add Node Agent")
+    AddNodeAgent,
+
+    @EnumValue("Update Node Agent")
+    UpdateNodeAgent,
+
+    @EnumValue("Delete Node Agent")
+    DeleteNodeAgent,
+
+    @EnumValue("Disable Ybc")
+    DisableYbc,
+
+    @EnumValue("Upgrade Ybc")
+    UpgradeYbc,
+
+    @EnumValue("Install Ybc")
+    InstallYbc,
+
+    @EnumValue("Set YB-Controller throttle params")
+    SetThrottleParams
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -450,6 +537,15 @@ public class Audit extends Model {
   public void setPayload(JsonNode payload) {
     this.payload = payload;
     this.save();
+  }
+
+  @ApiModelProperty(value = "Additional Details", accessMode = READ_ONLY, dataType = "Object")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode additionalDetails;
+
+  public JsonNode getAdditionalDetails() {
+    return this.additionalDetails;
   }
 
   @ApiModelProperty(
@@ -539,7 +635,8 @@ public class Audit extends Model {
       String targetID,
       ActionType action,
       JsonNode body,
-      UUID taskUUID) {
+      UUID taskUUID,
+      JsonNode details) {
     Audit entry = new Audit();
     entry.customerUUID = user.customerUUID;
     entry.userUUID = user.uuid;
@@ -551,6 +648,7 @@ public class Audit extends Model {
     entry.action = action;
     entry.taskUUID = taskUUID;
     entry.payload = body;
+    entry.additionalDetails = details;
     entry.save();
     return entry;
   }

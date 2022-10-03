@@ -6,8 +6,8 @@ import { DescriptionList, YBResourceCount } from '../../common/descriptors';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
-  nodeComparisonFunction,
-  isKubernetesUniverse
+  isKubernetesUniverse,
+  getUniverseNodeCount
 } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBWidget } from '../../panels';
@@ -40,12 +40,7 @@ export default class ClusterInfoPanel extends Component {
       { name: 'Replication Factor', data: userIntent.replicationFactor }
     ];
 
-    const nodeDetails = universeDetails.nodeDetailsSet
-      ? universeDetails.nodeDetailsSet.sort((a, b) => nodeComparisonFunction(a, b, clusters))
-      : [];
-    const primaryNodes = nodeDetails.filter(
-      (node) => node.placementUuid === cluster.uuid && node.isTserver
-    );
+    const nodeCount = getUniverseNodeCount(universeDetails.nodeDetailsSet, cluster);
 
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
 
@@ -59,8 +54,8 @@ export default class ClusterInfoPanel extends Component {
             <FlexGrow>
               <YBResourceCount
                 className="hidden-costs"
-                size={primaryNodes.length}
-                kind={pluralize(isItKubernetesUniverse ? 'Pod' : 'Node', primaryNodes.length)}
+                size={nodeCount}
+                kind={pluralize(isItKubernetesUniverse ? 'Pod' : 'Node', nodeCount)}
               />
             </FlexGrow>
             <FlexShrink>

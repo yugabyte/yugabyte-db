@@ -1747,8 +1747,6 @@ ExecAgg(PlanState *pstate)
 		if (IsYugaByteEnabled())
 		{
 			pstate->state->yb_exec_params.limit_use_default = true;
-			if (node->yb_pushdown_supported)
-				yb_agg_pushdown(node);
 		}
 
 		/* Dispatch based on strategy */
@@ -3173,6 +3171,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 		phase->evaltrans = ExecBuildAggTrans(aggstate, phase, dosort, dohash);
 
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		if (aggstate->yb_pushdown_supported)
+			yb_agg_pushdown(aggstate);
 	}
 
 	return aggstate;

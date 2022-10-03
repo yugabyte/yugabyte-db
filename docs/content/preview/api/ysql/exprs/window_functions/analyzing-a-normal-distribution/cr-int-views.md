@@ -8,8 +8,7 @@ menu:
     identifier: cr-int-views
     parent: analyzing-a-normal-distribution
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_int_views.sql`.
 ```plpgsql

@@ -18,11 +18,14 @@
 #include <vector>
 
 #include "yb/util/env.h"
+#include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/consensus/log_fwd.h"
+
+#include "yb/docdb/local_waiting_txn_registry.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -33,6 +36,8 @@ class Cache;
 class EventListener;
 class MemoryMonitor;
 class Env;
+
+struct RocksDBPriorityThreadPoolMetrics;
 }
 
 namespace yb {
@@ -51,7 +56,10 @@ struct TabletOptions {
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
+  std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics;
 };
+
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -71,6 +79,10 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  TransactionManagerProvider transaction_manager_provider;
+  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  ThreadPool* post_split_compaction_pool;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 
 } // namespace tablet

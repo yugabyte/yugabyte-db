@@ -378,6 +378,7 @@ extern const char* GetCurrentTransactionName(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
+extern int YBGetEffectivePggateIsolationLevel();
 extern void YBInitializeTransaction(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);

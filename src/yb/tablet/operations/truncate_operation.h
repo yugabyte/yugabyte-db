@@ -41,12 +41,12 @@ class TruncateOperation : public OperationBase<OperationType::kTruncate, Truncat
   explicit TruncateOperation(Args&&... args)
       : OperationBase(std::forward<Args>(args)...) {}
 
-  CHECKED_STATUS Prepare() override { return Status::OK(); }
+  Status Prepare() override { return Status::OK(); }
 
  private:
   // Starts the TruncateOperation by assigning it a timestamp.
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 };
 
 }  // namespace tablet

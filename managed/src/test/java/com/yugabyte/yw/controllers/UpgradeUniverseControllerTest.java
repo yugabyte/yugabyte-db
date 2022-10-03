@@ -21,7 +21,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -44,6 +43,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -92,7 +93,6 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.Helpers;
 import play.test.WithApplication;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
@@ -179,6 +179,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -787,8 +789,9 @@ public class UpgradeUniverseControllerTest extends WithApplication {
   public void testTlsToggleWithRootCaUpdate() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, TMP_CERTS_PATH);
-    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, TMP_CERTS_PATH);
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_CERTS_PATH);
+    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.uuid);
+    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.uuid);
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
@@ -961,6 +964,36 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.VMImageUpgrade)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testRebootUniverse() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+
+    String url =
+        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/reboot";
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<UpgradeTaskParams> argCaptor = ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RebootUniverse), argCaptor.capture());
+
+    UpgradeTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(
+        task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RebootUniverse)));
     assertAuditEntry(1, customer.uuid);
   }
 

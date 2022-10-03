@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: cmd_copy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" %}}
   </div>
 </div>
 
@@ -59,7 +58,7 @@ Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose re
 
 Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path. Critically, the file must be located _server-side_ on the local filesystem of the YB-TServer that you connect to.
 
-To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.  
+To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.
 
 Alternatively, you can use the `\copy` metacommand in [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
 
@@ -89,9 +88,26 @@ Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`]
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}
 
-For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`.  See <a href="https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from" target="_blank">Using COPY TO and COPY FROM <i class="fas fa-external-link-alt"></i></a>
+For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`. See [Using COPY TO and COPY FROM](https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from).
 
 {{< /note >}}
+
+## Copy options
+
+### ROWS_PER_TRANSACTION
+
+The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
+
+Deafult : 20000 for YugabyteDB versions 2.14/2.15, and 1000 for older releases.
+
+For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
+
+- 1 to 1000 →  Transaction_1
+- 1001 to 2000 → Transaction_2
+- 2001 to 3000 → Transaction_3
+- 3001 to 3500 → Error
+
+First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
 
 ## Examples
 
@@ -135,18 +151,10 @@ In the following example, the data exported in the previous examples are importe
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
+### Performance tips for large tables
 
-### Import a large table using smaller transactions
+The following copy options may help to speed up copying, or allow for faster recovery from a partial state:
 
-When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
-This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
-
-```plpgsql
-yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
-               WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION 1000);
-```
-
-
-- If the table does not exist, errors are raised.
-- `COPY TO` can only be used with regular tables.
-- `COPY FROM` can be used with tables, foreign tables, and views.
+* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
+* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
+* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.

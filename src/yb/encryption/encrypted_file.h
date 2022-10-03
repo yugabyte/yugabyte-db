@@ -45,7 +45,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
 
   ~EncryptedRandomAccessFile() {}
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
 
   uint64_t GetEncryptionHeaderSize() const override {
     return header_size_;
@@ -57,7 +57,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
     return true;
   }
 
-  CHECKED_STATUS ReadAndValidate(
+  Status ReadAndValidate(
       uint64_t offset, size_t n, Slice* result, char* scratch,
       const ReadValidator& validator) override;
 

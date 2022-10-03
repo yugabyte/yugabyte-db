@@ -39,14 +39,18 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (DeleteUniverseReplication)
     (GetCDCStream)
     (GetUniverseReplication)
+    (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
     (UpdateConsumerOnProducerSplit)
+    (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
     (SetUniverseReplicationEnabled)
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
+    (WaitForReplicationDrain)
+    (SetupNSUniverseReplication)
   )
 };
 

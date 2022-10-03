@@ -63,7 +63,7 @@ size_t SerializedMessageSize(size_t body_size, size_t additional_size) {
   return body_size + CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(full_size));
 }
 
-CHECKED_STATUS SerializeMessage(
+Status SerializeMessage(
     AnyMessageConstPtr msg, size_t body_size, const RefCntBuffer& param_buf,
     size_t additional_size, size_t offset) {
   DCHECK_EQ(msg.SerializedSize(), body_size);
@@ -166,7 +166,7 @@ Result<Slice> ParseString(const Slice& buf, const char* name, CodedInputStream* 
   return result;
 }
 
-CHECKED_STATUS ParseHeader(
+Status ParseHeader(
     const Slice& buf, CodedInputStream* in, ParsedRequestHeader* parsed_header) {
   while (in->BytesUntilLimit() > 0) {
     auto tag = in->ReadTag();
@@ -198,7 +198,7 @@ CHECKED_STATUS ParseHeader(
   return Status::OK();
 }
 
-CHECKED_STATUS ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* parsed_header) {
+Status ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* parsed_header) {
   if (PREDICT_FALSE(!parsed_header->ParseFromCodedStream(in))) {
     return STATUS(Corruption, "Invalid packet: header too short",
                               buf.ToDebugString());
@@ -210,7 +210,7 @@ CHECKED_STATUS ParseHeader(const Slice& buf, CodedInputStream* in, MessageLite* 
 namespace {
 
 template <class Header>
-CHECKED_STATUS DoParseYBMessage(const Slice& buf,
+Status DoParseYBMessage(const Slice& buf,
                                 Header* parsed_header,
                                 Slice* parsed_main_message) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));

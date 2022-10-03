@@ -7,18 +7,23 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.collections.MapUtils;
+import play.libs.Json;
 
 @Singleton
 public class NodeUniverseManager extends DevopsBase {
+  private static final ShellProcessContext DEFAULT_CONTEXT =
+      ShellProcessContext.builder().logCmdOutput(true).build();
   public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
@@ -40,7 +45,8 @@ public class NodeUniverseManager extends DevopsBase {
       actionArgs.add(getYbHomeDir(node, universe));
       actionArgs.add("--target_local_file");
       actionArgs.add(targetLocalFile);
-      return executeNodeAction(UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs);
+      return executeNodeAction(
+          UniverseNodeAction.DOWNLOAD_LOGS, universe, node, actionArgs, DEFAULT_CONTEXT);
     } finally {
       universeLock.releaseLock(universe.getUniverseUUID());
     }
@@ -63,24 +69,91 @@ public class NodeUniverseManager extends DevopsBase {
       actionArgs.add(sourceNodeFile);
       actionArgs.add("--target_local_file");
       actionArgs.add(targetLocalFile);
-      return executeNodeAction(UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs);
+      return executeNodeAction(
+          UniverseNodeAction.DOWNLOAD_FILE, universe, node, actionArgs, DEFAULT_CONTEXT);
     } finally {
       universeLock.releaseLock(universe.getUniverseUUID());
     }
   }
 
-  public ShellResponse runCommand(NodeDetails node, Universe universe, String command) {
+  public ShellResponse uploadFileToNode(
+      NodeDetails node,
+      Universe universe,
+      String sourceFile,
+      String targetFile,
+      String permissions,
+      ShellProcessContext context) {
     List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--source_file");
+    actionArgs.add(sourceFile);
+    actionArgs.add("--target_file");
+    actionArgs.add(targetFile);
+    actionArgs.add("--permissions");
+    actionArgs.add(permissions);
+    return executeNodeAction(UniverseNodeAction.UPLOAD_FILE, universe, node, actionArgs, context);
+  }
+
+  public ShellResponse runCommand(
+      NodeDetails node, Universe universe, String command, ShellProcessContext context) {
+    return runCommand(node, universe, Collections.singletonList(command), context);
+  }
+
+  public ShellResponse runCommand(NodeDetails node, Universe universe, List<String> command) {
+    return runCommand(node, universe, command, DEFAULT_CONTEXT);
+  }
+
+  public ShellResponse runCommand(
+      NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
+    List<String> actionArgs = new ArrayList<>();
+    if (MapUtils.isNotEmpty(context.getRedactedVals())) {
+      actionArgs.add("--skip_cmd_logging");
+    }
     actionArgs.add("--command");
-    actionArgs.add(command);
-    return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs);
+    actionArgs.addAll(command);
+    return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs, context);
+  }
+
+  /**
+   * Runs a local script with parameters passed in a list
+   *
+   * @param node
+   * @param universe
+   * @param localScriptPath
+   * @param params
+   * @return the ShellResponse object
+   */
+  public ShellResponse runScript(
+      NodeDetails node, Universe universe, String localScriptPath, List<String> params) {
+    return runScript(node, universe, localScriptPath, params, DEFAULT_CONTEXT);
+  }
+
+  /**
+   * Runs a local script with parameters passed in a list
+   *
+   * @param node
+   * @param universe
+   * @param localScriptPath
+   * @param params
+   * @param context
+   * @return the ShellResponse object
+   */
+  public ShellResponse runScript(
+      NodeDetails node,
+      Universe universe,
+      String localScriptPath,
+      List<String> params,
+      ShellProcessContext context) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--local_script_path");
+    actionArgs.add(localScriptPath);
+    actionArgs.add("--params");
+    actionArgs.addAll(params);
+    return executeNodeAction(UniverseNodeAction.RUN_SCRIPT, universe, node, actionArgs, context);
   }
 
   public ShellResponse runYbAdminCommand(
       NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
-    command.add("/usr/bin/timeout");
-    command.add(String.valueOf(timeoutSec));
     command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
     command.add("--master_addresses");
     command.add(universe.getMasterAddresses());
@@ -92,7 +165,9 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-timeout_ms");
     command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
     command.add(ybAdminCommand);
-    return runCommand(node, universe, String.join(" ", command));
+    ShellProcessContext context =
+        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
+    return runCommand(node, universe, command, context);
   }
 
   public ShellResponse runYsqlCommand(
@@ -103,28 +178,47 @@ public class NodeUniverseManager extends DevopsBase {
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
-    command.add("timeout");
-    command.add(String.valueOf(timeoutSec));
+    command.add("bash");
+    command.add("-c");
+    List<String> bashCommand = new ArrayList<>();
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      command.add("env sslmode=\"require\"");
+      bashCommand.add("export sslmode=\"require\";");
     }
-    command.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
-    command.add("-h");
+    bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
+    bashCommand.add("-h");
     if (cluster.userIntent.isYSQLAuthEnabled()) {
-      command.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
+      bashCommand.add("$(dirname \"$(ls /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
-      command.add(node.cloudInfo.private_ip);
+      bashCommand.add(node.cloudInfo.private_ip);
     }
-    command.add("-p");
-    command.add(String.valueOf(node.ysqlServerRpcPort));
-    command.add("-U");
-    command.add("yugabyte");
-    command.add("-d");
-    command.add(dbName);
-    command.add("-c");
-    command.add("'" + ysqlCommand + "'");
-    return runCommand(node, universe, String.join(" ", command));
+    bashCommand.add("-p");
+    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    bashCommand.add("-U");
+    bashCommand.add("yugabyte");
+    bashCommand.add("-d");
+    bashCommand.add(dbName);
+    bashCommand.add("-c");
+    // Escaping double quotes at first.
+    String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    // Escaping single quotes after for non k8s deployments.
+    if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+      escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
+    }
+    bashCommand.add("\"" + escapedYsqlCommand + "\"");
+    String bashCommandStr = String.join(" ", bashCommand);
+    command.add(bashCommandStr);
+    Map<String, String> valsToRedact = new HashMap<>();
+    if (bashCommandStr.contains(Util.YSQL_PASSWORD_KEYWORD)) {
+      valsToRedact.put(bashCommandStr, Util.redactYsqlQuery(bashCommandStr));
+    }
+    ShellProcessContext context =
+        ShellProcessContext.builder()
+            .logCmdOutput(valsToRedact.isEmpty())
+            .timeoutSecs(timeoutSec)
+            .redactedVals(valsToRedact)
+            .build();
+    return runCommand(node, universe, command, context);
   }
 
   /** returns (location of) access key for a particular node in a universe */
@@ -137,22 +231,6 @@ public class NodeUniverseManager extends DevopsBase {
     UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
     AccessKey ak = AccessKey.get(providerUUID, cluster.userIntent.accessKeyCode);
     return ak.getKeyInfo().privateKey;
-  }
-
-  /**
-   * Get deployment mode of node (on-prem/kubernetes/cloud provider)
-   *
-   * @param node - node to get info on
-   * @param universe - the universe
-   * @return Get deployment details
-   */
-  private Common.CloudType getNodeDeploymentMode(NodeDetails node, Universe universe) {
-    if (node == null) {
-      throw new RuntimeException("node must be nonnull");
-    }
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
-    return cluster.userIntent.providerType;
   }
 
   /**
@@ -171,7 +249,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   private ShellResponse executeNodeAction(
-      UniverseNodeAction nodeAction, Universe universe, NodeDetails node, List<String> actionArgs) {
+      UniverseNodeAction nodeAction,
+      Universe universe,
+      NodeDetails node,
+      List<String> actionArgs,
+      ShellProcessContext context) {
     List<String> commandArgs = new ArrayList<>();
 
     commandArgs.add(PY_WRAPPER);
@@ -184,32 +266,20 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
-    if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
-
-      // Get namespace.  First determine isMultiAz.
-      Provider provider = Provider.getOrBadRequest(providerUUID);
-      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
-              universe.getUniverseDetails().nodePrefix,
-              isMultiAz ? AvailabilityZone.getOrBadRequest(node.azUuid).name : null,
-              AvailabilityZone.get(node.azUuid).getUnmaskedConfig());
-      // TODO(bhavin192): this might need an updated when we have
-      // multiple releases in one namespace.
-      String kubeconfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-                  cluster.placementInfo, universe.getUniverseDetails().nodePrefix, provider)
-              .get(namespace);
-      if (kubeconfig == null) {
-        throw new RuntimeException("kubeconfig cannot be null");
+    if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
+      Map<String, String> k8sConfig =
+          PlacementInfoUtil.getKubernetesConfigPerPod(
+                  cluster.placementInfo,
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
+              .get(node.cloudInfo.private_ip);
+      if (k8sConfig == null) {
+        throw new RuntimeException("Kubernetes config cannot be null");
       }
 
       commandArgs.add("k8s");
-      commandArgs.add("--namespace");
-      commandArgs.add(namespace);
-      commandArgs.add("--kubeconfig");
-      commandArgs.add(kubeconfig);
-    } else if (!getNodeDeploymentMode(node, universe).equals(Common.CloudType.unknown)) {
+      commandArgs.add("--k8s_config");
+      commandArgs.add(Json.stringify(Json.toJson(k8sConfig)));
+    } else if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.unknown)) {
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       commandArgs.add("ssh");
@@ -219,17 +289,19 @@ public class NodeUniverseManager extends DevopsBase {
       commandArgs.add(node.cloudInfo.private_ip);
       commandArgs.add("--key");
       commandArgs.add(getAccessKey(node, universe));
+      if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+        commandArgs.add("--ssh2_enabled");
+      }
     } else {
       throw new RuntimeException("Cloud type unknown");
     }
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
-    LOG.debug("Executing command: " + commandArgs);
-    return shellProcessHandler.run(commandArgs, new HashMap<>(), true);
+    return shellProcessHandler.run(commandArgs, context);
   }
 
   private String getCertsDir(Universe universe, NodeDetails node) {
-    if (getNodeDeploymentMode(node, universe).equals(Common.CloudType.kubernetes)) {
+    if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
       return K8S_CERTS_DIR;
     }
     return getYbHomeDir(node, universe) + CERTS_DIR;
@@ -237,7 +309,9 @@ public class NodeUniverseManager extends DevopsBase {
 
   public enum UniverseNodeAction {
     RUN_COMMAND,
+    RUN_SCRIPT,
     DOWNLOAD_LOGS,
-    DOWNLOAD_FILE
+    DOWNLOAD_FILE,
+    UPLOAD_FILE
   }
 }

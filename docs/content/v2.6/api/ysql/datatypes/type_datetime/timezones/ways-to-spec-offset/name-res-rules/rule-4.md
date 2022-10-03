@@ -8,8 +8,7 @@ menu:
     identifier: rule-4
     parent: name-res-rules
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="" >}}
@@ -36,7 +35,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  true        | false         | false
 ```
@@ -76,7 +75,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  true        | false         | true
 ```
@@ -104,7 +103,7 @@ The [PostgresSQL documentation](https://www.postgresql.org/docs/11/) does not pr
 ```plpgsql
 :c
 
-with 
+with
   met_names_offsets(string, names_offset, is_dst) as (
     select name, utc_offset, is_dst
     from pg_timezone_names
@@ -122,7 +121,7 @@ possibly_disagreeing_offsets(string, names_offset, is_dst, abbrevs_offset) as (
     inner join
     met_abbrevs_offset as a
     using(string))
-  
+
 select string, names_offset, is_dst::text, abbrevs_offset
 from possibly_disagreeing_offsets;
 ```
@@ -130,12 +129,12 @@ from possibly_disagreeing_offsets;
 This is the result:
 
 ```output
- string | names_offset | is_dst | abbrevs_offset 
+ string | names_offset | is_dst | abbrevs_offset
 --------+--------------+--------+----------------
  MET    | 02:00:00     | true   | 01:00:00
 ```
 
-Of course, there is just one row because both  _pg_timezone_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view. 
+Of course, there is just one row because both  _pg_timezone_names.name_ and _pg_timezone_abbrevs.abbrev_ have unique values. You can see that the query happens to have been executed during the Day Light Savings Time period for the timezone _MET_. This is fortunate for the usefulness of the test that follows. Look up _MET_ in the [_extended_timezone_names_](../../../extended-timezone-names/) view.
 
 ```plpgsql
 select name, std_abbrev, dst_abbrev, std_offset, dst_offset
@@ -146,7 +145,7 @@ where name = 'MET';
 This is the result:
 
 ```output
- name | std_abbrev | dst_abbrev | std_offset | dst_offset 
+ name | std_abbrev | dst_abbrev | std_offset | dst_offset
 ------+------------+------------+------------+------------
  MET  | MET        | MEST       | 01:00:00   | 02:00:00
 ```
@@ -206,7 +205,7 @@ order by string;
 This is the result:
 
 ```outout
- string | std_abbrev | dst_abbrev | std offset from ~names | dst offset from ~names | offset from ~abbrevs 
+ string | std_abbrev | dst_abbrev | std offset from ~names | dst offset from ~names | offset from ~abbrevs
 --------+------------+------------+------------------------+------------------------+----------------------
  CET    | CET        | CEST       |  01:00:00              |  02:00:00              |  01:00:00
  EET    | EET        | EEST       |  02:00:00              |  03:00:00              |  02:00:00

@@ -10,6 +10,7 @@ menu:
     parent: yedis
     weight: 2900
 
+type: indexpage
 ---
 
 <div class="row">

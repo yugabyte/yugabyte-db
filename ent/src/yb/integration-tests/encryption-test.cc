@@ -26,7 +26,7 @@
 
 #include "yb/tools/yb-admin_client.h"
 
-#include "yb/util/test_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
@@ -117,7 +117,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
         current_key_id_, std::string(bytes.begin(), bytes.end())));
   }
 
-  CHECKED_STATUS WaitForAllMastersHaveLatestKeyInMemory() {
+  Status WaitForAllMastersHaveLatestKeyInMemory() {
     return LoggedWaitFor([&]() -> Result<bool> {
       return yb_admin_client_->AllMastersHaveUniverseKeyInMemory(current_key_id_).ok();
     }, 30s, "Wait for all masters to have key in memory");
@@ -129,7 +129,7 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
     ASSERT_OK(yb_admin_client_->IsEncryptionEnabled());
   }
 
-  CHECKED_STATUS WaitForLoadBalanced() {
+  Status WaitForLoadBalanced() {
     SleepFor(MonoDelta::FromSeconds(5));
     return LoggedWaitFor([&]() -> Result<bool> {
       return client_->IsLoadBalanced(3);

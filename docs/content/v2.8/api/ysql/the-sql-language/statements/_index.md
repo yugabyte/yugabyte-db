@@ -2,20 +2,19 @@
 title: SQL statements [YSQL]
 headerTitle: Categorized list of SQL statements
 linkTitle: SQL statements
-description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL) 
+description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
 image: /images/section_icons/api/ysql.png
 menu:
   v2.8:
     identifier: statements
     parent: the-sql-language
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
 
-## Data definition language (DDL) 
+## Data definition language (DDL)
 
 | Statement | Description |
 | :-------- | :---------- |
@@ -58,7 +57,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
 | [`TRUNCATE`](ddl_truncate) | Clear all rows from a table |
 
-## Data manipulation language (DML) 
+## Data manipulation language (DML)
 
 | Statement | Description |
 | :-------- | :---------- |
@@ -67,7 +66,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`UPDATE`](dml_update) | Update rows in a table |
 
-## Data control language (DCL) 
+## Data control language (DCL)
 
 | Statement | Description |
 | :-------- | :---------- |
@@ -91,7 +90,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SET ROLE`](dcl_set_role) | Set a role |
 | [`SET SESSION AUTHORIZATION`](dcl_set_session_authorization) | Set session authorization |
 
-## Transaction control language (TCL) 
+## Transaction control language (TCL)
 
 | Statement | Description |
 | :-------- | :---------- |

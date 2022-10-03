@@ -101,7 +101,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.universeUUID,
         params,
-        "Error while executing SQL request: Error occurred. Output: Error");
+        "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
   }
 
   @Test
@@ -130,7 +130,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     verifyException(
         universe.universeUUID,
         params,
-        "Error while executing SQL request: Error occurred. Output: Error");
+        "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
   }
 
   private CreateTablespaceParams verifyExecution(

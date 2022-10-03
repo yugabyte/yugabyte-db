@@ -20,7 +20,9 @@ set -euo pipefail
 readonly CLOUD_TYPE="{{ cloud_type }}"
 readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
 readonly MOUNT_PATHS="{{ mount_paths }}"
+readonly LUN_INDEXES="{{ disk_lun_indexes }}"
 
+{% raw %}
 should_check_aws_meta() {
   [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
 }
@@ -41,6 +43,30 @@ get_device_path() {
     output=$ephemeral_name
   fi
   get_device_path_rv="/dev/$output"
+}
+
+get_azu_scsi_drives() {
+  # Check if we have enough LUN indexes passed.
+  lun_indexes=( $LUN_INDEXES )
+  num_lun_indexes=${#lun_indexes[@]}
+  if [[ $num_lun_indexes -lt ${#mounts[@]} ]]; then
+    echo >&2 "Too less LUN indexes provided, cannot mount all the devices."
+    exit
+  fi
+
+  get_azu_scsi_drives_rv=""
+
+  # Iterate through LUN indexes to search device names.
+  lun_indexes=( $LUN_INDEXES )
+  for (( i=0; i<$num_lun_indexes; ++i )); do
+    current_lun_index=${lun_indexes[i]}
+    device=$(ls -l /dev/disk/azure/scsi1/lun$current_lun_index | awk -F'/' '{print $NF}' | grep -o "sd\w*$")
+    # Checking vendor.
+    device_info=$(lsscsi | awk -v device="/dev/$device" '($7 == device) && ($3 == "Msft") && ($4 == "Virtual") && ($5 == "Disk") {print $0}')
+    if [ -n "$device" ] && [ -n "$device_info" ]; then
+      get_azu_scsi_drives_rv="$get_azu_scsi_drives_rv $device"
+    fi
+  done
 }
 
 get_ephemeral_drives() {
@@ -69,6 +95,9 @@ get_ephemeral_drives() {
     get_ephemeral_drives_rv=$(
         curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
     set -e
+  elif [[ $CLOUD_TYPE == "azu" ]]; then
+    get_azu_scsi_drives
+    get_ephemeral_drives_rv=$get_azu_scsi_drives_rv
   else
     get_ephemeral_drives_rv=$DEFAULT_SSD_DRIVES
   fi
@@ -92,11 +121,12 @@ get_ephemeral_drives() {
     DRIVE_SCHEME='sd'
   fi
 
+  declare -g mounts=( $MOUNT_PATHS )
+
   get_ephemeral_drives
   ephemerals=( $get_ephemeral_drives_rv )
 
-  {% raw %}
-  num_devices=${#ephemerals[@]}
+  declare -i num_devices=${#ephemerals[@]}
 
   if [[ $num_devices -eq 0 ]]; then
     echo "Found no volumes to mount"
@@ -110,8 +140,6 @@ get_ephemeral_drives() {
 
   # For old generation aws instances, we assume YugaWare requests a number of ephemerals appropriate
   # to the instance type. E.g. m3.medium only supports 1 ephemeral, but m3.xlarge supports 2.
-  mounts=( $MOUNT_PATHS )
-
   if [[ ${#mounts[@]} -eq 0 ]]; then
     echo >&2 "No mount points provided, cannot mount any devices."
     exit 1

@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-build-object
     parent: json-functions-operators
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type.

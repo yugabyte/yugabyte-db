@@ -8,8 +8,7 @@ menu:
     identifier: cr-cr-staging-tables-sql
     parent: ingest-scripts
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This procedure makes use of the [`array_agg()`](../../../../../../datatypes/type_array/functions-operators/array-agg-unnest/#array-agg) function to get all the values as a `text[]` array in a single PL/pgSQL-to-SQL round trip. And it uses the terse [`FOREACH`](../../../../../../datatypes/type_array/looping-through-arrays/) construct to iterate of the array's values.

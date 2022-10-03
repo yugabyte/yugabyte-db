@@ -2,8 +2,9 @@
 
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -14,38 +15,79 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import lombok.Data;
+import lombok.experimental.Accessors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 @Entity
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
 
+  @Data
+  @Accessors(chain = true)
+  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
   public static class Details {
+    @Data
+    @Accessors(chain = true)
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NodeData {
-      public String node;
-      public String process;
+      private String node;
+      private String process;
 
       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-      public Date timestamp;
+      private Date timestamp;
 
-      public String node_name;
-      public Boolean has_error;
-      public Boolean has_warning;
-      public List<String> details;
-      public String message;
+      private String nodeName;
+      private Boolean hasError = false;
+      private Boolean hasWarning = false;
+      private Boolean metricsOnly = false;
+      private List<String> details;
+      private List<Metric> metrics;
+      private String message;
+
+      public String toHumanReadableString() {
+        return String.format(
+            "%s (%s) - %s - '%s'",
+            nodeName,
+            node,
+            (StringUtils.isEmpty(process) ? message : message + " (" + process + ")"),
+            String.join("; ", details));
+      }
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class Metric {
+      private String name;
+      private String help;
+      private String unit;
+      private List<MetricValue> values;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class MetricValue {
+      private Double value;
+      private List<MetricLabel> labels;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class MetricLabel {
+      private String name;
+      private String value;
     }
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-    public Date timestamp;
+    private Date timestamp;
 
-    public List<NodeData> data = new ArrayList<>();
-    public String yb_version;
-    // TODO: This was done as HealthCheckerTest is using error field. Reconcile this.
-    @JsonAlias({"error"})
-    public Boolean has_error = false;
+    private List<NodeData> data = new ArrayList<>();
+    private String ybVersion;
+    private Boolean hasError = false;
+    private Boolean hasWarning = false;
   }
 
   // The max number of records to keep per universe.
@@ -65,7 +107,7 @@ public class HealthCheck extends Model {
 
   public boolean hasError() {
     if (detailsJson != null) {
-      return detailsJson.has_error;
+      return detailsJson.getHasError();
     }
     return false;
   }
@@ -78,15 +120,15 @@ public class HealthCheck extends Model {
    *
    * @param universeUUID: UUID of the universe..
    * @param customerId: UUID of the customer creating the universe.
-   * @param details: The details that will describe the universe.
+   * @param report: The details that will describe the universe.
    * @return the newly created universe
    */
-  public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, String details) {
+  public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, Details report) {
     // Create the HealthCheck object.
     HealthCheck check = new HealthCheck();
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
-    check.detailsJson = Json.fromJson(Json.parse(details), Details.class);
+    check.detailsJson = report;
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);

@@ -133,6 +133,7 @@ extern bool optimize_bounded_sort;
 
 static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
+static double yb_transaction_priority = 0.0;
 
 static int	GUC_check_errcode_value;
 
@@ -192,6 +193,7 @@ static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
 static bool check_maxconnections(int *newval, void **extra, GucSource source);
+static const char *yb_show_maxconnections(void);
 static bool check_max_worker_processes(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_max_workers(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_work_mem(int *newval, void **extra, GucSource source);
@@ -209,6 +211,9 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
+extern double YBCGetTransactionPriority();
+extern TxnPriorityRequirement YBCGetTransactionPriorityType();
+static const char *show_transaction_priority(void);
 
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
@@ -564,6 +569,8 @@ static int	wal_block_size;
 static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
+static char *yb_effective_transaction_isolation_level_string;
+static char *yb_xcluster_consistency_level_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -1005,6 +1012,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_parallel_hash,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_bnl_enable_hashing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables batched nested loop joins to use hashing to "
+						 "process its matches."),
+			NULL
+		},
+		&yb_bnl_enable_hashing,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2044,7 +2061,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-
 	{
 		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
@@ -2054,7 +2070,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables use postgres selectivity model."),
+			NULL
+		},
+		&yb_enable_optimizer_statistics,
+		false,
+		NULL, NULL, NULL
 
+	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported expressions down to DocDB for evaluation."),
@@ -2074,7 +2099,41 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_upsert_mode,
 		false,
 		NULL, NULL, NULL
-    },
+	},
+
+	{
+		{"yb_planner_custom_plan_for_partition_pruning", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("If enabled, choose custom plan over generic plan "
+						 " for prepared statements based on the number of "
+						 "partition pruned."),
+			NULL
+		},
+		&enable_choose_custom_plan_for_partition_pruning,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_make_next_ddl_statement_nonbreaking", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, the next ddl statement will not cause "
+						 "running transactions to abort. This only affects "
+						 "the next ddl statement and resets automatically."),
+			NULL
+		},
+		&yb_make_next_ddl_statement_nonbreaking,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("Disable prefetching in a PLPGSQL FOR loop over a query."),
+			NULL
+		},
+		&yb_plpgsql_disable_prefetch_in_for_query,
+		false,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -2106,6 +2165,17 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 1000000,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_bnl_batch_size", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Batch size of nested loop joins"),
+			gettext_noop("Set to 1 to always use simple nested loop joins"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_bnl_batch_size,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
@@ -2240,7 +2310,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&MaxConnections,
 		100, 1, MAX_BACKENDS,
-		check_maxconnections, NULL, NULL
+		check_maxconnections, NULL, yb_show_maxconnections
 	},
 
 	{
@@ -2381,7 +2451,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&temp_file_limit,
-		-1, -1, INT_MAX,
+		1024 * 1024, -1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -3400,6 +3470,18 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of times to force custom plan generation "
+						 "for prepared statements before considering a "
+						 "generic plan."),
+			NULL
+		},
+		&yb_test_planner_custom_plan_threshold,
+		5, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -3624,6 +3706,16 @@ static struct config_real ConfigureNamesReal[] =
 		&yb_transaction_priority_upper_bound,
 		1.0, 0.0, 1.0,
 		check_transaction_priority_upper_bound, YBCAssignTransactionPriorityUpperBound, NULL
+	},
+	{
+		{"yb_transaction_priority", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
+			gettext_noop("Gets the transaction priority used by the current active "
+						 "transaction in the session. If no transaction is active, return 0"),
+			NULL
+		},
+		&yb_transaction_priority,
+		0.0, 0.0, 1.0,
+		NULL, NULL, show_transaction_priority
 	},
 
 	{
@@ -3997,6 +4089,27 @@ static struct config_string ConfigureNamesString[] =
 		&XactIsoLevel_string,
 		"default",
 		check_XactIsoLevel, assign_XactIsoLevel, show_XactIsoLevel
+	},
+	{
+		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
+			gettext_noop("Shows the effective YugabyteDB transaction isolation level used by the current "
+									 "active transaction in the session."),
+			NULL,
+			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_effective_transaction_isolation_level_string,
+		"default",
+		NULL, NULL, show_yb_effective_transaction_isolation_level
+	},
+
+	{
+		{"yb_xcluster_consistency_level", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Controls the consistency level of xCluster replicated databases."),
+			gettext_noop("Valid values are \"database\" and \"tablet\".")
+		},
+		&yb_xcluster_consistency_level_string,
+		"database",
+		check_yb_xcluster_consistency_level, assign_yb_xcluster_consistency_level, NULL
 	},
 
 	{
@@ -4592,6 +4705,7 @@ static const char *const map_old_guc_names[] = {
  */
 static const char *const YbDbAdminVariables[] = {
 	"session_replication_role",
+	"yb_make_next_ddl_statement_nonbreaking",
 };
 
 
@@ -11540,6 +11654,27 @@ check_maxconnections(int *newval, void **extra, GucSource source)
 	return true;
 }
 
+/*
+ * For YB-managed (cloud), the cloud user won't be aware of superuser.
+ * When YB shows max_connections, the connections reserved for superusers (and
+ * other backends) are hidden from cloud users.
+ * The reference of the relations can be found in postmaster.c.
+ */
+static const char *
+yb_show_maxconnections(void)
+{
+	static char buf[32];
+
+	int64 yb_adj_max_con = MaxConnections;
+	if (IsYugaByteEnabled() && !superuser())
+	{
+		yb_adj_max_con -= (ReservedBackends + max_wal_senders);
+	}
+
+	snprintf(buf, sizeof(buf), INT64_FORMAT, yb_adj_max_con);
+	return buf;
+}
+
 static bool
 check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
 {
@@ -11621,6 +11756,8 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	char	   *dname;
 	char	   *tname;
 	char	   *fname;
+	char	   *yb_tname;
+	char	   *yb_fname;
 
 	/* directory */
 	dname = guc_malloc(ERROR, strlen(newval) + 1);	/* runtime dir */
@@ -11631,6 +11768,10 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	sprintf(tname, "%s/global.tmp", newval);
 	fname = guc_malloc(ERROR, strlen(newval) + 13); /* /global.stat */
 	sprintf(fname, "%s/global.stat", newval);
+	yb_tname = guc_malloc(ERROR, strlen(newval) + 15); /* /yb_global.tmp */
+	sprintf(yb_tname, "%s/yb_global.tmp", newval);
+	yb_fname = guc_malloc(ERROR, strlen(newval) + 16); /* /yb_global.stat */
+	sprintf(yb_fname, "%s/yb_global.stat", newval);
 
 	if (pgstat_stat_directory)
 		free(pgstat_stat_directory);
@@ -11641,6 +11782,12 @@ assign_pgstat_temp_directory(const char *newval, void *extra)
 	if (pgstat_stat_filename)
 		free(pgstat_stat_filename);
 	pgstat_stat_filename = fname;
+	if (pgstat_ybstat_tmpname)
+		free(pgstat_ybstat_tmpname);
+	pgstat_ybstat_tmpname = yb_tname;
+	if (pgstat_ybstat_filename)
+		free(pgstat_ybstat_filename);
+	pgstat_ybstat_filename = yb_fname;
 }
 
 static bool
@@ -11729,6 +11876,28 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
+}
+
+static const char *
+show_transaction_priority(void)
+{
+	TxnPriorityRequirement txn_priority_type;
+	double				   txn_priority;
+	static char			   buf[50];
+
+	txn_priority_type = YBCGetTransactionPriorityType();
+	txn_priority	  = YBCGetTransactionPriority();
+
+	if (txn_priority_type == kHighestPriority)
+		snprintf(buf, sizeof(buf), "Highest priority transaction");
+	else if (txn_priority_type == kHigherPriorityRange)
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (High priority transaction)", txn_priority);
+	else
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (Normal priority transaction)", txn_priority);
+
+	return buf;
 }
 
 static void

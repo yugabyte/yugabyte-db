@@ -46,6 +46,12 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void CreateTransactionTable(int region);
 
+  Result<TableId> GetTransactionTableId(int region);
+
+  void StartDeleteTransactionTable(int region);
+
+  void WaitForDeleteTransactionTableToFinish(int region);
+
   void CreateMultiRegionTransactionTable();
 
   void SetupTables(size_t tables_per_region);

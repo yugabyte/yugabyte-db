@@ -132,7 +132,7 @@ class ExtensionConfigurator {
     X509V3_set_ctx(&ctx_, cert, cert, nullptr, nullptr, 0);
   }
 
-  CHECKED_STATUS Add(int nid, const char* value) {
+  Status Add(int nid, const char* value) {
     X509_EXTENSION *ex = X509V3_EXT_conf_nid(nullptr, &ctx_, nid, value);
     if (!ex) {
       return SSL_STATUS(InvalidArgument, "Failed to create extension: $0");
@@ -275,6 +275,126 @@ YB_STRONGLY_TYPED_BOOL(UseCertificateKeyPair);
 
 } // namespace
 
+namespace {
+
+// Matches pattern from RFC 2818:
+// Names may contain the wildcard character * which is considered to match any single domain name
+// component or component fragment. E.g., *.a.com matches foo.a.com but not bar.foo.a.com.
+// f*.com matches foo.com but not bar.com.
+bool MatchPattern(Slice pattern, Slice host) {
+  const char* p = pattern.cdata();
+  const char* p_end = pattern.cend();
+  const char* h = host.cdata();
+  const char* h_end = host.cend();
+
+  while (p != p_end && h != h_end) {
+    if (*p == '*') {
+      ++p;
+      while (h != h_end && *h != '.') {
+        if (MatchPattern(Slice(p, p_end), Slice(h, h_end))) {
+          return true;
+        }
+        ++h;
+      }
+    } else if (std::tolower(*p) == std::tolower(*h)) {
+      ++p;
+      ++h;
+    } else {
+      return false;
+    }
+  }
+
+  return p == p_end && h == h_end;
+}
+
+Slice GetEntryByNid(X509* cert, int nid) {
+  X509_NAME* name = X509_get_subject_name(cert);
+  int last_i = -1;
+  for (int i = -1; (i = X509_NAME_get_index_by_NID(name, nid, i)) >= 0; ) {
+    last_i = i;
+  }
+  if (last_i == -1) {
+    return Slice();
+  }
+  auto* name_entry = X509_NAME_get_entry(name, last_i);
+  if (!name_entry) {
+    LOG(DFATAL) << "No name entry in certificate at index: " << last_i;
+    return Slice();
+  }
+  auto* common_name = X509_NAME_ENTRY_get_data(name_entry);
+
+  if (common_name && common_name->data && common_name->length) {
+    return Slice(common_name->data, common_name->length);
+  }
+
+  return Slice();
+}
+
+Slice GetCommonName(X509* cert) {
+  return GetEntryByNid(cert, NID_commonName);
+}
+
+std::string X509CertToString(X509* cert) {
+  char * issuer_name = X509_NAME_oneline(X509_get_issuer_name(cert), nullptr, 0);
+  std::stringstream result;
+  result << "  Issuer: " << issuer_name;
+  OPENSSL_free(issuer_name);
+
+  result << "\n  Serial Number: " << ASN1_INTEGER_get(X509_get_serialNumber(cert));
+
+  // Validity - notBefore
+  auto appendTime = [&](const ASN1_TIME* time) {
+    BIO *bmem = BIO_new(BIO_s_mem());
+
+    if (ASN1_TIME_print(bmem, time)) {
+        BUF_MEM * bptr;
+
+        BIO_get_mem_ptr(bmem, &bptr);
+        result << std::string(bptr->data, bptr->length);
+    } else {
+      result << "<error>";
+    }
+    BIO_free_all(bmem);
+  };
+
+  // notBefore
+  result << "\n  Validity:\n    Not Before: ";
+  appendTime(X509_get_notBefore(cert));
+  result << "\n    Not After: ";
+  appendTime(X509_get_notAfter(cert));
+
+  char * sub_name = X509_NAME_oneline(X509_get_subject_name(cert), nullptr, 0);
+  result << "\n  Subject: " << sub_name;
+  OPENSSL_free(sub_name);
+
+  return result.str();
+}
+
+} // namespace
+
+
+bool AllowInsecureConnections() {
+  return FLAGS_allow_insecure_connections;
+}
+
+std::string GetSSLProtocols() {
+  const std::string& ssl_protocols = FLAGS_ssl_protocols;
+  if (ssl_protocols.empty()) { return "default - TLS only"; }
+  return ssl_protocols;
+}
+
+std::string GetCipherList() {
+  const auto& cipher_list = FLAGS_cipher_list;
+  if (cipher_list.empty()) { return "default"; }
+  return cipher_list;
+}
+
+std::string GetCipherSuites() {
+  const auto& ciphersuites = FLAGS_ciphersuites;
+  if (ciphersuites.empty()) { return "default"; }
+  return ciphersuites;
+}
+
 void InitOpenSSL() {
   static OpenSSLInitializer initializer;
 }
@@ -289,14 +409,16 @@ class SecureContext::Impl {
   Impl(const Impl&) = delete;
   void operator=(const Impl&) = delete;
 
-  CHECKED_STATUS AddCertificateAuthorityFile(const std::string& file) EXCLUDES(mutex_);
+  Status AddCertificateAuthorityFile(const std::string& file) EXCLUDES(mutex_);
 
-  CHECKED_STATUS UseCertificates(
+  Status UseCertificates(
       const std::string& ca_cert_file, const Slice& certificate_data,
       const Slice& pkey_data) EXCLUDES(mutex_);
 
+  std::string GetCertificateDetails();
+
   // Generates and uses temporary keys, should be used only during testing.
-  CHECKED_STATUS TEST_GenerateKeys(int bits, const std::string& common_name,
+  Status TEST_GenerateKeys(int bits, const std::string& common_name,
                                    MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
 
   Result<SSLPtr> Create(rpc::UseCertificateKeyPair use_certificate_key_pair)
@@ -315,14 +437,14 @@ class SecureContext::Impl {
   }
 
  private:
-  CHECKED_STATUS AddCertificateAuthorityFileUnlocked(const std::string& file) REQUIRES(mutex_);
+  Status AddCertificateAuthorityFileUnlocked(const std::string& file) REQUIRES(mutex_);
 
-  CHECKED_STATUS UseCertificateKeyPair(
+  Status UseCertificateKeyPair(
       const Slice& certificate_data, const Slice& pkey_data) REQUIRES(mutex_);
 
-  CHECKED_STATUS UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) REQUIRES(mutex_);
+  Status UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) REQUIRES(mutex_);
 
-  CHECKED_STATUS AddCertificateAuthority(X509* cert) REQUIRES(mutex_);
+  Status AddCertificateAuthority(X509* cert) REQUIRES(mutex_);
 
   Result<SSLPtr> Create(
       const X509Ptr& certificate, const EVP_PKEYPtr& pkey,
@@ -411,7 +533,10 @@ Status SecureContext::Impl::AddCertificateAuthorityFileUnlocked(const std::strin
   auto bytes = pointer_cast<const char*>(file.c_str());
   auto res = X509_STORE_load_locations(store, bytes, nullptr);
   if (res != 1) {
-    return SSL_STATUS(InvalidArgument, "Failed to add certificate file: $0");
+    return STATUS_FORMAT(InvalidArgument,
+                        "Failed to add certificate file: $0, filename: $1",
+                        SSLErrorMessage(ERR_get_error()),
+                        file.c_str());
   }
 
   return Status::OK();
@@ -465,6 +590,21 @@ Status SecureContext::Impl::UseCertificates(
   return Status::OK();
 }
 
+std::string SecureContext::Impl::GetCertificateDetails() {
+  UNIQUE_LOCK(lock, mutex_);
+
+  std::stringstream result;
+  if(certificate_) {
+    result << "Node certificate details: \n";
+    result << X509CertToString(certificate_.get());
+  }
+
+  // TODO: extend tabletserver to use certificate reloader callback like mechanism
+  // to capture server validation certificate.
+
+  return result.str();
+}
+
 Status SecureContext::Impl::TEST_GenerateKeys(int bits, const std::string& common_name,
                                               MatchingCertKeyPair matching_cert_key_pair) {
   auto ca_key = VERIFY_RESULT(GeneratePrivateKey(bits));
@@ -500,6 +640,10 @@ Status SecureContext::UseCertificates(
   return impl_->UseCertificates(ca_cert_file, certificate_data, pkey_data);
 }
 
+std::string SecureContext::GetCertificateDetails() {
+  return impl_->GetCertificateDetails();
+}
+
 Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name,
                                         MatchingCertKeyPair matching_cert_key_pair) {
   return impl_->TEST_GenerateKeys(bits, common_name, matching_cert_key_pair);
@@ -516,11 +660,11 @@ class SecureRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  CHECKED_STATUS Handshake() override;
-  CHECKED_STATUS Init();
+  Status Handshake() override;
+  Status Init();
 
-  CHECKED_STATUS Send(OutboundDataPtr data) override;
-  CHECKED_STATUS ProcessHeader() override;
+  Status Send(OutboundDataPtr data) override;
+  Status ProcessHeader() override;
   Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
@@ -532,14 +676,14 @@ class SecureRefiner : public StreamRefiner {
   }
 
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
-  CHECKED_STATUS Verify(bool preverified, X509_STORE_CTX* store_context);
+  Status Verify(bool preverified, X509_STORE_CTX* store_context);
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   void DecryptReceived();
 
-  CHECKED_STATUS Established(RefinedStreamState state) {
+  Status Established(RefinedStreamState state) {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
                         << SSL_get_cipher_name(ssl_.get());
 
@@ -789,67 +933,6 @@ int SecureRefiner::VerifyCallback(int preverified, X509_STORE_CTX* store_context
   refiner->verification_status_ = status;
   return 0;
 }
-
-namespace {
-
-// Matches pattern from RFC 2818:
-// Names may contain the wildcard character * which is considered to match any single domain name
-// component or component fragment. E.g., *.a.com matches foo.a.com but not bar.foo.a.com.
-// f*.com matches foo.com but not bar.com.
-bool MatchPattern(Slice pattern, Slice host) {
-  const char* p = pattern.cdata();
-  const char* p_end = pattern.cend();
-  const char* h = host.cdata();
-  const char* h_end = host.cend();
-
-  while (p != p_end && h != h_end) {
-    if (*p == '*') {
-      ++p;
-      while (h != h_end && *h != '.') {
-        if (MatchPattern(Slice(p, p_end), Slice(h, h_end))) {
-          return true;
-        }
-        ++h;
-      }
-    } else if (std::tolower(*p) == std::tolower(*h)) {
-      ++p;
-      ++h;
-    } else {
-      return false;
-    }
-  }
-
-  return p == p_end && h == h_end;
-}
-
-Slice GetEntryByNid(X509* cert, int nid) {
-  X509_NAME* name = X509_get_subject_name(cert);
-  int last_i = -1;
-  for (int i = -1; (i = X509_NAME_get_index_by_NID(name, nid, i)) >= 0; ) {
-    last_i = i;
-  }
-  if (last_i == -1) {
-    return Slice();
-  }
-  auto* name_entry = X509_NAME_get_entry(name, last_i);
-  if (!name_entry) {
-    LOG(DFATAL) << "No name entry in certificate at index: " << last_i;
-    return Slice();
-  }
-  auto* common_name = X509_NAME_ENTRY_get_data(name_entry);
-
-  if (common_name && common_name->data && common_name->length) {
-    return Slice(common_name->data, common_name->length);
-  }
-
-  return Slice();
-}
-
-Slice GetCommonName(X509* cert) {
-  return GetEntryByNid(cert, NID_commonName);
-}
-
-} // namespace
 
 bool SecureRefiner::MatchEndpoint(X509* cert, GENERAL_NAMES* gens) {
   auto address = stream_->Remote().address();

@@ -32,7 +32,7 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1600;
+    return 1800;
   }
 
   private void runIsolationRegressTest() throws Exception {

@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/dml_select
   - /preview/api/ycql/dml_select
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -73,6 +72,7 @@ Where
 
   - Only `=`, `!=`, `IN` and `NOT IN` operators can be used for conditions on partition columns.
   - Only operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN` and `NOT IN` can be used for conditions on clustering and regular columns.
+  - Only `IN` operator can be used for conditions on tuples of clustering columns.
 
 ### `IF` clause
 

@@ -212,7 +212,7 @@ Result<PTExpr::SharedPtr> Executor::ConvertJsonToExprInner(const rapidjson::Valu
   FATAL_INVALID_ENUM_VALUE(rapidjson::Type, json_value.GetType());
 }
 
-CHECKED_STATUS Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
+Status Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
 
   //
   // Resolve JSON string
@@ -235,7 +235,7 @@ CHECKED_STATUS Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
   return json_clause->PreExecInit(json_string, std::move(json_document));
 }
 
-CHECKED_STATUS Executor::InsertJsonClauseToPB(const PTInsertStmt* insert_stmt,
+Status Executor::InsertJsonClauseToPB(const PTInsertStmt* insert_stmt,
                                               const PTInsertJsonClause* json_clause,
                                               QLWriteRequestPB* req) {
   const auto& column_map = insert_stmt->column_map();

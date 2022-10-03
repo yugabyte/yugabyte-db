@@ -8,8 +8,7 @@ menu:
     identifier: imdb-data
     parent: bacon-numbers
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download a zip of scripts that include all the code examples that implement this case study" >}}

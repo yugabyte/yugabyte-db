@@ -2,20 +2,19 @@
 
 package com.yugabyte.yw.commissioner;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
 import play.api.Play;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -33,10 +32,8 @@ public class SetUniverseKeyTest extends FakeDBApplication {
   public void testCustomerError() {
     SetUniverseKey task = Play.current().injector().instanceOf(SetUniverseKey.class);
     Exception customerTaskException = new RuntimeException();
-    Mockito.doCallRealMethod().when(task).setRunningState(any());
     Mockito.doThrow(customerTaskException).when(task).setCustomerUniverseKeys(any());
     Mockito.doCallRealMethod().when(task).scheduleRunner();
-    task.setRunningState(new AtomicBoolean(false));
     task.scheduleRunner();
     // Ensure that the task runs for each customer even though they both error out
     verify(task, times(2)).setCustomerUniverseKeys(any());

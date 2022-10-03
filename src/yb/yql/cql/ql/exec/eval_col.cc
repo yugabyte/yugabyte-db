@@ -34,7 +34,7 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
+Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
                                         QLReferencedColumnsPB *columns_pb) {
   // Write a list of columns to be read before executing the statement.
   const MCSet<int32>& column_refs = tnode->column_refs();
@@ -49,7 +49,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
 
   for (const ColumnArg& col : column_args) {

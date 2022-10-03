@@ -9,8 +9,7 @@ menu:
     identifier: cluster-management-point-in-time-recovery-ysql
     parent: explore-cluster-management
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -125,7 +124,7 @@ Create and populate a table, look at a timestamp to which you'll restore, and th
 1. From a command prompt, get a timestamp.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -269,7 +268,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create a table, then restore to this time to undo the table creation.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -446,7 +445,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll delete the table, then restore to this time to undo the delete.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -608,7 +607,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll add a column to the table, then restore to this time in order to undo the column addition.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -773,7 +772,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll remove a column from the table, then restore to this time to get the column back.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output
@@ -936,7 +935,7 @@ In addition to data changes, you can also use PITR to recover from metadata chan
 1. To restore from an absolute time, get a timestamp from the command prompt. You'll create an index on the table, then restore to this time to undo the index creation.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output

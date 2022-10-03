@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: cmd_call
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `CALL` statement to execute a stored procedure.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,procedure_argument,argument_name.diagram.md" %}}
   </div>
 </div>
 **Note:** The syntax and semantics of the `procedure_argument` (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) is the same for invoking a user-defined`FUNCTION`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT`.
@@ -203,4 +202,3 @@ You cannot create a procedure with `OUT` formal parameters. The attempt causes t
 ```
 0A000: procedures cannot have OUT arguments
 ```
-

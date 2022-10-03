@@ -9,9 +9,7 @@ menu:
     name: Ruby
     identifier: ruby-2
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -44,7 +42,7 @@ This tutorial assumes that you have:
 ## Clone the orm-examples repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
 ```sh
@@ -182,7 +180,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -206,7 +204,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -244,7 +242,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

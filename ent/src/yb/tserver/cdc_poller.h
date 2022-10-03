@@ -16,6 +16,7 @@
 
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"
@@ -58,16 +59,26 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
             const std::shared_ptr<CDCClient>& local_client,
             const std::shared_ptr<CDCClient>& producer_client,
             CDCConsumer* cdc_consumer,
-            bool use_local_tserver);
+            bool use_local_tserver,
+            client::YBTablePtr global_transaction_status_table,
+            bool enable_replicate_transaction_status_table);
   ~CDCPoller();
 
   // Begins poll process for a producer tablet.
   void Poll();
 
+  bool IsPolling() { return is_polling_; }
+
+  void SetSchemaVersion(uint32_t cur_version);
+
   std::string LogPrefixUnlocked() const;
+
+  HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
  private:
   bool CheckOnline();
+
+  void DoSetSchemaVersion(uint32 cur_version);
 
   void DoPoll();
   // Does the work of sending the changes to the output client.
@@ -77,6 +88,7 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   void HandleApplyChanges(cdc::OutputClientResponse response);
   // Does the work of polling for new changes.
   void DoHandleApplyChanges(cdc::OutputClientResponse response);
+  void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
@@ -88,6 +100,7 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   std::mutex data_mutex_;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
+  uint32_t validated_schema_version_ GUARDED_BY(data_mutex_);
 
   yb::Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
@@ -99,6 +112,9 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle poll_handle_;
   CDCConsumer* cdc_consumer_;
+
+  mutable rw_spinlock safe_time_lock_;
+  HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
   std::atomic<bool> is_polling_{true};
   int poll_failures_ GUARDED_BY(data_mutex_){0};

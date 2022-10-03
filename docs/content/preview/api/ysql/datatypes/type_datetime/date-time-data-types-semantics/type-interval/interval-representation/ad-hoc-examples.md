@@ -8,8 +8,7 @@ menu:
     identifier: ad-hoc-examples
     parent: interval-representation
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The general way to specify an _interval_ value is by giving values for each of _years_, _months_, _days_, _hours_, _minutes_, and _seconds_ as real numbers. The algorithm for computing the internal _months_, _days_, and _seconds_ is complex—so much so that a precise statement in prose would be tortuous and hard to comprehend. Rather, the rules are given in the section [Modeling the internal representation and comparing the model with the actual implementation](../internal-representation-model/) as PL/pgSQL code.

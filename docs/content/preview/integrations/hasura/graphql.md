@@ -3,13 +3,13 @@ title: Benchmarking
 linkTitle: Benchmarking
 description: Using the benchmark tool with Hasura
 aliases:
+  - /preview/develop/graphql
 menu:
   preview:
     identifier: graphql
     parent: hasura
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 When you use the Hasura GraphQL Engine with YugabyteDB, you have an option to use a benchmark tool created by Yugabyte.

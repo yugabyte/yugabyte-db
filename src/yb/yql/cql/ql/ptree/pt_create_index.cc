@@ -57,14 +57,14 @@ PTCreateIndex::~PTCreateIndex() {
 
 namespace {
 
-CHECKED_STATUS SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context) {
+Status SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context) {
   RETURN_NOT_OK(node->SetupCoveringIndexColumn(sem_context));
   return Status::OK();
 }
 
 } // namespace
 
-CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
+Status PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
   bool is_system_ignored;
   RETURN_NOT_OK(relation_->AnalyzeName(sem_context, ObjectType::TABLE));

@@ -14,7 +14,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.cdc.CdcService;
 import org.yb.util.Pair;
 
@@ -23,32 +23,32 @@ import java.util.stream.Collectors;
 
 public class BootstrapUniverseRequest extends YRpc<BootstrapUniverseResponse> {
 
-  private final List<String> tableIDs;
+  private final List<String> tableIds;
 
-  BootstrapUniverseRequest(YBTable table, List<String> tableIDs) {
+  BootstrapUniverseRequest(YBTable table, List<String> tableIds) {
     super(table);
-    this.tableIDs = tableIDs;
+    this.tableIds = tableIds;
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     final CdcService.BootstrapProducerRequestPB.Builder builder =
       CdcService.BootstrapProducerRequestPB.newBuilder()
-      .addAllTableIds(tableIDs);
+      .addAllTableIds(tableIds);
 
     return toChannelBuffer(header, builder.build());
   }
 
   @Override
   String serviceName() {
-    return MASTER_SERVICE_NAME;
+    return CDC_SERVICE_NAME;
   }
 
   @Override
   String method() {
-    return "BootstrapUniverse";
+    return "BootstrapProducer";
   }
 
   @Override
@@ -60,15 +60,15 @@ public class BootstrapUniverseRequest extends YRpc<BootstrapUniverseResponse> {
     readProtobuf(callResponse.getPBMessage(), builder);
 
     final CdcService.CDCErrorPB error = builder.hasError() ? builder.getError() : null;
-    final List<String> bootstrapIDs = builder
+    final List<String> bootstrapIds = builder
       .getCdcBootstrapIdsList()
       .stream()
-      .map(ByteString::toString)
+      .map(ByteString::toStringUtf8)
       .collect(Collectors.toList());
 
     BootstrapUniverseResponse response =
       new BootstrapUniverseResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error, bootstrapIDs);
+        tsUUID, error, bootstrapIds);
 
     return new Pair<>(response, error);
   }

@@ -20,6 +20,8 @@
 #include "access/itup.h"
 #include "access/tuptoaster.h"
 
+#include "pg_yb_utils.h"
+
 
 /* ----------------------------------------------------------------
  *				  index_ tuple interface routines
@@ -47,10 +49,11 @@ index_form_tuple(TupleDesc tupleDescriptor,
 				data_size,
 				hoff;
 	int			i;
-	unsigned short infomask = 0;
+	uint32		infomask = 0;
 	bool		hasnull = false;
 	uint16		tupmask = 0;
 	int			numberOfAttributes = tupleDescriptor->natts;
+	bool		is_yb_relation = false;
 
 #ifdef TOAST_INDEX_HACK
 	Datum		untoasted_values[INDEX_MAX_KEYS];
@@ -67,7 +70,6 @@ index_form_tuple(TupleDesc tupleDescriptor,
 	for (i = 0; i < numberOfAttributes; i++)
 	{
 		Form_pg_attribute att = TupleDescAttr(tupleDescriptor, i);
-
 		untoasted_values[i] = values[i];
 		untoasted_free[i] = false;
 
@@ -91,7 +93,29 @@ index_form_tuple(TupleDesc tupleDescriptor,
 		 * If value is above size target, and is of a compressible datatype,
 		 * try to compress it in-line.
 		 */
-		if (!VARATT_IS_EXTENDED(DatumGetPointer(untoasted_values[i])) &&
+
+		/*
+		 * Some indexes (such as GIN index) might dynamically create attribute
+		 * descriptors via calling TupleDescInitEntry(). These OIDs would be
+		 * invalid, and passing such OID to IsYBRelationById() might result
+		 * in a crash. We therefore first check if the OID is valid.
+		 */
+		is_yb_relation = is_yb_relation ||
+			(OidIsValid(att->attrelid) && IsYBRelationById(att->attrelid));
+
+		/*
+		 * In YugabyteDB, for regular tables, since it stores the tuple in
+		 * DocDB, it is not necessary to have TOAST compression.
+		 * Disabling compression would improve query latency as one does not
+		 * need to compress the resulting index to fit in the IndexTuple
+		 * structure.
+
+		 * For temporary tables and temporary indices, since they are not
+		 * stored in DocDB, TOAST compression might still be necessary to fit
+		 * the tuple in the IndexTuple structure.
+		 */
+		if (!is_yb_relation &&
+			!VARATT_IS_EXTENDED(DatumGetPointer(untoasted_values[i])) &&
 			VARSIZE(DatumGetPointer(untoasted_values[i])) > TOAST_INDEX_TARGET &&
 			(att->attstorage == 'x' || att->attstorage == 'm'))
 		{
@@ -170,14 +194,21 @@ index_form_tuple(TupleDesc tupleDescriptor,
 #endif
 
 	/*
+	 * NOTE (#2003): use the same limit for temp table after adding support
+	 * for wide column in temp table.
+	 */
+	uint32 index_size_mask = is_yb_relation ?
+		YB_INDEX_SIZE_MASK : INDEX_SIZE_MASK;
+
+	/*
 	 * Here we make sure that the size will fit in the field reserved for it
 	 * in t_info.
 	 */
-	if ((size & INDEX_SIZE_MASK) != size)
+	if ((size & index_size_mask) != size)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("index row requires %zu bytes, maximum size is %zu",
-						size, (Size) INDEX_SIZE_MASK)));
+						size, (Size) index_size_mask)));
 
 	infomask |= size;
 

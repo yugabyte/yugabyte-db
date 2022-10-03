@@ -75,7 +75,7 @@ class StringWaiterLogSink : public google::LogSink {
   }
 
   // Wait for string_to_wait to occur in log.
-  CHECKED_STATUS WaitFor(MonoDelta timeout);
+  Status WaitFor(MonoDelta timeout);
 
   void send(
       google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,

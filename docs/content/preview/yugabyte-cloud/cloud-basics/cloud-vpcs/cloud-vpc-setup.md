@@ -4,12 +4,10 @@ headerTitle:
 linkTitle: Set up a VPC network
 description: How to set up and VPC network in YugabyteDB Managed.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpc-setup
     parent: cloud-vpcs
     weight: 20
-isTocNested: true
-showAsideToc: true
 --->
 
 ## Before you begin

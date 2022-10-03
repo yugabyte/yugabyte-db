@@ -8,8 +8,7 @@ menu:
     identifier: ysql-client-libraries
     parent: drivers
     weight: 2940
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql) builds upon and extends a fork of the query layer from PostgreSQL 11.2, with the intent of supporting most PostgreSQL functionality and adding new functionality to supported distributed SQL databases.
@@ -125,13 +124,13 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 ## Java
 
-### Yugabyte JDBC driver
+### YugabyteDB JDBC driver
 
-The Yugabyte JDBC driver is a distributed JDBC driver for YSQL built on the PostgreSQL JDBC driver, with features that eliminate the need for external load balancers.
+The YugabyteDB JDBC driver is a distributed JDBC driver for YSQL built on the PostgreSQL JDBC driver, with features that eliminate the need for external load balancers.
 
-For information on the Yugabyte JDBC driver and its load balancing features, see [Yugabyte JDBC driver](../../../integrations/jdbc-driver).
+For information on the YugabyteDB JDBC driver and its load balancing features, see [YugabyteDB JDBC driver](/preview/reference/drivers/java/yugabyte-jdbc-reference/).
 
-For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
+For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 

@@ -4,12 +4,11 @@ headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: create-read-replica-cluster
     parent: create-deployments
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section will describe how to create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/replication/#read-only-replicas) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. In this example, you are first going to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).

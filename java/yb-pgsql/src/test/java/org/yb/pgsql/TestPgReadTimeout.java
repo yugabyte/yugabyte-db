@@ -22,7 +22,9 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.regex.Pattern;
 
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
@@ -35,6 +37,8 @@ public class TestPgReadTimeout extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Limit Read RPC timeout to reduce test running time
     flagMap.put("pg_yb_session_timeout_ms", Long.toString(kPgYbSessionTimeoutMs));
+    // Verbose logging to help investigating if test fails
+    flagMap.put("vmodule", "pgsql_operation=1");
     return flagMap;
   }
 
@@ -56,13 +60,15 @@ public class TestPgReadTimeout extends BasePgSQLTest {
   }
 
   /**
-   * Test if long aggregate query can run without triggering Read RPC timeout.
-   * Aggregate queries may scan entire partition without returning any results.
-   * If there are too many rows, scan may take too long, and connection may
-   * timeout. To prevent that DocDB returns partial result when deadline is
-   * approaching, and client sends another request to resume the scan.
+   * Test if a long query can run without triggering Read RPC timeout.
    *
-   * This test loads chuncks of data into a table, until "SELECT count(*)"
+   * Regular scan reaches the per response row limit pretty soon, well before
+   * the session timeout, but scans with aggregates return single row after
+   * scan completion, so they may timeout on large tables. To prevent that
+   * DocDB returns partial result when deadline is approaching, and client
+   * sends another request to resume the scan.
+   *
+   * This test loads chunks of data into a table, until "SELECT count(*)"
    * against this table takes at least twice as long as the timeout to make sure
    * that partial result is returned in time and scan is properly resumed.
    *
@@ -81,6 +87,7 @@ public class TestPgReadTimeout extends BasePgSQLTest {
     int chunk_size = 10000;
     int rows_loaded = 0;
     while (true) {
+      ResultSet rs;
       // generate chunk_size rows
       int from_val = rows_loaded + 1;
       int to_val = rows_loaded + chunk_size;
@@ -89,16 +96,30 @@ public class TestPgReadTimeout extends BasePgSQLTest {
       LOG.info("Loaded " + rows_loaded + " rows");
       // count the rows
       final long startTimeMillis = System.currentTimeMillis();
-      ResultSet rs = statement.executeQuery(query);
+      try {
+        rs = statement.executeQuery(query);
+      } catch (PSQLException ex) {
+        if (Pattern.matches(".*RPC .* timed out after.*", ex.getMessage())) {
+          throw new Exception("Please check GitHub issue #11477", ex);
+        }
+        throw ex;
+      }
       long durationMillis = System.currentTimeMillis() - startTimeMillis;
       LOG.info("SELECT count(*) FROM readtimeouttest; took " + durationMillis + "ms");
-      // if se;ect statement took long enough check result and exit,
+      // if select statement took long enough check result and exit,
       // otherwise generate more rows and try again
       if (durationMillis > 2 * kPgYbSessionTimeoutMs) {
         assertTrue(rs.next());
         assertEquals(rows_loaded, rs.getInt(1));
         break;
       }
+      // Adjust number of rows to load to achieve desired query duration next time.
+      // Adding extra 20%, for random factors that may affect the duration.
+      // If next time duration don't make it, we'll need another try.
+      double coefficient = 2.4 * kPgYbSessionTimeoutMs / durationMillis - 1;
+      // Do at least 10000 rows per load to avoid situation when we repeatedly
+      // load few rows, but duration is a bit shy of double timeout.
+      chunk_size = Math.max((int) (coefficient * rows_loaded), 10000);
     }
     LOG.info("Done with the test");
   }

@@ -9,9 +9,8 @@ menu:
   stable:
     identifier: api-ysql-keywords
     parent: api-ysql
-    weight: 4500
-isTocNested: true
-showAsideToc: true
+    weight: 500
+type: docs
 ---
 
 | Keywords | Usage | Exceptions |

@@ -1,14 +1,13 @@
 ---
 title: SET statement [YSQL]
 headerTitle: SET
-linkTitle: SET 
+linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 menu:
   stable:
     identifier: cmd_set
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,16 +33,22 @@ Use the `SET` statement to update a run-time control parameter.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-Although the values of a parameter can be set, displayed, and reset, the effect of these parameters are not yet supported in YugabyteDB. The default settings and behaviors will be used for the moment.
+The parameter values that you set with this statement apply just within the scope of a single session and for no longer than the session's duration. It's also possible to set the default values for such parameters at the level of the entire cluster or at the level of a particular database. For example:
+
+```plpgsql
+alter database demo set timezone = 'America/Los_Angeles';
+```
+
+See [`ALTER DATABASE`](../ddl_alter_db/).
 
 ### SESSION
 

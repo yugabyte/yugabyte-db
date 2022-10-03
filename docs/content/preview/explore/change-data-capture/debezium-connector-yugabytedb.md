@@ -10,12 +10,20 @@ aliases:
   - /preview/explore/change-data-capture/debezium
 menu:
   preview:
-    parent: change-data-capture
+    parent: explore-change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../debezium-connector-yugabytedb/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
@@ -43,21 +51,17 @@ To use the YugabyteDB Debezium connector, do the following. For complete steps, 
 
 1. Create a DB stream ID.
 
-    \
-    Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
+   Before you use the YugabyteDB connector to monitor the changes committed on a YugabyteDB server, create a stream ID using the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
 
 1. Make sure the master ports are open.
 
-    \
-    The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
+   The YugabyteDB connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's master processes are running are open. The default port on which the process runs is `7100`.
 
 1. Monitor available disk space.
 
-    \
-    The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
+   The change records for CDC are read from the WAL. CDC module maintains checkpoint internally for each of the DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    \
-    In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+   In case CDC is lagging or away for some time, the disk usage may grow and may cause YugabyteDB cluster instability. To avoid a scenario like this if a stream is inactive for a configured amount of time we garbage collect the WAL. This is configurable by a [GFlag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 Read on to learn how the connector works. Or, skip to [how to deploy the connector](#deployment).
 
@@ -67,7 +71,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 ### Security
 
-Currently, any user that has the access to the cluster, the authentication is done via that user. We also support the SSL based verification provided all the required keys and certificates are passed to the connector.
+Currently, for any user that has the access to the cluster, authentication is done via that user. SSL support based verification is provided for all the required keys and certificates are passed to the connector.
 
 {{< note title="Note" >}}
 
@@ -274,7 +278,9 @@ If the `database.server.name` connector configuration property has the value `db
       ]
   },
   "payload": { --> 5
-      "id": "1"
+      "id": {
+        "value":"1"
+      }
   },
 }
 ```
@@ -480,9 +486,15 @@ The following example shows the value portion of a change event that the connect
   "payload": { --> 3
     "before": null, --> 4
     "after": { --> 5
-      "id": 1,
-      "name": "Vaibhav Kushwaha",
-      "email": "vaibhav@example.com"
+      "id": {
+        "value":1
+      },
+      "name": {
+        "value":"Vaibhav Kushwaha"
+      },
+      "email": {
+        "value":"vaibhav@example.com"
+      }
     },
     "source": { --> 6
       "version": "1.7.0-SNAPSHOT",
@@ -536,9 +548,15 @@ The update event is as follows:
   "payload": {
     "before": null, --> 1
     "after": { --> 2
-      "id": 1,
-      "name": 'Vaibhav Kushwaha',
-      "email": "service@example.com"
+      "id": {
+        "value": 1
+      },
+      "name": {
+        "value": "Vaibhav Kushwaha"
+      },
+      "email": {
+        "value": "service@example.com"
+      }
     },
     "source": { --> 3
       "version": "1.7.0-SNAPSHOT",
@@ -603,7 +621,9 @@ DELETE FROM customers WHERE id = 1;
   "schema": {...},
   "payload": {
     "before": { --> 1
-      "id": 1,
+      "id": {
+        "value": 1
+      },
       "name": null,
       "email": null
     },
@@ -895,11 +915,33 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
+{{< note title="Note" >}}
+We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
+
+| Property | Value |
+| :------- | :---- |
+| `transforms` | `unwrap` |
+| `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
+
+See the following section for more details on `YBExtractNewRecordState`.
+{{< /note >}}
+
+#### `YBExtractNewRecordState` SMT
+
+Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
+
+To differentiate between the case where a column is set to `null` and the case in which it's not modified, we change the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
+
+A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
+
+To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
+
 ### Connector configuration properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
 
 The following properties are *required* unless a default value is available:
+
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |
@@ -912,7 +954,7 @@ The following properties are *required* unless a default value is available:
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, since it's also used to form the Kafka topic. |
 | database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
-| table.max.num.tablets | 10 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
+| table.max.num.tablets | 100 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<br/><br/> `disable` uses an unencrypted connection <br/><br/> `require` uses an encrypted connection and fails if it can't be established <br/><br/> `verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found. |
 | database.sslrootcert | N/A | The path to the file which contains the root certificate against which the server is to be validated. |
 | database.sslcert | N/A | Path to the file containing the client's SSL certificate. |
@@ -923,7 +965,7 @@ The following properties are *required* unless a default value is available:
 | table.exclude.list | N/A | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you **do not** want to capture. Any table not included in `table.exclude.list` has it changes captured. Each identifier is of the form *schemaName.tableName*. Do not also set the `table.include.list` property. |
 | column.include.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form `schemaName.tableName.columnName`. Do not also set the `column.exclude.list` property. |
 | column.exclude.list | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form *schemaName.tableName*.columnName. Do not also set the `column.include.list` property. |
-| column.truncate.to_length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form *schemaName.tableName.columnName*. In change event records, values in these columns are truncated if they are longer than the number of characters specified by *length* in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
+| column.truncate.to._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form *schemaName.tableName.columnName*. In change event records, values in these columns are truncated if they are longer than the number of characters specified by *length* in the property name. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer, for example, `column.truncate.to.20.chars`. |
 | column.mask.with._length_.chars | N/A | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form *schemaName.tableName.columnN*ame. In change event values, the values in the specified table columns are replaced with *length* number of asterisk (`*`) characters. You can specify multiple properties with different lengths in a single configuration. Length must be a positive integer or zero. When you specify zero, the connector replaces a value with an empty string. |
 | message.key.columns | *empty string* | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables. <br/> By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default, or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns. <br/><br/> To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format: <br/><br/> `<fully-qualified_tableName>:<keyColumn>,<keyColumn>`<br/><br/> To base a table key on multiple column names, insert commas between the column names. Each fully-qualified table name is a regular expression in the following format: <br/><br/> `<schemaName>.<tableName>` <br/><br/> The property can include entries for multiple tables. Use a semicolon to separate table entries in the list. The following example sets the message key for the tables `inventory.customers` and `purchase.orders`: <br/><br/> `inventory.customers:pk1,pk2;purchase.orders:pk3,pk4` <br/><br/> For the table `inventory.customers`, the columns `pk1` and `pk2` are specified as the message key. For the `purchase.orders` tables in any schema, the columns `pk3` and `pk4` server as the message key. <br/><br/> There is no limit to the number of columns that you use to create custom message keys. However, it's best to use the minimum number that are required to specify a unique key. |
 
@@ -933,12 +975,22 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 
 {{< /note >}}
 
+{{< note title="Note" >}}
+
+If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
+
+* [Local deployments](../../../secure/tls-encryption/)
+* [YB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+
+{{< /note >}}
+
 Advanced connector configuration properties:
 
 | Property | Default | Description |
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/><br/> `initial` - Take a snapshot when the connector is first started |
-| cdc.poll.interval.ms | 200 | The interval at which the connector will poll the database for the changes. |
+| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (e.g. createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |
@@ -948,9 +1000,13 @@ Advanced connector configuration properties:
 | interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../api/ysql/datatypes/). |
 | transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction` |
 | provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
+| skipped.operations | N/A | A comma-separated list of operation types to be skipped during streaming. The types are `c` for insert/create operations, `u` for update operations, and `d` for delete operations. By default, no operations are skipped. |
 | max.queue.size | 20240 | Positive integer value for the maximum size of the blocking queue. The connector places change events received from streaming replication in the blocking queue before writing them to Kafka. This queue can provide back pressure when, for example, writing records to Kafka is slower that it should be, or when Kafka is not available. |
 | max.batch.size | 10240 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size.in.bytes | 0 | Long value for the maximum size in bytes of the blocking queue. The feature is disabled by default, it will be active if it's set with a positive long value. |
+| max.connector.retries | 5 | Positive integer value for the maximum number of times a retry can happen at the connector level itself. |
+| connector.retry.delay.ms | 60000 | Delay between subsequent retries at the connector level. |
+| ignore.exceptions | `false` | Determines whether the connector ignores exceptions, which should not cause any critical runtime issues. By default, if there is an exception, the connector throws the exception and stops further execution. Specify `true` to have the connector log a warning for any exception and proceed. |
 
 ## Troubleshooting
 

@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-strip-nulls
     parent: json-functions-operators
     weight: 220
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Find all key-value pairs at any depth in the hierarchy of the supplied JSON compound value (such a pair can occur only as an element of an _object_), and return a JSON value where each pair whose value is the JSON _null_ has been removed.

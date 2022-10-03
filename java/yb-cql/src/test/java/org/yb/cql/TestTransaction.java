@@ -50,14 +50,6 @@ public class TestTransaction extends BaseCQLTest {
     return flagMap;
   }
 
-  protected void restartClusterWithFlag(String flag, String value) throws Exception {
-    destroyMiniCluster();
-    createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap(flag, value));
-    setUpCqlClient();
-  }
-
   private void createTable(String name, String columns, boolean transactional) {
     session.execute(String.format("create table %s (%s) with transactions = { 'enabled' : %b };",
                                   name, columns, transactional));
@@ -624,11 +616,11 @@ public class TestTransaction extends BaseCQLTest {
       LOG.info("Initial expired transactions = {}", initialExpiredTransactions);
 
       try {
-        thrown.expect(com.datastax.driver.core.exceptions.OperationTimedOutException.class);
+        thrown.expect(com.datastax.driver.core.exceptions.DriverException.class);
         session.execute("begin transaction" +
                         "  insert into test_timeout (k, v) values (1, 1);" +
                         "end transaction;");
-      } catch (com.datastax.driver.core.exceptions.OperationTimedOutException e) {
+      } catch (com.datastax.driver.core.exceptions.DriverException e) {
         int currentExpiredTransactions = getExpiredTransactionsCount();
         LOG.info("Current expired transactions = {}", currentExpiredTransactions);
         assertTrue(currentExpiredTransactions > initialExpiredTransactions);

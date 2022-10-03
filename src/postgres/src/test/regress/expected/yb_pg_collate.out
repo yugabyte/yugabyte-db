@@ -35,7 +35,7 @@ CREATE TABLE collate_test_like (
 ERROR:  LIKE clause not supported yet
 LINE 2:     LIKE collate_test1
             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d collate_test_like
 CREATE TABLE collate_test2 (
     a int,

@@ -71,9 +71,21 @@ extern int ysql_max_in_flight_ops;
  */
 extern bool yb_binary_restore;
 
+/*
+ * xcluster consistency level
+ */
+#define XCLUSTER_CONSISTENCY_TABLET 0
+#define XCLUSTER_CONSISTENCY_DATABASE 1
+
+/*
+ * Enables atomic and ordered reads of data in xCluster replicated databases. This may add a delay
+ * to the visibility of all data in the database.
+ */
+extern int yb_xcluster_consistency_level;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOK;
+extern YBCStatus YBCStatusOKValue;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);

@@ -20,10 +20,10 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+DECLARE_bool(disable_hybrid_scan);
+
 namespace yb {
 
-using std::unordered_map;
-using std::pair;
 using std::vector;
 
 //-------------------------------------- QL scan range --------------------------------------
@@ -35,7 +35,13 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
 template <class Value>
 struct ColumnValue {
   bool lhs_is_column = false;
+
+  // single column
   ColumnId column_id;
+
+  // grouped columns
+  const std::vector<ColumnId> column_ids;
+
   const Value* value = nullptr;
 
   explicit operator bool() const {
@@ -53,9 +59,10 @@ auto GetColumnValue(const Col& col) {
     ++it;
     if (it->expr_case() == decltype(it->expr_case())::kValue) {
       return ResultType {
-        .lhs_is_column = true,
-        .column_id = column_id,
-        .value = &it->value(),
+          .lhs_is_column = true,
+          .column_id = column_id,
+          .column_ids = {},
+          .value = &it->value(),
       };
     }
     return ResultType();
@@ -65,22 +72,34 @@ auto GetColumnValue(const Col& col) {
     ++it;
     if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
       return ResultType {
-        .lhs_is_column = false,
-        .column_id = ColumnId(it->column_id()),
-        .value = value,
+          .lhs_is_column = false,
+          .column_id = ColumnId(it->column_id()),
+          .column_ids = {},
+          .value = value,
       };
     }
     return ResultType();
   }
+  if (it->expr_case() == decltype(it->expr_case())::kTuple) {
+    std::vector<ColumnId> column_ids;
+    for (const auto& elem : it->tuple().elems()) {
+      DCHECK(elem.has_column_id());
+      column_ids.emplace_back(ColumnId(elem.column_id()));
+    }
+    ++it;
+
+    if (it->expr_case() == decltype(it->expr_case())::kValue) {
+      auto result = ResultType {
+          .lhs_is_column = true,
+          .column_id = ColumnId(0),
+          .column_ids = column_ids,
+          .value = &it->value(),
+      };
+      return result;
+    }
+    return ResultType();
+  }
   return ResultType();
-}
-
-void AssignValue(const QLValuePB& value, boost::optional<QLValuePB>* out) {
-  *out = value;
-}
-
-void AssignValue(const LWQLValuePB& value, boost::optional<QLValuePB>* out) {
-  *out = value.ToGoogleProtobuf();
 }
 
 template <class Cond>
@@ -103,12 +122,35 @@ void QLScanRange::Init(const Cond& condition) {
   bool has_range_column = false;
   using ExprCase = decltype(operands.begin()->expr_case());
   for (const auto& operand : operands) {
-    if (operand.expr_case() == ExprCase::kColumnId &&
-        schema_.is_range_column(ColumnId(operand.column_id()))) {
-      has_range_column = true;
+    std::vector<int> column_ids;
+    if (operand.expr_case() == ExprCase::kColumnId) {
+      column_ids.push_back(operand.column_id());
+    } else if (operand.expr_case() == ExprCase::kTuple) {
+      for (auto const& elem : operand.tuple().elems()) {
+        DCHECK(elem.has_column_id());
+        column_ids.push_back(elem.column_id());
+      }
+    }
+    if (column_ids.empty()) {
+      continue;
+    }
+
+    // For operand.expr_case() == ExprCase::kColumnId, there will be just one column and
+    // for operand.expr_case() == ExprCase::kTuple, all the columns are given to be range columns,
+    // so in order to set has_range_column as true it suffices to find a single range column.
+    for (auto id : column_ids) {
+      if (schema_.is_range_column(ColumnId(id))) {
+        has_range_column = true;
+        break;
+      }
+    }
+
+    if (has_range_column) {
       break;
     }
   }
+
+  bool is_inclusive = true;
 
   switch (condition.op()) {
     // For relational conditions, the ranges are as follows. If the column is not a range column,
@@ -125,39 +167,51 @@ void QLScanRange::Init(const Cond& condition) {
         auto column_value = GetColumnValue(operands);
         if (column_value) {
           auto& range = ranges_[column_value.column_id];
-          AssignValue(*column_value.value, &range.min_value);
-          AssignValue(*column_value.value, &range.max_value);
+          QLLowerBound lower_bound(*column_value.value, true);
+          QLUpperBound upper_bound(*column_value.value, true);
+          range.min_bound = lower_bound;
+          range.max_bound = upper_bound;
         }
       }
       return;
     }
     case QL_OP_LESS_THAN:
+      // We can only process strict inequalities if we're using hybridscan
+      is_inclusive = FLAGS_disable_hybrid_scan;
+      FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
         auto column_value = GetColumnValue(operands);
         if (column_value) {
           if (column_value.lhs_is_column) {
-            // - <column> <= <value> --> max_value = <value>
-            AssignValue(*column_value.value, &ranges_[column_value.column_id].max_value);
+            // - <column> <= <value> --> max_bound = <value>
+            QLUpperBound bound(*column_value.value, is_inclusive);
+            ranges_[column_value.column_id].max_bound = bound;
           } else {
-            // - <value> <= <column> --> min_value = <value>
-            AssignValue(*column_value.value, &ranges_[column_value.column_id].min_value);
+            // - <value> <= <column> --> min_bound = <value>
+            QLLowerBound bound(*column_value.value, is_inclusive);
+            ranges_[column_value.column_id].min_bound = bound;
           }
         }
       }
       return;
     }
     case QL_OP_GREATER_THAN:
+      // We can only process strict inequalities if we're using hybridscan
+      is_inclusive = FLAGS_disable_hybrid_scan;
+      FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
         auto column_value = GetColumnValue(operands);
         if (column_value) {
           if (column_value.lhs_is_column) {
-            // - <column> >= <value> --> min_value = <value>
-            AssignValue(*column_value.value, &ranges_[column_value.column_id].min_value);
+            // - <column> >= <value> --> min_bound = <value>
+            QLLowerBound bound(*column_value.value, is_inclusive);
+            ranges_.at(column_value.column_id).min_bound = bound;
           } else {
-            // - <value> >= <column> --> max_value = <value>
-            AssignValue(*column_value.value, &ranges_[column_value.column_id].max_value);
+            // - <value> >= <column> --> max_bound = <value>
+            QLUpperBound bound(*column_value.value, is_inclusive);
+            ranges_.at(column_value.column_id).max_bound = bound;
           }
         }
       }
@@ -166,19 +220,46 @@ void QLScanRange::Init(const Cond& condition) {
     case QL_OP_BETWEEN: {
       if (has_range_column) {
         // <column> BETWEEN <value_1> <value_2>:
-        // - min_value = <value_1>
-        // - max_value = <value_2>
-        CHECK_EQ(operands.size(), 3);
+        // - min_bound = <value_1>
+        // - max_bound = <value_2>
+        CHECK(operands.size() == 3
+              || operands.size() == 5);
         auto it = operands.begin();
+        bool lower_bound_inclusive = true;
+        bool upper_bound_inclusive = true;
         if (it->expr_case() == ExprCase::kColumnId) {
           const ColumnId column_id(it->column_id());
           ++it;
           if (it->expr_case() == ExprCase::kValue) {
-            AssignValue(it->value(), &ranges_[column_id].min_value);
+            QLLowerBound bound(it->value(), lower_bound_inclusive);
+            ranges_[column_id].min_bound = bound;
           }
           ++it;
           if (it->expr_case() == ExprCase::kValue) {
-            AssignValue(it->value(), &ranges_[column_id].max_value);
+            QLUpperBound bound(it->value(), upper_bound_inclusive);
+            ranges_[column_id].max_bound = bound;
+          }
+
+          // We can only process strict inequalities if we're using hybridscan
+          if (operands.size() == 5 && !FLAGS_disable_hybrid_scan) {
+            ++it;
+            if (it->expr_case() == ExprCase::kValue) {
+              lower_bound_inclusive = it->value().bool_value();
+            }
+            ++it;
+            if (it->expr_case() == ExprCase::kValue) {
+              upper_bound_inclusive = it->value().bool_value();
+            }
+
+            if (!lower_bound_inclusive) {
+              QLLowerBound bound(ranges_[column_id].min_bound->GetValue(), lower_bound_inclusive);
+              ranges_[column_id].min_bound = bound;
+            }
+
+            if (!upper_bound_inclusive) {
+              QLUpperBound bound(ranges_[column_id].max_bound->GetValue(), upper_bound_inclusive);
+              ranges_[column_id].max_bound = bound;
+            }
           }
         }
       }
@@ -188,15 +269,56 @@ void QLScanRange::Init(const Cond& condition) {
       if (has_range_column) {
         auto column_value = GetColumnValue(operands);
         if (column_value) {
-          // - <column> IN (<value>) --> min/max values = <value>
+          // - <column> IN (<value>) --> min/max bounds = <value>
           // IN arguments should have already been de-duplicated and ordered by the executor.
           auto in_size = column_value.value->list_value().elems().size();
           if (in_size > 0) {
-            auto& range = ranges_[column_value.column_id];
-            AssignValue(*column_value.value->list_value().elems().begin(), &range.min_value);
-            auto last = column_value.value->list_value().elems().end();
-            --last;
-            AssignValue(*last, &range.max_value);
+            ColumnId col_id = column_value.column_id;
+            if (col_id != ColumnId(0)) {
+              auto& range = ranges_[col_id];
+              QLLowerBound lower_bound(*column_value.value->list_value().elems().begin(), true);
+              range.min_bound = lower_bound;
+              auto last = column_value.value->list_value().elems().end();
+              --last;
+              QLUpperBound upper_bound(*last, true);
+              range.max_bound = upper_bound;
+            } else {
+              std::vector<ColumnId> col_ids = column_value.column_ids;
+              const auto& options = column_value.value->list_value().elems();
+              size_t num_cols = col_ids.size();
+              auto options_itr = options.begin();
+
+              auto lower = *options.begin();
+              auto upper = *options.begin();
+
+              while(options_itr != options.end()) {
+                DCHECK(options_itr->has_tuple_value());
+                DCHECK_EQ(num_cols, options_itr->tuple_value().elems().size());
+                auto tuple_itr = options_itr->tuple_value().elems().begin();
+                auto l_itr = lower.mutable_tuple_value()->mutable_elems()->begin();
+                auto u_itr = upper.mutable_tuple_value()->mutable_elems()->begin();
+                while(tuple_itr != options_itr->tuple_value().elems().end()) {
+                  if (*l_itr > *tuple_itr) {
+                    *l_itr = *tuple_itr;
+                  }
+                  if (*u_itr < *tuple_itr) {
+                    *u_itr = *tuple_itr;
+                  }
+                  ++tuple_itr;
+                  ++l_itr;
+                  ++u_itr;
+                }
+                ++options_itr;
+              }
+
+              auto l_itr = lower.tuple_value().elems().begin();
+              auto u_itr = upper.tuple_value().elems().begin();
+              for (size_t i = 0; i < col_ids.size(); ++i, ++l_itr, ++u_itr) {
+                auto& range = ranges_[col_ids[i]];
+                range.min_bound = QLLowerBound(*l_itr, true);
+                range.max_bound = QLUpperBound(*u_itr, true);
+              }
+            }
           }
           has_in_range_options_ = true;
         }
@@ -261,24 +383,61 @@ QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& conditi
   Init(condition);
 }
 
+QLScanRange::QLBound::QLBound(const QLValuePB &value, bool is_inclusive, bool is_lower_bound)
+    : value_(value),
+      is_inclusive_(is_inclusive),
+      is_lower_bound_(is_lower_bound) {}
+
+QLScanRange::QLBound::QLBound(const LWQLValuePB &value, bool is_inclusive, bool is_lower_bound)
+    : value_(value.ToGoogleProtobuf()),
+      is_inclusive_(is_inclusive),
+      is_lower_bound_(is_lower_bound) {}
+
+bool QLScanRange::QLBound::operator<(const QLBound &other) const {
+  CHECK_EQ(is_lower_bound_, other.is_lower_bound_);
+  if (value_ == other.value_) {
+    if (is_lower_bound_) {
+      return is_inclusive_ && !other.is_inclusive_;
+    }
+    return !is_inclusive_ && other.is_inclusive_;
+  }
+  return value_ < other.value_;
+}
+
+bool QLScanRange::QLBound::operator>(const QLBound &other) const {
+  CHECK_EQ(is_lower_bound_, other.is_lower_bound_);
+  if (value_ == other.value_) {
+    if (is_lower_bound_) {
+      return !is_inclusive_ && other.is_inclusive_;
+    }
+    return is_inclusive_ && !other.is_inclusive_;
+  }
+  return value_ > other.value_;
+}
+
+bool QLScanRange::QLBound::operator==(const QLBound &other) const {
+  CHECK_EQ(is_lower_bound_, other.is_lower_bound_);
+  return value_ == other.value_ && is_inclusive_ == other.is_inclusive_;
+}
+
 QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
   for (auto& elem : ranges_) {
     auto& range = elem.second;
     const auto& other_range = other.ranges_.at(elem.first);
 
     // Intersect operation:
-    // - min_value = max(min_value, other_min_value)
-    // - max_value = min(max_value, other_max_value)
-    if (range.min_value && other_range.min_value) {
-      range.min_value = std::max(range.min_value, other_range.min_value);
-    } else if (other_range.min_value) {
-      range.min_value = other_range.min_value;
+    // - min_bound = max(min_bound, other_min_bound)
+    // - max_bound = min(max_bound, other_max_bound)
+    if (range.min_bound && other_range.min_bound) {
+      range.min_bound = std::max(range.min_bound, other_range.min_bound);
+    } else if (other_range.min_bound) {
+      range.min_bound = other_range.min_bound;
     }
 
-    if (range.max_value && other_range.max_value) {
-      range.max_value = std::min(range.max_value, other_range.max_value);
-    } else if (other_range.max_value) {
-      range.max_value = other_range.max_value;
+    if (range.max_bound && other_range.max_bound) {
+      range.max_bound = std::min(range.max_bound, other_range.max_bound);
+    } else if (other_range.max_bound) {
+      range.max_bound = other_range.max_bound;
     }
   }
   has_in_range_options_ = has_in_range_options_ || other.has_in_range_options_;
@@ -292,18 +451,18 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     const auto& other_range = other.ranges_.at(elem.first);
 
     // Union operation:
-    // - min_value = min(min_value, other_min_value)
-    // - max_value = max(max_value, other_max_value)
-    if (range.min_value && other_range.min_value) {
-      range.min_value = std::min(range.min_value, other_range.min_value);
-    } else if (!other_range.min_value) {
-      range.min_value = boost::none;
+    // - min_bound = min(min_bound, other_min_bound)
+    // - max_bound = max(max_bound, other_max_bound)
+    if (range.min_bound && other_range.min_bound) {
+      range.min_bound = std::min(range.min_bound, other_range.min_bound);
+    } else if (!other_range.min_bound) {
+      range.min_bound = boost::none;
     }
 
-    if (range.max_value && other_range.max_value) {
-      range.max_value = std::max(range.max_value, other_range.max_value);
-    } else if (!other_range.max_value) {
-      range.max_value = boost::none;
+    if (range.max_bound && other_range.max_bound) {
+      range.max_bound = std::max(range.max_bound, other_range.max_bound);
+    } else if (!other_range.max_bound) {
+      range.max_bound = boost::none;
     }
   }
   has_in_range_options_ = has_in_range_options_ && other.has_in_range_options_;
@@ -316,17 +475,27 @@ QLScanRange& QLScanRange::operator~() {
     auto& range = elem.second;
 
     // Complement operation:
-    if (range.min_value && range.max_value) {
+    if (range.min_bound && range.max_bound) {
       // If the condition's min and max values are defined, the negation of it will be
       // disjoint ranges at the two ends, which is not representable as a simple range. So
       // we will treat the result as unbounded.
-      range.min_value = boost::none;
-      range.max_value = boost::none;
+      range.min_bound = boost::none;
+      range.max_bound = boost::none;
     } else {
-      // Otherwise, for one-sided range or unbounded range, the resulting min/max values are
+      // Otherwise, for one-sided range or unbounded range, the resulting min/max bounds are
       // just the reverse of the bounds.
+      // Any inclusiveness flags are flipped in this case
+      if (range.min_bound) {
+        QLUpperBound bound(range.min_bound->GetValue(),
+                           !range.min_bound->IsInclusive());
+        range.max_bound = bound;
+      }
 
-      range.min_value.swap(range.max_value);
+      if (range.max_bound) {
+        QLLowerBound bound(range.max_bound->GetValue(),
+                           !range.max_bound->IsInclusive());
+        range.min_bound = bound;
+      }
     }
   }
   has_in_range_options_ = false;
@@ -360,7 +529,7 @@ QLScanSpec::QLScanSpec(const QLConditionPB* condition,
 }
 
 // Evaluate the WHERE condition for the given row.
-CHECKED_STATUS QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
+Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
   bool cond = true;
   bool if_cond = true;
   if (condition_ != nullptr) {

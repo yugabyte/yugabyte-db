@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-deployments-sync-replication-1-ysql
     parent: explore-multi-region-deployments
     weight: 710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -84,7 +83,7 @@ You should now see some read and write load on the [tablet servers page](http://
 
 ### Add new nodes
 
-Add a node in the zone `us-east-1a` of region `us-east-1`. 
+Add a node in the zone `us-east-1a` of region `us-east-1`.
 
 ```sh
 $ ./bin/yb-ctl add_node --placement_info "aws.us-east-1.us-east-1a"

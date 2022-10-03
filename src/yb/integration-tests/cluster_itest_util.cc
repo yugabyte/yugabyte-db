@@ -62,19 +62,30 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -86,7 +97,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace itest {
@@ -254,7 +264,7 @@ Status WaitForOpFromCurrentTerm(TServerDetails* replica,
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
-                             const string& tablet_id,
+                             const TabletId& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index,
                              MustBeCommitted must_be_committed) {
@@ -279,7 +289,7 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const vector<TServerDetails*>& servers,
-                             const string& tablet_id,
+                             const TabletId& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index,
                              MustBeCommitted must_be_committed) {
@@ -354,6 +364,52 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       "All replicas of tablet $0 could not converge on an index of at least $1 after $2. "
       "must_be_committed=$3. Latest received ids: $3, committed ids: $4",
       tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
+}
+
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const TabletServerMap& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid,
+                              MustBeCommitted must_be_committed) {
+  return WaitForServerToBeQuite(timeout,
+                                TServerDetailsVector(tablet_servers),
+                                tablet_id,
+                                last_logged_opid,
+                                must_be_committed);
+}
+
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const vector<TServerDetails*>& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid,
+                              MustBeCommitted must_be_committed) {
+  std::vector<consensus::OpIdType> opid_types{ consensus::OpIdType::RECEIVED_OPID };
+  if (must_be_committed) {
+    opid_types.push_back(consensus::OpIdType::COMMITTED_OPID);
+  }
+
+  OpId agreed_opid;
+  RETURN_NOT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        for (auto op_id_type : opid_types) {
+          const auto op_ids = VERIFY_RESULT(
+              itest::GetLastOpIdForEachReplica(tablet_id, tablet_servers, op_id_type, timeout));
+          for (auto op_id : op_ids) {
+            if (op_id > agreed_opid) {
+              agreed_opid = op_id;
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      timeout,
+      Format("Wait for replicas of tablet $0 to be quiet.", tablet_id)));
+
+  if (last_logged_opid) {
+    *last_logged_opid = agreed_opid;
+  }
+  return Status::OK();
 }
 
 // Wait until all specified replicas have logged the given index.
@@ -1001,6 +1057,7 @@ namespace {
     do {
       RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
       if (!resp->has_error()) {
+        status = Status::OK();
         break;
       }
       if (error_code) *error_code = resp->error().code();
@@ -1141,6 +1198,34 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
   return Status::OK();
 }
 
+
+Status GetTableLocations(MiniCluster* cluster,
+                         const YBTableName& table_name,
+                         const RequireTabletsRunning require_tablets_running,
+                         master::GetTableLocationsResponsePB* table_locations) {
+  master::GetTableLocationsRequestPB req;
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.set_require_tablets_running(require_tablets_running);
+  req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+  RETURN_NOT_OK(catalog_manager.GetTableLocations(&req, table_locations));
+  if (table_locations->has_error()) {
+    return StatusFromPB(table_locations->error().status());
+  }
+  return Status::OK();
+}
+
+int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id) {
+  const auto peers = tserver->tablet_manager()->GetTabletPeers();
+  int num = 0;
+  for (const auto& peer : peers) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      ++num;
+    }
+  }
+  return num;
+}
+
 Status WaitForNumVotersInConfigOnMaster(
     ExternalMiniCluster* cluster,
     const std::string& tablet_id,
@@ -1236,6 +1321,33 @@ Status WaitUntilTabletInState(TServerDetails* ts,
                                      tablet::RaftGroupStatePB_Name(last_state), s.ToString()));
 }
 
+Status WaitUntilTabletInState(const master::TabletInfoPtr tablet,
+                              const std::string& ts_uuid,
+                              tablet::RaftGroupStatePB state) {
+  return WaitFor([&]() -> Result<bool> {
+      const auto replica_map = tablet->GetReplicaLocations();
+      const bool contains = replica_map->contains(ts_uuid);
+      return contains && replica_map->at(ts_uuid).state == state;
+    },
+    20s * kTimeMultiplier,
+    Format("Waiting for replica $0 to be in $1 state",
+           ts_uuid, tablet::RaftGroupStatePB_Name(state)));
+}
+
+Status WaitForTabletConfigChange(const master::TabletInfoPtr tablet,
+                                 const std::string& ts_uuid,
+                                 consensus::ChangeConfigType type) {
+  CHECK(type == consensus::REMOVE_SERVER || type == consensus::ADD_SERVER);
+  const bool is_remove = type == consensus::REMOVE_SERVER;
+  return WaitFor([&]() -> Result<bool> {
+      const auto replica_map = tablet->GetReplicaLocations();
+      const bool contains = replica_map->contains(ts_uuid);
+      return is_remove || contains;
+    },
+    20s * kTimeMultiplier,
+    Format("Waiting for replica $0 to be $1", ts_uuid, is_remove ? "removed" : "added"));
+}
+
 // Wait until the specified tablet is in RUNNING state.
 Status WaitUntilTabletRunning(TServerDetails* ts,
                               const std::string& tablet_id,
@@ -1284,8 +1396,8 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 
   req.set_dest_uuid(ts->uuid());
   req.set_tablet_id(tablet_id);
-  req.set_bootstrap_peer_uuid(bootstrap_source_uuid);
-  HostPortToPB(bootstrap_source_addr, req.mutable_source_private_addr()->Add());
+  req.set_bootstrap_source_peer_uuid(bootstrap_source_uuid);
+  HostPortToPB(bootstrap_source_addr, req.mutable_bootstrap_source_private_addr()->Add());
   req.set_caller_term(caller_term);
 
   RETURN_NOT_OK(ts->consensus_proxy->StartRemoteBootstrap(req, &resp, &rpc));
@@ -1333,31 +1445,6 @@ Result<OpId> GetLastOpIdForReplica(
     consensus::OpIdType opid_type,
     const MonoDelta& timeout) {
   return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
-}
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoTime& deadline) {
-  return Wait([ts, &deadline]() -> Result<bool> {
-    tserver::CountIntentsRequestPB req;
-    tserver::CountIntentsResponsePB resp;
-    RpcController rpc;
-    rpc.set_deadline(deadline);
-    RETURN_NOT_OK(ts->tserver_admin_proxy->CountIntents(req, &resp, &rpc));
-    return resp.num_intents() == 0;
-  }, deadline, Format("Waiting for all intents to be applied at tserver $0", ts->uuid()));
-}
-
-Status WaitForAllIntentsApplied(TServerDetails* ts, const MonoDelta& timeout) {
-  return WaitForAllIntentsApplied(ts, MonoTime::Now() + timeout);
-}
-
-Status WaitForAllIntentsApplied(
-    const vector<TServerDetails*>& tablet_servers, const MonoDelta& timeout) {
-  const MonoTime deadline = MonoTime::Now() + timeout;
-
-  for (auto* ts : tablet_servers) {
-    RETURN_NOT_OK(WaitForAllIntentsApplied(ts, deadline));
-  }
-  return Status::OK();
 }
 
 } // namespace itest

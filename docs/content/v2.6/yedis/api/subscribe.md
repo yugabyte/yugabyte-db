@@ -6,8 +6,7 @@ menu:
   v2.6:
     parent: api-yedis
     weight: 2552
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 `SUBSCRIBE`
 
@@ -19,9 +18,9 @@ publisher sends a message to any of the channels that it has subscribed to.
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

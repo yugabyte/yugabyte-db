@@ -17,7 +17,9 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import javax.inject.Inject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -48,6 +50,7 @@ public class CertsRotate extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          Set<NodeDetails> allNodes = toOrderedSet(nodes);
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // For rootCA root certificate rotation, we would need to do it in three rounds
@@ -58,36 +61,41 @@ public class CertsRotate extends UpgradeTaskBase {
             // Update the rootCA in platform to have both old cert and new cert
             createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
             // Append new root cert to the existing ca.crt
-            createCertUpdateTasks(nodes.getRight(), CertRotateAction.APPEND_NEW_ROOT_CERT);
+            createCertUpdateTasks(allNodes, CertRotateAction.APPEND_NEW_ROOT_CERT);
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, false);
             // Copy new server certs to all nodes
-            createCertUpdateTasks(nodes.getRight(), CertRotateAction.ROTATE_CERTS);
+            createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, false);
             // Remove old root cert from the ca.crt
-            createCertUpdateTasks(nodes.getRight(), CertRotateAction.REMOVE_OLD_ROOT_CERT);
+            createCertUpdateTasks(allNodes, CertRotateAction.REMOVE_OLD_ROOT_CERT);
             // Update gflags of cert directories
             createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
             createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+
             // Reset the old rootCA content in platform
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             // Update universe details with new cert values
             createUniverseSetTlsParamsTask();
             // Do a rolling restart
-            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE);
+            createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().ybcInstalled);
           } else {
             // Update the rootCA in platform to have both old cert and new cert
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
             }
             // Copy new server certs to all nodes
-            createCertUpdateTasks(nodes.getRight(), CertRotateAction.ROTATE_CERTS);
+            createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
             // Update gflags of cert directories
             createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
             createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+            if (taskParams().ybcInstalled) {
+              createYbcUpdateCertDirsTask(nodes.getRight());
+            }
+
             // Do a rolling/non-rolling restart
-            createRestartTasks(nodes, taskParams().upgradeOption);
+            createRestartTasks(nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
             // Reset the old rootCA content in platform
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
@@ -98,7 +106,8 @@ public class CertsRotate extends UpgradeTaskBase {
         });
   }
 
-  private void createCertUpdateTasks(List<NodeDetails> nodes, CertRotateAction certRotateAction) {
+  private void createCertUpdateTasks(
+      Collection<NodeDetails> nodes, CertRotateAction certRotateAction) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
@@ -127,6 +136,31 @@ public class CertsRotate extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
+  private void createYbcUpdateCertDirsTask(List<NodeDetails> nodes) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("UniverseUpdateRootCert", executor);
@@ -141,7 +175,7 @@ public class CertsRotate extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private void createUpdateCertDirsTask(List<NodeDetails> nodes, ServerType serverType) {
+  private void createUpdateCertDirsTask(Collection<NodeDetails> nodes, ServerType serverType) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);

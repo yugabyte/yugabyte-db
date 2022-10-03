@@ -8,8 +8,7 @@ menu:
     identifier: looping-through-arrays
     parent: api-ysql-datatypes-array
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the contents of an array.
 

@@ -763,3 +763,23 @@ SELECT * FROM tbl_as_1;
 ----------
         1
 (1 row)
+
+-- Test EXPLAIN ANALYZE on a table containing secondary index with a wide column.
+-- Use EXECUTE to hide the output since it won't be stable.
+CREATE TABLE wide_table (id INT, data TEXT);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;
+-- Apply the same check for varchar column
+CREATE TABLE wide_table (id INT, data VARCHAR);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;

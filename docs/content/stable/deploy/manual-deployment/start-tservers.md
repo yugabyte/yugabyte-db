@@ -8,8 +8,7 @@ menu:
     identifier: deploy-manual-deployment-start-tservers
     parent: deploy-manual-deployment
     weight: 614
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="Note" >}}
@@ -19,25 +18,25 @@ showAsideToc: true
 
 {{< /note >}}
 
-This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
+This section covers deployment for a single region or data center in a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node.
 
 ## Example scenario
 
 - Create a 6-node cluster with replication factor of 3.
-      - YB-TServer server should on all the six nodes, but as noted in the previous section, the YB-Master server should run on only three of these nodes.
-      - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
-      - Cloud will be `aws`, region will be `us-west` and the 3 AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ. 
+  - YB-TServer server should on all the six nodes, and the YB-Master server should run on only three of these nodes.
+  - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
+  - Cloud will be `aws`, region will be `us-west`, and the 3 AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
 
 ## Run YB-TServer with command line flags
 
-Run the `yb-tserver` server on each of the six nodes as shown below. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, simply use the same value for the `--placement_zone` flag.
+Run the `yb-tserver` server on each of the six nodes as shown below. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
 ```sh
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130:9100 \
-  --start_pgsql_proxy \
+  --enable_ysql \
   --pgsql_proxy_bind_address 172.151.17.130:5433 \
   --cql_proxy_bind_address 172.151.17.130:9042 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
@@ -62,13 +61,13 @@ Alternatively, you can also create a `tserver.conf` file with the following flag
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
 --rpc_bind_addresses=172.151.17.130:9100
---start_pgsql_proxy
+--enable_ysql
 --pgsql_proxy_bind_address=172.151.17.130:5433
 --cql_proxy_bind_address=172.151.17.130:9042
 --fs_data_dirs=/home/centos/disk1,/home/centos/disk2
---placement_cloud=aws 
---placement_region=us-west 
---placement_zone=us-west-2a 
+--placement_cloud=aws
+--placement_region=us-west
+--placement_zone=us-west-2a
 ```
 
 ```sh
@@ -102,7 +101,7 @@ $ curl -s http://<any-master-ip>:7000/cluster-config
 
 And confirm that the output looks similar to what is shown below with `min_num_replicas` set to `1` for each AZ.
 
-```
+```output.json
 replication_info {
   live_replicas {
     num_replicas: 3
@@ -146,7 +145,7 @@ $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 
 In each of the four YB-TServer logs, you should see log messages similar to the following.
 
-```
+```output
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
 I0912 16:27:18.296794  8168 heartbeater.cc:368] Registering TS with master...
 I0912 16:27:18.297732  8168 heartbeater.cc:374] Sending a full tablet report to master...
@@ -161,7 +160,7 @@ I0912 16:27:18.311828  8142 tablet_server_main.cc:128] CQL server successfully s
 
 In the current YB-Master leader log, you should see log messages similar to the following.
 
-```
+```output
 I0912 22:26:32.832296  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "766ec935738f4ae89e5ff3ae26c66651" instance_seqno: 1505255192814357 } with Master
 I0912 22:26:39.111896  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "9de074ac78a0440c8fb6899e0219466f" instance_seqno: 1505255199069498 } with Master
 I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "60042249ad9e45b5a5d90f10fc2320dc" instance_seqno: 1505255201010923 } with Master

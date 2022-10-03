@@ -102,6 +102,9 @@ using strings::Utf8SafeCEscape;
 
 using yb::operator"" _MB;
 
+DEFINE_test_flag(bool, fail_write_pb_container, false,
+                 "Simulate a failure during WritePBContainer.")
+
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
 // Protobuf container constants.
@@ -720,6 +723,11 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
     RETURN_NOT_OK(pb_file.Sync());
   }
   RETURN_NOT_OK(pb_file.Close());
+
+  if (PREDICT_FALSE(FLAGS_TEST_fail_write_pb_container)) {
+    return STATUS(Corruption, "Test. Failure before rename.");
+  }
+
   RETURN_NOT_OK_PREPEND(env->RenameFile(tmp_path, path),
                         "Failed to rename tmp file to " + path);
   tmp_deleter.Cancel();

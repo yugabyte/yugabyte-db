@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-each-text
     parent: json-functions-operators
     weight: 120
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `text`) from a JSON _object_.

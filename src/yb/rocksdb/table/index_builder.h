@@ -79,7 +79,7 @@ class IndexBuilder {
   // may therefore perform any operation required for block finalization.
   //
   // REQUIRES: Finish() has not yet been called.
-  virtual CHECKED_STATUS Finish(IndexBlocks* index_blocks) = 0;
+  virtual Status Finish(IndexBlocks* index_blocks) = 0;
 
   // Whether it is time to flush the current index block. Overridden in MultiLevelIndexBuilder.
   // While true is returned the caller should keep calling FlushNextBlock(IndexBlocks*,
@@ -134,7 +134,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
       const std::string& block_handle_encoded,
       ShortenKeys shorten_keys);
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
+  Status Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return index_block_builder_.CurrentSizeEstimate();
@@ -190,7 +190,7 @@ class HashIndexBuilder : public IndexBuilder {
 
   void OnKeyAdded(const Slice& key) override;
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
+  Status Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return primary_index_builder_.EstimatedSize() + prefix_block_.size() +
@@ -238,7 +238,7 @@ class MultiLevelIndexBuilder : public IndexBuilder {
       const BlockHandle& block_handle,
       ShortenKeys shorten_keys);
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override {
+  Status Finish(IndexBlocks* index_blocks) override {
     return STATUS(NotSupported, "Finishing as single block is not supported by multi-level index.");
   }
 
@@ -255,7 +255,7 @@ class MultiLevelIndexBuilder : public IndexBuilder {
   struct IndexBlockInfo;
 
   void EnsureCurrentLevelIndexBuilderCreated();
-  CHECKED_STATUS FlushCurrentLevel(IndexBlocks* index_blocks);
+  Status FlushCurrentLevel(IndexBlocks* index_blocks);
   void AddToNextLevelIfReady(
       IndexBlockInfo* block_info, const BlockHandle& block_handle);
 

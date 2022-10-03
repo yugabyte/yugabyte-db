@@ -14,104 +14,57 @@
 # under the License.
 #
 
-import argparse
-import os
 import sys
+import os
+import argparse
 import logging
 
+from typing import List, Optional, Set, Dict, Union
+
+# TODO: do not modify system path like this, create a wrapper script instead.
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'python'))  # noqa
+
 
 from yb import remote
 from yb.common_util import init_env
 
 
-def add_extra_ybd_args(ybd_args, extra_args):
+def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> List[str]:
     """
     Inserts extra arguments into a list of yb_build.sh arguments. If a "--" argument is present,
     new arguments are inserted before it, because the rest of yb_build.sh's arguments may be passed
     along to yet another command.
 
-    :param ybd_args: existing yb_build.sh arguments
+    :param yb_build_args: existing yb_build.sh arguments
     :param extra_args: extra arguments to insert
     :return: new list of yb_build.sh arguments
     """
-    for i in range(len(ybd_args)):
-        if ybd_args[i] == '--':
-            return ybd_args[:i] + extra_args + ybd_args[i:]
+    for i in range(len(yb_build_args)):
+        if yb_build_args[i] == '--':
+            return yb_build_args[:i] + extra_args + yb_build_args[i:]
 
-    return ybd_args + extra_args
+    return yb_build_args + extra_args
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(prog=sys.argv[0])
-    parser.add_argument('--host', type=str, default=None,
-                        help=('Host to build on. Can also be specified using the {} environment ' +
-                              'variable.').format(remote.REMOTE_BUILD_HOST_ENV_VAR))
-    home = os.path.expanduser('~')
-    cwd = os.getcwd()
-    default_path = '~/{0}'.format(
-        cwd[len(home) + 1:] if cwd.startswith(home + '/') else 'code/yugabyte'
-    )
 
-    # Note: don't specify default arguments here, because they may come from the "profile".
-    parser.add_argument('--remote-path', type=str,
-                        help='path used for build')
-    parser.add_argument('--branch', type=str, default=None,
-                        help='base branch for build')
-    parser.add_argument('--upstream', type=str, default=None,
-                        help='base upstream for remote host to fetch')
-    parser.add_argument('--build-type', type=str, default=None,
-                        help='build type')
-    parser.add_argument('--skip-build', action='store_true',
-                        help='skip build, only sync files')
-    parser.add_argument('--wait-for-ssh', action='store_true',
-                        help='Wait for the remote server to be ssh-able')
-    parser.add_argument('--profile',
-                        help='Use a "profile" specified in the {} file'.format(
-                            remote.CONFIG_FILE_PATH))
-    parser.add_argument('--verbose',
-                        action='store_true',
-                        help='Verbose output')
     parser.add_argument('build_args', nargs=argparse.REMAINDER,
                         help='arguments for yb_build.sh')
 
-    if len(sys.argv) >= 2 and sys.argv[1] in ['ybd', 'yb_build.sh']:
-        # Allow the first argument to be 'ybd' so we can copy and paste a ybd command line directly
-        # after remote_build.py.
-        sys.argv[1:2] = ['--']
+    remote.add_common_args(parser)
+    remote.handle_yb_build_cmd_line()
     args = parser.parse_args()
     init_env(verbose=args.verbose)
 
     remote.load_profile(args, args.profile)
-
-    # ---------------------------------------------------------------------------------------------
-    # Default arguments go here.
-
-    args.host = remote.apply_default_host_value(args.host)
-
-    if args.branch is None:
-        args.branch = remote.DEFAULT_BASE_BRANCH
-
-    if args.remote_path is None:
-        args.remote_path = default_path
-
-    if args.upstream is None:
-        args.upstream = remote.DEFAULT_UPSTREAM
-
-    # End of default arguments.
-    # ---------------------------------------------------------------------------------------------
+    remote.apply_default_arg_values(args)
 
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    remote.log_args(args)
 
-    print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,
-                                                                args.build_type or 'N/A',
-                                                                args.remote_path))
-    print("Arguments to remote build: {}".format(args.build_args))
-
-    escaped_remote_path = \
-        remote.sync_changes(args.host, args.branch, args.remote_path, args.wait_for_ssh,
-                            args.upstream)
+    escaped_remote_path = remote.sync_changes_with_args(args)
 
     if args.skip_build:
         sys.exit(0)
@@ -126,12 +79,17 @@ def main():
         remote_args += args.build_args
 
     if '--host-for-tests' not in remote_args and 'YB_HOST_FOR_RUNNING_TESTS' in os.environ:
-        remote_args = add_extra_ybd_args(remote_args,
-                                         ['--host-for-tests',
-                                          os.environ['YB_HOST_FOR_RUNNING_TESTS']])
+        remote_args = add_extra_yb_build_args(
+            remote_args,
+            ['--host-for-tests', os.environ['YB_HOST_FOR_RUNNING_TESTS']])
 
-    remote.exec_command(args.host, escaped_remote_path, 'yb_build.sh', remote_args,
-                        do_quote_args=True)
+    remote.exec_command(
+        host=args.host,
+        escaped_remote_path=escaped_remote_path,
+        script_name='yb_build.sh',
+        script_args=remote_args,
+        should_quote_args=True,
+        extra_ssh_args=remote.process_extra_ssh_args(args.extra_ssh_args))
 
 
 if __name__ == '__main__':

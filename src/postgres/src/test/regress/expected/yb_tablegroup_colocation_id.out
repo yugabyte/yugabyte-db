@@ -31,7 +31,7 @@ INSERT INTO tg2_table2 VALUES ('220t', 120),       ('221t', 121),       ('222t',
  v2     | integer |           |          |
  v3     | text    |           |          |
 Indexes:
-    "tg1_table3_pkey" PRIMARY KEY, lsm (v1 ASC), tablegroup "tg1"
+    "tg1_table3_pkey" PRIMARY KEY, lsm (v1 ASC)
 Tablegroup: "tg1"
 
 \d tg2_table1
@@ -40,7 +40,7 @@ Tablegroup: "tg1"
 --------+------+-----------+----------+---------
  v1     | text |           | not null |
 Indexes:
-    "tg2_table1_pkey" PRIMARY KEY, lsm (v1 ASC), tablegroup "tg2"
+    "tg2_table1_pkey" PRIMARY KEY, lsm (v1 ASC)
 Tablegroup: "tg2"
 
 SELECT * FROM table_props;

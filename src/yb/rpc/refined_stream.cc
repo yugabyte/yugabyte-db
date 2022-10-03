@@ -175,7 +175,7 @@ void RefinedStream::Connected() {
   }
 }
 
-CHECKED_STATUS TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
+Status TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
   auto dst = VERIFY_RESULT(dest->PrepareAppend());
   auto dst_it = dst.begin();
   size_t total_len = 0;

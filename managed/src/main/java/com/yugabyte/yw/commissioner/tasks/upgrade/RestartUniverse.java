@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
@@ -16,6 +17,11 @@ public class RestartUniverse extends UpgradeTaskBase {
   @Inject
   protected RestartUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
+  }
+
+  @Override
+  protected RestartTaskParams taskParams() {
+    return (RestartTaskParams) taskParams;
   }
 
   @Override
@@ -36,7 +42,7 @@ public class RestartUniverse extends UpgradeTaskBase {
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
           // Restart all nodes
-          createRestartTasks(nodes, taskParams().upgradeOption);
+          createRestartTasks(nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
         });
   }
 }

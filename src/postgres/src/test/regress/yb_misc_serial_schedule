@@ -12,3 +12,6 @@ test: yb_guc
 test: yb_depend
 test: yb_query_consistent_snapshot
 test: yb_obj_properties_functions
+test: yb_dependency
+test: yb_create_language
+test: yb_get_range_split_clause

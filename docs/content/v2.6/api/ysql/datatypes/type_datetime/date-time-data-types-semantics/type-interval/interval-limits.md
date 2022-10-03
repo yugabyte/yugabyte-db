@@ -8,8 +8,7 @@ menu:
     identifier: interval-limits
     parent: type-interval
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The design of the code that this section presents, and the interpretation of the results that it produces, depend on the explanations given in the section [How does YSQL represent an _interval_ value?](../interval-representation/). This is the essential point:
@@ -66,7 +65,7 @@ select
 This is the result:
 
 ```output
-    lower months limit    |   upper months limit   | lower days limit | upper days limit 
+    lower months limit    |   upper months limit   | lower days limit | upper days limit
 --------------------------+------------------------+------------------+------------------
  -178956970 years -8 mons | 178956970 years 7 mons | -2147483648 days | 2147483647 days
 ```
@@ -152,7 +151,7 @@ select
 This is the result:
 
 ```output
-         lower limit         |        upper limit         
+         lower limit         |        upper limit
 -----------------------------+----------------------------
  (0,0,-7730941136399.000000) | (0,0,7730941132799.000000)
 ```
@@ -183,7 +182,7 @@ select
 This is the result:
 
 ```output
-        lower limit        |       upper limit       
+        lower limit        |       upper limit
 ---------------------------+-------------------------
  --2147483648:59:58.999552 | 2147483647:59:58.999552
 ```
@@ -208,7 +207,7 @@ select
 This is the result:
 
 ```output
-       lower limit        |       upper limit       
+       lower limit        |       upper limit
 --------------------------+-------------------------
  -2147483647:59:58.999552 | 2147483647:59:58.999552
 ```

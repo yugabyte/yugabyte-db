@@ -8,8 +8,7 @@ menu:
     identifier: test-date-time-comparison-overloads
     parent: date-time-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Tests (not shown here) confirm that if the `>` operator is legal between a particular pair of different _date-time_ data types, then all of the other comparison operators, `<=`, `=`, `>=`, `>`, and `<>`, are also legal. Consider these two overloads of some operator, _A_:

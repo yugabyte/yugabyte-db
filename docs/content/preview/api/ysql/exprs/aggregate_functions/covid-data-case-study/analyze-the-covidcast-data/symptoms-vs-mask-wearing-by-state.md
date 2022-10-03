@@ -8,8 +8,7 @@ menu:
     identifier: symptoms-vs-mask-wearing-by-state
     parent: analyze-the-covidcast-data
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This query:

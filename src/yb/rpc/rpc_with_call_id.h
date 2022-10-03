@@ -35,7 +35,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
  protected:
   ConnectionContextWithCallId();
 
-  CHECKED_STATUS Store(InboundCall* call);
+  Status Store(InboundCall* call);
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
 
   uint64_t ProcessedCallCount() override {

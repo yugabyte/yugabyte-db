@@ -8,8 +8,7 @@ menu:
     identifier: array-of-rows
     parent: array-literals
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.
@@ -105,7 +104,7 @@ select v::text as lit from t1 order by k;
 
 This is the result:
 ```
-               lit                
+               lit
 ----------------------------------
  (1," ","2091-01-20 12:10:05",t)
  (2,",","2002-01-20 12:10:05",f)
@@ -146,7 +145,7 @@ update t2 set v1_text_typecast =
 ```
 Finally, use this array literal to recreate the original value and check that it's identical to what you started with, thus:
 ```plpgsql
-update t2 set v2 = 
+update t2 set v2 =
 (select v1_text_typecast from t2 where k = 1)::rt[];
 
 select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
@@ -154,7 +153,7 @@ select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
 As promised, the canonical form of the array literal does indeed recreate the identical value that the `array_agg()` function created:
 
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```

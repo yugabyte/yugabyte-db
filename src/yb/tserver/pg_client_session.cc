@@ -40,6 +40,7 @@
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -98,7 +99,7 @@ boost::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
-CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
+Status AppendPsqlErrorCode(const Status& status,
                                    const client::CollectedErrors& errors) {
   boost::optional<YBPgErrorCode> common_psql_error =  boost::make_optional(false, YBPgErrorCode());
   for(const auto& error : errors) {
@@ -114,7 +115,7 @@ CHECKED_STATUS AppendPsqlErrorCode(const Status& status,
 }
 
 // Get a common transaction error code for all the errors and append it to the previous Status.
-CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
+Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
   TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
   for (const auto& error : errors) {
     const TransactionErrorCode txn_error = TransactionError(error->status()).value();
@@ -148,7 +149,7 @@ CHECKED_STATUS AppendTxnErrorCode(const Status& status, const client::CollectedE
 
 // Given a set of errors from operations, this function attempts to combine them into one status
 // that is later passed to PostgreSQL and further converted into a more specific error code.
-CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
+Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
   if (errors.empty())
     return status;
 
@@ -247,7 +248,7 @@ Status HandleResponse(uint64_t session_id,
   return status;
 }
 
-CHECKED_STATUS GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
+Status GetTable(const TableId& table_id, PgTableCache* cache, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
@@ -315,7 +316,7 @@ struct PerformData {
     context.RespondSuccess();
   }
 
-  CHECKED_STATUS ProcessResponse() {
+  Status ProcessResponse() {
     int idx = 0;
     for (const auto& op : ops) {
       const auto status = HandleResponse(session_id, *op, resp, used_read_time);
@@ -361,12 +362,14 @@ client::YBSessionPtr CreateSession(
 PgClientSession::PgClientSession(
     client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, uint64_t id)
+    PgTableCache* table_cache, uint64_t id,
+    const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map)
     : client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
-      table_cache_(*table_cache), id_(id) {
-}
+      table_cache_(*table_cache),
+      id_(id),
+      xcluster_safe_time_map_(xcluster_safe_time_map) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -449,6 +452,9 @@ Status PgClientSession::AlterTable(
   if (txn) {
     alterer->part_of_transaction(txn);
   }
+  if (req.increment_schema_version()) {
+    alterer->set_increment_schema_version();
+  }
   for (const auto& add_column : req.add_columns()) {
     const auto yb_type = QLType::Create(static_cast<DataType>(add_column.attr_ybtype()));
     alterer->AddColumn(add_column.attr_name())
@@ -525,14 +531,44 @@ Status PgClientSession::DropTablegroup(
   return status;
 }
 
-Status PgClientSession::RollbackSubTransaction(
-    const PgRollbackSubTransactionRequestPB& req, PgRollbackSubTransactionResponsePB* resp,
+Status PgClientSession::RollbackToSubTransaction(
+    const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Rollback sub transaction $0, when not transaction is running",
-                req.sub_transaction_id()));
-  return Transaction(PgClientSessionKind::kPlain)->RollbackSubTransaction(req.sub_transaction_id());
+  /*
+   * Currently we do not support a transaction block that has both DDL and DML statements (we
+   * support it syntactically but not semantically). Thus, when a DDL is encountered in a
+   * transaction block, a separate transaction is created for the DDL statement, which is
+   * committed at the end of that statement. This is why there are 2 session objects here, one
+   * corresponds to the DML transaction, and the other to a possible separate transaction object
+   * created for the DDL. However, subtransaction-id increases across both sessions. Also,
+   * it is not possible to rollback to a savepoint created for the DML transaction from the DDL
+   * statement, i.e. the following sequence of events is not possible:
+   * -- Start DML
+   * ---- Commands...
+   * ---- Savepoint 1
+   * ---- Start DDL
+   * ------ Commands
+   * ------ Savepoint 2
+   * ------ Commands
+   * ------ Rollback to Savepoint 1 -- Not possible, can only rollback to Savepoint 1.
+   * ---- DDL committed at this point
+   * ---- Rollback to Savepoint 2 -- Again not possible, the DDL is already committed.
+   * The above is not possible because we do not allow multiple statements in a single DDL txn.
+   * Because of the above properties, when we need to rollback to a savepoint, the subtransaction-id
+   * can only have been part of one session.
+   */
+  for (auto& session : sessions_) {
+    auto transaction = session.transaction;
+    if (transaction
+        && transaction->HasSubTransaction(req.sub_transaction_id())) {
+      return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
+                                                   context->GetClientDeadline());
+    }
+  }
+  return STATUS(IllegalState,
+                Format("Rollback sub transaction $0, when no transaction is running",
+                       req.sub_transaction_id()));
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -540,16 +576,23 @@ Status PgClientSession::SetActiveSubTransaction(
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
 
+  auto kind = PgClientSessionKind::kPlain;
   if (req.has_options()) {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
-    txn_serial_no_ = req.options().txn_serial_no();
+    if (req.options().ddl_mode()) {
+      kind = PgClientSessionKind::kDdl;
+    } else {
+      RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
+      txn_serial_no_ = req.options().txn_serial_no();
+    }
   }
 
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Set active sub transaction $0, when not transaction is running",
+  auto transaction = Transaction(kind);
+
+  SCHECK(transaction, IllegalState,
+         Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
-  Transaction(PgClientSessionKind::kPlain)->SetActiveSubTransaction(req.sub_transaction_id());
+  transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
 
@@ -626,6 +669,40 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
   FATAL_INVALID_ENUM_VALUE(ReadTimeManipulation, manipulation);
 }
 
+Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
+    const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
+  // Early exit if namespace not provided or atomic reads not enabled
+  if (options.namespace_id().empty() || !xcluster_safe_time_map_ ||
+      !options.use_xcluster_database_consistency()) {
+    return Status::OK();
+  }
+
+  auto safe_time = xcluster_safe_time_map_->GetSafeTime(options.namespace_id());
+
+  if (safe_time) {
+    RSTATUS_DCHECK(
+        !safe_time->is_special(), TryAgain,
+        Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
+
+    // read_point is set for Distributed txns.
+    // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
+    // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
+    // to reset it back to the safe time.
+    if (read_point->GetReadTime().read.is_special() ||
+        read_point->GetReadTime().read > safe_time.get()) {
+      read_point->SetReadTime(ReadHybridTime::SingleTime(safe_time.get()), {} /* local_limits */);
+      VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
+    }
+  } else {
+    // NotFound is the only acceptable status
+    if (!safe_time.status().IsNotFound()) {
+      return safe_time.status();
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
 PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
   const auto& options = req.options();
@@ -655,10 +732,14 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
     transaction = Transaction(kind).get();
   } else {
+    RSTATUS_DCHECK(
+        kind == PgClientSessionKind::kPlain ||
+        options.read_time_manipulation() == ReadTimeManipulation::NONE,
+        IllegalState,
+        "Read time manipulation can't be specified for kDdl/ kCatalog transactions");
     ProcessReadTimeManipulation(options.read_time_manipulation());
-    if (options.has_read_time() &&
-        (options.read_time().has_read_ht() || options.use_catalog_session())) {
-      const auto read_time = options.read_time().has_read_ht()
+    if (options.has_read_time() || options.use_catalog_session()) {
+      const auto read_time = options.has_read_time() && options.read_time().has_read_ht()
           ? ReadHybridTime::FromPB(options.read_time()) : ReadHybridTime();
       session->SetReadPoint(read_time);
       if (read_time) {
@@ -683,6 +764,8 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
       VLOG_WITH_PREFIX(3) << "Keep read time: " << session->read_point()->GetReadTime();
     }
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, session->read_point()));
 
   if (options.defer_read_point()) {
     // This call is idempotent, meaning it has no effect after the first call.
@@ -741,7 +824,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
         : Status::OK();
   }
 
-  txn = transaction_pool_provider_()->Take(
+  txn = transaction_pool_provider_().Take(
       client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
@@ -757,6 +840,9 @@ Status PgClientSession::BeginTransactionIfNecessary(
                         << ", new read time";
     RETURN_NOT_OK(txn->Init(isolation));
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, &txn->read_point()));
+
   if (saved_priority_) {
     priority = *saved_priority_;
     saved_priority_ = boost::none;
@@ -777,7 +863,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = VERIFY_RESULT(transaction_pool_provider_()->TakeAndInit(isolation, deadline));
+    txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }
@@ -796,7 +882,7 @@ Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
            "Attempted to restart when session does not require restart");
 
     const auto old_read_time = session->read_point()->GetReadTime();
-    session->SetReadPoint(client::Restart::kTrue);
+    session->RestartNonTxnReadPoint(client::Restart::kTrue);
     const auto new_read_time = session->read_point()->GetReadTime();
     VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
     LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)

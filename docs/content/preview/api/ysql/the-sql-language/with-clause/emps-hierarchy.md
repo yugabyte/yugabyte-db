@@ -1,15 +1,17 @@
 ---
-title: Case study—using a recursive CTE to traverse an employee hierarchy
-linkTitle: case study—traversing an employee hierarchy
-headerTitle: Case study—using a recursive CTE to traverse an employee hierarchy
+title: >
+  Case study: using a recursive CTE to traverse an employee hierarchy
+linkTitle: >
+  Case study: traversing an employee hierarchy
+headerTitle: >
+  Case study: using a recursive CTE to traverse an employee hierarchy
 description: Case study to show how to traverse a hierarchy, breadth or depth first, using a recursive CTE.
 menu:
   preview:
     identifier: emps-hierarchy
     parent: with-clause
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/).
@@ -107,7 +109,7 @@ Stress the constraints with this attempt to insert a second ultimate manager:
 insert into emps(name, mgr_name) values ('bad', null);
 ```
 
-It cases this error:
+It causes this error:
 
 ```
 23505: duplicate key value violates unique constraint "t_mgr_name"
@@ -119,7 +121,7 @@ Stress the constraints with this attempt to delete an employee with reports:
 delete from emps where name = 'fred';
 ```
 
-It cases this error:
+It causes this error:
 
 ```
 23503: update or delete on table "emps" violates foreign key constraint "emps_mgr_name_fk" on table "emps"

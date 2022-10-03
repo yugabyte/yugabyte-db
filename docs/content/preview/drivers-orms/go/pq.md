@@ -1,32 +1,32 @@
 ---
-title: Go drivers
-linkTitle: Go drivers
+title: Connect an application
+linkTitle: Connect an app
 description: Go drivers for YSQL
-headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go drivers
     identifier: pq-driver
     parent: go-drivers
-    weight: 400
-isTocNested: true
-showAsideToc: true
+    weight: 420
+type: docs
 ---
 
-For Go Applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link">
+    <a href="../yb-pgx/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB PGX Smart Driver
+    </a>
+  </li>
+  <li >
+    <a href="../pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link active">
+    <a href="../pq/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -36,11 +36,11 @@ For Go Applications, most drivers provide database connectivity through the stan
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL. Use the driver to connect to YugabyteDB to execute DMLs and DDLs using the standard `database/sql` package.
 
-## CRUD operations with PQ driver
+## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pq) page under the Quick start section.
+For Go Applications, most drivers provide database connectivity through the standard `database/sql` API. Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/go/ysql-pq).
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the PQ driver.
 
 ### Step 1: Import the driver package
 
@@ -52,7 +52,7 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
+### Step 2: Set up the database connection
 
 Go applications can connect to YugabyteDB using the `sql.Open()` function. The `sql` package includes all the functions or structs required for working with YugabyteDB.
 
@@ -60,7 +60,7 @@ Use the `sql.Open()` function to create a connection object for the YugabyteDB d
 
 The connection details can be specified either as string parameters or via a URL in the following format:
 
-```go
+```sh
 postgresql://username:password@hostname:port/database
 ```
 
@@ -88,7 +88,7 @@ if err != nil {
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../develop/build-apps/go/ysql-pq/#openssl) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -98,7 +98,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | Environment Variable | Description |
 | :---------- | :---------- |
 | PGSSLMODE |  SSL mode used for the connection |
-| PGSSLROOTCERT | Server CA Certificate |
+| PGSSLROOTCERT | Path to the root certificate on your computer |
 
 ### Step 3: Create tables
 
@@ -185,7 +185,7 @@ if err != nil {
 }
 ```
 
-## Next steps
+## Learn more
 
-- Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/pq-reference/) of the PQ Driver.
+- Build Go applications using [GORM](../gorm)
+- [Go driver reference](../../../reference/drivers/go/pq-reference/)

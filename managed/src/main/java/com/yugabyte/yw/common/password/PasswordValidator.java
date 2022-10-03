@@ -10,11 +10,11 @@
 
 package com.yugabyte.yw.common.password;
 
-import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import play.data.validation.ValidationError;
 
 interface PasswordValidator {
   String PASSWORD_FIELD = "password";
 
-  ValidationError validate(String password, PasswordPolicyFormData passwordPolicy);
+  ValidationError validate(String password, CustomerConfigPasswordPolicyData passwordPolicy);
 }

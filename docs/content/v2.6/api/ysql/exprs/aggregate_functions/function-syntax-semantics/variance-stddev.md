@@ -8,8 +8,7 @@ menu:
     identifier: variance-stddev
     parent: aggregate-function-syntax-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes the [`variance()`](./#variance), [`var_pop()`](./#var-pop),  [`var_samp()`](./#var-samp), [`stddev()`](./#stddev), [`stddev_pop()`](./#stddev-pop), and [`stddev_samp()`](./#stddev-samp) aggregate functions. They provide a confidence measure for the computed arithmetic mean of a set of values.
@@ -228,6 +227,3 @@ Because of the pseudorandom nature of `normal_rand()`, the values produced will 
 --------+-------------+-------------+------------------------
   0.138 |   49.880052 |   49.879802 |   1.000005
 ```
-
-
-

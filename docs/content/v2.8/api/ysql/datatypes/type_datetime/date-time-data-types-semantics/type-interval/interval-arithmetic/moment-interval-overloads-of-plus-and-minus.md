@@ -8,8 +8,7 @@ menu:
     identifier: moment-interval-overloads-of-plus-and-minus
     parent: interval-arithmetic
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
@@ -52,7 +51,7 @@ update t set
   "t0 + 720 hours" = t0 + '720 hours'::interval,
   "t0 + 30 days"   = t0 +   '30 days'::interval,
   "t0 + 1 month"   = t0 +   '1 month'::interval;
-  
+
 prepare inspect_result as
 select
   t0,
@@ -73,12 +72,12 @@ execute inspect_result;
 This is the result:
 
 ```output
-           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month      
+           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month
 ------------------------+------------------------+------------------------+------------------------
  2021-02-19 12:00:00-08 | 2021-03-21 13:00:00-07 | 2021-03-21 12:00:00-07 | 2021-03-19 12:00:00-07
 ```
 
-All the three results are displayed with a negative seven hours _UTC offset_ reflecting the fact that they occur during the Daylight Savings Time period in the United States. The time of day for _"t0 + 720 hours"_ differs by one hour from that for _"t0 + 30 days"_, but the date component is the same for each. The time of day for _"t0 + 30 days"_ is the same as that for _"t0 + 1 month"_, but the date component differs by two days. 
+All the three results are displayed with a negative seven hours _UTC offset_ reflecting the fact that they occur during the Daylight Savings Time period in the United States. The time of day for _"t0 + 720 hours"_ differs by one hour from that for _"t0 + 30 days"_, but the date component is the same for each. The time of day for _"t0 + 30 days"_ is the same as that for _"t0 + 1 month"_, but the date component differs by two days.
 
 You have to think quite hard to understand displayed _timestamptz_ values when you inspect them using a session whose _TimeZone_ setting is _not_ _UTC_ because that setting affects the values that you see. This is very much intended and reflects the _raison d’être_ of the data type. See the section [The plain _timestamp_ and _timestamptz_ data types](../../../type-timestamp/). In particular, this is why the moment before "spring forward" is displayed with an offset of negative _eight_ hours while the moments after "spring forward" are displayed with an offset of negative _seven_ hours.
 
@@ -100,12 +99,12 @@ execute inspect_result;
 This is the result:
 
 ```output
-           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month      
+           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month
 ------------------------+------------------------+------------------------+------------------------
  2021-02-19 20:00:00+00 | 2021-03-21 20:00:00+00 | 2021-03-21 19:00:00+00 | 2021-03-19 19:00:00+00
 ```
 
-The three _interval_ arithmetic results all differ from each other. in other words, the semantic effect of adding the "same" _interval_ value to the same _timestamptz_ value is different for each of the three nominally interchangeable spellings, _'720 hours'_, _'30 days'_, or _'1 month'_, of the _interval_ value. 
+The three _interval_ arithmetic results all differ from each other. in other words, the semantic effect of adding the "same" _interval_ value to the same _timestamptz_ value is different for each of the three nominally interchangeable spellings, _'720 hours'_, _'30 days'_, or _'1 month'_, of the _interval_ value.
 
 Now re-execute the prepared statement after setting the session's timezone to one that does _not_ respect Daylight savings Time.
 
@@ -124,7 +123,7 @@ execute inspect_result;
 This is the new result:
 
 ```output
-           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month      
+           t0           |     t0 + 720 hours     |      t0 + 30 days      |      t0 + 1 month
 ------------------------+------------------------+------------------------+------------------------
  2021-02-19 20:00:00+00 | 2021-03-21 20:00:00+00 | 2021-03-21 20:00:00+00 | 2021-03-19 20:00:00+00
 ```
@@ -153,7 +152,7 @@ select
 This is the result:
 
 ```output
-  '720 hours'  | '30 days' | '1 month' 
+  '720 hours'  | '30 days' | '1 month'
 ---------------+-----------+-----------
  (0,0,2592000) | (0,30,0)  | (1,0,0)
 ```

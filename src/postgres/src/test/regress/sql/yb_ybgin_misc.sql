@@ -225,19 +225,11 @@ CREATE TABLEGROUP g;
 -- Colocated table and index
 CREATE TABLE garrays (i serial PRIMARY KEY, a int[]) TABLEGROUP g;
 INSERT INTO garrays (a) VALUES ('{11, 22}');
-CREATE INDEX ON garrays USING ybgin (a) TABLEGROUP g;
+CREATE INDEX ON garrays USING ybgin (a);
 INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
 EXPLAIN (costs off)
 SELECT * FROM garrays WHERE a && '{11}';
 SELECT * FROM garrays WHERE a && '{11}';
--- Noncolocated table and colocated index
-CREATE TABLE nogarrays (i serial PRIMARY KEY, a int[]);
-INSERT INTO nogarrays (a) VALUES ('{11, 22}');
-CREATE INDEX ON nogarrays USING ybgin (a) TABLEGROUP g;
-INSERT INTO nogarrays (a) VALUES ('{22, 33}'), ('{33, 11}');
-EXPLAIN (costs off)
-SELECT * FROM nogarrays WHERE a && '{11}';
-SELECT * FROM nogarrays WHERE a && '{11}';
 -- Cleanup
-DROP TABLE garrays, nogarrays;
+DROP TABLE garrays;
 DROP TABLEGROUP g;

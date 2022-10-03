@@ -51,7 +51,7 @@ class YsqlTransactionDdl {
 
   void VerifyTransaction(const TransactionMetadata& transaction,
                          std::function<Status(bool /* is_success */)> complete_callback);
-  Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid);
+  Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid, TableId relfilenode_oid);
 
  protected:
   void TransactionReceived(const TransactionMetadata& transaction,

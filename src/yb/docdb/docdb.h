@@ -125,7 +125,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS AssembleDocWriteBatch(
+Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -147,15 +147,23 @@ struct ExternalTxnApplyStateData {
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
+class ExternalTxnIntentsState {
+ public:
+  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
+  void EraseEntry(const TransactionId& txn_id);
+ private:
+  std::mutex mutex_;
+  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
+};
 // Adds external pair to write batch.
 // Returns true if add was skipped because pair is a regular (non external) record.
 bool AddExternalPairToWriteBatch(
     const KeyValuePairPB& kv_pair,
     HybridTime hybrid_time,
-    int write_id,
     ExternalTxnApplyState* apply_external_transactions,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 // Prepares external part of non transaction write batch.
 // Batch could contain intents for external transactions, in this case those intents
@@ -167,7 +175,8 @@ bool PrepareExternalWriteBatch(
     HybridTime hybrid_time,
     rocksdb::DB* intents_db,
     rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch);
+    rocksdb::WriteBatch* intents_write_batch,
+    ExternalTxnIntentsState* external_txn_intents_state);
 
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
@@ -194,11 +203,11 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 typedef boost::function<
     Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
     const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
-CHECKED_STATUS EnumerateIntents(
+Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
@@ -222,6 +231,7 @@ struct IntentKeyValueForCDC {
   std::string key_buf, value_buf;
   std::string reverse_index_key;
   IntraTxnWriteId write_id = 0;
+  DocHybridTime intent_ht;
 
   std::string ToString() const;
 

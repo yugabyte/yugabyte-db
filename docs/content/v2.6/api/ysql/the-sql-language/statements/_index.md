@@ -9,8 +9,7 @@ menu:
     identifier: statements
     parent: the-sql-language
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.

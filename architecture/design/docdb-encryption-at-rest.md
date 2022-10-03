@@ -117,23 +117,23 @@ While we will eventually support option 1, we currently don't have a mechanism t
 # Key Management Service (KMS) Integration
 
 KMS integration would initially be facilitated via the Enterprise Platform solution, where the user would maintain the credentials to their KMS system of choice, and at the universe creation time
-we would make appropriate API calls to create a new Universe Key and use that key to provision a new universe with At Rest Encryption enabled. In this section we details the approach we plan on 
+we would make appropriate API calls to create a new Universe Key and use that key to provision a new universe with At Rest Encryption enabled. In this section, we detail the approach we plan on
 taking with some of the KMS system that we would support via Platform. 
 
 ## Equinix [SmartKey](https://www.equinix.com/services/edge-services/smartkey/). Integration
-  SmartKey is KMS a offering from Equinix, they provide SDK and API to manage the keys in their platform, Yugabyte platform would integrate with SmartKey via the REST API route and authenticate
+  SmartKey is a KMS offering from Equinix, they provide SDK and API to manage the keys in their platform, Yugabyte platform would integrate with SmartKey via the REST API route and authenticate
 using their API key in order to manage the Keys. We would use the name attribute on the Key to link the universe that the key is generated for. Once the key is generated we would make appropriate RPC 
 calls to YugabyteDB to enable encryption. We would call their rekey api when the user wants to rekey the universe and update the YugabyteDB nodes in a rolling fashion. 
 
 ## AWS [Key Management Service](https://docs.aws.amazon.com/kms/latest/developerguide/overview.html)
-  Amazon offers their KMS solution, we will your their KMS api to manage the keys, And they have the concept of aliases which we would use that to build a relationship between the key and universe.
+  Amazon offers their KMS solution, we will use their KMS API to manage the keys. And they have the concept of aliases which we would use to build a relationship between the key and universe.
 When the key needs to be rotated we would create a new key and update the alias accordingly. And do the update on YugabyteDB nodes in a rolling fashion.
 
 # Implementation Internals
 
 ## AES CTR Mode
 
-Read more about [the AES CTR mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)). We support CTR-128, CTR-196 and CTR-256 modes of the encryption. The numbers refer to the key size in bytes, so CTR-128 mode uses a 16 byte key. All modes have a block size of 16-bytes.
+Read more about [the AES CTR mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)). We support CTR-128, CTR-196 and CTR-256 modes of the encryption. The numbers refer to the key size in bits, so CTR-128 mode uses a 16 byte key. All modes have a block size of 16-bytes.
 
 Encryption in CTR-128 mode works in the following steps:
 

@@ -47,9 +47,13 @@ struct WebserverOptions {
   std::string doc_root;
   bool enable_doc_root;
   std::string certificate_file;
+  std::string private_key_file;
+  std::string private_key_password;
   std::string authentication_domain;
   std::string password_file;
   uint32_t num_worker_threads;
+
+  std::string TEST_custom_varz; // Show custom G-flags in Web UI '/varz' from tests.
 };
 
 } // namespace yb

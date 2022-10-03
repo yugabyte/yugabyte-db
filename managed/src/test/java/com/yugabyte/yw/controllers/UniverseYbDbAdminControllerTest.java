@@ -109,8 +109,6 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     if (isCloudCustomer) {
       when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     ObjectNode bodyJson =
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
@@ -182,8 +180,6 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     if (isCloudCustomer) {
       when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     ObjectNode bodyJson =
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
@@ -235,8 +231,6 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   public void testRunQuery_ValidPlatform(
       boolean insecure, String origin, String ybmode, boolean isGoodResult) throws Exception {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
 
     if (insecure) {
       ConfigHelper configHelper = new ConfigHelper();

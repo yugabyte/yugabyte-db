@@ -17,6 +17,7 @@ export const YBUniverseItem = (props) => {
     universe,
     customer: { currentCustomer }
   } = props;
+  const isPricingKnown = universe.resources?.pricingKnown;
 
   return (
     <div>
@@ -54,7 +55,11 @@ export const YBUniverseItem = (props) => {
         {isAvailable(currentCustomer.data.features, 'costs.universe_list') && (
           <div className="cell-cost">
             <div className="cell-cost-value">
-              <YBCost value={props.universe.pricePerHour} multiplier="month" />
+              <YBCost
+                value={props.universe.pricePerHour}
+                multiplier="month"
+                isPricingKnown={isPricingKnown}
+              />
             </div>
             /month
           </div>

@@ -1,15 +1,14 @@
 ---
 title: Using a recursive CTE to traverse a general undirected cyclic graph
 headerTitle: Finding the paths in a general undirected cyclic graph
-linkTitle: undirected cyclic graph
+linkTitle: Undirected cyclic graph
 description: This section shows how to use a recursive CTE to traverse a general undirected cyclic graph.
 menu:
   preview:
     identifier: undirected cyclic graph
     parent: traversing-general-graphs
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying any of the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/).
@@ -618,4 +617,3 @@ call assert_shortest_paths_same_as_raw_paths();
 ```
 
 The assertion holds.
-

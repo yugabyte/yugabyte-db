@@ -8,8 +8,7 @@ menu:
     identifier: table-t1
     parent: data-sets
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}

@@ -8,8 +8,7 @@ menu:
     identifier: report-daily-regression-analysis
     parent: analyze-the-covidcast-data
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This is the semantic essence of the query:

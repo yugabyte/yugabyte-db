@@ -10,6 +10,7 @@ menu:
     identifier: explore-observability
     parent: explore
     weight: 310
+type: indexpage
 ---
 
 <div class="row">

@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
     weight: 750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

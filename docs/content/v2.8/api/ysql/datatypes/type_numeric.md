@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: api-ysql-datatypes-numeric
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

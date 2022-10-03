@@ -21,11 +21,11 @@ YB_SUDO_PASS=""
 ports_to_check=""
 PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
+PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
 
 preflight_provision_check() {
   # Check python is installed.
-  echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env python --version"
-  update_result_json_with_rc "Sudo Access to Python" "$?"
+  check_python
 
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
@@ -160,6 +160,17 @@ preflight_configure_check() {
 
   # Check home directory exists.
   check_filepath "Home Directory" "$yb_home_dir" false
+}
+
+# Checks for an available python executable
+check_python() {
+  python_status=false
+  for py_executable in "${PYTHON_EXECUTABLES[@]}"; do
+    if echo $YB_SUDO_PASS | sudo -S /bin/sh -c "/usr/bin/env $py_executable --version"; then
+      python_status=true
+    fi
+  done
+  update_result_json "Sudo Access to Python" "$python_status"
 }
 
 # Checks if given filepath is writable.

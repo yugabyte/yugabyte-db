@@ -23,10 +23,10 @@ namespace master {
 class XClusterSplitDriverIf {
  public:
   virtual ~XClusterSplitDriverIf() {}
-  virtual CHECKED_STATUS UpdateXClusterConsumerOnTabletSplit(
+  virtual Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 
-  virtual CHECKED_STATUS UpdateXClusterProducerOnTabletSplit(
+  virtual Status UpdateXClusterProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 };
 

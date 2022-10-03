@@ -23,7 +23,6 @@ add_subdirectory(util)
 # PGGate API library.
 set(PGGATE_SRCS
     ybc_pggate.cc
-    ybc_pggate_tool.cc
     pggate.cc
     pggate_thread_local_vars.cc
     pg_client.cc
@@ -32,7 +31,6 @@ set(PGGATE_SRCS
     pg_perform_future.cc
     pg_sample.cc
     pg_session.cc
-    pg_statement.cc
     pg_ddl.cc
     pg_dml.cc
     pg_dml_write.cc

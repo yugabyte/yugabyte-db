@@ -9,9 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-3
     weight: 621
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -32,12 +30,6 @@ showAsideToc: true
     <a href="{{< relref "./operator-hub.md" >}}" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
     </a>
   </li>
 </ul>

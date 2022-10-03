@@ -9,8 +9,7 @@ menu:
     identifier: trust-authentication
     parent: authentication
     weight: 734
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -18,23 +18,32 @@
     remote_tmp_package: "/tmp/{{ package_name }}"
   tags: always
 
+- name: Download ybc package | Set temporary package path
+  set_fact:
+    tmp_ybc_package_location: "{{ yb_software_dir }}/TEMP_YBC"
+    remote_ybc_tmp_package: "/tmp/{{ ybc_dir }}.tar.gz"
+  when: configure_ybc
+  tags: always
+
 - name: Download package | Download "{{ package_name }}" from AWS S3
-  command:
-    argv:
-    - s3cmd
-    - get
-    - "{{ s3_package_path }}"
-    - "{{ remote_tmp_package }}"
-    creates: "{{ remote_tmp_package }}"
+  block:
+    - name: Download package | Download "{{ package_name }}" from AWS S3
+      command:
+        argv:
+        - s3cmd
+        - get
+        - "{{ s3_package_path }}"
+        - "{{ remote_tmp_package }}"
+        creates: "{{ remote_tmp_package }}"
+      register: s3cmd_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: s3cmd_result is succeeded
   environment:
     AWS_ACCESS_KEY_ID: "{{ aws_access_key | default(lookup('env', 'AWS_ACCESS_KEY_ID')) }}"
     AWS_SECRET_ACCESS_KEY: "{{ aws_secret_key | default(lookup('env', 'AWS_SECRET_ACCESS_KEY')) }}"
   when: s3_package_path is defined
   tags: yb-prebuilt-ami
-  register: s3cmd_result
-  retries: "{{ num_retries }}"
-  delay: "{{ retry_delay }}"
-  until: s3cmd_result is succeeded
 
 - name: Download package | Create credentials file and download "{{ package_name }}" from GCS
   block:
@@ -49,7 +58,7 @@
         owner: "{{ user_name }}"
         group: "{{ user_name }}"
         mode: 0600
-    - name: Download package | Download "{{ package_name }} from GCS
+    - name: Download package | Download "{{ package_name }}" from GCS
       command:
         argv:
           - "gsutil"
@@ -72,15 +81,17 @@
   when: gcs_package_path is defined
 
 - name: Download package | Download "{{ package_name }}" from a HTTP(S) link
-  get_url:
-    url: "{{ http_package_path }}"
-    dest: "{{ remote_tmp_package }}"
-    checksum: "{{ http_package_checksum | default('') }}"
+  block:
+    - name:
+      get_url:
+        url: "{{ http_package_path }}"
+        dest: "{{ remote_tmp_package }}"
+        checksum: "{{ http_package_checksum | default('') }}"
+      register: get_url_result
+      retries: "{{ num_retries }}"
+      delay: "{{ retry_delay }}"
+      until: get_url_result is succeeded
   when: http_package_path is defined
-  register: get_url_result
-  retries: "{{ num_retries }}"
-  delay: "{{ retry_delay }}"
-  until: get_url_result is succeeded
 
 - name: Download package | Create release binary directory
   file:
@@ -121,7 +132,10 @@
   tags: yb-prebuilt-ami
 
 - name: Download package | Move unpacked dir to "{{ release_folder }}"
-  command: mv "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}" "{{ package_dest }}"
+  command: >
+    mv
+    "{{ yb_software_dir }}/{{ package_folder_or_tmp }}/yugabyte-{{ release_version }}"
+    "{{ package_dest }}"
   when: is_yugabyte_package
   tags: yb-prebuilt-ami
 

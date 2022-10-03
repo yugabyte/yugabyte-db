@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_aggregate ::= create_aggregate_normal
                      | create_aggregate_order_by
                      | create_aggregate_old
@@ -20,7 +20,7 @@ create_aggregate_old ::= CREATE AGGREGATE aggregate_name ( BASETYPE =
                          state_data_type 
                          [ , aggregate_old_option [ ... ] ] )
 
-aggregate_arg ::= [ aggregate_argmode ] [ argname ] argtype
+aggregate_arg ::= [ aggregate_arg_mode ] [ arg_name ] arg_type
 
 aggregate_normal_option ::= SSPACE = state_data_size
                             | FINALFUNC = ffunc

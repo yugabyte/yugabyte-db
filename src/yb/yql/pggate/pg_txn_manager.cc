@@ -13,10 +13,6 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-#include "yb/client/client.h"
-#include "yb/client/session.h"
-#include "yb/client/transaction.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/ybc_util.h"
@@ -52,8 +48,6 @@ DEFINE_bool(use_node_hostname_for_local_tserver, false,
 
 DECLARE_uint64(max_clock_skew_usec);
 
-DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
-
 namespace {
 
 // Local copies that can be modified.
@@ -84,6 +78,19 @@ uint64_t ConvertHighPriorityTxnBound(double value) {
   return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
+// Convert uint64_t value in range [minValue, maxValue] to double value in range 0..1
+double ToTxnPriority(uint64_t value, uint64_t minValue, uint64_t maxValue) {
+  if (value <= minValue) {
+    return 0.0;
+  }
+
+  if (value >= maxValue) {
+    return 1.0;
+  }
+
+  return static_cast<double>(value - minValue) / (maxValue - minValue);
+}
+
 } // namespace
 
 extern "C" {
@@ -110,19 +117,8 @@ int* YBCStatementTimeoutPtr = nullptr;
 
 }
 
-using namespace std::literals;
-using namespace std::placeholders;
-
 namespace yb {
 namespace pggate {
-
-using client::YBTransaction;
-using client::AsyncClientInitialiser;
-using client::TransactionManager;
-using client::YBTransactionPtr;
-using client::YBSession;
-using client::YBSessionPtr;
-using client::LocalTabletFilter;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -319,7 +315,11 @@ Status PgTxnManager::RestartTransaction() {
 
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
+  RSTATUS_DCHECK(!ddl_mode_, IllegalState,
+                 "READ COMMITTED semantics don't apply to DDL transactions");
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
+  read_time_for_follower_reads_ = HybridTime();
+  RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
 }
 
@@ -406,7 +406,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       isolation_level);
 }
 
-void PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
+uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
   if (!ddl_mode_ && !txn_in_progress_) {
     ++txn_serial_no_;
   }
@@ -429,11 +429,39 @@ void PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
     options->set_defer_read_point(true);
     need_defer_read_point_ = false;
   }
-  options->set_read_time_manipulation(read_time_manipulation_);
-  read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  if (!ddl_mode_) {
+    // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
+    // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
+    // switches back to kDdl mode, the read_time_manipulation_ is not lost.
+    options->set_read_time_manipulation(read_time_manipulation_);
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
   }
+  return txn_serial_no_;
+}
+
+double PgTxnManager::GetTransactionPriority() const {
+  if (priority_ <= yb::kRegularTxnUpperBound) {
+    return ToTxnPriority(priority_,
+                         yb::kRegularTxnLowerBound,
+                         yb::kRegularTxnUpperBound);
+  }
+
+  return ToTxnPriority(priority_,
+                       yb::kHighPriTxnLowerBound,
+                       yb::kHighPriTxnUpperBound);
+}
+
+TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
+  if (priority_ <= yb::kRegularTxnUpperBound) {
+    return kLowerPriorityRange;
+  }
+  if (priority_ < yb::kHighPriTxnUpperBound) {
+    return kHigherPriorityRange;
+  }
+  return kHighestPriority;
 }
 
 }  // namespace pggate

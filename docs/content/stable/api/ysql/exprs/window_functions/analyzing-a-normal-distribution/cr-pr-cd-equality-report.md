@@ -8,8 +8,7 @@ menu:
     identifier: cr-pr-cd-equality-report
     parent: analyzing-a-normal-distribution
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_pr_cd_equality_report.sql`.
 ```plpgsql

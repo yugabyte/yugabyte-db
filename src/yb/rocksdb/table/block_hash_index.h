@@ -17,8 +17,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
-#define ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
+#ifndef YB_ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
+#define YB_ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
 
 #pragma once
 
@@ -64,7 +64,7 @@ class BlockHashIndex {
 
   // Maps a key to its restart first_index.
   // Returns nullptr if the restart first_index is found
-  const RestartIndex* GetRestartIndex(const Slice& key);
+  const RestartIndex* GetRestartIndex(const Slice& key) const;
 
   bool Add(const Slice& key_prefix, uint32_t restart_index,
            uint32_t num_blocks);
@@ -104,4 +104,4 @@ BlockHashIndex* CreateBlockHashIndexOnTheFly(
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
+#endif // YB_ROCKSDB_TABLE_BLOCK_HASH_INDEX_H

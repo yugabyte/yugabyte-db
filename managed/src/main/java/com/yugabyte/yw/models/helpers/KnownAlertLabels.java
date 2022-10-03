@@ -18,6 +18,8 @@ public enum KnownAlertLabels {
   UNIVERSE_UUID,
   UNIVERSE_NAME,
   CUSTOMER_UUID,
+  CUSTOMER_NAME,
+  CUSTOMER_CODE,
   SOURCE_UUID,
   SOURCE_NAME,
   SOURCE_TYPE,
@@ -32,7 +34,8 @@ public enum KnownAlertLabels {
   RESULT,
   ALERTNAME,
   MESSAGE,
-  MAINTENANCE_WINDOW_UUIDS;
+  MAINTENANCE_WINDOW_UUIDS,
+  ALERT_EXPRESSION;
 
   public String labelName() {
     return name().toLowerCase();

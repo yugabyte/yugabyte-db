@@ -22,7 +22,6 @@ public class PasswordPolicyServiceTest extends CommissionerBaseTest {
 
   private PasswordPolicyService passwordPolicyService;
   @Mock private Config config;
-  // private PasswordPolicyFormData passwordPolicyFormData;
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 

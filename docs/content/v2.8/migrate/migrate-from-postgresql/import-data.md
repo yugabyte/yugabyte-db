@@ -9,8 +9,7 @@ menu:
     identifier: migrate-postgresql-import-data
     parent: migrate-from-postgresql
     weight: 770
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 The next step is to import the PostgreSQL data into YugabyteDB.
@@ -40,5 +39,3 @@ Importing a single table (or a partial export from a table) can be done by runni
 ```
 COPY country FROM 'export.csv' DELIMITER ',' CSV HEADER;
 ```
-
-

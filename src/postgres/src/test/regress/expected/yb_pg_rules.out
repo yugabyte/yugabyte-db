@@ -1809,6 +1809,34 @@ pg_stat_database_conflicts| SELECT d.oid AS datid,
     pg_stat_get_db_conflict_bufferpin(d.oid) AS confl_bufferpin,
     pg_stat_get_db_conflict_startup_deadlock(d.oid) AS confl_deadlock
    FROM pg_database d;
+pg_stat_progress_copy| SELECT s.pid,
+    s.datid,
+    d.datname,
+    s.relid,
+        CASE s.param5
+            WHEN 1 THEN 'COPY FROM'::text
+            WHEN 2 THEN 'COPY TO'::text
+            ELSE NULL::text
+        END AS command,
+        CASE s.param6
+            WHEN 1 THEN 'FILE'::text
+            WHEN 2 THEN 'PROGRAM'::text
+            WHEN 3 THEN 'PIPE'::text
+            WHEN 4 THEN 'CALLBACK'::text
+            ELSE NULL::text
+        END AS type,
+        CASE s.param7
+            WHEN 0 THEN 'IN PROGRESS'::text
+            WHEN 1 THEN 'ERROR'::text
+            WHEN 2 THEN 'SUCCESS'::text
+            ELSE NULL::text
+        END AS yb_status,
+    s.param1 AS bytes_processed,
+    s.param2 AS bytes_total,
+    s.param3 AS tuples_processed,
+    s.param4 AS tuples_excluded
+   FROM (pg_stat_get_progress_info('COPY'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10)
+     LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_vacuum| SELECT s.pid,
     s.datid,
     d.datname,
@@ -2467,7 +2495,7 @@ insert into rules_base values(1,2), (11,12);
 create rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 1 for update;
 update rules_base set f2 = f2 + 1;
- f1 | f2 
+ f1 | f2
 ----+----
   1 |  2
 (1 row)
@@ -2475,7 +2503,7 @@ update rules_base set f2 = f2 + 1;
 create or replace rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 11 for update of rules_base;
 update rules_base set f2 = f2 + 1;
- f1 | f2 
+ f1 | f2
 ----+----
  11 | 12
 (1 row)

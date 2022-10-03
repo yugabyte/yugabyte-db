@@ -9,9 +9,7 @@ menu:
     identifier: ysql-grant-permissions
     parent: authorization
     weight: 735
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -19,7 +19,6 @@
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/tablet/read_result.h"

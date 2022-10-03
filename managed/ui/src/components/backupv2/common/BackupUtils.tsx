@@ -126,3 +126,8 @@ export const CALDENDAR_ICON = () => ({
 
 export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
   mapValues(keyBy(arr, keyStr), valueStr);
+
+export const PARALLEL_THREADS_RANGE = {
+  MIN: 1,
+  MAX: 100
+};

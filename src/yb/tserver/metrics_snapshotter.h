@@ -29,8 +29,8 @@ class TabletServerOptions;
 class MetricsSnapshotter {
  public:
   MetricsSnapshotter(const TabletServerOptions& options, TabletServer* server);
-  CHECKED_STATUS Start();
-  CHECKED_STATUS Stop();
+  Status Start();
+  Status Stop();
 
   ~MetricsSnapshotter();
 

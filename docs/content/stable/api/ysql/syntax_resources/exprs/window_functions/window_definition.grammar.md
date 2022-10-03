@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 window_definition ::= ( [ name ]  
                       [ PARTITION BY order_expr [ , ... ] ]  
                       [ ORDER BY order_expr [ , ... ] ]  

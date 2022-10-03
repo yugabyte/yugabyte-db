@@ -43,7 +43,7 @@ PTCreateKeyspace::PTCreateKeyspace(MemoryContext *memctx,
 PTCreateKeyspace::~PTCreateKeyspace() {
 }
 
-CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
+Status PTCreateKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
                               strings::Substitute("$0 is a reserved keyspace name",

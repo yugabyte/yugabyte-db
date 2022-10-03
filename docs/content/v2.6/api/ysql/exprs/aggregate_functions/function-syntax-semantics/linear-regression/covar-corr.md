@@ -8,8 +8,7 @@ menu:
     identifier: covar-corr
     parent: linear-regression
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes these aggregate functions for linear regression analysis:
@@ -253,7 +252,3 @@ This is a typical result:
  covar_samp_y_x:   4206.47060150
  corr_y_x:            0.99042034
 ```
-
-
-
-

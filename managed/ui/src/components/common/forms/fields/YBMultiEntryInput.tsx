@@ -8,10 +8,12 @@
  */
 
 import React, { FC, useRef, useState } from 'react';
-import { find, isFunction } from 'lodash';
+import { find, get, isFunction } from 'lodash';
 
 import CreatableSelect from 'react-select/creatable';
 import { Props, SelectComponentsConfig, Styles } from 'react-select';
+import { YBLabel } from '../../descriptors';
+import { isNonEmptyObject, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 interface Option {
   readonly label: string;
@@ -109,3 +111,38 @@ export const YBMultiEntryInput: FC<YBMultiEntryInputProps> = ({
     />
   );
 };
+
+export const YBLabelledMultiEntryInput : FC<YBMultiEntryInputProps & {label:string, meta: any, form: any, field: any}> = ({label, meta, form, field, ...rest}) => {
+
+  let errorMsg;
+  let hasError = false;
+  let touched;
+  if (isNonEmptyObject(meta)) {
+    touched = meta.touched;
+    errorMsg = meta.error;
+    hasError = errorMsg && touched;
+  } else if (isNonEmptyObject(form)) {
+    // In case for Formik field, touched might be undefined but when
+    // form validation happens it can have errors.
+    // Using lodash to get in case of nested arrays and objects
+    errorMsg = get(form.errors, field.name);
+    touched = get(form.touched, field.name) || form.submitCount > 0;
+    hasError = touched && isNonEmptyString(errorMsg);
+  }
+  return (
+    <YBLabel
+    label={label}
+   
+  >
+    <YBMultiEntryInput styles={{ menu: provided => ({ ...provided, zIndex: 2 }) }} {...rest}/>
+    {hasError && (
+            <div
+              className={`help-block standard-error`}
+              data-testid="yb-label-validation-error"
+            >
+              <span className='field-error'>{errorMsg}</span>
+            </div>
+          )}
+    </YBLabel>
+  )
+}

@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_composite_type ::= CREATE TYPE type_name AS ( 
                           [ composite_type_elem [ , ... ] ] )
 

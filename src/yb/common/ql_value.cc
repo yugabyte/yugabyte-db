@@ -55,6 +55,9 @@ static int GenericCompare(const T& lhs, const T& rhs) {
   return 0;
 }
 
+template <class PB>
+int TupleCompare(const PB& lhs, const PB& rhs);
+
 //------------------------- instance methods for abstract QLValue class -----------------------
 
 int QLValue::CompareTo(const QLValue& other) const {
@@ -109,6 +112,8 @@ int QLValue::CompareTo(const QLValue& other) const {
     case InternalType::kFrozenValue: {
       return Compare(frozen_value(), other.frozen_value());
     }
+    case InternalType::kTupleValue:
+      return TupleCompare(tuple_value(), other.tuple_value());
     case InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case InternalType::kSetValue: FALLTHROUGH_INTENDED;
     case InternalType::kListValue:
@@ -240,6 +245,7 @@ void DoAppendToKey(const PB& value_pb, string* bytes) {
     case InternalType::kMapValue: FALLTHROUGH_INTENDED;
     case InternalType::kSetValue: FALLTHROUGH_INTENDED;
     case InternalType::kListValue: FALLTHROUGH_INTENDED;
+    case InternalType::kTupleValue: FALLTHROUGH_INTENDED;
     case InternalType::kJsonbValue:
       LOG(FATAL) << "Runtime error: This datatype("
                  << int(value_pb.value_case())
@@ -519,6 +525,19 @@ Status QLValue::Deserialize(
       break;
     }
 
+    case TUPLE: {
+      set_tuple_value();
+      size_t num_elems = ql_type->params().size();
+      for (size_t i = 0; i < num_elems; ++i) {
+        const shared_ptr<QLType>& elem_type = ql_type->param_type(i);
+        QLValue elem;
+        RETURN_NOT_OK(elem.Deserialize(elem_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
+        *add_tuple_elem() = std::move(*elem.mutable_value());
+      }
+      return Status::OK();
+    }
+
     QL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
@@ -635,6 +654,20 @@ string QLValue::ToValueString(const QuotesType quotes_type) const {
       }
     }
 
+    case InternalType::kTupleValue: {
+      std::stringstream ss;
+      QLSeqValuePB tuple = tuple_value();
+      ss << "(";
+      for (int i = 0; i < tuple.elems_size(); i++) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << QLValue(tuple.elems(i)).ToString();
+      }
+      ss << ")";
+      return ss.str();
+    }
+
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       return "null";
@@ -677,6 +710,7 @@ string QLValue::ToString() const {
     case InternalType::kListValue: res = "list:"; break;
     case InternalType::kFrozenValue: res = "frozen:"; break;
     case InternalType::kVirtualValue: res = ""; break;
+    case InternalType::kTupleValue: res = "tuple:"; break;
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -762,7 +796,7 @@ void QLValue::set_timeuuid_value(const Uuid& val) {
 }
 
 template<typename num_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeNum(
+Status QLValue::CQLDeserializeNum(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
     Slice* data) {
   num_type value = 0;
@@ -772,7 +806,7 @@ CHECKED_STATUS QLValue::CQLDeserializeNum(
 }
 
 template<typename float_type, typename data_type>
-CHECKED_STATUS QLValue::CQLDeserializeFloat(
+Status QLValue::CQLDeserializeFloat(
     size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
     Slice* data) {
   float_type value = 0.0;
@@ -909,6 +943,69 @@ bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
   return IsNull(lhs) && rhs.IsNull();
 }
 
+vector<QLValuePB> SortTuplesbyOrdering(
+    const QLSeqValuePB& options, const std::vector<bool>& reverse) {
+  vector<QLValuePB> tuples{options.elems().begin(), options.elems().end()};
+  std::sort(tuples.begin(), tuples.end(), [reverse](const auto& t1, const auto& t2) {
+    DCHECK(t1.has_tuple_value());
+    DCHECK(t2.has_tuple_value());
+    const auto& tuple1 = t1.tuple_value();
+    const auto& tuple2 = t2.tuple_value();
+    DCHECK(tuple1.elems().size() == tuple2.elems().size());
+    auto li = tuple1.elems().begin();
+    auto ri = tuple2.elems().begin();
+    int i = 0;
+    int cmp = 0;
+    for (i = 0; i < tuple1.elems().size(); ++i, ++li, ++ri) {
+      if (IsNull(*li)) {
+        if (!IsNull(*ri)) {
+          cmp = 1;
+          break;
+        }
+      } else {
+        if (IsNull(*ri)) {
+          cmp = 0;
+          break;
+        }
+        int result = Compare(*li, *ri);
+        if (result != 0) {
+          cmp = (result < 0);
+          break;
+        }
+      }
+    }
+
+    if (i != tuple1.elems().size() && reverse[i]) {
+      cmp = cmp ^ 1;
+    }
+    return cmp;
+  });
+  return tuples;
+}
+
+template <class PB>
+int TupleCompare(const PB& lhs_tuple, const PB& rhs_tuple) {
+  DCHECK(lhs_tuple.elems().size() == rhs_tuple.elems().size());
+  auto li = lhs_tuple.elems().begin();
+  auto ri = rhs_tuple.elems().begin();
+  for (auto i = lhs_tuple.elems().size(); i > 0; --i, ++li, ++ri) {
+    if (IsNull(*li)) {
+      if (!IsNull(*ri)) {
+        return -1;
+      }
+    } else {
+      if (IsNull(*ri)) {
+        return 1;
+      }
+      int result = Compare(*li, *ri);
+      if (result != 0) {
+        return result;
+      }
+    }
+  }
+  return 0;
+}
+
 template <class Seq>
 int SeqCompare(const Seq& lhs, const Seq& rhs) {
   // Compare elements one by one.
@@ -986,6 +1083,8 @@ int DoCompare(const PB& lhs, const PB& rhs) {
       return GenericCompare(QLValue::timeuuid_value(lhs), QLValue::timeuuid_value(rhs));
     case QLValuePB::kFrozenValue:
       return SeqCompare(lhs.frozen_value(), rhs.frozen_value());
+    case QLValuePB::kTupleValue:
+      return TupleCompare(lhs.tuple_value(), rhs.tuple_value());
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:
@@ -1011,7 +1110,6 @@ int DoCompare(const PB& lhs, const PB& rhs) {
   LOG(FATAL) << "Internal error: unknown or unsupported type " << lhs.value_case();
   return 0;
 }
-
 
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
   return DoCompare(lhs, rhs);
@@ -1072,6 +1170,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
       return GenericCompare(QLValue::timeuuid_value(lhs), rhs.timeuuid_value());
     case QLValuePB::kFrozenValue:
       return Compare(lhs.frozen_value(), rhs.frozen_value());
+    case QLValuePB::kTupleValue:
+      return TupleCompare(lhs.tuple_value(), rhs.tuple_value());
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case QLValuePB::kListValue:

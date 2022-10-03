@@ -364,7 +364,7 @@ void AppendFieldTitle(const char* name, const char* suffix, bool* first, std::st
   *out += suffix;
 }
 
-CHECKED_STATUS ParseFailed(const char* field_name) {
+Status ParseFailed(const char* field_name) {
   return STATUS_FORMAT(Corruption, "Failed to parse '$0'", field_name);
 }
 

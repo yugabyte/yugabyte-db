@@ -8,8 +8,7 @@ menu:
     identifier: sportsdb
     parent: sample-data
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the YugabyteDB distributed SQL database and explore statistics for your favorite sport.

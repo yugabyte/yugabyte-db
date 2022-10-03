@@ -122,80 +122,77 @@ CREATE TEXT SEARCH DICTIONARY thesaurus (
 
 SELECT ts_lexize('thesaurus', 'one');
 
--- Don't enable AlterTSConfigurationStmt for now.
--- Uncommet these tests once AlterTSConfigurationStmt are supported.
--- 
 -- Test ispell dictionary in configuration
--- CREATE TEXT SEARCH CONFIGURATION ispell_tst (
--- 						COPY=english
--- );
+CREATE TEXT SEARCH CONFIGURATION ispell_tst (
+						COPY=english
+);
 
--- ALTER TEXT SEARCH CONFIGURATION ispell_tst ALTER MAPPING FOR
--- 	word, numword, asciiword, hword, numhword, asciihword, hword_part, hword_numpart, hword_asciipart
--- 	WITH ispell, english_stem;
+ALTER TEXT SEARCH CONFIGURATION ispell_tst ALTER MAPPING FOR
+	word, numword, asciiword, hword, numhword, asciihword, hword_part, hword_numpart, hword_asciipart
+	WITH ispell, english_stem;
 
--- SELECT to_tsvector('ispell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
--- SELECT to_tsquery('ispell_tst', 'footballklubber');
--- SELECT to_tsquery('ispell_tst', 'footballyklubber:b & rebookings:A & sky');
+SELECT to_tsvector('ispell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
+SELECT to_tsquery('ispell_tst', 'footballklubber');
+SELECT to_tsquery('ispell_tst', 'footballyklubber:b & rebookings:A & sky');
 
 -- Test ispell dictionary with hunspell affix in configuration
--- CREATE TEXT SEARCH CONFIGURATION hunspell_tst (
--- 						COPY=ispell_tst
--- );
+CREATE TEXT SEARCH CONFIGURATION hunspell_tst (
+						COPY=ispell_tst
+);
 
--- ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
--- 	REPLACE ispell WITH hunspell;
+ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
+	REPLACE ispell WITH hunspell;
 
--- SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
--- SELECT to_tsquery('hunspell_tst', 'footballklubber');
--- SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
+SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
+SELECT to_tsquery('hunspell_tst', 'footballklubber');
+SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
 
--- SELECT to_tsquery('hunspell_tst', 'footballyklubber:b <-> sky');
--- SELECT phraseto_tsquery('hunspell_tst', 'footballyklubber sky');
+SELECT to_tsquery('hunspell_tst', 'footballyklubber:b <-> sky');
+SELECT phraseto_tsquery('hunspell_tst', 'footballyklubber sky');
 
 -- Test ispell dictionary with hunspell affix with FLAG long in configuration
--- ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
--- 	REPLACE hunspell WITH hunspell_long;
+ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
+	REPLACE hunspell WITH hunspell_long;
 
--- SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
--- SELECT to_tsquery('hunspell_tst', 'footballklubber');
--- SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
+SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
+SELECT to_tsquery('hunspell_tst', 'footballklubber');
+SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
 
 -- Test ispell dictionary with hunspell affix with FLAG num in configuration
--- ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
--- 	REPLACE hunspell_long WITH hunspell_num;
+ALTER TEXT SEARCH CONFIGURATION hunspell_tst ALTER MAPPING
+	REPLACE hunspell_long WITH hunspell_num;
 
--- SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
--- SELECT to_tsquery('hunspell_tst', 'footballklubber');
--- SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
+SELECT to_tsvector('hunspell_tst', 'Booking the skies after rebookings for footballklubber from a foot');
+SELECT to_tsquery('hunspell_tst', 'footballklubber');
+SELECT to_tsquery('hunspell_tst', 'footballyklubber:b & rebookings:A & sky');
 
 -- Test synonym dictionary in configuration
--- CREATE TEXT SEARCH CONFIGURATION synonym_tst (
--- 						COPY=english
--- );
+CREATE TEXT SEARCH CONFIGURATION synonym_tst (
+						COPY=english
+);
 
--- ALTER TEXT SEARCH CONFIGURATION synonym_tst ALTER MAPPING FOR
--- 	asciiword, hword_asciipart, asciihword
--- 	WITH synonym, english_stem;
+ALTER TEXT SEARCH CONFIGURATION synonym_tst ALTER MAPPING FOR
+	asciiword, hword_asciipart, asciihword
+	WITH synonym, english_stem;
 
--- SELECT to_tsvector('synonym_tst', 'Postgresql is often called as postgres or pgsql and pronounced as postgre');
--- SELECT to_tsvector('synonym_tst', 'Most common mistake is to write Gogle instead of Google');
--- SELECT to_tsvector('synonym_tst', 'Indexes or indices - Which is right plural form of index?');
--- SELECT to_tsquery('synonym_tst', 'Index & indices');
+SELECT to_tsvector('synonym_tst', 'Postgresql is often called as postgres or pgsql and pronounced as postgre');
+SELECT to_tsvector('synonym_tst', 'Most common mistake is to write Gogle instead of Google');
+SELECT to_tsvector('synonym_tst', 'Indexes or indices - Which is right plural form of index?');
+SELECT to_tsquery('synonym_tst', 'Index & indices');
 
 -- test thesaurus in configuration
 -- see thesaurus_sample.ths to understand 'odd' resulting tsvector
--- CREATE TEXT SEARCH CONFIGURATION thesaurus_tst (
--- 						COPY=synonym_tst
--- );
+CREATE TEXT SEARCH CONFIGURATION thesaurus_tst (
+						COPY=synonym_tst
+);
 
--- ALTER TEXT SEARCH CONFIGURATION thesaurus_tst ALTER MAPPING FOR
--- 	asciiword, hword_asciipart, asciihword
--- 	WITH synonym, thesaurus, english_stem;
+ALTER TEXT SEARCH CONFIGURATION thesaurus_tst ALTER MAPPING FOR
+	asciiword, hword_asciipart, asciihword
+	WITH synonym, thesaurus, english_stem;
 
--- SELECT to_tsvector('thesaurus_tst', 'one postgres one two one two three one');
--- SELECT to_tsvector('thesaurus_tst', 'Supernovae star is very new star and usually called supernovae (abbreviation SN)');
--- SELECT to_tsvector('thesaurus_tst', 'Booking tickets is looking like a booking a tickets');
+SELECT to_tsvector('thesaurus_tst', 'one postgres one two one two three one');
+SELECT to_tsvector('thesaurus_tst', 'Supernovae star is very new star and usually called supernovae (abbreviation SN)');
+SELECT to_tsvector('thesaurus_tst', 'Booking tickets is looking like a booking a tickets');
 
 -- invalid: non-lowercase quoted identifiers
 CREATE TEXT SEARCH DICTIONARY tsdict_case

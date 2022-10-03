@@ -58,9 +58,9 @@ class RemoteYsckTabletServer : public YsckTabletServer {
                                   const HostPort& address,
                                   rpc::ProxyCache* proxy_cache);
 
-  CHECKED_STATUS Connect() const override;
+  Status Connect() const override;
 
-  CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const override;
+  Status CurrentHybridTime(uint64_t* hybrid_time) const override;
 
   void RunTabletChecksumScanAsync(
       const std::string& tablet_id,
@@ -82,31 +82,31 @@ class RemoteYsckTabletServer : public YsckTabletServer {
 // This implementation connects to a Master via RPC.
 class RemoteYsckMaster : public YsckMaster {
  public:
-  static CHECKED_STATUS Build(const HostPort& address, std::shared_ptr<YsckMaster>* master);
+  static Status Build(const HostPort& address, std::shared_ptr<YsckMaster>* master);
 
   virtual ~RemoteYsckMaster();
 
-  virtual CHECKED_STATUS Connect() const override;
+  virtual Status Connect() const override;
 
-  virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) override;
+  virtual Status RetrieveTabletServers(TSMap* tablet_servers) override;
 
-  virtual CHECKED_STATUS RetrieveTablesList(
+  virtual Status RetrieveTablesList(
       std::vector<std::shared_ptr<YsckTable> >* tables) override;
 
-  virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) override;
+  virtual Status RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) override;
 
  private:
   explicit RemoteYsckMaster(
       const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger);
 
-  CHECKED_STATUS GetTableInfo(
+  Status GetTableInfo(
       const TableId& table_id, Schema* schema, int* num_replicas, bool* is_pg_table);
 
   // Used to get a batch of tablets from the master, passing a pointer to the
   // seen last key that will be used as the new start key. The
   // last_partition_key is updated to point at the new last key that came in
   // the batch.
-  CHECKED_STATUS GetTabletsBatch(
+  Status GetTabletsBatch(
       const TableId& table_id,
       const client::YBTableName& table_name,
       std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,

@@ -1,18 +1,18 @@
 ---
-title: Upgrade Yugabyte Platform
-headerTitle: Upgrade Yugabyte Platform
-linkTitle: Upgrade Yugabyte Platform
-description: Upgrade Yugabyte Platform.
+title: Upgrade YugabyteDB Anywhere
+headerTitle: Upgrade YugabyteDB Anywhere
+linkTitle: Upgrade
+description: Upgrade YugabyteDB Anywhere.
 image: /images/section_icons/manage/enterprise.png
-type: page
-section: YUGABYTE PLATFORM
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: upgrade
     weight: 649
+type: indexpage
 ---
 
-You can upgrade Yugabyte Platform to a newer version.
+You can upgrade YugabyteDB Anywhere to a newer version.
 
 <div class="row">
 
@@ -20,13 +20,25 @@ You can upgrade Yugabyte Platform to a newer version.
     <a class="section-link icon-offset" href="upgrade-yp-replicated/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Upgrade Yugabyte Platform using Replicated</div>
+        <div class="title">Upgrade using Replicated</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade Yugabyte Platform 
+        Use Replicated to upgrade YugabyteDB Anywhere
+      </div>
+    </a>
+  </div>
+
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="upgrade-yp-kubernetes/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Upgrade the Kubernetes installation</div>
+      </div>
+      <div class="body">
+        Upgrade YugabyteDB Anywhere installed on Kubernetes
       </div>
     </a>
   </div>
 
 </div>
-

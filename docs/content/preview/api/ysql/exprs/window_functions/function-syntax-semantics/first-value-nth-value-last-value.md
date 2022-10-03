@@ -8,8 +8,7 @@ menu:
     identifier: first-value-nth-value-last-value
     parent: window-function-syntax-semantics
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These three window functions fall into the second group, [Window functions that return column(s) of another row within the window](../#window-functions-that-return-column-s-of-another-row-within-the-window) in the section [List of all window functions](../#list-of-all-window-functions). Each of the functions in the second group makes obvious sense when the scope within which the specified row is found is the entire [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). Only this use will be described here. When used this way, each of these functions, as their names suggest, return the same result for each row in the current [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). See  [Examples that illustrate all three functions](#examples-that-illustrate-all-three-functions) below.

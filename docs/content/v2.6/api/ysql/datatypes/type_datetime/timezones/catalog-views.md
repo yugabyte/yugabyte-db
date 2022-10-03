@@ -8,8 +8,7 @@ menu:
     identifier: catalog-views
     parent: timezones
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are just two relevant catalog views:
@@ -79,7 +78,7 @@ select
 This is the result:
 
 ```output
-      timezone       | January regime | July regime 
+      timezone       | January regime | July regime
 ---------------------+----------------+-------------
  America/Los_Angeles | -08 : PST      | -07 : PDT
 ```
@@ -150,7 +149,7 @@ order by name;
 This is the result:
 
 ```output
-        name         | jan_abbrev | jul_abbrev | jan_offset | jul_offset 
+        name         | jan_abbrev | jul_abbrev | jan_offset | jul_offset
 ---------------------+------------+------------+------------+------------
  America/Los_Angeles | PST        | PDT        | -08:00:00  | -07:00:00
  Europe/London       | GMT        | BST        |  00:00:00  |  01:00:00
@@ -200,7 +199,7 @@ order by abbrev;
 This is the result:
 
 ```output
- abbrev | utc_offset | is_dst 
+ abbrev | utc_offset | is_dst
 --------+------------+--------
  PDT    | -07:00:00  | true
  PST    | -08:00:00  | false
@@ -264,7 +263,7 @@ This is the result:
 ```plpgsql
 select name from pg_timezone_names
 where name in (
-  select abbrev from pg_timezone_abbrevs) 
+  select abbrev from pg_timezone_abbrevs)
 order by name;
 ```
 
@@ -312,7 +311,7 @@ order by abbrev;
 This is the result:
 
 ```output
- abbrev | UTC offset 
+ abbrev | UTC offset
 --------+------------
  CAT    |  02:00:00
  CDT    | -04:00:00
@@ -378,7 +377,7 @@ order by abbrev, utc_offset;
 This is the result:
 
 ```output
- abbrev | UTC offset 
+ abbrev | UTC offset
 --------+------------
  CDT    | -05:00:00
  CDT    | -04:00:00
@@ -416,7 +415,7 @@ order by jan_offset;
 This is the result:
 
 ```output
-         name         | jan_abbrev | jul_abbrev | Jan offset | Jul offset 
+         name         | jan_abbrev | jul_abbrev | Jan offset | Jul offset
 ----------------------+------------+------------+------------+------------
  Canada/Yukon         | PST        | PDT        | -08:00:00  | -07:00:00
  America/Santa_Isabel | PST        | PDT        | -08:00:00  | -07:00:00
@@ -457,7 +456,7 @@ order by jan_offset;
 This is the result:
 
 ```output
-      name      | jan_abbrev | jul_abbrev | Jan offset | Jul offset 
+      name      | jan_abbrev | jul_abbrev | Jan offset | Jul offset
 ----------------+------------+------------+------------+------------
  Europe/Dublin  | GMT        | IST        |  00:00:00  |  01:00:00
  Eire           | GMT        | IST        |  00:00:00  |  01:00:00
@@ -489,7 +488,7 @@ order by abbrev, utc_offset;
 This is the result:
 
 ```output
- abbrev | UTC offset 
+ abbrev | UTC offset
 --------+------------
  CDT    | -05:00:00
  CST    | -06:00:00

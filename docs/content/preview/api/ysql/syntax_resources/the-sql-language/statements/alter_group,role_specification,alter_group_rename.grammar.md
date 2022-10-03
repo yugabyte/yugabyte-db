@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_group ::= ALTER GROUP role_specification { ADD | DROP } USER 
                 role_name [ , ... ]
 

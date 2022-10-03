@@ -94,7 +94,9 @@ class ReleaseUtil(object):
         return self.release_manifest
 
     def get_seed_executable_patterns(self) -> List[str]:
-        return cast(List[str], self.release_manifest['bin'])
+        return cast(
+            List[str],
+            self.release_manifest['bin'])
 
     def expand_value(self, old_value: str) -> str:
         """
@@ -203,10 +205,10 @@ class ReleaseUtil(object):
             self.build_type
         ]
         compiler_type = get_compiler_type_from_build_root(self.build_root)
-        # Make the clang12 release package the default, and append the compiler type for all other
+        # Make Clang-based release packages the default, and append the compiler type for all other
         # compiler types so we can still use them with the appropriate support from the downstream
         # tooling.
-        if compiler_type != 'clang12':
+        if compiler_type not in ['clang12', 'clang13']:
             components.append(compiler_type)
         release_name = "-".join(components)
 
@@ -262,7 +264,7 @@ class ReleaseUtil(object):
             change_permissions('a+X')
             logging.info("Creating a package '%s' from directory %s",
                          release_file, tmp_distribution_dir)
-            run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
+            run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
                         cwd=tmp_parent_dir)
             return release_file
         finally:

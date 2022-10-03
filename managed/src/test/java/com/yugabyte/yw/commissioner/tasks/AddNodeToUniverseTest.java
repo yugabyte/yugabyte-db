@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode.HA_ONLY;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
@@ -30,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -62,6 +64,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
+import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -83,10 +86,15 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(defaultUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
     setDefaultNodeState(onPremUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
 
+    // WaitForTServerHeartBeats mock.
+    ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
+    when(mockResponse.getTabletServersCount()).thenReturn(7);
+
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+      when(mockClient.listTabletServers()).thenReturn(mockResponse);
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
@@ -149,6 +157,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     taskParams.nodeName = nodeName;
     taskParams.universeUUID = universe.universeUUID;
     taskParams.azUuid = AvailabilityZone.getByCode(provider, AZ_CODE).uuid;
+    taskParams.creatingUser = defaultUser;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
       CustomerTask.create(
@@ -167,6 +176,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> ADD_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.InstanceExistCheck,
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
@@ -176,18 +186,21 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -200,7 +213,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeState,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -208,6 +223,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -219,10 +235,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -231,6 +250,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.InstanceExistCheck,
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
@@ -245,6 +265,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
           TaskType.WaitForLoadBalance,
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
@@ -255,6 +276,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "ToJoinCluster")),
@@ -266,6 +288,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -307,6 +330,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   public void testAddNodeSuccess(boolean isHAConfig) throws Exception {
 
     if (isHAConfig) {
+      SettableRuntimeConfigFactory factory =
+          app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+      factory.globalRuntimeConf().setValue("yb.universe_version_check_mode", HA_ONLY.name());
       HighAvailabilityConfig.create("clusterKey");
     }
     mockWaits(mockClient, 3);
@@ -315,7 +341,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.universeUUID, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -340,7 +366,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.universeUUID, onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -355,7 +381,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.universeUUID, onPremProvider, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -391,7 +417,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(14)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -419,7 +445,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(14)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -446,7 +472,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.universeUUID, "yb-tserver-0", 5);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

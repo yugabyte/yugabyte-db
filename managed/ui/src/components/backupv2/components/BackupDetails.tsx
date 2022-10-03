@@ -10,7 +10,7 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, Keyspace_Table, TableType } from '..';
+import { Backup_States, IBackup, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import {
@@ -20,7 +20,7 @@ import {
 } from '../common/BackupUtils';
 import { YCQLTableList, YSQLTableList } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { TABLE_TYPE_MAP } from '../common/IBackup';
+import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 import { isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useQuery } from 'react-query';
@@ -143,7 +143,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             <div className="details-rest">
               <div>
                 <div className="header-text">Backup Type</div>
-                <div>{backup_details.backupType ? 'On Demand' : 'Scheduled'}</div>
+                <div>{backup_details.onDemand ? 'On Demand' : 'Scheduled'}</div>
               </div>
               <div>
                 <div className="header-text">Table Type</div>

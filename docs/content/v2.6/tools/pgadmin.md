@@ -8,8 +8,7 @@ menu:
     identifier: pgadmin
     parent: tools
     weight: 2730
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [pgAdmin](https://pgadmin.org) is an open source administration and management tool for PostgreSQL database. Because YugabyteDB is PostgreSQL-compatible, you can also use pgAdmin to work with YugabyteDB.

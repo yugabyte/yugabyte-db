@@ -6,12 +6,11 @@ description: Configure the on-premises cloud provider.
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -93,22 +92,22 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
   - Sudo user requires a password.
   - The SSH user is not a sudo user.
 
-- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances. 
+- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
 
-  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`. 
+  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
 
 - Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-- Optionally, you may enable **Advanced** and complete the following: 
+- Optionally, you may enable **Advanced** and complete the following:
 
   - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
   - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
   - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
   - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-  
+
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
   - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
@@ -129,7 +128,7 @@ Complete the **Regions and Zones** fields, as per the following illustration, to
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
-<br><br>YugabyteDB Anywhere will use these values during the universe creation.
+YugabyteDB Anywhere will use these values during the universe creation.
 
 ## Add YugabyteDB nodes
 
@@ -158,7 +157,7 @@ You can manually provision each node using the preprovisioning Python script, as
 
 1. Login to YugabyteDB Anywhere virtual machine via SSH.
 
-1. Access the docker `yugaware` container, as follows:
+1. Access the Docker `yugaware` container, as follows:
 
     ```sh
     sudo docker exec -it yugaware bash
@@ -235,33 +234,31 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
-1. Add the following line to `/etc/chrony.conf` (sudo is required):
+1. Add the following line to the `/etc/chrony.conf` file:
 
     ```text
     server <your-time-server-IP-address> prefer iburst
     ```
 
-    <br>Then, run the following command:
+    Then run the following command:
 
     ```sh
     sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-1. Add a new `yugabyte:yugabyte` user and group (sudo is required):
+1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
-    ```sh
-    sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
+    ```bash
+    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+    Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
-
-    \
-    This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
-
+This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
+   
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
@@ -290,33 +287,30 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     *                -       locks           unlimited
     ```
 
-1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file (sudo is required):
+1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file:
 
     ```text
     *          soft    nproc     12000
     ```
 
-1. Install the rsync and OpenSSL packages (sudo is required).
-
-    \
-    Note that most Linux distributions include rsync and OpenSSL. If your distribution is missing these packages, install them using the following commands:
+1. Install the rsync, OpenSSL, and xxHash packages (if not already included with your Linux distribution) using the following commands:
 
     ```sh
     sudo yum install openssl
     sudo yum install rsync
+    sudo yum install xxhash
     ```
+    
 
-    \
-    For airgapped environments, make sure your Yum repository mirror contains these packages.
-
-1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
+For airgapped environments, make sure your Yum repository mirror contains these packages.    
+1. If running on a virtual machine, execute the following to tune kernel settings:
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
     sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
     ```
 
-1. Perform the following to prepare and mount the data volume (separate partition for database data) (sudo is required):
+1. Perform the following to prepare and mount the data volume (separate partition for database data):
 
     * List the available storage volumes, as follows:
 
@@ -348,40 +342,32 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 ##### Install Prometheus node exporter
 
-For YugabyteDB Anywhere versions 2.8 and later, download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
 ```
 
-For YugabyteDB Anywhere versions prior to 2.8, download the 0.13.0 version of the exporter, as follows:
-
-```sh
-$ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
-```
-
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
-
-Note that the instructions are for the 0.13.0 version. The same instructions are applicable to the 1.3.1 version, but you need to use the correct file name.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-....tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
-1. Run the following commands (sudo required):
+1. Run the following commands:
 
     ```sh
     sudo mkdir /opt/prometheus
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-0.13.0.linux-amd64.tar  /opt/prometheus
-    sudo adduser prometheus # (also adds group “prometheus”)
+    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
+    sudo adduser --shell /bin/bash prometheus # (also adds group “prometheus”)
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-0.13.0.linux-amd64.tar
+    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
     sudo su - prometheus (user session is now as user “prometheus”)
     ```
 
@@ -389,20 +375,20 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
+    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
-1. Edit the following file (sudo required):
+1. Edit the following file:
 
     ```sh
     sudo vi /etc/systemd/system/node_exporter.service
     ```
 
-    \
-    Add the following to `/etc/systemd/system/node_exporter.service`:
+    
+    Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
-      ```conf
+    ```conf
       [Unit]
       Description=node_exporter - Exporter for machine metrics.
       Documentation=https://github.com/William-Yeh/ansible-prometheus
@@ -414,17 +400,14 @@ On each node, perform the following as a user with sudo access:
       [Service]
       Type=simple
 
-      #ExecStartPre=/bin/sh -c  " mkdir -p '/var/run/prometheus' '/var/log/prometheus' "
-      #ExecStartPre=/bin/sh -c  " chown -R prometheus '/var/run/prometheus' '/var/log/prometheus' "
-      #PIDFile=/var/run/prometheus/node_exporter.pid
-
       User=prometheus
       Group=prometheus
-
-      ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
-      ```
-
-1. Exit from vi, and continue, as follows (sudo required):
+      
+      ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+    
+    ```
+    
+1. Exit from vi, and continue, as follows:
 
     ```sh
     sudo systemctl daemon-reload
@@ -579,11 +562,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/master/bin/yb-master
    PathExists=/home/yugabyte/master/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -604,12 +587,12 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
 
-   <br><br>
+   
 
    `yb-tserver.service`
 
@@ -620,11 +603,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/tserver/bin/yb-tserver
    PathExists=/home/yugabyte/tserver/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -645,30 +628,30 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
 
-   <br><br>`yb-zip_purge_yb_logs.service`
+   <br>`yb-zip_purge_yb_logs.service`
 
    ```sh
    [Unit]
    Description=Yugabyte logs
    Wants=yb-zip_purge_yb_logs.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-zip_purge_yb_logs.timer`
 
@@ -676,19 +659,19 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte logs
    Requires=yb-zip_purge_yb_logs.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-zip_purge_yb_logs.service
    # Run hourly at minute 0 (beginning) of every hour
    OnCalendar=00/1:00
-   
+
    [Install]
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.service`
 
@@ -696,19 +679,19 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Wants=yb-clean_cores.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-clean_cores.timer`
 
@@ -716,19 +699,19 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Requires=yb-clean_cores.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-clean_cores.service
    # Run every 10 minutes offset by 5 (5, 15, 25...)
    OnCalendar=*:0/10:30
-   
+
    [Install]
    WantedBy=timers.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.service`
 
@@ -736,19 +719,19 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Wants=yb-collect_metrics.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
 
-   <br><br>
+   <br>
 
    `yb-collect_metrics.timer`
 
@@ -756,21 +739,21 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Requires=yb-collect_metrics.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-collect_metrics.service
    # Run every 1 minute
    OnCalendar=*:0/1:0
-   
+
    [Install]
    WantedBy=timers.target
    ```
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
@@ -790,13 +773,9 @@ You can remove YugabyteDB components and configuration from the database server 
   ./bin/yb-server-ctl.sh clean-instance
   ```
 
-  <br>This removes all YugabyteDB code and settings from the node, removing it from the Universe.
-
-{{< note title="Note" >}}
-
-If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
-
-{{< /note >}}
+  This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+  
+  If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 

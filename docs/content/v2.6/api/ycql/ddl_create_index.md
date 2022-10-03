@@ -8,8 +8,7 @@ menu:
   v2.6:
     parent: api-cassandra
     weight: 1225
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -56,7 +55,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 ```ebnf
 create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
-                     ON table_name ( partition_key_columns [ clustering_key_columns ] )  
+                     ON table_name ( partition_key_columns [ clustering_key_columns ] )
                      [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )

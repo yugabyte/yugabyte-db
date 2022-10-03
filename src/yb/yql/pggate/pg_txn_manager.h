@@ -18,8 +18,6 @@
 
 #include <mutex>
 
-#include "yb/client/client_fwd.h"
-#include "yb/client/transaction.h"
 #include "yb/common/clock.h"
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
@@ -56,30 +54,33 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   virtual ~PgTxnManager();
 
-  CHECKED_STATUS BeginTransaction();
-  CHECKED_STATUS CalculateIsolation(bool read_only_op,
+  Status BeginTransaction();
+  Status CalculateIsolation(bool read_only_op,
                                     TxnPriorityRequirement txn_priority_requirement,
                                     uint64_t* in_txn_limit = nullptr);
-  CHECKED_STATUS RecreateTransaction();
-  CHECKED_STATUS RestartTransaction();
-  CHECKED_STATUS ResetTransactionReadPoint();
-  CHECKED_STATUS RestartReadPoint();
-  CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
-  CHECKED_STATUS SetPgIsolationLevel(int isolation);
+  Status RecreateTransaction();
+  Status RestartTransaction();
+  Status ResetTransactionReadPoint();
+  Status RestartReadPoint();
+  Status CommitTransaction();
+  Status AbortTransaction();
+  Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
-  CHECKED_STATUS SetReadOnly(bool read_only);
-  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
-  CHECKED_STATUS SetDeferrable(bool deferrable);
-  CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(Commit commit);
+  Status SetReadOnly(bool read_only);
+  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status SetDeferrable(bool deferrable);
+  Status EnterSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(Commit commit);
 
   bool IsDdlMode() const { return ddl_mode_; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
   bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
 
-  void SetupPerformOptions(tserver::PgPerformOptionsPB* options);
+  uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
+
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
 
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
@@ -94,7 +95,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  CHECKED_STATUS FinishTransaction(Commit commit);
+  Status FinishTransaction(Commit commit);
 
   // ----------------------------------------------------------------------------------------------
 

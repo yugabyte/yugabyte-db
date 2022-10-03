@@ -5,13 +5,13 @@ linkTitle: Architecture
 description: Learn about the YugabyteDB architecture, including query, transactions, sharding, replication, and storage layers.
 image: /images/section_icons/index/architecture.png
 headcontent: YugabyteDB architecture including the query, transactions, sharding, replication, and storage layers.
-section: REFERENCE
 menu:
   stable:
     identifier: architecture
+    parent: reference
     weight: 1050
+type: indexpage
 ---
-
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -19,7 +19,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/core_features.png" aria-hidden="true" />
         <div class="title">Design Goals</div>
-      </div>git 
+      </div>git
       <div class="body">
           The design goals around which YugabyteDB is built.
       </div>

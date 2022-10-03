@@ -20,7 +20,7 @@ class YBOpsException(Exception):
             type (str): exception type
             message (str): exception message
         """
-        super(YBOpsException, self).__init__(message)
+        super().__init__(message)
         self.type = type
 
     def __str__(self):
@@ -34,7 +34,24 @@ class YBOpsRuntimeError(YBOpsException):
     EXCEPTION_TYPE = "Runtime error"
 
     def __init__(self, message):
-        super(YBOpsRuntimeError, self).__init__(self.EXCEPTION_TYPE, message)
+        super().__init__(self.EXCEPTION_TYPE, message)
+
+
+class YBOpsExitCodeException(YBOpsException):
+    def __init__(self, message):
+        super().__init__("Custom exit code exception", message)
+
+    "override in subclasses"
+    def exitcode(self):
+        return 1
+
+
+class YBOpsRecoverableError(YBOpsExitCodeException):
+    def __init__(self, message):
+        super().__init__(message)
+
+    def exitcode(self):
+        return 3  # also see ShellResponse#ERROR_CODE_RECOVERABLE_ERROR in Java
 
 
 def get_exception_message(exc):

@@ -177,7 +177,7 @@ typedef enum ObjectClass
 	OCLASS_TSCONFIG,			/* pg_ts_config */
 	OCLASS_ROLE,				/* pg_authid */
 	OCLASS_DATABASE,			/* pg_database */
-	OCLASS_TBLGROUP, 			/* pg_tablegroup */
+	OCLASS_TBLGROUP, 			/* pg_yb_tablegroup */
 	OCLASS_TBLSPACE,			/* pg_tablespace */
 	OCLASS_FDW,					/* pg_foreign_data_wrapper */
 	OCLASS_FOREIGN_SERVER,		/* pg_foreign_server */
@@ -251,6 +251,8 @@ extern void recordDependencyOnCurrentExtension(const ObjectAddress *object,
 								   bool isReplace);
 
 extern void YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
+
+extern void checkMembershipInCurrentExtension(const ObjectAddress *object);
 
 extern long deleteDependencyRecordsFor(Oid classId, Oid objectId,
 						   bool skipExtensionDeps);

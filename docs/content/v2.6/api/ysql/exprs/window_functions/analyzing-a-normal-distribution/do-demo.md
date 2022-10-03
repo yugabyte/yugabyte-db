@@ -8,8 +8,7 @@ menu:
     identifier: do-demo
     parent: analyzing-a-normal-distribution
     weight: 170
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_demo.sql`.
 ```plpgsql

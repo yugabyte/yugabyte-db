@@ -42,7 +42,7 @@ void PTInsertValuesClause::Prepend(const PTExprListNode::SharedPtr& tuple) {
   tuples_.Prepend(tuple);
 }
 
-CHECKED_STATUS PTInsertValuesClause::Analyze(SemContext* sem_context) {
+Status PTInsertValuesClause::Analyze(SemContext* sem_context) {
   return Status::OK();
 }
 

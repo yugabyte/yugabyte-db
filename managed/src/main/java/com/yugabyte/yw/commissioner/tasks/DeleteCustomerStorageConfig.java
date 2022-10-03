@@ -2,17 +2,16 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import java.util.List;
 import java.util.UUID;
@@ -47,13 +46,13 @@ public class DeleteCustomerStorageConfig extends AbstractTaskBase {
           customerConfigService.getOrBadRequest(params().customerUUID, params().configUUID);
 
       Schedule.findAllScheduleWithCustomerConfig(params().configUUID)
-          .forEach((schedule) -> schedule.stopSchedule());
+          .forEach(Schedule::stopSchedule);
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
             Backup.findAllNonProgressBackupsWithCustomerConfig(
                 params().configUUID, params().customerUUID);
-        backupList.forEach((backup) -> backup.transitionState(BackupState.QueuedForDeletion));
+        backupList.forEach(backup -> backup.transitionState(BackupState.QueuedForDeletion));
         configValidator.validateConfigRemoval(customerConfig);
       }
       customerConfig.setState(ConfigState.QueuedForDeletion);

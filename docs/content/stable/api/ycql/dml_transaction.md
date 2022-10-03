@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1330
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -32,7 +31,7 @@ transaction_block ::= BEGIN TRANSACTION
 
 Where
 
-- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update), and [DELETE](../dml_delete) statements.
+- `insert`, `update`, and `delete` are [INSERT](../dml_insert), [UPDATE](../dml_update/), and [DELETE](../dml_delete/) statements.
 
 ### ANSI SQL syntax
 
@@ -137,12 +136,12 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 
 {{< note Type="Note" >}}
-`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`. 
+`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
 
 
 ## See also
 
 - [`INSERT`](../dml_insert)
-- [`UPDATE`](../dml_update)
-- [`DELETE`](../dml_delete)
+- [`UPDATE`](../dml_update/)
+- [`DELETE`](../dml_delete/)

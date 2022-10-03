@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/type_jsonb
   - /preview/api/ycql/type_jsonb
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

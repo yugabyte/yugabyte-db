@@ -14,10 +14,10 @@
 #ifndef YB_DOCDB_PACKED_ROW_H
 #define YB_DOCDB_PACKED_ROW_H
 
+#include <optional>
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
 
 #include <google/protobuf/repeated_field.h>
 
@@ -25,6 +25,7 @@
 #include "yb/common/column_id.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
@@ -66,123 +67,44 @@ namespace docdb {
 // The rationale for this format is to have ability to extract column value with O(1) complexity.
 // Also it helps us to avoid storing common data for all rows, and put it to a single schema info.
 
-struct ColumnPackingData {
-  ColumnId id;
-
-  // Number of varlen columns before this one.
-  size_t num_varlen_columns_before;
-
-  // Offset of this column from previous varlen column. I.e. sum of sizes of fixed length columns
-  // after previous varlen column.
-  size_t offset_after_prev_varlen_column;
-
-  // Fixed size of this column, 0 if it is varlen column.
-  size_t size;
-
-  // Whether column is nullable.
-  bool nullable;
-
-  static ColumnPackingData FromPB(const ColumnPackingPB& pb);
-  void ToPB(ColumnPackingPB* out) const;
-
-  bool varlen() const {
-    return size == 0;
-  }
-
-  std::string ToString() const;
-};
-
-class SchemaPacking {
- public:
-  explicit SchemaPacking(const Schema& schema);
-  explicit SchemaPacking(const SchemaPackingPB& pb);
-
-  size_t columns() const {
-    return columns_.size();
-  }
-
-  const ColumnPackingData& column_packing_data(size_t idx) const {
-    return columns_[idx];
-  }
-
-  // Size of prefix before actual data.
-  size_t prefix_len() const {
-    return varlen_columns_count_ * sizeof(uint32_t);
-  }
-
-  size_t varlen_columns_count() const {
-    return varlen_columns_count_;
-  }
-
-  Slice GetValue(size_t idx, const Slice& packed) const;
-  boost::optional<Slice> GetValue(ColumnId column, const Slice& packed) const;
-  void ToPB(SchemaPackingPB* out) const;
-
-  std::string ToString() const;
-
- private:
-  std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, size_t, boost::hash<ColumnId>> column_to_idx_;
-  size_t varlen_columns_count_;
-};
-
-class SchemaPackingStorage {
- public:
-  SchemaPackingStorage();
-  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
-
-  Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
-  Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
-
-  void AddSchema(SchemaVersion version, const Schema& schema);
-
-  CHECKED_STATUS LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
-
-  // Copy all schema packings except schema_version_to_skip to out.
-  void ToPB(
-      SchemaVersion schema_version_to_skip,
-      google::protobuf::RepeatedPtrField<SchemaPackingPB>* out);
-
-  size_t SchemaCount() const {
-    return version_to_schema_packing_.size();
-  }
-
-  bool HasVersionBelow(SchemaVersion version) const;
-
- private:
-  std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
-};
-
 class RowPacker {
  public:
-  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing);
-  explicit RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair)
-      : RowPacker(pair.first, pair.second) {
-  }
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+            size_t packed_size_limit, const ValueControlFields& control_fields);
+
+  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+            size_t packed_size_limit, const Slice& control_fields);
 
   bool Empty() const {
     return idx_ == 0;
   }
 
-  bool Finished() const {
-    return idx_ == packing_.columns();
-  }
+  bool Finished() const;
 
   void Restart();
 
   ColumnId NextColumnId() const;
   Result<const ColumnPackingData&> NextColumnData() const;
 
-  Status AddValue(ColumnId column, const QLValuePB& value);
-  Status AddValue(ColumnId column, const Slice& value);
+  // Returns false when unable to add value due to packed size limit.
+  // tail_size is added to proposed encoded size, to make decision whether encoded value fits
+  // into bounds or not.
+  Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
+  // Add value consisting of 2 parts - value_prefix+value_suffix.
+  Result<bool> AddValue(
+      ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
 
   Result<Slice> Complete();
 
  private:
+  void Init(SchemaVersion version);
+
   template <class Value>
-  Status DoAddValue(ColumnId column, const Value& value);
+  Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
 
   const SchemaPacking& packing_;
+  const ssize_t packed_size_limit_;
   size_t idx_ = 0;
   size_t prefix_end_;
   ValueBuffer result_;

@@ -80,14 +80,11 @@ using consensus::kMinimumTerm;
 using consensus::MakeOpId;
 using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
-using log::Log;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
-using log::ReadableLogSegment;
 using log::AppendSync;
 using server::Clock;
 using server::LogicalClock;
-using tserver::WriteRequestPB;
 
 struct BootstrapReport {
   // OpIds replayed using Play... functions.
@@ -173,26 +170,31 @@ class BootstrapTest : public LogTestBase {
     test_hooks_ = std::make_shared<BootstrapTestHooksImpl>();
   }
 
-  Status LoadTestRaftGroupMetadata(RaftGroupMetadataPtr* meta) {
-    Schema schema = SchemaBuilder(schema_).Build();
+  Result<RaftGroupMetadataPtr> LoadOrCreateTestRaftGroupMetadata() {
+    return LoadOrCreateTestRaftGroupMetadata(schema_);
+  }
+
+  Result<RaftGroupMetadataPtr> LoadOrCreateTestRaftGroupMetadata(const Schema& src_schema) {
+    Schema schema = SchemaBuilder(src_schema).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
     auto table_info = std::make_shared<TableInfo>(
         Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema,
         IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
-    *meta = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
+    auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
       .raft_group_id = log::kTestTablet,
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
+      .snapshot_schedules = {},
     }));
-    return (*meta)->Flush();
+    RETURN_NOT_OK(result->Flush());
+    return result;
   }
 
   Status PersistTestRaftGroupMetadataState(TabletDataState state) {
-    RaftGroupMetadataPtr meta;
-    RETURN_NOT_OK(LoadTestRaftGroupMetadata(&meta));
+    RaftGroupMetadataPtr meta = VERIFY_RESULT(LoadOrCreateTestRaftGroupMetadata());
     meta->set_tablet_data_state(state);
     RETURN_NOT_OK(meta->Flush());
     return Status::OK();
@@ -220,12 +222,19 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
+      .post_split_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = listener.get(),
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
+      .log_sync_pool = log_thread_pool_.get(),
       .retryable_requests = nullptr,
       .test_hooks = test_hooks_
     };
@@ -236,10 +245,8 @@ class BootstrapTest : public LogTestBase {
   Status BootstrapTestTablet(
       TabletPtr* tablet,
       ConsensusBootstrapInfo* boot_info) {
-    RaftGroupMetadataPtr meta;
-    RETURN_NOT_OK_PREPEND(LoadTestRaftGroupMetadata(&meta),
-                          "Unable to load test tablet metadata");
-
+    RaftGroupMetadataPtr meta = VERIFY_RESULT_PREPEND(LoadOrCreateTestRaftGroupMetadata(),
+                                                      "Unable to load test tablet metadata");
     consensus::RaftConfigPB config;
     config.set_opid_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
@@ -337,8 +344,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
 TEST_F(BootstrapTest, TestMissingConsensusMetadata) {
   BuildLog();
 
-  RaftGroupMetadataPtr meta;
-  ASSERT_OK(LoadTestRaftGroupMetadata(&meta));
+  RaftGroupMetadataPtr meta = ASSERT_RESULT(LoadOrCreateTestRaftGroupMetadata());
 
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -827,6 +833,17 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
             }
           }
         }
+        if (index <= intents_flushed_index && op_id >= first_op_id_of_segment_to_replay) {
+          // We replay Update transactions having an APPLY record even if their intents were only
+          // flushed to intents db.
+          if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+            bool replay = batch_data.txn_status == TransactionStatus::APPLYING;
+            if (replay) {
+              replayed.push_back(op_id);
+              replayed_to_intents_only.push_back(op_id);
+            }
+          }
+        }
       } else {
         // This operation was never committed. Mark it as "overwritable", meaning it _could_ be
         // overwritten as part of tablet bootstrap, but is not guaranteed to be.
@@ -947,6 +964,33 @@ TEST_F(BootstrapTest, RandomizedInput) {
     }
     LOG(INFO) << "Test iteration " << iteration << " has succeeded";
   }
+}
+
+// Test that various metadata aspects remains the same when created from scratch and
+// when loaded from disk.
+TEST_F(BootstrapTest, ColocatedSchemaBoostrap) {
+  ColocationId colocation_id = 123456789;
+  Schema schema{
+      {
+          ColumnSchema("key", INT32, false, true),
+          ColumnSchema("int_val", INT32),
+          ColumnSchema("string_val", STRING, true)
+      },
+      1,
+      TableProperties(),
+      Uuid::Nil(),
+      colocation_id,
+      "test_pg_schema"
+  };
+  RaftGroupMetadataPtr meta_created = ASSERT_RESULT(LoadOrCreateTestRaftGroupMetadata(schema));
+  RaftGroupMetadataPtr meta_loaded = ASSERT_RESULT(LoadOrCreateTestRaftGroupMetadata(schema));
+
+  const auto& kv_store_created = meta_created->TEST_kv_store();
+  const auto& kv_store_loaded = meta_loaded->TEST_kv_store();
+  ASSERT_TRUE(KvStoreInfo::TEST_Equals(kv_store_created, kv_store_loaded));
+
+  ASSERT_EQ(kv_store_created.colocation_to_table.size(), 1);
+  ASSERT_EQ(kv_store_created.colocation_to_table.begin()->first, colocation_id);
 }
 
 } // namespace tablet

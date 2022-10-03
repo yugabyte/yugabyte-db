@@ -2,16 +2,14 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application with the Yugabyte JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application with the YugabyteDB JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   stable:
     parent: build-apps
     name: Java
     identifier: java-1
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -35,15 +33,27 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="../ysql-hibernate/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Hibernate
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-sdyb/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data YugabyteDB
+    </a>
+  </li>
+  <li >
     <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
-   <li>
-    <a href="../ysql-ebeans/" class="nav-link">
+  <li>
+    <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebeans
+      YSQL - Ebean
     </a>
   </li>
   <li>
@@ -125,7 +135,7 @@ This tutorial assumes that:
 
 ## Create the sample Java application
 
-You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
 ### Uniform load balancing
 
@@ -345,4 +355,4 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
 
 ## Explore the driver
 
-Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.
+Learn more about the [YugabyteDB JDBC driver](../../../../reference/drivers/java/yugabyte-jdbc-reference/) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

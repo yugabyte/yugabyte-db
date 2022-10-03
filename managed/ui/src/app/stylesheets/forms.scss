@@ -24,6 +24,124 @@
   }
 }
 
+.login-form {
+  .dark-form-heading {
+    .logo {
+      height: 52px !important;
+      width: 276px !important;
+      margin-bottom: 8px !important;
+    }
+    span {
+      color: $YB_LOGO_SUB !important;
+      font-size: 18px;
+      font-weight: 700;
+      font-family: 'Inter';
+      letter-spacing: normal;
+    }
+  }
+
+  .align-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .yba-version {
+    margin: 24px 0px;
+    color: #E5E5E9 !important;
+    font-size: 12px;
+  }
+
+  .link-text {
+    text-decoration: underline;
+    cursor: pointer;
+    margin: 24px 0px;
+    color: #d5d5d9 !important;
+  }
+
+  .form-title {
+    margin: 40px 0px 20px 0px;
+    color: #d5d5d9 !important;
+  }
+
+  .login-btns {
+    width: 153px;
+    height: 40px;
+    font-size: 15px;
+    font-weight: 500;
+    margin-top: 0px !important;
+  }
+
+  .login-input-box {
+    width: 450px;
+    text-align: left;
+    padding: 12px 24px;
+    background-color: #313248 !important;
+    border: none !important;
+  }
+
+  input:placeholder-shown,
+  input::placeholder {
+    font-weight: 400 !important;
+    font-size: 13px !important;
+    color: #d5d5d9 !important;
+  }
+
+  .standard-error {
+    display: none !important;
+  }
+
+  .yb-field-group {
+    padding-bottom: 24px !important;
+  }
+
+  .login-fields {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 24px;
+  }
+
+  .divider-c {
+    display: flex;
+    width: 100%;
+    margin: 24px 0px 40px 0px;
+    justify-content: center;
+  }
+
+  .divider-ic {
+    display: flex;
+    width: 450px;
+    align-items: center;
+  }
+
+  .divider {
+    height: 1px;
+    background-color: #67666c;
+  }
+}
+
+.mr-2 {
+  margin-right: 16px !important;
+}
+
+.ml-2 {
+  margin-left: 16px !important;
+}
+
+.fade-in {
+  animation: fadeIn 3s;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .dark-form {
   padding-top: 50px;
   padding-bottom: 50px;
@@ -36,7 +154,7 @@
     .logo {
       height: 56px;
       margin: 0 auto 50px auto;
-      margin-bottom: 35px !important;
+      margin-bottom: 35px;
       display: block;
     }
     span {
@@ -218,6 +336,13 @@
     padding: 8px 10px 0 0;
     vertical-align: top;
     font-size: 1.2em;
+  }
+}
+.form-right-aligned-labels.center-align-row {
+  display: block;
+  & > .form-group {
+    display: flex;
+    align-items: center;
   }
 }
 

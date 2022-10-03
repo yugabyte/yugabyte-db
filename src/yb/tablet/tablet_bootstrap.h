@@ -40,7 +40,7 @@ namespace tablet {
 // Plays the log segments, rebuilding the portion of the Tablet's soft state that is present in
 // the log (additional soft state may be present in other replicas).  A successful call will yield
 // the rebuilt tablet and the rebuilt log.
-CHECKED_STATUS BootstrapTabletImpl(
+Status BootstrapTabletImpl(
     const BootstrapTabletData& data,
     TabletPtr* rebuilt_tablet,
     log::LogPtr* rebuilt_log,

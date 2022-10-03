@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-schema
     parent: migrate-from-postgresql
     weight: 730
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made.

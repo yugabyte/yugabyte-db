@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-deployments-read-replicas-ysql
     parent: explore-multi-region-deployments
     weight: 750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -31,6 +30,4 @@ showAsideToc: true
 
 </ul>
 
-YSQL read replicas support is currently in Beta. 
-
-No documentation is available at this time.
+Documentation for YSQL read replicas is forthcoming.

@@ -3,13 +3,13 @@ title: VPCs
 headerTitle:
 linkTitle: VPCs
 description: Manage your cloud VPCs.
+headcontent: Manage your YugabyteDB Managed VPCs
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-add-vpc
     parent: cloud-vpcs
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A virtual private cloud (VPC) is a virtual network where you can deploy clusters that you want to peer with application VPCs hosted with the same provider. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection.

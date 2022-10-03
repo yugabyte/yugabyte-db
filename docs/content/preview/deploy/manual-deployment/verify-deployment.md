@@ -8,8 +8,7 @@ menu:
     identifier: deploy-manual-deployment-verify-deployment
     parent: deploy-manual-deployment
     weight: 615
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 We now have a cluster/universe on six nodes with a replication factor of `3`. Assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140`, `172.151.17.150`, `172.151.17.160` and `172.151.17.170`. YB-Master servers are running on only the first three of these nodes.

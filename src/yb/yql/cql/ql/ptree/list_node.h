@@ -92,14 +92,14 @@ class TreeListNode : public TreeNode {
   }
 
   // Run semantics analysis on this node.
-  CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  Status Analyze(SemContext *sem_context) override {
     for (auto tnode : node_list_) {
       RETURN_NOT_OK(tnode->Analyze(sem_context));
     }
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context,
+  virtual Status Analyze(SemContext *sem_context,
                                  TreeNodePtrOperator<SemContext, NodeType> node_op) {
     for (auto tnode : node_list_) {
       RETURN_NOT_OK(node_op(tnode.get(), sem_context));
@@ -109,7 +109,7 @@ class TreeListNode : public TreeNode {
 
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
-  CHECKED_STATUS Apply(ContextType *context,
+  Status Apply(ContextType *context,
                        TreeNodePtrOperator<ContextType, DerivedType> node_op,
                        int max_nested_level = 0,
                        int max_nested_count = 0,
@@ -181,7 +181,7 @@ class TreeListNode : public TreeNode {
 class PTListNode : public TreeListNode<> {
  public:
   // Run semantics analysis on a statement block.
-  CHECKED_STATUS AnalyzeStatementBlock(SemContext *sem_context);
+  Status AnalyzeStatementBlock(SemContext *sem_context);
 };
 
 }  // namespace ql

@@ -8,8 +8,7 @@ menu:
     identifier: custom-interval-domains
     parent: type-interval
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the kit to create the custom interval domains." >}}
@@ -551,7 +550,7 @@ as $body$
 declare
   total_seconds bigint not null := hours*60*60 + mins*60 + trunc(secs)::bigint;
 begin
-  call assert_interval_seconds_in_range(total_seconds); 
+  call assert_interval_seconds_in_range(total_seconds);
   return make_interval(hours => hours, mins => mins, secs => secs)::interval_seconds_t;
 end;
 $body$;
@@ -828,7 +827,7 @@ The table function _seconds_days_months_comparison()_ creates a report thus:
 - It outputs the values that it has calculated.
 
 {{< note title="365.2425 or 365.25 for the average number of days per year?" >}}
-The Wikipedia article <a href="https://en.wikipedia.org/wiki/Year" target="_blank">Year <i class="fas fa-external-link-alt"></i></a> gives both _365.2425_ days and _365.25_ days as the average number of days per year. The first figure (used in the code below) is the average according to the Gregorian scheme. And the second figure is the average according to the Julian scheme. The [_extract(epoch from interval_value)_ built-in function](../justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function) section presents a PL/pgSQL model for this function. This uses _365.25_ days as the average number of days per year in order to produce the same result as does the native implementation that it models. (The designers of PostgreSQL might well have chosen to use _365.2425_ days—but they happened not to. The choice is arbitrary.) However, the nominal durations of the three kinds of _interval_ in the test below are closer to each other when _365.2425_ days is used. 
+The Wikipedia article <a href="https://en.wikipedia.org/wiki/Year" target="_blank">Year <i class="fas fa-external-link-alt"></i></a> gives both _365.2425_ days and _365.25_ days as the average number of days per year. The first figure (used in the code below) is the average according to the Gregorian scheme. And the second figure is the average according to the Julian scheme. The [_extract(epoch from interval_value)_ built-in function](../justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function) section presents a PL/pgSQL model for this function. This uses _365.25_ days as the average number of days per year in order to produce the same result as does the native implementation that it models. (The designers of PostgreSQL might well have chosen to use _365.2425_ days—but they happened not to. The choice is arbitrary.) However, the nominal durations of the three kinds of _interval_ in the test below are closer to each other when _365.2425_ days is used.
 {{< /note >}}
 
 Create the table function thus:
@@ -899,11 +898,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:           240271-10-10 07:59:58 AD
- 
+
  i_secs:      2147483647:59:58.999552
  i_days:      89478485 days
  i_months:    244983 years 9 mons
- 
+
  yrs_from_ss  244983.772
  yrs_from_dd: 244983.771
  yrs_from_mm: 244983.750
@@ -927,11 +926,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:             1625-09-30 19:33:20 AD
- 
+
  i_secs:      55555555:33:20
  i_days:      2314814 days
  i_months:    6337 years 8 mons
- 
+
  yrs_from_ss  6337.748
  yrs_from_dd: 6337.745
  yrs_from_mm: 6337.667
@@ -948,11 +947,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:             4713-04-12 11:26:40 BC
- 
+
  i_secs:      2459:26:40
  i_days:      102 days
  i_months:    3 mons
- 
+
  yrs_from_ss  0.281
  yrs_from_dd: 0.279
  yrs_from_mm: 0.250

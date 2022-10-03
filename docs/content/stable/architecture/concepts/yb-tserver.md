@@ -8,8 +8,7 @@ menu:
     identifier: architecture-concepts-yb-tserver
     parent: key-concepts
     weight: 1124
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YB-TServer (short for YugabyteDB Tablet Server) service is responsible for the actual IO for end user requests in a YugabyteDB cluster. Recall from the previous section that data for a table is split, or sharded, into tablets. Each tablet is composed of one or more tablet-peers, depending on the replication factor. And each YB-TServer hosts one or more tablet-peers.
@@ -46,7 +45,7 @@ In addition to throttling controls for compactions, YugabyteDB does a variety of
 
 ### Manual compactions
 
-YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin). This can be useful for cases when new data is not coming into the system for a table anymore, users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
+YugabyteDB allows compactions to be externally triggered on a table using the [`compact_table`](../../../admin/yb-admin/#compact-table) command in the [`yb-admin` utility](../../../admin/yb-admin/). This can be useful for cases when new data is not coming into the system for a table anymore, users want to reclaim disk space due to overwrites/deletes that have already happened or due to TTL expiry.
 
 ### Server-global memstore limit
 

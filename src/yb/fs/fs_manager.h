@@ -76,11 +76,8 @@ struct FsManagerOpts {
   FsManagerOpts(const FsManagerOpts&);
   FsManagerOpts& operator=(const FsManagerOpts&);
 
-  // The entity under which all metrics should be grouped. If NULL, metrics
-  // will not be produced.
-  //
-  // Defaults to NULL.
-  scoped_refptr<MetricEntity> metric_entity;
+  // The aggregated registry associated with the server.
+  MetricRegistry* metric_registry;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -129,32 +126,37 @@ class FsManager {
   FsManager(Env* env, const FsManagerOpts& opts);
   ~FsManager();
 
+  Status ReadAutoFlagsConfig(google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+  Status WriteAutoFlagsConfig(const google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+
   // Initialize and load the basic filesystem metadata.
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  CHECKED_STATUS CheckAndOpenFileSystemRoots();
+  Status CheckAndOpenFileSystemRoots();
 
   //
   // Returns an error if the file system is already initialized.
-  CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
+  Status CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
   // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
   // when 'also_delete_logs' is set to false.
   // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
-  CHECKED_STATUS DeleteFileSystemLayout(
+  Status DeleteFileSystemLayout(
       ShouldDeleteLogs also_delete_logs = ShouldDeleteLogs::kFalse);
 
   // Check if a lock file is present.
   bool HasAnyLockFiles();
   // Delete the lock files. Used once the caller deems fs creation was succcessful.
-  CHECKED_STATUS DeleteLockFiles();
+  Status DeleteLockFiles();
 
   void DumpFileSystemTree(std::ostream& out);
 
   // Return the UUID persisted in the local filesystem. If Open()
   // has not been called, this will crash.
   const std::string& uuid() const;
+
+  bool initdb_done_set_after_sys_catalog_restore() const;
 
   // ==========================================================================
   //  on-disk path
@@ -212,10 +214,16 @@ class FsManager {
   // Return the path where ConsensusMetadataPB is stored.
   Result<std::string> GetConsensusMetadataPath(const std::string& tablet_id) const;
 
+  std::string GetAutoFlagsConfigPath() const EXCLUDES(auto_flag_mutex_);
+
   Env *env() { return env_; }
 
   bool read_only() const {
     return read_only_;
+  }
+
+  bool has_faulty_drive() const {
+    return has_faulty_drive_;
   }
 
   // ==========================================================================
@@ -225,22 +233,23 @@ class FsManager {
     return env_->FileExists(path);
   }
 
-  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const;
+  Status ListDir(const std::string& path, std::vector<std::string> *objects) const;
 
   Result<std::vector<std::string>> ListDir(const std::string& path) const;
 
-  CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
-  CHECKED_STATUS CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
+  FRIEND_TEST(FsManagerTestBase, AutoFlagsTest);
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Creates filesystem roots, writing new on-disk instances using 'metadata'.
-  CHECKED_STATUS CreateFileSystemRoots(const InstanceMetadataPB& metadata,
+  Status CreateFileSystemRoots(const InstanceMetadataPB& metadata,
                                        bool create_lock = false);
 
   std::set<std::string> GetAncillaryDirs() const;
@@ -250,7 +259,7 @@ class FsManager {
 
   // Save a InstanceMetadataPB to the filesystem.
   // Does not mutate the current state of the fsmanager.
-  CHECKED_STATUS WriteInstanceMetadata(
+  Status WriteInstanceMetadata(
       const InstanceMetadataPB& metadata,
       const std::string& path);
 
@@ -258,10 +267,10 @@ class FsManager {
   //
   // Returns an error if it's not a directory. Otherwise, sets 'is_empty'
   // accordingly.
-  CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
+  Status IsDirectoryEmpty(const std::string& path, bool* is_empty);
 
   // Checks write to temporary file on root.
-  CHECKED_STATUS CheckWrite(const std::string& path);
+  Status CheckWrite(const std::string& path);
 
   void CreateAndSetFaultDriveMetric(const std::string& path);
 
@@ -284,7 +293,7 @@ class FsManager {
   const std::vector<std::string> data_fs_roots_;
   const std::string server_type_;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  MetricRegistry* metric_registry_;
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
@@ -298,14 +307,19 @@ class FsManager {
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
 
-  std::map<std::string, scoped_refptr<Counter>> counters_;
-
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;
+  mutable std::mutex auto_flag_mutex_;
+  std::string auto_flags_config_path_ GUARDED_BY(auto_flag_mutex_);
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 
-  bool initted_;
+  // Keep references to counters, counters without reference will be retired.
+  std::vector<scoped_refptr<Counter>> counters_;
+
+  bool initted_ = false;
+
+  bool has_faulty_drive_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(FsManager);
 };

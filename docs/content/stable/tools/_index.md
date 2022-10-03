@@ -3,40 +3,46 @@ title: Third party tools
 headerTitle: Third party tools
 linkTitle: Third party tools
 description: Interactive third party clients that you can use with YugabyteDB.
-headcontent: Interactive third party clients that you can use with YugabyteDB to run queries and get results from.
+headcontent: Use popular third party clients with YugabyteDB.
 image: /images/section_icons/troubleshoot/troubleshoot.png
-section: REFERENCE
 menu:
   stable:
     identifier: tools
+    parent: reference
     weight: 2900
+type: indexpage
 ---
 
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters.
+
+### YugabyteDB prerequisites
+
+To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
+
+To create a local cluster, follow the steps in [Quick start](../quick-start/).
+
+To create a cluster in YugabyteDB Managed, follow the steps in [Create a cluster](../yugabyte-cloud/cloud-quickstart/). In addition, do the following:
+
+- [Download the cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB requires the use of TLS
+- [Add your computer to the cluster IP allow list](../yugabyte-cloud/cloud-secure-clusters/add-connections/#assign-an-ip-allow-list-to-a-cluster); this allows your computer to access the cluster
+
+#### Connection parameters
+
+To connect, follow the client's configuration steps, and use the following values:
+
+| Setting | Local installation | YugabyteDB Managed |
+| :--- | :--- | :--- |
+| Hostname | `localhost` | The cluster hostname as displayed on the cluster **Settings** tab |
+| Port | `5433` (YSQL) `9042` (YCQL) | `5433` (YSQL) `9042` (YCQL) |
+| Database | Database name (`yugabyte` is the default) | Database name (`yugabyte` is the default) |
+| Username | `yugabyte` or `cassandra` | Database username (`admin` is the default) |
+| Password | `yugabyte` or `cassandra`<br>Leave blank if [authentication is not enabled](../secure/enable-authentication/) | Database user password |
+
+YugabyteDB Managed requires TLS. Use the root.ca certificate you downloaded for connections to YugabyteDB Managed clusters.
+
+## Tools
+
 <div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="dbeaver-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/develop/tools/dbeaver-icon.png" aria-hidden="true" />
-        <div class="title">DBeaver</div>
-      </div>
-      <div class="body">
-        An Eclipse-based, multi-platform database tool.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="dbschema/">
-      <div class="head">
-        <img class="icon" src="/images/develop/tools/dbschema/dbschema-icon.png" aria-hidden="true" />
-        <div class="title">DbSchema</div>
-      </div>
-      <div class="body">
-        Use DbSchema, a visual database tool, to reverse-engineer schemas, edit ER diagrams, browse data, visually build queries, and sync schemas.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pgadmin/">
@@ -45,19 +51,43 @@ menu:
         <div class="title">pgAdmin</div>
       </div>
       <div class="body">
-        Use this popular PostgreSQL client with YugabyteDB.
+        Management tool for PostgreSQL.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sql-workbench/">
+    <a class="section-link icon-offset" href="superset/">
       <div class="head">
-        <img class="icon" src="/images/develop/tools/sql-workbench.png" aria-hidden="true" />
-        <div class="title">SQL Workbench/J</div>
+        <img class="icon" src="/images/develop/tools/superset/superset-icon.png" aria-hidden="true" />
+        <div class="title">Apache Superset</div>
       </div>
       <div class="body">
-        A unified developer console for querying YugabyteDB and displaying results.
+        Open-source data exploration and visualization tool.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="arctype/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/arctype/arctype-icon.png" aria-hidden="true" />
+        <div class="title">Arctype</div>
+      </div>
+      <div class="body">
+        SQL client and database management tool.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="dbeaver-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/dbeaver-icon.png" aria-hidden="true" />
+        <div class="title">DBeaver</div>
+      </div>
+      <div class="body">
+        Eclipse-based, multi-platform database tool.
       </div>
     </a>
   </div>
@@ -69,7 +99,31 @@ menu:
         <div class="title">TablePlus</div>
       </div>
       <div class="body">
-        A unified developer console for querying all YugabyteDB APIs.
+        Unified developer console for querying databases.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="dbschema/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/dbschema/dbschema-icon.png" aria-hidden="true" />
+        <div class="title">DbSchema</div>
+      </div>
+      <div class="body">
+        Visual database tool for reverse-engineering schemas, editing ER diagrams, browsing data, and more.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="sql-workbench/">
+      <div class="head">
+        <img class="icon" src="/images/develop/tools/sql-workbench.png" aria-hidden="true" />
+        <div class="title">SQL Workbench/J</div>
+      </div>
+      <div class="body">
+        Unified developer console for querying YugabyteDB and displaying results.
       </div>
     </a>
   </div>
@@ -78,10 +132,10 @@ menu:
     <a class="section-link icon-offset" href="visualstudioworkbench">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/tools/cassandraworkbench.png" aria-hidden="true" />
-        <div class="title">Visual Studio Workbench</div>
+        <div class="title">Cassandra Workbench</div>
       </div>
       <div class="body">
-        Design and query YCQL database with help of generated templates, autocomplete, and inline code decorations.
+        Visual Studio Code extension for querying Apache Cassandra databases.
       </div>
     </a>
   </div>

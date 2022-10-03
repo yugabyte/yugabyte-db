@@ -41,7 +41,6 @@
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb/util/status_format.h"
@@ -58,7 +57,7 @@ auto Find(const boost::unordered_map<Key, Value>& map, const CompatibleKey& key)
 
 class DocKeyBuilder {
  public:
-  CHECKED_STATUS Prepare(
+  Status Prepare(
       const std::vector<docdb::KeyEntryValue>& hashed_components,
       const LWQLValuePB*const* hashed_values,
       const PartitionSchema& partition_schema) {
@@ -86,6 +85,15 @@ class DocKeyBuilder {
   uint16_t hash_;
   const vector<docdb::KeyEntryValue>* hashed_components_ = nullptr;
 };
+
+inline void ApplyBound(
+    ::yb::LWPgsqlReadRequestPB* req, const std::optional<Bound>& bound, bool is_lower) {
+  if (bound) {
+    auto* mutable_bound = is_lower ? req->mutable_lower_bound() : req->mutable_upper_bound();
+    mutable_bound->dup_key(PartitionSchema::EncodeMultiColumnHashValue(bound->value));
+    mutable_bound->set_is_inclusive(bound->is_inclusive);
+  }
+}
 
 } // namespace
 
@@ -328,10 +336,16 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
+Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value,
+                                        bool start_inclusive,
+                                        PgExpr *attr_value_end,
+                                        bool end_inclusive) {
   if (secondary_index_query_) {
     // Bind by secondary key.
-    return secondary_index_query_->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+    return secondary_index_query_->BindColumnCondBetween(attr_num, attr_value,
+                                                         start_inclusive,
+                                                         attr_value_end,
+                                                         end_inclusive);
   }
 
   DCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId))
@@ -363,13 +377,21 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
 
       op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
+      op4_pb->mutable_value()->set_bool_value(start_inclusive);
+      op5_pb->mutable_value()->set_bool_value(end_inclusive);
     } else {
-      condition_expr_pb->mutable_condition()->set_op(QL_OP_GREATER_THAN_EQUAL);
+      auto op = QL_OP_GREATER_THAN_EQUAL;
+      if (!start_inclusive) {
+        op = QL_OP_GREATER_THAN;
+      }
+      condition_expr_pb->mutable_condition()->set_op(op);
 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
@@ -380,7 +402,11 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
     }
   } else {
     if (attr_value_end != nullptr) {
-      condition_expr_pb->mutable_condition()->set_op(QL_OP_LESS_THAN_EQUAL);
+      auto op = QL_OP_LESS_THAN_EQUAL;
+      if (!end_inclusive) {
+        op = QL_OP_LESS_THAN;
+      }
+      condition_expr_pb->mutable_condition()->set_op(op);
 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
@@ -601,9 +627,9 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
   auto i = ybctids.begin();
-  return doc_op_->PopulateDmlByYbctidOps(make_lw_function([&i, end = ybctids.end()] {
+  return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
     return i != end ? Slice(*i++) : Slice();
-  }));
+  }), ybctids.size()});
 }
 
 // Function builds vector of ybctids from primary key binds.
@@ -733,25 +759,12 @@ Result<docdb::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
   return BuildKeyColumnValue(col, src, &temp_value);
 }
 
-Status PgDmlRead::BindHashCode(bool start_valid, bool start_inclusive,
-                                uint64_t start_hash_val, bool end_valid,
-                                bool end_inclusive, uint64_t end_hash_val) {
+Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
   if (secondary_index_query_) {
-    return secondary_index_query_->BindHashCode(start_valid, start_inclusive,
-                                                  start_hash_val, end_valid,
-                                                  end_inclusive, end_hash_val);
+    return secondary_index_query_->BindHashCode(start, end);
   }
-  if (start_valid) {
-    read_req_->mutable_lower_bound()->dup_key(
-        PartitionSchema::EncodeMultiColumnHashValue(start_hash_val));
-    read_req_->mutable_lower_bound()->set_is_inclusive(start_inclusive);
-  }
-
-  if (end_valid) {
-    read_req_->mutable_upper_bound()->dup_key(
-        PartitionSchema::EncodeMultiColumnHashValue(end_hash_val));
-    read_req_->mutable_upper_bound()->set_is_inclusive(end_inclusive);
-  }
+  ApplyBound(read_req_.get(), start, true /* is_lower */);
+  ApplyBound(read_req_.get(), end, false /* is_lower */);
   return Status::OK();
 }
 

@@ -53,6 +53,11 @@ namespace {
 // - num_restarts: uint32
 const size_t kMinBlockSize = 2*sizeof(uint32_t);
 
+inline uint32_t GetMiddleIndex(
+    const uint32_t total_number, const MiddlePointPolicy middle_point_policy) {
+  return total_number ? (total_number - yb::to_underlying(middle_point_policy)) / 2 : 0;
+}
+
 } // namespace
 
 // Helper routine: decode the next block entry starting at "p",
@@ -153,8 +158,9 @@ void BlockIter::Prev() {
 
 void BlockIter::Initialize(
     const Comparator* comparator, const char* data,
-    const KeyValueEncodingFormat key_value_encoding_format, uint32_t restarts,
-    uint32_t num_restarts, BlockHashIndex* hash_index, BlockPrefixIndex* prefix_index) {
+    const KeyValueEncodingFormat key_value_encoding_format,
+    const uint32_t restarts, const uint32_t num_restarts,
+    const BlockHashIndex* hash_index, const BlockPrefixIndex* prefix_index) {
   DCHECK(data_ == nullptr); // Ensure it is called only once
   DCHECK_GT(num_restarts, 0); // Ensure the param is valid
 
@@ -215,6 +221,17 @@ void BlockIter::SeekToLast() {
   }
 }
 
+void BlockIter::SeekToRestart(uint32_t index) {
+  if (data_ == nullptr) {  // Not init yet
+    return;
+  }
+  if (PREDICT_FALSE((index >= num_restarts_))) {
+    return SetStatus(STATUS(IllegalState, "Restart index overflow"));
+  }
+
+  SeekToRestartPoint(index);
+  ParseNextKey();
+}
 
 namespace {
 
@@ -514,7 +531,7 @@ Block::Block(BlockContents&& contents)
 
 InternalIterator* Block::NewIterator(
     const Comparator* cmp, const KeyValueEncodingFormat key_value_encoding_format, BlockIter* iter,
-    bool total_order_seek) {
+    const bool total_order_seek) const {
   if (size_ < kMinBlockSize) {
     if (iter != nullptr) {
       iter->SetStatus(BadBlockContentsError());
@@ -568,15 +585,61 @@ size_t Block::ApproximateMemoryUsage() const {
   return usage;
 }
 
-yb::Result<Slice> Block::GetMiddleKey(
-    const KeyValueEncodingFormat key_value_encoding_format) const {
+yb::Result<std::string> Block::GetRestartBlockMiddleEntryKey(
+    const uint32_t restart_idx, const Comparator* comparator,
+    const KeyValueEncodingFormat key_value_encoding_format,
+    const MiddlePointPolicy middle_restart_policy) const {
+  BlockIter block_iter;
+  NewIterator(comparator, key_value_encoding_format, &block_iter, /* total_order_seek = */ true);
+  RETURN_NOT_OK(block_iter.status());
+
+  // Linear scan is required to locate a middle entry within the restart point.
+  // First step is to find number of records within for the restart point.
+  uint32_t records_count = 0;
+  for (block_iter.SeekToRestart(restart_idx);
+       block_iter.Valid() && (block_iter.GetCurrentRestart() == restart_idx);
+       block_iter.Next()) {
+    RETURN_NOT_OK(block_iter.status());
+    ++records_count;
+  }
+  RETURN_NOT_OK(block_iter.status());
+
+  if (records_count < 2) {
+    // Not possible to identify a middle entry when there is 0 or 1 record in a block. Also
+    // including one record to a check allows to use the error as a marker of a single data block.
+    return STATUS(
+        Incomplete, yb::Format("Less than 2 entries ($0) in restart block", records_count));
+  }
+
+  // Second step is to advance to the middle record.
+  const auto middle_record_idx = GetMiddleIndex(records_count, middle_restart_policy);
+  for (block_iter.SeekToFirst(), records_count = 0;
+       block_iter.Valid() && (records_count < middle_record_idx);
+       block_iter.Next()) {
+    RETURN_NOT_OK(block_iter.status());
+    ++records_count;
+  }
+  RETURN_NOT_OK(block_iter.status());
+
+  // Must read exactly up to a middle record.
+  if (PREDICT_FALSE((records_count != middle_record_idx))) {
+    return STATUS(IllegalState, "Failed to locate middle record for the restart block");
+  }
+
+  // The iterator now points to a middle entry of the specified restart block.
+  return block_iter.key().ToBuffer();
+}
+
+yb::Result<Slice> Block::GetRestartKey(
+    const uint32_t restart_idx, const KeyValueEncodingFormat key_value_encoding_format) const {
   if (size_ < kMinBlockSize) {
     return BadBlockContentsError();
   } else if (size_ == kMinBlockSize) {
     return STATUS(Incomplete, "Empty block");
+  } else if (restart_idx >= NumRestarts()) {
+    return STATUS(IllegalState,
+        yb::Format("Restart index overflow: idx = $0, total num = $1", restart_idx, NumRestarts()));
   }
-
-  const auto restart_idx = (NumRestarts() - 1) / 2;
 
   const auto entry_offset = DecodeFixed32(data_ + restart_offset_ + restart_idx * sizeof(uint32_t));
   uint32_t key_size;
@@ -585,7 +648,27 @@ yb::Result<Slice> Block::GetMiddleKey(
   if (key_ptr == nullptr) {
     return BadEntryInBlockError("DecodeRestartEntry failed");
   }
+
   return Slice(key_ptr, key_size);
+}
+
+yb::Result<std::string> Block::GetMiddleKey(
+    const KeyValueEncodingFormat key_value_encoding_format, const Comparator* cmp,
+    const MiddlePointPolicy middle_entry_policy) const {
+  if (PREDICT_FALSE((NumRestarts() == 0))) {
+    // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constuctor.
+    return STATUS(Corruption, "Restarts number cannot be zero, this might be a data corruption!");
+  }
+  if (PREDICT_TRUE(NumRestarts() > 1)) {
+    const auto restart_idx = GetMiddleIndex(NumRestarts(), middle_entry_policy);
+    const auto middle_key =
+        VERIFY_RESULT(GetRestartKey(restart_idx, key_value_encoding_format));
+    return middle_key.ToBuffer();
+  }
+
+  // Special case for single restart block.
+  return VERIFY_RESULT(GetRestartBlockMiddleEntryKey(
+      /* restart_idx = */ 0, cmp, key_value_encoding_format, middle_entry_policy));
 }
 
 }  // namespace rocksdb

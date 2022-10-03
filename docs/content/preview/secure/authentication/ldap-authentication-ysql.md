@@ -10,8 +10,7 @@ menu:
     identifier: ldap-authentication-1-ysql
     parent: authentication
     weight: 732
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

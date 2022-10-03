@@ -65,27 +65,23 @@ Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
     rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   auto result = std::make_shared<enterprise::TSDescriptor>(
-      instance.permanent_uuid());
-  if (!registered_through_heartbeat) {
-    // This tserver hasn't actually heartbeated, so register using a last_heartbeat_ time of 0.
-    std::lock_guard<decltype(result->lock_)> l(result->lock_);
-    result->last_heartbeat_ = MonoTime::kMin;
-    result->registered_through_heartbeat_ = RegisteredThroughHeartbeat::kFalse;
-  }
+      instance.permanent_uuid(), registered_through_heartbeat);
   RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
   return std::move(result);
 }
 
-TSDescriptor::TSDescriptor(std::string perm_id)
+TSDescriptor::TSDescriptor(std::string perm_id,
+                           RegisteredThroughHeartbeat registered_through_heartbeat)
     : permanent_uuid_(std::move(perm_id)),
-      last_heartbeat_(MonoTime::Now()),
       has_tablet_report_(false),
+      has_faulty_drive_(false),
       recent_replica_creations_(0),
       last_replica_creations_decay_(MonoTime::Now()),
-      num_live_replicas_(0) {
-}
-
-TSDescriptor::~TSDescriptor() {
+      num_live_replicas_(0),
+      registered_through_heartbeat_(registered_through_heartbeat) {
+  if (registered_through_heartbeat_) {
+    last_heartbeat_ = MonoTime::Now();
+  }
 }
 
 Status TSDescriptor::Register(const NodeInstancePB& instance,
@@ -171,13 +167,20 @@ void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
     physical_time_ = req->ts_physical_time();
     hybrid_time_ = HybridTime::FromPB(req->ts_hybrid_time());
     heartbeat_rtt_ = MonoDelta::FromMicroseconds(req->rtt_us());
+    if (req->has_faulty_drive()) {
+      has_faulty_drive_ = req->faulty_drive();
+    }
   }
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
-  MonoTime now(MonoTime::Now());
+  auto last_heartbeat = LastHeartbeatTime();
+  return MonoTime::Now().GetDeltaSince(last_heartbeat ? last_heartbeat : MonoTime::kMin);
+}
+
+MonoTime TSDescriptor::LastHeartbeatTime() const {
   SharedLock<decltype(lock_)> l(lock_);
-  return now.GetDeltaSince(last_heartbeat_);
+  return last_heartbeat_;
 }
 
 int64_t TSDescriptor::latest_seqno() const {
@@ -195,8 +198,12 @@ void TSDescriptor::set_has_tablet_report(bool has_report) {
   has_tablet_report_ = has_report;
 }
 
-bool TSDescriptor::registered_through_heartbeat() const {
+bool TSDescriptor::has_faulty_drive() const {
   SharedLock<decltype(lock_)> l(lock_);
+  return has_faulty_drive_;
+}
+
+bool TSDescriptor::registered_through_heartbeat() const {
   return registered_through_heartbeat_;
 }
 

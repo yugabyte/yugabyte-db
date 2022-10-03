@@ -8,11 +8,11 @@
 
 # Machine either needs internet access or needs packages to be passed in
 - assert:
-    that: not air_gap or local_package_path is defined
+    that: not air_gap or install_upgrade_package is defined or local_package_path is defined
 
 # If we are provisioning a cluster-server, local_package_path must be defined
 - assert:
-    that: local_package_path is defined
+    that: install_upgrade_package is defined or local_package_path is defined
   when: server_type is defined and server_type == "cluster-server"
 
 - include: server_base_linux.yml

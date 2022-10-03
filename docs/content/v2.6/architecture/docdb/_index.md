@@ -10,6 +10,7 @@ menu:
     identifier: docdb
     parent: architecture
     weight: 1140
+type: indexpage
 ---
 
 <div class="row">

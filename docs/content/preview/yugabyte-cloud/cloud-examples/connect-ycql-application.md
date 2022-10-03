@@ -6,13 +6,11 @@ description: Build a sample Java application for YugabyteDB Managed with the Yug
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following instructions show how you can build a Java application connected to YugabyteDB Managed using the Yugabyte Java Driver for YCQL v4.6.

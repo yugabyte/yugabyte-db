@@ -41,8 +41,6 @@
 //
 package org.yb.client;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
@@ -53,6 +51,20 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.Message;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.channel.*;
+import io.netty.channel.epoll.EpollChannelOption;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.util.HashedWheelTimer;
+import io.netty.util.Timeout;
+import io.netty.util.TimerTask;
+import io.netty.util.concurrent.FutureListener;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.net.InetAddress;
@@ -60,7 +72,6 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
-import java.rmi.Remote;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.PrivateKey;
@@ -92,19 +103,6 @@ import javax.net.ssl.TrustManagerFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.DefaultChannelPipeline;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.SocketChannel;
-import org.jboss.netty.channel.socket.SocketChannelConfig;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.handler.ssl.SslHandler;
-import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
-import org.jboss.netty.util.HashedWheelTimer;
-import org.jboss.netty.util.Timeout;
-import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonNet;
@@ -113,16 +111,37 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.cdc.CdcService;
-import org.yb.consensus.Metadata;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
-import org.yb.util.AsyncUtil;
-import org.yb.util.NetUtil;
-import org.yb.util.Pair;
-import org.yb.util.Slice;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.util.*;
+
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.Charset;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.*;
+import java.util.concurrent.*;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * A fully asynchronous and thread-safe client for YB.
@@ -163,18 +182,26 @@ import org.yb.util.Slice;
 public class AsyncYBClient implements AutoCloseable {
 
   public static final Logger LOG = LoggerFactory.getLogger(AsyncYBClient.class);
+
+  private static final int SHUTDOWN_TIMEOUT_SEC = 15;
   public static final int SLEEP_TIME = 500;
   public static final byte[] EMPTY_ARRAY = new byte[0];
   public static final long NO_TIMESTAMP = -1;
   public static final long DEFAULT_OPERATION_TIMEOUT_MS = 10000;
   public static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 5000;
 
+  public static final int TCP_CONNECT_TIMEOUT_MILLIS = 5000;
+
+  // Keep connection alive for 1/2 hour - the value is in 1/2 second intervals
+  public static final int TCP_KEEP_IDLE_INTERVALS = 3600;
   public static final int DEFAULT_MAX_TABLETS = MasterClientOuterClass
       .GetTableLocationsRequestPB
       .getDefaultInstance()
       .getMaxReturnedLocations();
 
-  private final ClientSocketChannelFactory channelFactory;
+  private final Bootstrap bootstrap;
+  private final EventLoopGroup eventLoopGroup;
+  private final Executor executor;
 
   // TODO(Bharat) - get tablet id from master leader.
   private static final String MASTER_TABLET_ID = "00000000000000000000000000000000";
@@ -223,18 +250,11 @@ public class AsyncYBClient implements AutoCloseable {
    * an object that may be "wasted" in case another thread wins the insertion
    * race, and we don't want to create unnecessary connections.
    * <p>
-   * Upon disconnection, clients are automatically removed from this map.
-   * We don't use a {@code ChannelGroup} because a {@code ChannelGroup} does
-   * the clean-up on the {@code channelClosed} event, which is actually the
-   * 3rd and last event to be fired when a channel gets disconnected.  The
-   * first one to get fired is, {@code channelDisconnected}.  This matters to
-   * us because we want to purge disconnected clients from the cache as
-   * quickly as possible after the disconnection, to avoid handing out clients
-   * that are going to cause unnecessary errors.
-   * @see TabletClientPipeline#handleDisconnect
+   * Upon disconnection, clients are automatically removed from this map. TabletClient
+   * receives disconnect notitifaction and calls us as listener to clean up cache.
+   * @see AsyncYBClient#handleDisconnect
    */
-  private final HashMap<String, TabletClient> ip2client =
-      new HashMap<String, TabletClient>();
+  private final HashMap<String, TabletClient> ip2client = new HashMap<>();
 
   // Since the masters also go through TabletClient, we need to treat them as if they were a normal
   // table. We'll use the following fake table name to identify places where we need special
@@ -255,8 +275,7 @@ public class AsyncYBClient implements AutoCloseable {
   // A table is considered not served when we get an empty list of locations but know
   // that a tablet exists. This is currently only used for new tables. The objects stored are
   // table IDs.
-  private final Set<String> tablesNotServed = Collections.newSetFromMap(new
-      ConcurrentHashMap<String, Boolean>());
+  private final Set<String> tablesNotServed = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
   /**
    * Semaphore used to rate-limit master lookups
@@ -287,7 +306,9 @@ public class AsyncYBClient implements AutoCloseable {
   private final int numTabletsInTable;
 
   private AsyncYBClient(AsyncYBClientBuilder b) {
-    this.channelFactory = b.createChannelFactory();
+    this.executor = b.getOrCreateWorker();
+    this.eventLoopGroup = b.createEventLoopGroup(executor);
+    this.bootstrap = b.createBootstrap(eventLoopGroup);
     this.masterAddresses = b.masterAddresses;
     this.masterTable = new YBTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
         MASTER_TABLE_NAME_PLACEHOLDER, null, null);
@@ -408,7 +429,8 @@ public class AsyncYBClient implements AutoCloseable {
       format,
       checkpointType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    Deferred d = rpc.getDeferred().addErrback(new Callback<Object, Object>() {
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
+        new Callback<Object, Object>() {
       @Override
       public Object call(Object o) throws Exception {
         return o;
@@ -437,7 +459,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
       index, key, write_id, time, needSchemaInfo);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
@@ -465,7 +487,7 @@ public class AsyncYBClient implements AutoCloseable {
                                                        String streamId, String tabletId) {
     checkIsClosed();
     GetCheckpointRequest rpc = new GetCheckpointRequest(table, streamId, tabletId);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -479,7 +501,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
       tabletId, term, index, initialCheckpoint);
-    Deferred d = rpc.getDeferred();
+    Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -495,7 +517,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
         tabletId, term, index, initialCheckpoint, bootstrap);
-    Deferred d = rpc.getDeferred();
+    Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -885,28 +907,32 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Create xCluster replication relationships between the source universe and the target universe,
-   * and replicate the given tables
+   * It creates an xCluster replication config between the source universe and the target universe,
+   * and replicates the given tables.
    *
-   * Prerequisites: tables to be replicated must exist on target universe with same name and schema.
-   * AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: tables to be replicated must exist on target universe with same name and
+   * schema. Bootstrapping will do it.</p>
+   * <p>AsyncYBClient must be created with target universe as the context.</p>
    *
-   * @param replicationGroupName The source universe's UUID
-   * @param sourceTableIDs The tables in the source universe that should be replicated
+   * <p>Note: If bootstrap is not done for a table, its corresponding bootstrap id must be null.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsBootstrapIdMap A map of table ids to their bootstrap id if any; The tables
+   *                                     are in the source universe intended to be replicated
    * @param sourceMasterAddresses The master addresses of the source universe
-   *
-   * @return a deferred object that yields a create xCluster replication response.
-   * */
+   * @return A deferred object that yields a setup universe replication response
+   */
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDs,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
     Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
-        sourceTableIDs,
+        sourceTableIdsBootstrapIdMap,
         sourceMasterAddresses);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
@@ -923,24 +949,45 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  /**
+   * It adds a set of tables to an exising xCluster config.
+   *
+   * <p>Prerequisites: tables to be replicated must exist on target universe with same name and
+   * schema. AsyncYBClient must be created with target universe as the context.</p>
+   *
+   * </p>You must call isSetupUniverseReplicationDone(replicationGroupName + ".ALTER") to make sure
+   * add table operation is done.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsToAddBootstrapIdMap A map of table ids to their bootstrap id if any;
+   *                                          The tables are in the source universe intended to be
+   *                                          replicated
+   * @return A deferred object that yields an alter universe replication response
+   * @see #isSetupUniverseReplicationDone
+   */
   public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationAddTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd) {
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap) {
     return alterUniverseReplication(
       replicationGroupName,
-      sourceTableIDsToAdd,
+      sourceTableIdsToAddBootstrapIdMap,
       new HashSet<>(),
       new HashSet<>(),
       null);
   }
 
+  /**
+   * It removes a set of tables from an existing xCluster config.
+   * @see #alterUniverseReplicationAddTables(String, Map)
+   */
   public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationRemoveTables(
     String replicationGroupName,
-    Set<String> sourceTableIDsToRemove) {
+    Set<String> sourceTableIdsToRemove) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
-      sourceTableIDsToRemove,
+      new HashMap<>(),
+      sourceTableIdsToRemove,
       new HashSet<>(),
       null);
   }
@@ -951,7 +998,7 @@ public class AsyncYBClient implements AutoCloseable {
     Set<CommonNet.HostPortPB> sourceMasterAddresses) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
+      new HashMap<>(),
       new HashSet<>(),
       sourceMasterAddresses,
       null);
@@ -962,7 +1009,7 @@ public class AsyncYBClient implements AutoCloseable {
     String newReplicationGroupName) {
     return alterUniverseReplication(
       replicationGroupName,
-      new HashSet<>(),
+      new HashMap<>(),
       new HashSet<>(),
       new HashSet<>(),
       newReplicationGroupName);
@@ -972,28 +1019,32 @@ public class AsyncYBClient implements AutoCloseable {
    * Alter existing xCluster replication relationships by modifying which tables to replicate from a
    * source universe, as well as the master addresses of the source universe
    *
-   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.</p>
    *
-   * @param replicationGroupName The source universe's UUID
-   * @param sourceTableIDsToAdd Table IDs in the source universe to start replicating from
-   * @param sourceTableIDsToRemove Table IDs in the source universe to stop replicating from
+   * <p>Note that exactly one of the params must be non empty, the rest must be empty lists.</p>
+   *
+   * @param replicationGroupName The source universe's UUID and the config name
+   *                             (format: sourceUniverseUUID_configName)
+   * @param sourceTableIdsToAddBootstrapIdMap A map of table ids to their bootstrap id if any;
+   *                                          The tables are in the source universe intended to be
+   *                                          added to an xCluster config
+   * @param sourceTableIdsToRemove Table IDs in the source universe to stop replicating from
    * @param sourceMasterAddresses New list of master addresses for the source universe
-   *
-   * Note that exactly one of the params must be non empty, the rest must be empty lists
-   *
+   * @param newReplicationGroupName The new source universe's UUID and the config name if desired to
+   *                                be changed (format: sourceUniverseUUID_configName)
    * @return a deferred object that yields an alter xCluster replication response.
-   * */
+   */
   private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd,
-    Set<String> sourceTableIDsToRemove,
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap,
+    Set<String> sourceTableIdsToRemove,
     Set<CommonNet.HostPortPB> sourceMasterAddresses,
     String newReplicationGroupName) {
-    int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
-    int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
+    int addedTables = sourceTableIdsToAddBootstrapIdMap.isEmpty() ? 0 : 1;
+    int removedTables = sourceTableIdsToRemove.isEmpty() ? 0 : 1;
     int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
     int renamedReplicationGroup = newReplicationGroupName == null ? 0 : 1;
-    if(addedTables + removedTables + changedMasterAddresses + renamedReplicationGroup != 1) {
+    if (addedTables + removedTables + changedMasterAddresses + renamedReplicationGroup != 1) {
       throw new IllegalArgumentException(
         "Exactly one xCluster replication alteration per request is currently supported");
     }
@@ -1003,8 +1054,8 @@ public class AsyncYBClient implements AutoCloseable {
       new AlterUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
-        sourceTableIDsToAdd,
-        sourceTableIDsToRemove,
+        sourceTableIdsToAddBootstrapIdMap,
+        sourceTableIdsToRemove,
         sourceMasterAddresses,
         newReplicationGroupName);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
@@ -1012,19 +1063,21 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Delete existing xCluster replications from a source universe to our target universe
+   * It deletes an existing xCluster replication.
    *
-   * Prerequisites: AsyncYBClient must be created with target universe as the context.
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.</p>
+   *
+   * <p>Note: if errors are ignored, warnings are available in warnings list of the response.</p>
    *
    * @param replicationGroupName The source universe's UUID
-   *
-   * @return a deferred object that yields a delete xCluster replication response.
+   * @param ignoreErrors Whether the errors should be ignored
+   * @return A deferred object that yields a delete xCluster replication response
    * */
   public Deferred<DeleteUniverseReplicationResponse> deleteUniverseReplication(
-    String replicationGroupName) {
+    String replicationGroupName, boolean ignoreErrors) {
     checkIsClosed();
     DeleteUniverseReplicationRequest request =
-      new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName);
+        new DeleteUniverseReplicationRequest(this.masterTable, replicationGroupName, ignoreErrors);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1036,7 +1089,6 @@ public class AsyncYBClient implements AutoCloseable {
    * Prerequisites: AsyncYBClient must be created with target universe as the context.
    *
    * @param replicationGroupName The source universe's UUID
-   *
    * @return a deferred object that yields a get xCluster replication response.
    * */
   public Deferred<GetUniverseReplicationResponse> getUniverseReplication(
@@ -1056,7 +1108,6 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @param replicationGroupName The source universe's UUID
    * @param active Whether the replication should be enabled or not
-   *
    * @return a deferred object that yields a set xCluster replication active response.
    * */
   public Deferred<SetUniverseReplicationEnabledResponse> setUniverseReplicationEnabled(
@@ -1069,18 +1120,139 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise known
-   * as bootstrapping)
+   * It creates a checkpoint of most recent op ids for all tablets of the given tables (otherwise
+   * known as bootstrapping).
    *
-   * @param tableIDs List of table IDs to create checkpoints for
+   * @param hostAndPort TServer IP and port of the source universe to use to bootstrap universe
+   * @param tableIds List of table IDs to create checkpoints for
    *
-   * @return a deferred object that yields a bootstrap universe response which contains a list of
-   * bootstrap IDs corresponding to the same order of table IDs.
+   * @return A deferred object that yields a bootstrap universe response which contains a list of
+   * bootstrap ids corresponding to the same order of table ids
    * */
-  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(List<String> tableIDs) {
+  public Deferred<BootstrapUniverseResponse> bootstrapUniverse(
+      final HostAndPort hostAndPort, List<String> tableIds) {
     checkIsClosed();
+    TabletClient client = newSimpleClient(hostAndPort);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hostAndPort);
+    }
+
     BootstrapUniverseRequest request =
-      new BootstrapUniverseRequest(this.masterTable, tableIDs);
+        new BootstrapUniverseRequest(this.masterTable, tableIds);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<BootstrapUniverseResponse> d = request.getDeferred();
+    request.attempt++;
+    client.sendRpc(request);
+    return d;
+  }
+
+  /**
+   * It checks whether a bootstrap flow is required to set up replication based on whether pulling
+   * data changes for the next operation from WALs is possible or not. If streamId is not null, it
+   * checks if the existing stream has fallen far behind that needs a bootstrap flow.
+   *
+   * @param tableIdsStreamIdMap A map of table ids to their corresponding stream id if any
+   * @return A deferred object that yields a {@link IsBootstrapRequiredResponse} which contains
+   *         a map of each table id to a boolean showing whether bootstrap is required for that
+   *         table
+   */
+  public Deferred<IsBootstrapRequiredResponse> isBootstrapRequired(
+        Map<String, String> tableIdsStreamIdMap) {
+    checkIsClosed();
+    IsBootstrapRequiredRequest request =
+        new IsBootstrapRequiredRequest(this.masterTable, tableIdsStreamIdMap);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It returns a list of CDC streams for a tableId or namespacedId based on its arguments.
+   *
+   * <p>Note: For xCluster purposes, use tableId and set {@code idType} to {@code TABLE_ID}.</p>
+   *
+   * @param tableId The id the table to return the CDC streams for
+   * @param namespaceId  The id the namespace to return the CDC streams for
+   * @param idType Whether it should use tableId or namespaceId
+   * @return A deferred object that yields a {@link ListCDCStreamsResponse} which contains
+   * a list of {@link CDCStreamInfo}, each has information about one stream
+   */
+  public Deferred<ListCDCStreamsResponse> listCDCStreams(
+      String tableId,
+      String namespaceId,
+      MasterReplicationOuterClass.IdTypePB idType) {
+    checkIsClosed();
+    ListCDCStreamsRequest request =
+        new ListCDCStreamsRequest(this.masterTable, tableId, namespaceId, idType);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It deletes a set of CDC streams on the source universe.
+   *
+   * <p>Note: it is useful to delete a stream after a failed bootstrap flow when setting up
+   * xCluster replication.</p>
+   *
+   * @param streamIds The set of streamIds to be deleted
+   * @param ignoreErrors  Whether it should ignore errors and delete the streams
+   * @param forceDelete Whether it should
+   * @return A deferred object that yields a {@link ListCDCStreamsResponse} which contains
+   * a list of {@link CDCStreamInfo}, each has information about one stream
+   */
+  public Deferred<DeleteCDCStreamResponse> deleteCDCStream(Set<String> streamIds,
+                                                           boolean ignoreErrors,
+                                                           boolean forceDelete) {
+    checkIsClosed();
+    DeleteCDCStreamRequest request =
+        new DeleteCDCStreamRequest(this.masterTable, streamIds, ignoreErrors, forceDelete);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(this.masterTable, databaseType, keyspaceName,
+                                          retentionInSecs, timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
+      UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    DeleteSnapshotScheduleRequest request =
+        new DeleteSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotSchedulesResponse> listSnapshotSchedules(UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    ListSnapshotSchedulesRequest request =
+        new ListSnapshotSchedulesRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<RestoreSnapshotResponse> restoreSnapshot(UUID snapshotUUID,
+                                                           long restoreHybridTime) {
+    checkIsClosed();
+    RestoreSnapshotRequest request =
+        new RestoreSnapshotRequest(this.masterTable, snapshotUUID, restoreHybridTime);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotsResponse> listSnapshots(UUID snapshotUUID,
+                                                       boolean listDeletedSnapshots) {
+    checkIsClosed();
+    ListSnapshotsRequest request =
+        new ListSnapshotsRequest(this.masterTable, snapshotUUID, listDeletedSnapshots);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1260,7 +1432,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<GetDBStreamInfoResponse> getDBStreamInfo(String streamId) {
     checkIsClosed();
     GetDBStreamInfoRequest rpc = new GetDBStreamInfoRequest(this.masterTable, streamId);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetDBStreamInfoResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1279,7 +1451,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
 
     @Override
-    ChannelBuffer serialize(Message header) {
+    ByteBuf serialize(Message header) {
       return null;
     }
 
@@ -1422,10 +1594,12 @@ public class AsyncYBClient implements AutoCloseable {
       tablet = getFirstTablet(tableId);
     }
     if (request instanceof GetCheckpointRequest) {
-      tablet = getFirstTablet(tableId);
+      String tabletId = ((GetCheckpointRequest)request).getTabletId();
+      tablet = getTablet(tableId, tabletId);
     }
     if (request instanceof SetCheckpointRequest) {
-      tablet = getFirstTablet(tableId);
+      String tabletId = ((SetCheckpointRequest)request).getTabletId();
+      tablet = getTablet(tableId, tabletId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.
@@ -1678,7 +1852,7 @@ public class AsyncYBClient implements AutoCloseable {
     }
     // TODO backoffs? Sleep in increments of 500 ms, plus some random time up to 50
     long sleepTime = (attemptCount * SLEEP_TIME) + sleepRandomizer.nextInt(50);
-    LOG.info("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
+
     if (LOG.isDebugEnabled()) {
       LOG.debug("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
     }
@@ -1760,13 +1934,18 @@ public class AsyncYBClient implements AutoCloseable {
    */
   static <R> Deferred<R> tooManyAttemptsOrTimeout(final YRpc<R> request,
                                                   final YBException cause) {
-    String message;
+    StringBuilder sb = new StringBuilder();
     if (request.deadlineTracker.timedOut()) {
-      message = "Time out: ";
+      sb.append("Time out: ");
     } else {
-      message = "Too many attempts: ";
+      sb.append("Too many attempts: ");
     }
-    final Exception e = new NonRecoverableException(message + request, cause);
+    sb.append(request);
+    if (cause != null) {
+      sb.append(". ");
+      sb.append(cause.getMessage());
+    }
+    final Exception e = new NonRecoverableException(sb.toString(), cause);
     request.errback(e);
     return Deferred.fromError(e);
   }
@@ -2210,31 +2389,50 @@ public class AsyncYBClient implements AutoCloseable {
 
   TabletClient newClient(String uuid, final String host, final int port) {
     final String hostport = host + ':' + port;
-    TabletClient client;
-    SocketChannel chan;
+    TabletClient newClient;
+    Bootstrap clientBootstrap;
     synchronized (ip2client) {
-      client = ip2client.get(hostport);
-      if (client != null && client.isAlive()) {
-        return client;
+      TabletClient existingClient = ip2client.get(hostport);
+      if (existingClient != null && existingClient.isAlive()) {
+        return existingClient;
       }
-      final TabletClientPipeline pipeline = new TabletClientPipeline();
-      client = pipeline.init(uuid);
-      chan = channelFactory.newChannel(pipeline);
-      ip2client.put(hostport, client);  // This is guaranteed to return null.
+      newClient = new TabletClient(AsyncYBClient.this, uuid);
+      newClient.setDisconnectListener(this::handleDisconnect);
+      clientBootstrap =
+        bootstrap.clone().handler(new ChannelInitializer<SocketChannel>() {
+        @Override
+        protected void initChannel(SocketChannel channel) {
+          if (certFile != null) {
+            SslHandler sslHandler = createSslHandler();
+            if (sslHandler != null) {
+              channel.pipeline().addFirst("ssl", sslHandler);
+            }
+          }
+          if (defaultSocketReadTimeoutMs > 0) {
+            channel.pipeline().addLast("timeout-handler",
+              new ReadTimeoutHandler(defaultSocketReadTimeoutMs,
+                TimeUnit.MILLISECONDS));
+          }
+          channel.pipeline().addLast("yb-handler", newClient);
+        }
+      });
+      ip2client.put(hostport, newClient);  // This is guaranteed to return null.
     }
-    this.client2tablets.put(client, new ArrayList<RemoteTablet>());
-    final SocketChannelConfig config = chan.getConfig();
-    config.setConnectTimeoutMillis(5000);
-    config.setTcpNoDelay(true);
-    // Unfortunately there is no way to override the keep-alive timeout in
-    // Java since the JRE doesn't expose any way to call setsockopt() with
-    // TCP_KEEPIDLE.  And of course the default timeout is >2h. Sigh.
-    config.setKeepAlive(true);
+    InetSocketAddress remoteAddress = new InetSocketAddress(host, port);
+    ChannelFuture channelFuture;
     if (clientHost != null) {
-      chan.bind(new InetSocketAddress(clientHost, clientPort));
+      InetSocketAddress localAddress = new InetSocketAddress(clientHost, clientPort);
+      channelFuture = clientBootstrap.connect(remoteAddress, localAddress);
+    } else {
+      channelFuture = clientBootstrap.connect(remoteAddress);
     }
-    chan.connect(new InetSocketAddress(host, port));  // Won't block.
-    return client;
+    channelFuture.addListener((FutureListener<Void>) future -> {
+      if (!channelFuture.isSuccess()) {
+        newClient.doCleanup(channelFuture.channel());
+      }
+    });
+    this.client2tablets.put(newClient, new ArrayList<RemoteTablet>());
+    return newClient;
   }
 
   /**
@@ -2269,27 +2467,13 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     closed = true;
 
-    // This is part of step 2.  We need to execute this in its own thread
-    // because Netty gets stuck in an infinite loop if you try to shut it
-    // down from within a thread of its own thread pool.  They don't want
-    // to fix this so as a workaround we always shut Netty's thread pool
-    // down from another thread.
-    final class ShutdownThread extends Thread {
-      ShutdownThread() {
-        super("AsyncYBClient@" + AsyncYBClient.super.hashCode() + " shutdown");
-      }
-      public void run() {
-        // This terminates the Executor.
-        channelFactory.releaseExternalResources();
-      }
-    }
-
     // 2. Release all other resources.
     final class ReleaseResourcesCB implements Callback<ArrayList<Void>, ArrayList<Void>> {
       public ArrayList<Void> call(final ArrayList<Void> arg) {
         LOG.debug("Releasing all remaining resources");
         timer.stop();
-        new ShutdownThread().start();
+        eventLoopGroup.shutdownGracefully(0, SHUTDOWN_TIMEOUT_SEC, TimeUnit.SECONDS);
+        SystemUtil.forceShutdownExecutor(executor);
         return arg;
       }
       public String toString() {
@@ -2326,6 +2510,7 @@ public class AsyncYBClient implements AutoCloseable {
       deferreds.add(ts.shutdown());
     }
     final int size = deferreds.size();
+
     return Deferred.group(deferreds).addCallback(
         new Callback<ArrayList<Void>, ArrayList<Void>>() {
           public ArrayList<Void> call(final ArrayList<Void> arg) {
@@ -2474,196 +2659,123 @@ public class AsyncYBClient implements AutoCloseable {
     return MASTER_TABLE_NAME_PLACEHOLDER == tableId;
   }
 
-  private final class TabletClientPipeline extends DefaultChannelPipeline {
-
-    private final Logger log = LoggerFactory.getLogger(TabletClientPipeline.class);
-    /**
-     * Have we already disconnected?.
-     * We use this to avoid doing the cleanup work for the same client more
-     * than once, even if we get multiple events indicating that the client
-     * is no longer connected to the TabletServer (e.g. DISCONNECTED, CLOSED).
-     * No synchronization needed as this is always accessed from only one
-     * thread at a time (equivalent to a non-shared state in a Netty handler).
-     */
-    private boolean disconnected = false;
-
-    TabletClient init(String uuid) {
-      final TabletClient client = new TabletClient(AsyncYBClient.this, uuid);
-      if (certFile != null) {
-        SslHandler sslHandler = this.createSslHandler(certFile, clientCertFile, clientKeyFile);
-        if (sslHandler != null) {
-          sslHandler.setIssueHandshake(true);
-          super.addFirst("ssl", sslHandler);
-        }
+  private void handleDisconnect(TabletClient client, Channel channel) {
+    try {
+      SocketAddress remote = channel.remoteAddress();
+      // At this point Netty gives us no easy way to access the
+      // SocketAddress of the peer we tried to connect to. This
+      // kinda sucks but I couldn't find an easier way.
+      if (remote == null) {
+        remote = slowSearchClientIP(client);
       }
-      if (defaultSocketReadTimeoutMs > 0) {
-        super.addLast("timeout-handler",
-            new ReadTimeoutHandler(timer,
-                defaultSocketReadTimeoutMs,
-                TimeUnit.MILLISECONDS));
-      }
-      super.addLast("yb-handler", client);
 
-      return client;
+      // Prevent the client from buffering requests while we invalidate
+      // everything we have about it.
+      synchronized (client) {
+        removeClientFromCache(client, remote);
+      }
+    } catch (Exception e) {
+      LOG.error("Uncaught exception when handling a disconnection of " + channel, e);
     }
+  }
 
-    @Override
-    public void sendDownstream(final ChannelEvent event) {
-      if (event instanceof ChannelStateEvent) {
-        handleDisconnect((ChannelStateEvent) event);
-      }
-      super.sendDownstream(event);
-    }
-
-    @Override
-    public void sendUpstream(final ChannelEvent event) {
-      if (event instanceof ChannelStateEvent) {
-        handleDisconnect((ChannelStateEvent) event);
-      }
-      super.sendUpstream(event);
-    }
-
-    private PrivateKey getPrivateKey(String keyFile) {
+  private SslHandler createSslHandler() {
+    try {
+      Security.addProvider(new BouncyCastleProvider());
+      CertificateFactory cf = CertificateFactory.getInstance("X.509");
+      FileInputStream fis = new FileInputStream(certFile);
+      List<X509Certificate> cas;
       try {
-        PemReader pemReader = new PemReader(new FileReader(keyFile));
-        PemObject pemObject = pemReader.readPemObject();
-        pemReader.close();
-        byte[] bytes = pemObject.getContent();
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        PrivateKey pk = kf.generatePrivate(spec);
-        return pk;
-      } catch (InvalidKeySpecException e) {
-        log.error("Could not read the private key file.", e);
-        throw new RuntimeException("InvalidKeySpecException while reading key: " + keyFile);
+        cas = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
       } catch (Exception e) {
-        log.error("Issue reading pem file.", e);
-        throw new RuntimeException("IOException reading key: " + keyFile);
+        LOG.error("Exception generating CA certificate from input file: ", e);
+        throw e;
+      } finally {
+        fis.close();
       }
-    }
 
-    @SuppressWarnings("unchecked")
-    private SslHandler createSslHandler(String certfile, String clientCertFile,
-                                        String clientKeyFile) {
-      try {
-        Security.addProvider(new BouncyCastleProvider());
-        CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        FileInputStream fis = new FileInputStream(certFile);
-        List<X509Certificate> cas;
+      // Create a KeyStore containing our trusted CAs
+      String keyStoreType = KeyStore.getDefaultType();
+      KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+      keyStore.load(null, null);
+      for (int i = 0; i < cas.size(); i++) {
+        // Adding to the trust store. Expect the caller to have verified
+        // the certs.
+        keyStore.setCertificateEntry("ca_" + i, cas.get(i));
+      }
+
+      // Create a TrustManager that trusts the CAs in our KeyStore
+      String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+      TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+      tmf.init(keyStore);
+
+      List<X509Certificate> clientCerts = null;
+      KeyStore clientKeyStore = null;
+      KeyManagerFactory kmf = null;
+      if (clientCertFile != null) {
+        if (clientKeyFile == null) {
+          LOG.error("Both client cert and key needed for mutual auth.");
+          return null;
+        }
+        fis = new FileInputStream(clientCertFile);
         try {
-          cas = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
+          clientCerts = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
         } catch (Exception e) {
-          log.error("Exception generating CA certificate from input file: ", e);
+          LOG.error("Exception generating CA certificate from input file: ", e);
           throw e;
         } finally {
           fis.close();
         }
-
-        // Create a KeyStore containing our trusted CAs
-        String keyStoreType = KeyStore.getDefaultType();
-        KeyStore keyStore = KeyStore.getInstance(keyStoreType);
-        keyStore.load(null, null);
-        for (int i = 0; i < cas.size(); i++) {
-          // Adding to the trust store. Expect the caller to have verified
-          // the certs.
-          keyStore.setCertificateEntry("ca_" + i, cas.get(i));
+        PrivateKey pk = getPrivateKey(clientKeyFile);
+        Certificate[] chain = new Certificate[clientCerts.size()];
+        clientKeyStore = KeyStore.getInstance(keyStoreType);
+        clientKeyStore.load(null, null);
+        for (int i = 0; i < clientCerts.size(); i++) {
+          chain[i] = clientCerts.get(i);
+          clientKeyStore.setCertificateEntry("node_crt_" + i, clientCerts.get(i));
         }
 
-        // Create a TrustManager that trusts the CAs in our KeyStore
-        String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
-        tmf.init(keyStore);
+        String password = "password";
+        char[] ksPass = password.toCharArray();
+        clientKeyStore.setKeyEntry("node_key", pk, ksPass, chain);
 
-        List<X509Certificate> clientCerts = null;
-        KeyStore clientKeyStore = null;
-        KeyManagerFactory kmf = null;
-        if (clientCertFile != null) {
-          if (clientKeyFile == null) {
-            log.error("Both client cert and key needed for mutual auth.");
-            return null;
-          }
-          fis = new FileInputStream(clientCertFile);
-          try {
-            clientCerts = (List<X509Certificate>) (List<?>) cf.generateCertificates(fis);
-          } catch (Exception e) {
-            log.error("Exception generating CA certificate from input file: ", e);
-            throw e;
-          } finally {
-            fis.close();
-          }
-          PrivateKey pk = getPrivateKey(clientKeyFile);
-          Certificate[] chain = new Certificate[clientCerts.size()];
-          clientKeyStore = KeyStore.getInstance(keyStoreType);
-          clientKeyStore.load(null, null);
-          for (int i = 0; i < clientCerts.size(); i++) {
-            chain[i] = clientCerts.get(i);
-            clientKeyStore.setCertificateEntry("node_crt_" + i, clientCerts.get(i));
-          }
-
-          String password = "password";
-          char[] ksPass = password.toCharArray();
-          clientKeyStore.setKeyEntry("node_key", pk, ksPass, chain);
-
-          kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-          kmf.init(clientKeyStore, ksPass);
-        }
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        // mTLS is enabled.
-        if (kmf != null) {
-          sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-        } else {
-          sslContext.init(null, tmf.getTrustManagers(), null);
-        }
-        SSLEngine sslEngine = sslContext.createSSLEngine();
-        sslEngine.setUseClientMode(true);
-        return new SslHandler(sslEngine);
-      } catch (Exception e) {
-        log.error("Exception creating sslContext: ", e);
-        throw new RuntimeException("SSLContext creation failed: " + e.toString());
+        kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(clientKeyStore, ksPass);
       }
+
+      SSLContext sslContext = SSLContext.getInstance("TLS");
+      // mTLS is enabled.
+      if (kmf != null) {
+        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+      } else {
+        sslContext.init(null, tmf.getTrustManagers(), null);
+      }
+      SSLEngine sslEngine = sslContext.createSSLEngine();
+      sslEngine.setUseClientMode(true);
+      return new SslHandler(sslEngine);
+    } catch (Exception e) {
+      LOG.error("Exception creating sslContext: ", e);
+      throw new RuntimeException("SSLContext creation failed: " + e.toString());
     }
+  }
 
-    private void handleDisconnect(final ChannelStateEvent state_event) {
-      if (disconnected) {
-        return;
-      }
-      switch (state_event.getState()) {
-        case OPEN:
-          if (state_event.getValue() == Boolean.FALSE) {
-            break;  // CLOSED
-          }
-          return;
-        case CONNECTED:
-          if (state_event.getValue() == null) {
-            break;  // DISCONNECTED
-          }
-          return;
-        default:
-          return;  // Not an event we're interested in, ignore it.
-      }
-
-      disconnected = true;  // So we don't clean up the same client twice.
-      try {
-        final TabletClient client = super.get(TabletClient.class);
-        SocketAddress remote = super.getChannel().getRemoteAddress();
-        // At this point Netty gives us no easy way to access the
-        // SocketAddress of the peer we tried to connect to. This
-        // kinda sucks but I couldn't find an easier way.
-        if (remote == null) {
-          remote = slowSearchClientIP(client);
-        }
-
-        // Prevent the client from buffering requests while we invalidate
-        // everything we have about it.
-        synchronized (client) {
-          removeClientFromCache(client, remote);
-        }
-      } catch (Exception e) {
-        log.error("Uncaught exception when handling a disconnection of " + getChannel(), e);
-      }
+  private PrivateKey getPrivateKey(String keyFile) {
+    try {
+      PemReader pemReader = new PemReader(new FileReader(keyFile));
+      PemObject pemObject = pemReader.readPemObject();
+      pemReader.close();
+      byte[] bytes = pemObject.getContent();
+      PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(bytes);
+      KeyFactory kf = KeyFactory.getInstance("RSA");
+      PrivateKey pk = kf.generatePrivate(spec);
+      return pk;
+    } catch (InvalidKeySpecException e) {
+      LOG.error("Could not read the private key file.", e);
+      throw new RuntimeException("InvalidKeySpecException while reading key: " + keyFile);
+    } catch (Exception e) {
+      LOG.error("Issue reading pem file.", e);
+      throw new RuntimeException("IOException reading key: " + keyFile);
     }
-
   }
 
   /**
@@ -2963,7 +3075,6 @@ public class AsyncYBClient implements AutoCloseable {
    */
   public final static class AsyncYBClientBuilder {
     private static final int DEFAULT_MASTER_PORT = 7100;
-    private static final int DEFAULT_BOSS_COUNT = 1;
     private static final int DEFAULT_WORKER_COUNT = 2 * Runtime.getRuntime().availableProcessors();
 
     private final List<HostAndPort> masterAddresses;
@@ -2977,9 +3088,7 @@ public class AsyncYBClient implements AutoCloseable {
     private String clientHost = null;
     private int clientPort = 0;
 
-    private Executor bossExecutor;
-    private Executor workerExecutor;
-    private int bossCount = DEFAULT_BOSS_COUNT;
+    private Executor executor;
     private int workerCount = DEFAULT_WORKER_COUNT;
 
     private int numTablets = DEFAULT_MAX_TABLETS;
@@ -3100,6 +3209,16 @@ public class AsyncYBClient implements AutoCloseable {
       return this;
     }
 
+
+    /**
+     * Single thread pool is used in netty4 to handle client IO
+     */
+    @Deprecated
+    @SuppressWarnings("unused")
+    public AsyncYBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
+      return executor(workerExecutor);
+    }
+
     /**
      * Set the executors which will be used for the embedded Netty boss and workers.
      * Optional.
@@ -3109,20 +3228,17 @@ public class AsyncYBClient implements AutoCloseable {
      * worker count, or netty cannot start enough threads, and client will get stuck.
      * If not sure, please just use CachedThreadPool.
      */
-    public AsyncYBClientBuilder nioExecutors(Executor bossExecutor, Executor workerExecutor) {
-      this.bossExecutor = bossExecutor;
-      this.workerExecutor = workerExecutor;
+    public AsyncYBClientBuilder executor(Executor executor) {
+      this.executor = executor;
       return this;
     }
 
     /**
-     * Set the maximum number of boss threads.
-     * Optional.
-     * If not provided, 1 is used.
+     * Single thread pool is used in netty4 to handle client IO
      */
+    @Deprecated
+    @SuppressWarnings("unused")
     public AsyncYBClientBuilder bossCount(int bossCount) {
-      Preconditions.checkArgument(bossCount > 0, "bossCount should be greater than 0");
-      this.bossCount = bossCount;
       return this;
     }
 
@@ -3144,23 +3260,40 @@ public class AsyncYBClient implements AutoCloseable {
       return this;
     }
 
+    private Executor getOrCreateWorker() {
+      Executor worker = executor;
+      if (worker == null) {
+        worker = Executors.newCachedThreadPool(
+          new ThreadFactoryBuilder()
+            .setNameFormat("yb-nio-%d")
+            .setDaemon(true)
+            .build());
+      }
+
+      return worker;
+    }
+
+    private EventLoopGroup createEventLoopGroup(Executor worker) {
+      return new NioEventLoopGroup(workerCount, worker);
+    }
+
     /**
      * Creates the channel factory for Netty. The user can specify the executors, but
      * if they don't, we'll use a simple thread pool.
      */
-    private NioClientSocketChannelFactory createChannelFactory() {
-      Executor boss = bossExecutor;
-      Executor worker = workerExecutor;
-      if (boss == null || worker == null) {
-        Executor defaultExec = Executors.newCachedThreadPool(
-            new ThreadFactoryBuilder()
-                .setNameFormat("yb-nio-%d")
-                .setDaemon(true)
-                .build());
-        if (boss == null) boss = defaultExec;
-        if (worker == null) worker = defaultExec;
+    private Bootstrap createBootstrap(EventLoopGroup eventLoopGroup) {
+      Bootstrap bootstrap = new Bootstrap()
+        .group(eventLoopGroup)
+        .channel(NioSocketChannel.class)
+        .option(ChannelOption.SO_KEEPALIVE, true)
+        .option(ChannelOption.TCP_NODELAY, true)
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TCP_CONNECT_TIMEOUT_MILLIS)
+        .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+      if (SystemUtil.IS_LINUX) {
+        // No support for TCP_KEEPIDLE on MacOs
+        bootstrap.option(EpollChannelOption.TCP_KEEPIDLE, TCP_KEEP_IDLE_INTERVALS);
       }
-      return new NioClientSocketChannelFactory(boss, worker, bossCount, workerCount);
+      return bootstrap;
     }
 
     /**

@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 drop_operator ::= DROP OPERATOR [ IF EXISTS ] 
                   { operator_name ( operator_signature ) } [ , ... ] 
                   [ CASCADE | RESTRICT ]

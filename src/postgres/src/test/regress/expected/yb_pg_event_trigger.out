@@ -89,7 +89,7 @@ set role regress_evt_user;
 create event trigger regress_event_trigger_noperms on ddl_command_start
    execute procedure test_event_trigger();
 ERROR:  permission denied to create event trigger "regress_event_trigger_noperms"
-HINT:  Must be superuser to create an event trigger.
+HINT:  Must be superuser or a member of the yb_db_admin role to create an event trigger.
 reset role;
 -- test enabling and disabling
 alter event trigger regress_event_trigger disable;
@@ -142,7 +142,7 @@ NOTICE:  test_event_trigger: ddl_command_end ALTER DEFAULT PRIVILEGES
 -- alter owner to non-superuser should fail
 alter event trigger regress_event_trigger owner to regress_evt_user;
 ERROR:  permission denied to change owner of event trigger "regress_event_trigger"
-HINT:  The owner of an event trigger must be a superuser.
+HINT:  The owner of an event trigger must be a superuser or a member of the yb_db_admin role.
 -- alter owner to superuser should work
 alter role regress_evt_user superuser;
 alter event trigger regress_event_trigger owner to regress_evt_user;
@@ -258,19 +258,19 @@ DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 DELETE FROM undroppable_objs WHERE object_identity = 'audit_tbls.schema_two_table_three';
 DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 DELETE FROM undroppable_objs WHERE object_identity = 'schema_one.table_three';
 DROP SCHEMA schema_one, schema_two CASCADE;
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP SCHEMA schema_one, schema_two CASCADE;
                     ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 -- ignoring tests related to cascade
 -- SELECT * FROM dropped_objects WHERE schema IS NULL OR schema <> 'pg_toast';
 DROP OWNED BY regress_evt_user;
@@ -330,7 +330,8 @@ NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one ALTER COLUMN col_b DROP DEFAULT;
 NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one DROP CONSTRAINT one_pkey;
-ERROR:  dropping a primary key constraint is not yet supported
+NOTICE:  Event Trigger for drop
+NOTICE:  Event Trigger for drop
 DROP INDEX evttrig.one_idx;
 NOTICE:  Event Trigger for drop
 \set VERBOSITY terse
@@ -410,14 +411,14 @@ alter type rewritetype alter attribute a type text cascade;
 ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
 LINE 1: alter type rewritetype alter attribute a type text cascade;
                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
 -- but this doesn't work
 create table rewritemetoo3 (a rewritetype);
 alter type rewritetype alter attribute a type varchar cascade;
 ERROR:  ALTER TYPE ALTER ATTRIBUTE not supported yet
 LINE 1: alter type rewritetype alter attribute a type varchar cascad...
                                ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1893. React with thumbs up to raise its priority
 drop table rewriteme;
 drop event trigger no_rewrite_allowed;
 drop function test_evtrig_no_rewrite();

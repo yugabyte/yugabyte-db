@@ -34,7 +34,9 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
       const std::string& snapshot_id,
       tserver::TabletSnapshotOpRequestPB::Operation op);
 
-  Type type() const override { return ASYNC_SNAPSHOT_OP; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kSnapshotOp;
+  }
 
   std::string type_name() const override { return "Tablet Snapshot Operation"; }
 
@@ -62,6 +64,12 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
     callback_ = std::move(callback);
   }
 
+  void SetDbOid(int64_t db_oid) {
+    db_oid_ = db_oid;
+  }
+
+  void SetColocatedTableMetadata(const TableId& table_id, const SysTablesEntryPB& pb);
+
  private:
   TabletId tablet_id() const override;
   TabletServerId permanent_uuid() const;
@@ -85,6 +93,8 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
   SchemaPB schema_;
   google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
   bool hide_ = false;
+  std::optional<int64_t> db_oid_ = std::nullopt;
+  google::protobuf::RepeatedPtrField<tserver::TableMetadataPB> colocated_tables_metadata_;
 };
 
 } // namespace master

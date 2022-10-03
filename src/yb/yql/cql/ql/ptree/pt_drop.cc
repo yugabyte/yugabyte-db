@@ -40,7 +40,7 @@ PTDropStmt::PTDropStmt(MemoryContext *memctx,
 PTDropStmt::~PTDropStmt() {
 }
 
-CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
+Status PTDropStmt::Analyze(SemContext *sem_context) {
   if (drop_type_ == ObjectType::ROLE) {
     RETURN_NOT_AUTH_ENABLED(sem_context);
   }

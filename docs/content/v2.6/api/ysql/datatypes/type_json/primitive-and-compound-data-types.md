@@ -9,8 +9,7 @@ menu:
     identifier: primitive-and-compound-data-types
     parent: api-ysql-datatypes-json
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 JSON can represent (sub)values of four primitive data types and of two compound data types.

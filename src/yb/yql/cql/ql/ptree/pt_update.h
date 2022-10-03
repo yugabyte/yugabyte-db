@@ -53,7 +53,7 @@ class PTAssign : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Node type.
@@ -139,9 +139,9 @@ class PTUpdateStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
+  Status AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
   ExplainPlanPB AnalysisResultToPB() override;
 
   // Table name.

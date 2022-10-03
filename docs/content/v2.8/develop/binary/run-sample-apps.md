@@ -6,14 +6,14 @@ Create a cluster.
 
 ```sh
 $ ./bin/yb-ctl create
-``` 
+```
 Clients can now connect to the YSQL API at `localhost:5433` and YCQL API at `localhost:9042`.
 
 ## 2. Install Yugastore
 
 Clone the repo.
 ```sh
-$ git clone https://github.com/yugabyte/yugastore-java.git
+$ git clone https://github.com/YugabyteDB-Samples/yugastore-java.git
 ```
 ```sh
 $ cd yugastore-java
@@ -93,7 +93,7 @@ yugabyte=# select * from shopping_cart;
 ```
 
 ```
- cart_key     | user_id |    asin    |       time_added        | quantity 
+ cart_key     | user_id |    asin    |       time_added        | quantity
 ------------------+---------+------------+-------------------------+----------
  u1001-0001048236 | u1001   | 0001048236 | 2019-05-29T13:46:54.046 |        1
  u1001-0001048775 | u1001   | 0001048775 | 2019-05-29T13:46:56.055 |        1
@@ -102,7 +102,7 @@ yugabyte=# select * from shopping_cart;
 
 ## 5. Verify the completed order
 
-Now complete the checkout and observe the order number generated. 
+Now complete the checkout and observe the order number generated.
 
 ![yugastore-java order confirmation](/images/quick_start/binary-yugastore-java-orderconfirmation.png)
 
@@ -130,7 +130,7 @@ yugabyte=# select * from shopping_cart;
 ```
 
 ```
-cart_key | user_id | asin | time_added | quantity 
+cart_key | user_id | asin | time_added | quantity
 ----------+---------+------+------------+----------
 (0 rows)
 ```

@@ -74,6 +74,7 @@
     }
 
     .alert-label-message {
+      white-space: pre-wrap;
       display: inline-block;
       font-size: 12px;
       max-height: 200px;

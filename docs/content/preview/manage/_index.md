@@ -2,18 +2,17 @@
 title: Manage YugabyteDB
 headerTitle: Manage
 linkTitle: Manage
-description: Manage YugabyteDB clusters.
+description:
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
   - /preview/manage/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: manage
-    weight: 900
+    parent: launch-and-manage
+type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="backup-restore/">
@@ -34,7 +33,7 @@ menu:
         <div class="title">Migrate data</div>
       </div>
       <div class="body">
-        Bulk data import and export in the context of YugabyteDB.
+        Bulk data export and import in the context of YugabyteDB.
       </div>
     </a>
   </div>

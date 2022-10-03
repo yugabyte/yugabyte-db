@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: savepoint_create
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -34,10 +33,10 @@ Use the `SAVEPOINT` statement to define a new savepoint within the current trans
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.diagram.md" %}}
   </div>
 </div>
 
@@ -77,7 +76,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   3 |  4
@@ -92,7 +91,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
 (1 row)
@@ -107,7 +106,7 @@ SELECT * FROM SAMPLE;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   5 |  6

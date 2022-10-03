@@ -8,8 +8,7 @@ menu:
     identifier: cr-cr-copy-from-csv-scripts-sql
     parent: ingest-scripts
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This procedure makes use of the [`row_number()`](../../../../../../exprs/window_functions/function-syntax-semantics/row-number-rank-dense-rank/#row-number) Window function to enable a single invocation of the function to choose the first, the second, or the third `.csv` file with respect to the alphabetical order of their filenames.

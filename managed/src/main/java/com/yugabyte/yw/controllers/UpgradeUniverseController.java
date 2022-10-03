@@ -2,23 +2,28 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
-import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -26,6 +31,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
@@ -52,15 +58,15 @@ public class UpgradeUniverseController extends AuthenticatedController {
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
-          name = "upgrade_task_params",
-          value = "Upgrade Task Params",
-          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
+          name = "restart_task_params",
+          value = "Restart Task Params",
+          dataType = "com.yugabyte.yw.forms.RestartTaskParams",
           required = true,
           paramType = "body"))
   public Result restartUniverse(UUID customerUuid, UUID universeUuid) {
     return requestHandler(
         upgradeUniverseHandler::restartUniverse,
-        UpgradeTaskParams.class,
+        RestartTaskParams.class,
         Audit.ActionType.Restart,
         customerUuid,
         universeUuid);
@@ -120,6 +126,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::upgradeGFlags,
         GFlagsUpgradeParams.class,
         Audit.ActionType.UpgradeGFlags,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API that upgrades kubernetes overrides for primary and read clusters.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Upgrade KubernetesOverrides",
+      notes = "Queues a task to perform Kubernetesoverrides upgrade for a kubernetes universe.",
+      nickname = "upgradeKubernetesOverrides",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "Kubernetes_overrides_upgrade_params",
+          value = "Kubernetes Override Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams",
+          required = true,
+          paramType = "body"))
+  public Result upgradeKubernetesOverrides(UUID customerUuid, UUID universeUuid) {
+    return requestHandler(
+        upgradeUniverseHandler::upgradeKubernetesOverrides,
+        KubernetesOverridesUpgradeParams.class,
+        Audit.ActionType.UpgradeKubernetesOverrides,
         customerUuid,
         universeUuid);
   }
@@ -306,6 +340,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universeUUID);
   }
 
+  /**
+   * API that reboots all nodes in the universe. Only supports rolling upgrade.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Reboot universe",
+      notes = "Queues a task to perform a rolling reboot in a universe.",
+      nickname = "rebootUniverse",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "upgrade_task_params",
+          value = "Upgrade Task Params",
+          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
+          required = true,
+          paramType = "body"))
+  public Result rebootUniverse(UUID customerUUID, UUID universeUUID) {
+    return requestHandler(
+        upgradeUniverseHandler::rebootUniverse,
+        UpgradeTaskParams.class,
+        Audit.ActionType.RebootUniverse,
+        customerUUID,
+        universeUUID);
+  }
+
   private <T extends UpgradeTaskParams> Result requestHandler(
       IUpgradeUniverseHandlerMethod<T> serviceMethod,
       Class<T> type,
@@ -315,7 +377,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
     T requestParams =
-        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(request(), type);
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(ctx(), request(), type);
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",
@@ -323,10 +385,27 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.universeUUID,
         customer.uuid);
 
+    // prevent race condition in the case userIntent updates before we createAuditEntry
+    UserIntent userIntent =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails().getPrimaryCluster().userIntent),
+            UserIntent.class);
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
+    JsonNode additionalDetails = null;
+    if (type.equals(GFlagsUpgradeParams.class)) {
+      additionalDetails =
+          upgradeUniverseHandler.constructGFlagAuditPayload(
+              (GFlagsUpgradeParams) requestParams, userIntent);
+    }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Universe, universeUuid.toString(), auditActionType, taskUuid);
+            ctx(),
+            Audit.TargetType.Universe,
+            universeUuid.toString(),
+            auditActionType,
+            request().body().asJson(),
+            taskUuid,
+            additionalDetails);
     return new YBPTask(taskUuid, universe.universeUUID).asResult();
   }
 }

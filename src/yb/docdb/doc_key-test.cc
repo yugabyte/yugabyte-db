@@ -61,28 +61,31 @@ class DocKeyTest : public YBTest {
     vector<SubDocKey> sub_doc_keys;
     auto cotable_id = CHECK_RESULT(Uuid::FromHexString("0123456789abcdef0123456789abcdef"));
 
-    std::vector<std::pair<Uuid, ColocationId>> colocation_id_pairs;
-    colocation_id_pairs.emplace_back(cotable_id, 0);
-    colocation_id_pairs.emplace_back(Uuid::Nil(), 9911);
-    colocation_id_pairs.emplace_back(Uuid::Nil(), 0);
+    std::vector<std::pair<Uuid, ColocationId>> id_pairs;
+    id_pairs.emplace_back(cotable_id, 0);
+    id_pairs.emplace_back(Uuid::Nil(), 9911);
+    id_pairs.emplace_back(Uuid::Nil(), 0);
 
-    for (const auto& colocation_id_pair : colocation_id_pairs) {
+    for (const auto& id_pair : id_pairs) {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
         for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
           for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
             for (bool has_hybrid_time : {false, true}) {
               SubDocKey sub_doc_key;
 
-              if (!colocation_id_pair.first.IsNil()) {
-                sub_doc_key.doc_key().set_cotable_id(cotable_id);
-              } else if (colocation_id_pair.second != kColocationIdNotSet) {
-                if ((num_hash_keys == 0 && num_range_keys == 0) &&
-                    (num_sub_keys > 0 || !has_hybrid_time)) {
-                  // This key format currently cannot ever appear because colocated table tombstones
-                  // should both have no subkeys and have a hybrid time, so skip it.
-                  continue;
-                }
-                sub_doc_key.doc_key().set_colocation_id(colocation_id_pair.second);
+              bool has_id = false;
+              if (!id_pair.first.IsNil()) {
+                sub_doc_key.doc_key().set_cotable_id(id_pair.first);
+                has_id = true;
+              } else if (id_pair.second != kColocationIdNotSet) {
+                sub_doc_key.doc_key().set_colocation_id(id_pair.second);
+                has_id = true;
+              }
+              if (has_id && num_hash_keys == 0 && num_range_keys == 0 &&
+                  (num_sub_keys > 0 || !has_hybrid_time)) {
+                // This key format currently cannot ever appear because table tombstones should both
+                // have no subkeys and have a hybrid time, so skip it.
+                continue;
               }
 
               if (num_hash_keys > 0) {
@@ -566,10 +569,10 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     for (const auto& range_group_elem : doc_key.range_group()) {
       cur_key.doc_key().range_group().push_back(range_group_elem);
     }
-    if (doc_key.has_colocation_id() &&
+    if ((doc_key.has_colocation_id() || doc_key.has_cotable_id()) &&
         doc_key.hashed_group().empty() &&
         doc_key.range_group().empty()) {
-      // ...but an empty key doesn't count (for colocated table tombstones).
+      // ...but an empty key doesn't count (for table tombstones).
     } else {
       expected_ends.push_back(cur_key.Encode().size());
     }

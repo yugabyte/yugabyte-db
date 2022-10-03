@@ -61,7 +61,7 @@ std::string Uuid::ToString() const {
   return strval;
 }
 
-CHECKED_STATUS Uuid::ToString(std::string *strval) const {
+Status Uuid::ToString(std::string *strval) const {
   *strval = boost::uuids::to_string(boost_uuid_);
   return Status::OK();
 }
@@ -170,7 +170,7 @@ Result<Uuid> Uuid::FromComparable(const Slice& slice) {
   return result;
 }
 
-CHECKED_STATUS Uuid::HashMACAddress() {
+Status Uuid::HashMACAddress() {
   RETURN_NOT_OK(IsTimeUuid());
   boost::uuids::detail::sha1 sha1;
   unsigned int hash[kShaDigestSize];
@@ -192,7 +192,7 @@ void Uuid::FromTimestamp(int64_t ts_hnanos) {
   FromTimestampBytes(ts_bytes);
 }
 
-CHECKED_STATUS Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
+Status Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
   // Since we are converting to a finer-grained precision (milliseconds to 100's nanoseconds) the
   // input milliseconds really corresponds to a range in 100's nanoseconds precision.
   // So, to get a logically correct max timeuuid, we need to use the upper bound of that range
@@ -204,14 +204,14 @@ CHECKED_STATUS Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
   return Status::OK();
 }
 
-CHECKED_STATUS Uuid::MinFromUnixTimestamp(int64_t timestamp_ms) {
+Status Uuid::MinFromUnixTimestamp(int64_t timestamp_ms) {
   int64_t timestamp = (timestamp_ms - kGregorianOffsetMillis) * kMillisPerHundredNanos;
   FromTimestamp(timestamp); // Set most-significant bits (i.e. timestamp).
   memset(boost_uuid_.data + kUuidMsbSize, 0x00, kUuidLsbSize); // Set least-significant bits.
   return Status::OK();
 }
 
-CHECKED_STATUS Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
+Status Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
   RETURN_NOT_OK(IsTimeUuid());
   uint8_t output[kUuidMsbSize];
   ToTimestampBytes(output);

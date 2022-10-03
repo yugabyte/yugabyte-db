@@ -58,7 +58,7 @@ class PTOrderBy : public TreeNode {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   Direction direction() const {
     return direction_;
@@ -107,7 +107,7 @@ class PTTableRef : public TreeNode {
     return MCMakeShared<PTTableRef>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   client::YBTableName table_name() const {
     return name_->ToTableName();
@@ -137,10 +137,10 @@ class SelectScanInfo : public MCBase {
   const ColumnDesc* GetColumnDesc(const SemContext *sem_context, const MCString& col_name);
 
   // Collecting references to filter expressions.
-  CHECKED_STATUS AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr);
+  Status AddFilteringExpr(SemContext *sem_context, const PTRelationExpr *expr);
 
   // Collecting references of operators on WHERE clause.
-  CHECKED_STATUS AddWhereExpr(SemContext *sem_context,
+  Status AddWhereExpr(SemContext *sem_context,
                               const PTRelationExpr *expr,
                               const ColumnDesc *col_desc,
                               PTExprPtr value,
@@ -307,7 +307,7 @@ class PTSelectStmt : public PTDmlStmt {
   // This adds unnecessary complexities to the compilation process. However, it affects all layers
   // in CQL, so we will keep it that way for now to avoid new bugs and extra work. If the CQL
   // language is extended further toward SQL, we can change this design.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   bool CoversFully(const IndexInfo& index_info,
                    const MCUnorderedMap<int32, uint16> &column_ref_cnts) const;
 
@@ -436,23 +436,23 @@ class PTSelectStmt : public PTDmlStmt {
 
  private:
   // Analyze the components of a SELECT.
-  CHECKED_STATUS LookupIndex(SemContext *sem_context);
+  Status LookupIndex(SemContext *sem_context);
 
   // Analyze clauses.
-  CHECKED_STATUS AnalyzeFromClause(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeSelectList(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeDistinctClause(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeOffsetClause(SemContext *sem_context);
-  CHECKED_STATUS ConstructSelectedSchema();
+  Status AnalyzeFromClause(SemContext *sem_context);
+  Status AnalyzeSelectList(SemContext *sem_context);
+  Status AnalyzeDistinctClause(SemContext *sem_context);
+  Status AnalyzeLimitClause(SemContext *sem_context);
+  Status AnalyzeOffsetClause(SemContext *sem_context);
+  Status ConstructSelectedSchema();
 
   // Routines for analysis and choosing scan plan.
-  CHECKED_STATUS AnalyzeReferences(SemContext *sem_context);
-  CHECKED_STATUS AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
-  CHECKED_STATUS AnalyzeOrderByClause(SemContext *sem_context,
+  Status AnalyzeReferences(SemContext *sem_context);
+  Status AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
+  Status AnalyzeOrderByClause(SemContext *sem_context,
                                       const TableId& index_id,
                                       bool *is_forward_scan);
-  CHECKED_STATUS SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
+  Status SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
 
   // --- The parser will decorate this node with the following information --
 

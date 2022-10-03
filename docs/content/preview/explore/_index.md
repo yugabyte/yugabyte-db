@@ -2,8 +2,8 @@
 title: Explore YugabyteDB
 headerTitle: Explore YugabyteDB
 linkTitle: Explore
+headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
-headcontent:
 image: /images/section_icons/index/explore.png
 aliases:
   - /preview/explore/cloud-native/
@@ -11,18 +11,8 @@ aliases:
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/
   - /preview/explore/cloud-native/orchestration-readiness/
-section: YUGABYTEDB CORE
-menu:
-  preview:
-    identifier: explore
-    weight: 540
+type: indexpage
 ---
-
-{{< tip title="Tip" >}}
-
-Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.
-
-{{< /tip >}}
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -104,7 +94,7 @@ Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the c
         <div class="title">Multi-region deployments</div>
       </div>
       <div class="body">
-        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
+        Multi-region deployment topologies, including synchronous and xCluster replication, geo-partitioning, and more.
       </div>
     </a>
   </div>

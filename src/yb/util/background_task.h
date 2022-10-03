@@ -36,12 +36,12 @@ class BackgroundTask {
       std::chrono::milliseconds interval_msec = std::chrono::milliseconds(0));
   ~BackgroundTask();
 
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Wait for pending tasks and shut down
   void Shutdown();
 
-  CHECKED_STATUS Wake();
+  Status Wake();
 
  private:
   void Run();

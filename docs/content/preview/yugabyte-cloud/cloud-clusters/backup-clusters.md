@@ -2,15 +2,14 @@
 title: Backup and restore clusters
 linkTitle: Backup and restore
 description: Back up and restore clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Configure your backup schedule and restore databases
 image: /images/section_icons/manage/backup.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: backup-clusters
     parent: cloud-clusters
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
@@ -23,7 +22,7 @@ To change the backup schedule, [create your own schedule](#schedule-backups). To
 
 You can also perform backups [on demand](#on-demand-backups) and manually [restore backups](#restore-a-backup).
 
-Backups are not supported for Free clusters.
+Backups are not supported for Sandbox clusters.
 
 ![Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
 
@@ -62,7 +61,7 @@ To schedule backups for a cluster:
 Before performing a restore, ensure the following:
 
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
-- the target cluster doesn't have the same namespaces as the source cluster
+- if the target cluster has the same namespaces as the source cluster, those namespaces don't have any tables
 
 To review previous restores, click **Restore**.
 

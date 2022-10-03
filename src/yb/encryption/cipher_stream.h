@@ -36,10 +36,10 @@ class BlockAccessCipherStream {
   static Result<std::unique_ptr<BlockAccessCipherStream>> FromEncryptionParams(
       EncryptionParamsPtr encryption_params);
   explicit BlockAccessCipherStream(EncryptionParamsPtr encryption_params);
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Encrypt data at an offset.
-  CHECKED_STATUS Encrypt(
+  Status Encrypt(
       uint64_t file_offset,
       const Slice& input,
       void* output,
@@ -50,7 +50,7 @@ class BlockAccessCipherStream {
   // counter_overflow_workaround indicates whether we should add one to byte 11 of the initilization
   // vector. Used to as a workaround in case of block checksum mismatches when reading data that is
   // affected by https://github.com/yugabyte/yugabyte-db/issues/3707.
-  CHECKED_STATUS Decrypt(
+  Status Decrypt(
       uint64_t file_offset,
       const Slice& input,
       void* output,
@@ -60,7 +60,7 @@ class BlockAccessCipherStream {
   bool UseOpensslCompatibleCounterOverflow();
 
  private:
-  CHECKED_STATUS EncryptByBlock(
+  Status EncryptByBlock(
       uint64_t block_index,
       const Slice& input,
       void* output,

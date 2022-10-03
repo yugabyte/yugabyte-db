@@ -92,7 +92,7 @@ class ThreadJoiner {
   // Join the thread, subject to the above parameters. If the thread joining
   // fails for any reason, returns RuntimeError. If it times out, returns
   // Aborted.
-  CHECKED_STATUS Join();
+  Status Join();
 
  private:
   Thread* thread_;
@@ -144,45 +144,45 @@ class Thread : public RefCountedThreadSafe<Thread> {
   //  - A1...An - argument types whose instances are passed to f(...)
   //  - holder - optional shared pointer to hold a reference to the created thread.
   template <class F>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        scoped_refptr<Thread>* holder) {
     return StartThread(category, name, f, holder);
   }
 
   template <class F, class A1>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1), holder);
   }
 
   template <class F, class A1, class A2>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2), holder);
   }
 
   template <class F, class A1, class A2, class A3>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2, a3), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4,
                        scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2, a3, a4), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4, class A5>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
                        scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5), holder);
   }
 
   template <class F, class A1, class A2, class A3, class A4, class A5, class A6>
-  static CHECKED_STATUS Create(const std::string& category, const std::string& name, const F& f,
+  static Status Create(const std::string& category, const std::string& name, const F& f,
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
                        const A6& a6, scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5, a6), holder);
@@ -366,7 +366,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // initialised and its TID has been read. Waits for notification from the started
   // thread that initialisation is complete before returning. On success, stores a
   // reference to the thread in holder.
-  static CHECKED_STATUS StartThread(
+  static Status StartThread(
       const std::string& category, const std::string& name,
       ThreadFunctor functor, ThreadPtr* holder);
 

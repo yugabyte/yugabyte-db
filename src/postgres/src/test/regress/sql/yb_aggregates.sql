@@ -122,3 +122,10 @@ SELECT SUM(r) from (SELECT (NULL=random())::int as r from t3) as res;
 CREATE TABLE t4(c0 FLOAT8);
 INSERT INTO t4 VALUES(1), (2), (3);
 SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res;
+
+-- Test EXPLAIN with aggregate pushdown
+EXPLAIN (COSTS OFF) SELECT COUNT(*), SUM(int_4) FROM ybaggtest;
+-- Negative tests - pushdown not supported
+EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
+EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
+EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;

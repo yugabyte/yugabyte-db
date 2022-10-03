@@ -40,7 +40,7 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
   return std::make_pair(partition_schema, partitions[0]);
 }
 
-CHECKED_STATUS TabletHarness::Create(bool first_time) {
+Status TabletHarness::Create(bool first_time) {
   std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
@@ -59,6 +59,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
     .raft_group_id = options_.tablet_id,
     .partition = partition.second,
     .tablet_data_state = TABLET_DATA_READY,
+    .snapshot_schedules = {},
   }));
   if (options_.enable_metrics) {
     metrics_registry_.reset(new MetricRegistry());
@@ -69,7 +70,7 @@ CHECKED_STATUS TabletHarness::Create(bool first_time) {
   return Status::OK();
 }
 
-CHECKED_STATUS TabletHarness::Open() {
+Status TabletHarness::Open() {
   RETURN_NOT_OK(tablet_->Open());
   tablet_->MarkFinishedBootstrapping();
   return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
@@ -101,7 +102,11 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     .txns_enabled = TransactionsEnabled::kFalse,
     .is_sys_catalog = IsSysCatalogTablet::kFalse,
     .snapshot_coordinator = nullptr,
-    .tablet_splitter = nullptr
+    .tablet_splitter = nullptr,
+    .allowed_history_cutoff_provider = {},
+    .transaction_manager_provider = nullptr,
+    .post_split_compaction_pool = nullptr,
+    .post_split_compaction_added = nullptr
   };
 }
 

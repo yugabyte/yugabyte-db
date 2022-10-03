@@ -338,9 +338,9 @@ class TestRedisService : public RedisTableTestBase {
 
   int server_port() { return redis_server_port_; }
 
-  CHECKED_STATUS Send(const std::string& cmd);
+  Status Send(const std::string& cmd);
 
-  CHECKED_STATUS SendCommandAndGetResponse(
+  Status SendCommandAndGetResponse(
       const string& cmd, size_t expected_resp_length, int timeout_in_millis = kDefaultTimeoutMs);
 
   size_t CountSessions(const GaugePrototype<uint64_t>& proto) {
@@ -2642,7 +2642,7 @@ TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
   TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersCatchingUp) {
+TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);

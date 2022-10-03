@@ -8,8 +8,7 @@ menu:
     identifier: analysis-scripts
     parent: analyze-the-covidcast-data
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Here are the `.sql` scripts that jointly implement analysis:

@@ -8,8 +8,7 @@ menu:
     identifier: regr
     parent: linear-regression
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes these aggregate functions for linear regression analysis:

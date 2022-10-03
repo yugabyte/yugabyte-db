@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_policy ::= CREATE POLICY name ON table_name 
                   [ AS { PERMISSIVE | RESTRICTIVE } ] 
                   [ FOR { ALL | SELECT | INSERT | UPDATE | DELETE } ] 

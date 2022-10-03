@@ -5,13 +5,12 @@ linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
 headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
-section: YUGABYTEDB CORE
 menu:
   stable:
     identifier: deploy
-    weight: 634
+    parent: launch-and-manage
+type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="checklist/">
@@ -64,7 +63,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/docker-swarm/">
+    <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
         <div class="icon">
           <i class="fab fa-docker"></i>
@@ -73,7 +72,7 @@ menu:
         <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugabyteDB in Docker Swarm and Docker Compose.
+        Orchestrated deployment of YugabyteDB in Docker Compose.
       </div>
     </a>
   </div>

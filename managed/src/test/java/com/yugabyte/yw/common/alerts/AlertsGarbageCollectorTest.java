@@ -11,14 +11,12 @@ package com.yugabyte.yw.common.alerts;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
@@ -37,14 +35,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class AlertsGarbageCollectorTest extends FakeDBApplication {
 
-  @Mock private ExecutionContext executionContext;
-
-  @Mock private ActorSystem actorSystem;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock Config mockAppConfig;
 
@@ -64,15 +59,10 @@ public class AlertsGarbageCollectorTest extends FakeDBApplication {
         .thenReturn(Duration.of(2, ChronoUnit.MINUTES));
     when(mockAppConfig.getDuration(AlertsGarbageCollector.YB_MAINTENANCE_WINDOW_RETENTION_DURATION))
         .thenReturn(Duration.of(120, ChronoUnit.DAYS));
-    when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
     alertsGarbageCollector =
         new AlertsGarbageCollector(
-            executionContext,
-            actorSystem,
-            mockRuntimeConfigFactory,
-            alertService,
-            maintenanceService);
+            mockPlatformScheduler, mockRuntimeConfigFactory, alertService, maintenanceService);
   }
 
   @Test

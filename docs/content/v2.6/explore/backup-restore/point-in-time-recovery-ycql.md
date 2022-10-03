@@ -8,24 +8,8 @@ menu:
     identifier: explore-point-in-time-recovery-ycql
     parent: explore
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/preview/explore/backup-restore/point-in-time-recovery-ysql" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="/preview/explore/backup-restore/point-in-time-recovery-ycql" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 The point-in-time recovery (PITR) feature allows you to restore the state of your cluster's data (and some types of metadata) from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
@@ -127,7 +111,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 1. Get a timestamp.
 
     ```sh
-    $ python -c 'import datetime; print datetime.datetime.now().strftime("%s%f")'
+    $ python -c 'import datetime; print(datetime.datetime.now().strftime("%s%f"))'
     ```
 
     ```output

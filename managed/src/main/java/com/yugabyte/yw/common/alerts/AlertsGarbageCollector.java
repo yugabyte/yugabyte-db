@@ -1,8 +1,7 @@
 package com.yugabyte.yw.common.alerts;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -16,7 +15,6 @@ import java.util.Date;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 @Slf4j
@@ -49,32 +47,29 @@ public class AlertsGarbageCollector {
   static final String YB_MAINTENANCE_WINDOW_RETENTION_DURATION =
       "yb.maintenance.retention_duration";
 
-  private final Scheduler scheduler;
+  private final PlatformScheduler platformScheduler;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final ExecutionContext executionContext;
   private final AlertService alertService;
   private final MaintenanceService maintenanceService;
 
   @Inject
   public AlertsGarbageCollector(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       RuntimeConfigFactory runtimeConfigFactory,
       AlertService alertService,
       MaintenanceService maintenanceService) {
-    this.scheduler = actorSystem.scheduler();
+    this.platformScheduler = platformScheduler;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.executionContext = executionContext;
     this.alertService = alertService;
     this.maintenanceService = maintenanceService;
   }
 
   public void start() {
-    scheduler.schedule(
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
         Duration.ZERO,
         Duration.of(YB_ALERT_GC_INTERVAL_DAYS, ChronoUnit.DAYS),
-        this::scheduleRunner,
-        this.executionContext);
+        this::scheduleRunner);
   }
 
   @VisibleForTesting

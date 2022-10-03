@@ -3,13 +3,14 @@ title: Real-world example applications
 headerTitle: Real-world examples
 linkTitle: Real-world examples
 description: Run real-world YugabyteDB example applications for e-commerce, IoT, and retail analytics.
-headcontent: 
+headcontent:
 image: /images/section_icons/index/develop.png
 menu:
   v2.6:
     identifier: realworld-apps
     parent: develop
     weight: 580
+type: indexpage
 ---
 The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and its ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
 

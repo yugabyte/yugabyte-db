@@ -76,7 +76,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   // Shutdown this context. Clean up the subscriptions if any.
   void Shutdown(const Status& status) override;
 
-  CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) override;
+  Status ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
@@ -94,7 +94,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   }
 
   // Takes ownership of data content.
-  CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection,
+  Status HandleInboundCall(const rpc::ConnectionPtr& connection,
                                    size_t commands_in_batch,
                                    rpc::CallData* data);
 
@@ -120,7 +120,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   ~RedisInboundCall();
   // Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
+  Status ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.

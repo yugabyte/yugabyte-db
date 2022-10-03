@@ -43,6 +43,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -514,6 +515,8 @@ HybridTime MvccManager::SafeTimeForFollower(
       result.safe_time = last_replicated_;
       result.source = SafeTimeSource::kLastReplicated;
     }
+    VTRACE(3, "Current safe time $0. Source $1", yb::ToString(result.safe_time),
+           yb::ToString(result.source));
     return result.safe_time >= min_allowed;
   };
   if (deadline == CoarseTimePoint::max()) {
@@ -528,6 +531,9 @@ HybridTime MvccManager::SafeTimeForFollower(
       << "result: " << result.ToString()
       << ", max_safe_time_returned_for_follower_: "
       << max_safe_time_returned_for_follower_.ToString();
+  VTRACE(2, "Min requested safe time was $0", yb::ToString(min_allowed));
+  VTRACE(2, "Returning safe time $0. Source $1", yb::ToString(result.safe_time),
+         yb::ToString(result.source));
   max_safe_time_returned_for_follower_ = result;
   if (op_trace_) {
     op_trace_->Add(SafeTimeForFollowerTraceItem {
@@ -599,6 +605,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
     // This function could be invoked at a follower, so it has a very old ht_lease. In this case it
     // is safe to read at least at last_replicated_.
     result = std::max(result, last_replicated_);
+    VTRACE(3, "Current safe time $0. Source $1", yb::ToString(result),
+           yb::ToString(source));
 
     return result >= min_allowed;
   };
@@ -631,6 +639,8 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   } else {
     max_safe_time_returned_without_lease_ = { result, source };
   }
+  VTRACE(2, "Returning safe time $0. Source $1. Min requested safe time was $2",
+         yb::ToString(result), yb::ToString(source), yb::ToString(min_allowed));
   return result;
 }
 

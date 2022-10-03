@@ -33,6 +33,10 @@ namespace yb {
 namespace pgwrapper {
 namespace {
 
+Status EnableCatcacheEventLogging(PGConn* conn) {
+  return conn->Execute("SET yb_debug_log_catcache_events = ON");
+}
+
 class PgCatalogPerfTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
@@ -44,7 +48,9 @@ class PgCatalogPerfTest : public PgMiniTestBase {
 
   Result<uint64_t> CacheRefreshRPCCount() {
     auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(EnableCatcacheEventLogging(&conn));
     auto conn_aux = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(EnableCatcacheEventLogging(&conn_aux));
     RETURN_NOT_OK(conn_aux.Execute("CREATE TABLE t (k INT)"));
     RETURN_NOT_OK(conn_aux.Execute("ALTER TABLE t ADD COLUMN v INT"));
     // Catalog version was increased by the conn_aux but conn may not detect this immediately.
@@ -60,6 +66,18 @@ class PgCatalogPerfTest : public PgMiniTestBase {
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     return STATUS(RuntimeError, "Unreachable statement");
+  }
+
+  using AfterCacheRefreshFunctor = std::function<Status(PGConn*)>;
+  Result<uint64_t> RPCCountAfterCacheRefresh(const AfterCacheRefreshFunctor& functor) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE cache_refresh_trigger (k INT)"));
+    // Force version increment. Next new connection will do cache refresh on start.
+    RETURN_NOT_OK(conn.Execute("ALTER TABLE cache_refresh_trigger ADD COLUMN v INT"));
+    auto aux_conn = VERIFY_RESULT(Connect());
+    return read_rpc_watcher_->Delta([&functor, &aux_conn] {
+      return functor(&aux_conn);
+    });
   }
 
   std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
@@ -79,15 +97,15 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
   };
 
   const auto first_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
-  ASSERT_EQ(first_connect_rpc_count, 5);
+  ASSERT_EQ(first_connect_rpc_count, 4);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(read_rpc_watcher_->Delta(connector));
-  ASSERT_EQ(subsequent_connect_rpc_count, 2);
+  ASSERT_EQ(subsequent_connect_rpc_count, 1);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithoutPartitionTables)) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 4);
+  ASSERT_EQ(cache_refresh_rpc_count, 3);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -102,7 +120,30 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshRPCCountWithPartit
     }
   }
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 7);
+  ASSERT_EQ(cache_refresh_rpc_count, 6);
+}
+
+// Test checks number of RPC to a master caused by the first INSERT stmt into a table with primary
+// key after cache refresh.
+TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnInsert)) {
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  auto master_rpc_count_for_insert = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    return conn->Execute("INSERT INTO t VALUES(0)");
+  }));
+  ASSERT_EQ(master_rpc_count_for_insert, 1);
+}
+
+// Test checks number of RPC to a master caused by the first SELECT stmt from a table with primary
+// key after cache refresh.
+TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(AfterCacheRefreshRPCCountOnSelect)) {
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    VERIFY_RESULT(conn->Fetch("SELECT * FROM t"));
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_EQ(master_rpc_count_for_select, 3);
 }
 
 } // namespace pgwrapper

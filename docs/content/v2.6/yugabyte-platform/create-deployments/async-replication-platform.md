@@ -4,13 +4,11 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 You can perform deployment via unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between data centers.
@@ -57,4 +55,3 @@ You can find your customer UUID in Yugabyte Platform as follows:
   ```
 
   To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
-

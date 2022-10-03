@@ -44,6 +44,7 @@ namespace enterprise {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kKeyColumnName = "key";
 
 struct TwoDCTestParams {
   TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
@@ -67,61 +68,131 @@ class TwoDCTestBase : public YBTest {
     boost::optional<client::TransactionManager> txn_mgr_;
 
     Result<pgwrapper::PGConn> Connect() {
-      return pgwrapper::PGConn::Connect(pg_host_port_);
+      return ConnectToDB(std::string() /* dbname */);
     }
 
-    Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
-      return pgwrapper::PGConn::Connect(pg_host_port_, dbname);
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, bool simple_query_protocol = false) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname
+      }).Connect(simple_query_protocol);
     }
   };
 
   void SetUp() override {
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
+    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
     // Not a useful test for us. It's testing Public+Private IP NW errors and we're only public
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
+  Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
+
   void TearDown() override;
 
-  CHECKED_STATUS SetupUniverseReplication(
+  Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
+  Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
+
+  Status WaitForLoadBalancersToStabilize();
+
+  Status CreateDatabase(
+      Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
+
+  static Result<client::YBTableName> CreateTable(
+      YBClient* client, const std::string& namespace_name, const std::string& table_name,
+      uint32_t num_tablets, const client::YBSchema* schema);
+
+  Result<client::YBTableName> CreateYsqlTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& schema_name,
+      const std::string& table_name,
+      const boost::optional<std::string>& tablegroup_name,
+      uint32_t num_tablets,
+      bool colocated = false,
+      const ColocationId colocation_id = 0);
+
+  Status CreateYsqlTable(
+      uint32_t idx, uint32_t num_tablets, Cluster* cluster,
+      std::vector<client::YBTableName>* table_names,
+      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false);
+
+  Result<client::YBTableName> GetYsqlTable(
+      Cluster* cluster,
+      const std::string& namespace_name,
+      const std::string& schema_name,
+      const std::string& table_name,
+      bool verify_table_name = true,
+      bool verify_schema_name = false,
+      bool exclude_system_tables = true);
+
+  Status SetupUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
+
+  Status SetupUniverseReplication(
+      const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      bool leader_only = true);
+
+  Status SetupReverseUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& tables);
+
+  Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true);
 
-  CHECKED_STATUS VerifyUniverseReplication(
+  Status SetupNSUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, const std::string& producer_ns_name,
+      const YQLDatabase& producer_ns_type,
+      bool leader_only = true);
+
+  Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
+
+  Status VerifyUniverseReplication(
+      const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
+
+  Status VerifyUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
 
-  CHECKED_STATUS ToggleUniverseReplication(
+  Status VerifyNSUniverseReplication(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, int num_expected_table);
+
+  Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
 
-  CHECKED_STATUS VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
+  Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  CHECKED_STATUS VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
+  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& producer_uuid,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
-  CHECKED_STATUS GetCDCStreamForTable(
+  Status IsSetupUniverseReplicationDone(
+      MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
+  Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& universe_id);
+  Status DeleteUniverseReplication(const std::string& universe_id = kUniverseId);
 
-  CHECKED_STATUS DeleteUniverseReplication(
+  Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
 
-  size_t NumProducerTabletsPolled(MiniCluster* cluster);
+  Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  CHECKED_STATUS CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
-
-  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -150,6 +221,11 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+
+ private:
+  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
+  // is not safe to run in parallel.
+  Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 };
 
 } // namespace enterprise

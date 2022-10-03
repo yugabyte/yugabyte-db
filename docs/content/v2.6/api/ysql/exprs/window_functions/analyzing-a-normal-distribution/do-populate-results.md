@@ -8,8 +8,7 @@ menu:
     identifier: do-populate-results
     parent: analyzing-a-normal-distribution
     weight: 140
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_populate_results.sql`.
 ```plpgsql

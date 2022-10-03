@@ -337,12 +337,22 @@ typedef struct PlannerInfo
 	/* These fields are workspace for createplan.c */
 	Relids		curOuterRels;	/* outer rels above current node */
 	List	   *curOuterParams; /* not-yet-assigned NestLoopParams */
+	Relids		yb_curbatchedrelids; /* true if we are processing a batched
+								  	  * NL join */
+	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
+								 * track of current batch */
 
 	/* optional private data for join_search_hook, e.g., GEQO */
 	void	   *join_search_private;
 
 	/* Does this query modify any partition key columns? */
 	bool		partColsUpdated;
+
+	/*
+	 * Number of relations that are still referenced by the plan after
+	 * constraint exclusion and partition pruning.
+	 */
+	int     yb_num_referenced_relations;
 } PlannerInfo;
 
 
@@ -704,6 +714,9 @@ typedef struct RelOptInfo
 	List	  **partexprs;		/* Non-nullable partition key expressions. */
 	List	  **nullable_partexprs; /* Nullable partition key expressions. */
 	List	   *partitioned_child_rels; /* List of RT indexes. */
+
+	/* used for YB relations */
+	bool		is_yb_relation;	/* Is a YbRelation */
 } RelOptInfo;
 
 /*
@@ -1052,6 +1065,9 @@ typedef struct ParamPathInfo
 	Relids		ppi_req_outer;	/* rels supplying parameters used by path */
 	double		ppi_rows;		/* estimated number of result tuples */
 	List	   *ppi_clauses;	/* join clauses available from outer rels */
+	Relids		yb_ppi_req_outer_batched; /* outer rels that can be batched */
+	Relids		yb_ppi_req_outer_unbatched; /* outer rels that cannot
+											 * be batched */
 } ParamPathInfo;
 
 
@@ -1899,6 +1915,12 @@ typedef struct RestrictInfo
 
 	bool		leakproof;		/* true if known to contain no leaked Vars */
 
+	bool		yb_pushable;	/* true if can be pushed down to DocDB */
+
+	List *yb_batched_rinfo; /* If there is a batched version of
+							 * this clause, this is a pointer to
+							 * a list of possible batched versions. */
+
 	Index		security_level; /* see comment above */
 
 	/* The set of relids (varnos) actually referenced in the clause: */
@@ -2011,6 +2033,20 @@ typedef struct PlaceHolderVar
 	Index		phid;			/* ID for PHV (unique within planner run) */
 	Index		phlevelsup;		/* > 0 if PHV belongs to outer query */
 } PlaceHolderVar;
+
+/*
+ * Used to represent a batched version of a Var. Currently used for
+ * batched NL joins. These are replaced by exec params during plan creation.
+ * For example, a join clause of the form (Var_o = Var_i) where Var_o is an
+ * outer relation Var and Var_i is an inner relation Var, might be turned into
+ * (Var_i IN (BVar_o(0),BVar_o(1),BVar_o(0)...)) where BVar_o(i) represents the
+ * ith batched variable of Var_o.
+ */
+typedef struct YbBatchedExpr
+{
+	Expr xpr;
+	Expr *orig_expr; /* Original Var this is a batched version of. */
+} YbBatchedExpr;
 
 /*
  * "Special join" info.

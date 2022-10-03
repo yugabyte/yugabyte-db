@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments
     weight: 720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -49,7 +48,7 @@ This will start up a one-node local cluster using the IP address of `127.0.0.1` 
 
 ```output
 Starting yugabyted...
-✅ System checks           
+✅ System checks
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
@@ -80,7 +79,7 @@ This will start up a one-node cluster using IP address of `127.0.0.2` and create
 
 ```output
 Starting yugabyted...
-✅ System checks           
+✅ System checks
 
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |

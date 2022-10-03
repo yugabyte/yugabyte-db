@@ -10,22 +10,22 @@ menu:
     identifier: performance-troubleshooting
     parent: benchmark
     weight: 22
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 Use this page for general guidance and steps you can take when troubleshooting the performance of your Yugabyte cluster.
 
 ## Location of various files on a YB cluster
 
-Note that these locations refer to the default for clusters intalled via Yugabyte Platform.
+Note that these locations refer to the default for clusters installed via YugabyteDB Anywhere.
 
 ### YB Software/Binaries on the cluster
 
 The software packages are symlinked at /home/yugabyte/{master|tserver}. Be aware that the master & tserver may be at different versions of the software (e.g. during rolling software upgrades).
 
 You should see something like this:
-```
+
+```output
 $ ls -lrt /home/yugabyte/master
 total 4
 lrwxrwxrwx. 1 yugabyte yugabyte   27 Jan 15 19:27 logs -> /mnt/d0/yb-data/master/logs
@@ -46,14 +46,16 @@ drwxr-xr-x. 2 yugabyte yugabyte   25 Jan 15 20:18 conf
 ```
 
 ### Config Files
+
 You can find config files for the master and tserver at `/home/yugabyte/{master|tserver}/conf/server.conf`.
 
 ### Transaction Logs a.k.a WAL (write-ahead logs)
+
 Assuming Yugabyte was run with `--fs_data_dirs=/mnt/d0,/mnt/d1`, you can find WAL files at `/mnt/d*/yb-data/{master|tserver}/wals`.
 
 To pretty print the contents of the WAL files, use the `log-dump` utility:
 
-```
+```output
 $ pwd
 /home/yugabyte
 
@@ -63,11 +65,12 @@ $ ./tserver/bin/log-dump /mnt/d0/yb-data/tserver/wals/table-e85a116bc557403e82f5
 ```
 
 ### Database (SSTable) Files for various tablets
+
 You can find SSTable files at `/mnt/d*/yb-data/{master|tserver}/data`.
 
-To pretty print the contents of these SSTable files, 
+To pretty print the contents of these SSTable files:
 
-```
+```output
 $ pwd
 /home/yugabyte
 
@@ -75,6 +78,7 @@ $ ./tserver/bin/ldb dump --compression_type=snappy --db=/mnt/d0/yb-data/tserver/
 ```
 
 ### Debug Logs (.INFO, .WARNING, .FATAL, etc.)
+
 Debug logs are output to `/home/yugabyte/{master|tserver}/logs`.
 
 ### View Standard Output/Standard Error (stderr/stdout) of yb-tserver & yb-master process
@@ -87,13 +91,15 @@ A cautionary note -- setting string flags dynamically is not a good idea, as it 
 
 For example, to increase the verbose logging level to 2:
 
-    $ ./yb-ts-cli --server_address=localhost:9100 set_flag v 2
+```sh
+$ ./yb-ts-cli --server_address=localhost:9100 set_flag v 2
+```
 
 ## Slow Response Logs
 
 Slow responses (which take more than 75% of the configured RPC timeout) are already logged at WARNING level in this format, with a breakdown of time in various stages.
 
-```
+```log
 W0325 06:47:13.032176 116514816 inbound_call.cc:204] Call yb.consensus.ConsensusService.UpdateConsensus from 127.0.0.1:61050 (request call id 22856) took 2644ms (client timeout 1000).
 W0325 06:47:13.033341 116514816 inbound_call.cc:208] Trace:
 0325 06:47:10.388015 (+     0us) service_pool.cc:109] Inserting onto call queue
@@ -109,57 +115,68 @@ W0325 06:47:13.033341 116514816 inbound_call.cc:208] Trace:
 
 You can view metrics of various Yugabyte processes at a particular node (e.g. 127.0.0.1) at these ports:
 
-| Process | Address
--------------|-----------|
-Master | 127.0.0.1:7000
-TServer | 127.0.0.1:9000
-Yedis | 127.0.0.1:11000
-YCQL | 127.0.0.1:12000
-YSQL | 127.0.0.1:13000
+| Process | Address |
+| :------ | :------ |
+| Master | 127.0.0.1:7000 |
+| TServer | 127.0.0.1:9000 |
+| Yedis | 127.0.0.1:11000 |
+| YCQL | 127.0.0.1:12000 |
+| YSQL | 127.0.0.1:13000 |
 
 For each process, you can see the following types of metrics:
-| Description | Endpoint
--------------|-----------|
-Per-Tablet, JSON Metrics | /metrics
-Per-Table, Prometheus Metrics | /prometheus-metrics
+
+| Description | Endpoint |
+| :---------- | :------- |
+| Per-Tablet, JSON Metrics | /metrics |
+| Per-Table, Prometheus Metrics | /prometheus-metrics |
 
 ## Turning RPC tracing on
 
 To turn on tracing, you should set the `enable_tracing` flag:
 
-    $ ./yb-ts-cli --server_address=localhost:9100 set_flag enable_tracing 1
+```sh
+$ ./yb-ts-cli --server_address=localhost:9100 set_flag enable_tracing 1
+```
 
 To turn tracing on for all RPCs, not just the slow ones, including the `enable_tracing` flag, you may also set the `rpc_dump_all_traces` gflag:
 
-    $ ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
+```sh
+$ ./yb-ts-cli --server_address=localhost:9100 set_flag rpc_dump_all_traces 1
+```
 
 ## Print contents of a proto file
 
 To dump the contents of a file containing a proto (such as a file in the consensus-meta or tablet-meta directory), use 'yb-pbc-dump' utility:
-```
+
+```sh
 $ ./yb-pbc-dump /mnt/d0/yb-data/tserver/consensus-meta/dd57975ef2f2440497b5d96fc32146d3
 $ ./yb-pbc-dump /mnt/d0/yb-data/tserver/tablet-meta/bfb3f18736514eeb841b0307a066e66c
 ```
 
-Note: On mac, the environment variable DYLD_FALLBACK_LIBRARY_PATH needs to be set for pbc-dump to work. Add the following to ~/.bash_profile
-```
+Note: On macOS, the environment variable DYLD_FALLBACK_LIBRARY_PATH needs to be set for pbc-dump to work. Add the following to `~/.bash_profile`:
+
+```sh
 export DYLD_FALLBACK_LIBRARY_PATH=~/code/yugabyte/build/latest/rocksdb-build
 ```
 
-## yb-ts-cli 
+## yb-ts-cli
+
 You can run various tablet related commands with yb-ts-cli by pointing at the master:
-```
+
+```sh
 ./yb-ts-cli list_tablets --server_address=localhost:9000
 ./yb-ts-cli dump_tablet --server_address=localhost:9000 e1bc59288ee849ab850ae0a40bd88649
 ```
 
 ## yb-admin
+
 You can run various commands with `yb-admin`. Just specify the full set of master `{ip:ports}` with `-master_addresses`:
-```
+
+```sh
 # Get all tables
 ./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tables
 # Get all tablets for a specific table
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test 
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test
 # List the tablet servers for each tablet
 ./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablet_servers $(./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test)
 # List all tablet servers

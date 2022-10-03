@@ -11,9 +11,7 @@ menu:
     identifier: session-audit-logging-1-ysql
     parent: audit-logging
     weight: 760
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

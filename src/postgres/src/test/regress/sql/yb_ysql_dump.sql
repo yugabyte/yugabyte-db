@@ -1,3 +1,5 @@
+CREATE TABLESPACE tsp1 LOCATION '/data';
+
 CREATE TABLE tbl1 (a SERIAL, b INT);
 INSERT INTO tbl1 (b) VALUES (100);
 
@@ -62,6 +64,7 @@ SET SESSION AUTHORIZATION tablegroup_test_user;
 
 CREATE TABLEGROUP grp1;
 CREATE TABLEGROUP grp2;
+CREATE TABLEGROUP grp_with_spc TABLESPACE tsp1;
 
 CREATE TABLE tgroup_no_options_and_tgroup (a INT) TABLEGROUP grp1;
 CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
@@ -72,11 +75,12 @@ CREATE TABLE tgroup_options_tgroup_and_custom_colocation_id (a INT) WITH (autova
 CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
 CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
 CREATE TABLE tgroup_empty_options (a INT);
+CREATE TABLE tgroup_with_spc (a INT) TABLEGROUP grp_with_spc;
 BEGIN;
     SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
     UPDATE pg_class SET reloptions = ARRAY[]::TEXT[] WHERE relname = 'tgroup_empty_options';
-    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_after_options';
-    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_in_between_options';
+    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_after_options';
+    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_in_between_options';
 COMMIT;
 
 RESET SESSION AUTHORIZATION;
@@ -117,3 +121,25 @@ CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 -- Range-partitioned table with multi-column key
 CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
+
+------------------------------------
+-- Extensions
+CREATE EXTENSION pg_hint_plan;
+
+------------------------------------------------
+-- Test alter with add constraint using unique index.
+------------------------------------------------
+
+-- Setting range-partitioned unique index with SPLIT AT clause
+CREATE TABLE p1 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c1 ON p1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+
+ALTER TABLE p1 ADD UNIQUE USING INDEX c1;
+
+-- Setting hash partitioned unique index with SPLIT INTO clause
+CREATE TABLE p2 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c2 ON p2 (v) SPLIT INTO 10 TABLETS;
+
+ALTER TABLE p2 ADD UNIQUE USING INDEX c2;

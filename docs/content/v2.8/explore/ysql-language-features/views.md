@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-views
     parent: explore-ysql-language-features
     weight: 325
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to create, use, and manage views in YSQL.
@@ -161,4 +160,3 @@ The following example shows how use the `employees_view` to delete the row that 
 DELETE FROM employees_view
   WHERE employee_no = 1227;
 ```
-

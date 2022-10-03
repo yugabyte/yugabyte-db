@@ -35,12 +35,12 @@
 #include "yb/client/table_alterer.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_string(certs_dir);
@@ -97,6 +97,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   Status RunAdminToolCommandAndGetErrorOutput(string* error_msg, Args&&... args) {
     auto command = ToStringVector(
             GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+            "--never_fsync=true",
             std::forward<Args>(args)...);
     LOG(INFO) << "Run tool: " << AsString(command);
     return Subprocess::Call(command, error_msg, StdFdTypes{StdFdType::kErr});
@@ -113,7 +114,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return result;
   }
 
-  CHECKED_STATUS WaitForRestoreSnapshot() {
+  Status WaitForRestoreSnapshot() {
     return WaitFor([this]() -> Result<bool> {
       const auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
       auto it = document.FindMember("restorations");
@@ -194,12 +195,31 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return resp.restorations(0).entry().state();
   }
 
-  Result<string> GetRecentStreamId(MiniCluster* cluster) {
+  Result<string> GetRecentStreamId(MiniCluster* cluster,
+                                   TabletId target_table_id = "") {
+    // Return the first stream with tablet_id matching target_table_id using ListCDCStreams.
+    // If target_table_id is not specified, return the first stream.
     const int kStreamUuidLength = 32;
     string output = VERIFY_RESULT(RunAdminToolCommand(cluster, "list_cdc_streams"));
-    string find_stream_id = "stream_id: \"";
-    string::size_type pos = output.find(find_stream_id);
-    return output.substr((pos + find_stream_id.size()), kStreamUuidLength);
+    const string find_stream_id = "stream_id: \"";
+    const string find_table_id = "table_id: \"";
+    string target_stream_id;
+
+    string::size_type stream_id_pos = output.find(find_stream_id);
+    string::size_type table_id_pos = output.find(find_table_id);
+    while (stream_id_pos != string::npos && table_id_pos != string::npos) {
+      string stream_id = output.substr(
+          stream_id_pos + find_stream_id.size(), kStreamUuidLength);
+      string table_id = output.substr(
+          table_id_pos + find_table_id.size(), kStreamUuidLength);
+      if (target_table_id.empty() || table_id == target_table_id) {
+        target_stream_id = stream_id;
+        break;
+      }
+      stream_id_pos = output.find(find_stream_id, stream_id_pos + kStreamUuidLength);
+      table_id_pos = output.find(find_table_id, table_id_pos + kStreamUuidLength);
+    }
+    return target_stream_id;
   }
 
   Result<size_t> NumTables(const string& table_name) const;
@@ -685,7 +705,7 @@ class XClusterAdminCliTest : public AdminCliTest {
     AdminCliTest::DoTearDown();
   }
 
-  CHECKED_STATUS WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
     auto proxy = std::make_shared<master::MasterReplicationProxy>(
         &client_->proxy_cache(),
         VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
@@ -1258,6 +1278,97 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithConsumerSetup) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication",
                                 kProducerClusterId,
                                 "ignore-errors"));
+}
+
+TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {
+  client::TableHandle producer_table;
+  constexpr int kNumTables = 3;
+  const client::YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "test_table2");
+
+  // Create identical table on producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Create some additional tables. The reason is that the number of tables removed using
+  // alter_universe_replication remove_table must be less than the total number of tables.
+  string producer_table_ids_str = producer_table->id();
+  std::vector<TableId> producer_table_ids = {producer_table->id()};
+  for (int i = 1; i < kNumTables; i++) {
+    client::TableHandle tmp_producer_table, tmp_consumer_table;
+    const client::YBTableName kTestTableName(
+        YQL_DATABASE_CQL, "my_keyspace", Format("test_table_$0", i));
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), client_.get(), &tmp_consumer_table,
+        kTestTableName);
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &tmp_producer_table,
+        kTestTableName);
+    producer_table_ids_str += Format(",$0", tmp_producer_table->id());
+    producer_table_ids.push_back(tmp_producer_table->id());
+  }
+
+  // Setup universe replication.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table_ids_str));
+  ASSERT_OK(CheckTableIsBeingReplicated(producer_table_ids));
+
+  // Obtain the stream ID for the first table.
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(
+      producer_cluster_.get(), producer_table->id()));
+  ASSERT_FALSE(stream_id.empty());
+
+  // Mark one stream as deleted.
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "delete_cdc_stream",
+                                stream_id,
+                                "force_delete"));
+
+  // Remove table should fail as its stream is marked as deleting on producer.
+  ASSERT_NOK(RunAdminToolCommand("alter_universe_replication",
+                                 kProducerClusterId,
+                                 "remove_table",
+                                 producer_table->id()));
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                kProducerClusterId,
+                                "remove_table",
+                                producer_table->id(),
+                                "ignore-errors"));
+}
+
+TEST_F(XClusterAdminCliTest, TestWaitForReplicationDrain) {
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Setup universe replication.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(producer_cluster_.get()));
+
+  // API should succeed with correctly formatted arguments.
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id));
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id, GetCurrentTimeMicros()));
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(),
+                                "wait_for_replication_drain", stream_id, "minus", "3s"));
+
+  // API should fail with an invalid stream ID.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", "abc"));
+
+  // API should fail with an invalid target_time format.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", stream_id, 123));
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(),
+                                 "wait_for_replication_drain", stream_id, "minus", "hello"));
 }
 
 TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {

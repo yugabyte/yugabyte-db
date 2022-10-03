@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -35,17 +36,20 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.WaitForFollowerLag,
+          TaskType.RunHooks,
           TaskType.SetNodeState);
 
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -55,6 +59,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
+          TaskType.RunHooks,
           TaskType.SetNodeState);
 
   @Override
@@ -63,9 +68,10 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     super.setUp();
 
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
+    attachHooks("RestartUniverse");
   }
 
-  private TaskInfo submitTask(UpgradeTaskParams requestParams) {
+  private TaskInfo submitTask(RestartTaskParams requestParams) {
     return submitTask(requestParams, TaskType.RestartUniverse, commissioner);
   }
 
@@ -98,19 +104,21 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
   @Test
   public void testRollingRestart() {
-    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(12)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(30)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PreUpgrade hooks
     position = assertSequence(subTasksByPosition, MASTER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
-    assertEquals(58, position);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
+    assertEquals(72, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

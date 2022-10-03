@@ -4,14 +4,12 @@ headerTitle: Create YugabyteDB universe deployments
 linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
-type: page
-section: YUGABYTEDB ANYWHERE
 menu:
-  preview:
+  preview_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: create-deployments
     weight: 643
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">
@@ -82,7 +80,7 @@ showAsideToc: true
     <a class="section-link icon-offset" href="async-replication-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Enable asynchronous replication </div>
+        <div class="title">Enable xCluster replication </div>
       </div>
       <div class="body">
         Enable unidirectional and bidirectional replication between two data sources

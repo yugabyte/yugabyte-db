@@ -10,8 +10,7 @@ menu:
     identifier: server-to-server
     parent: tls-encryption
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites

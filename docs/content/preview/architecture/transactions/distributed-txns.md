@@ -11,8 +11,7 @@ menu:
 aliases:
   - /architecture/transactions/distributed-txns/
   - /architecture/concepts/transactions/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both YCQL and YSQL contexts. This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.

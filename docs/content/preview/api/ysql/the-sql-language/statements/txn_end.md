@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/txn_end/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -36,10 +35,10 @@ Use the `END` statement to commit the current transaction. All changes made by t
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.diagram.md" %}}
   </div>
 </div>
 

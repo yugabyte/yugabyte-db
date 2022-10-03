@@ -13,16 +13,16 @@
  */
 package org.yb.util;
 
-import org.apache.commons.lang3.math.NumberUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-import org.yb.minicluster.LogPrinter;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import org.apache.commons.lang3.math.NumberUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.client.TestUtils;
 
 public final class CoreFileUtil {
 
@@ -115,18 +115,10 @@ public final class CoreFileUtil {
             executablePath
         );
         LOG.warn("Analyzing core file using the command: " + analysisArgs);
-        ProcessBuilder procBuilder = new ProcessBuilder().command(analysisArgs);
-        procBuilder.redirectErrorStream(true);
-        Process analysisProcess = procBuilder.start();
 
-        LogPrinter logPrinter = new LogPrinter(analysisProcess.getInputStream(), "    ");
-        analysisProcess.waitFor();
-        logPrinter.stop();
+        ProcessUtil.executeSimple(analysisArgs, "    ");
 
-        if (analysisProcess.exitValue() != 0) {
-          LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
-              analysisProcess.exitValue());
-        } else if (ConfForTesting.keepData()) {
+        if (ConfForTesting.keepData()) {
           LOG.info("Skipping deletion of core file '{}'", coreFile.getAbsolutePath());
         } else {
           if (coreFile.delete()) {

@@ -9,14 +9,12 @@ menu:
     name: Amazon EKS
     identifier: k8s-mz-eks-1
     weight: 627
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -93,39 +91,23 @@ $ eksctl create cluster \
 
 As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest AWS instance type that meets this requirement is `m5.2xlarge` which has 8 CPU cores and 32 GB RAM.
 
-### Create a storage class per zone
+### Create a storage class
 
-We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
+We need to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities. 
 
 Copy the contents below to a file named `storage.yaml`.
 
 ```yaml
 kind: StorageClass
-apiVersion: storage.k8s.io/v1
 metadata:
-  name: standard-us-east-1a
+  name: yb-storage
+apiVersion: storage.k8s.io/v1
+allowVolumeExpansion: true
 provisioner: kubernetes.io/aws-ebs
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp2
-  zone: us-east-1a
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-east-1b
-provisioner: kubernetes.io/aws-ebs
-parameters:
-  type: gp2
-  zone: us-east-1b
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-east-1c
-provisioner: kubernetes.io/aws-ebs
-parameters:
-  type: gp2
-  zone: us-east-1c
+  fsType: xfs
 ```
 
 Apply the above configuration to your cluster.
@@ -174,9 +156,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1a"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1a"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -205,9 +187,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1b"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1b"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -236,9 +218,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:71
 
 storage:
   master:
-    storageClass: "standard-us-east-1c"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-east-1c"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -272,26 +254,23 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-east-1a yugabytedb/yugabyte \
- --namespace yb-demo-us-east-1a \
- -f overrides-us-east-1a.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-east-1a \
+ -f overrides-us-east-1a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1b yugabytedb/yugabyte \
- --namespace yb-demo-us-east-1b \
- -f overrides-us-east-1b.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-east-1b \
+ -f overrides-us-east-1b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east-1c yugabytedb/yugabyte \
- --namespace yb-demo-us-east-1c \
- -f overrides-us-east-1c.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-east-1c \
+ -f overrides-us-east-1c.yaml --wait
 ```
 
 ## 3. Check the cluster status
@@ -367,7 +346,7 @@ $ kubectl exec -n yb-demo-us-east-1a -it yb-tserver-0 -- ycqlsh \
 yb-tserver-0.yb-tservers.yb-demo-us-east-1a
 ```
 
-You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
+You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql/) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/aws-multizone-ybtserver.png)
 

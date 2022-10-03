@@ -4,15 +4,14 @@ headerTitle: Create a multi-cloud universe
 linkTitle: Multi-cloud universe
 description: Use Yugabyte Platform to create a YugabyteDB universe that spans multiple cloud providers.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: create-multi-cloud-universe
     parent: create-deployments
     weight: 35
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-This page describes how to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. In this example, you'll deploy a single Yugabyte universe across AWS (US-West-2), Google Cloud (Central-1), and Microsoft Azure (US-East1). 
+This page describes how to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. In this example, you'll deploy a single Yugabyte universe across AWS (US-West-2), Google Cloud (Central-1), and Microsoft Azure (US-East1).
 
 The universe topology will be as follows:
 
@@ -65,7 +64,7 @@ Follow the instructions in the next sub-sections to configure your cloud provide
 
 ### Set up the cloud provider
 
-On the Provider Info tab, configure the cloud provider as follows: 
+On the Provider Info tab, configure the cloud provider as follows:
 
 * **Provider Name** is `multi-cloud-demo`.
 * **SSH User** is the user which will run Yugabyte on the node (yugabyte in this case).
@@ -132,7 +131,7 @@ To create a multi-region universe, do the following:
     Because the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
     \
     And because deployments on public clouds require security:
-    
+
     * `use_cassandra_authentication=true`
     * `ysql_enable_auth=true`
 
@@ -164,7 +163,7 @@ To run the TPC-C benchmark on your universe, you can use commands similar to the
 ./tpccbenchmark -c config/workload_all.xml \
     --load=true \
     --nodes=10.9.4.142,10.14.16.8,10.9.13.138,10.14.16.9,10.152.0.14,10.152.0.32 \
-    --warehouses 50 
+    --warehouses 50
 ```
 
 Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for more details.

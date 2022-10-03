@@ -144,7 +144,7 @@ class TestWorkload::State {
   }
 
  private:
-  CHECKED_STATUS Flush(client::YBSession* session, const TestWorkloadOptions& options);
+  Status Flush(client::YBSession* session, const TestWorkloadOptions& options);
   Result<client::YBTransactionPtr> MayBeStartNewTransaction(
       client::YBSession* session, const TestWorkloadOptions& options);
   Result<client::TableHandle> OpenTable(const TestWorkloadOptions& options);

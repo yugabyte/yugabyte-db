@@ -8,8 +8,7 @@ menu:
     identifier: password-authentication
     parent: authentication
     weight: 731
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

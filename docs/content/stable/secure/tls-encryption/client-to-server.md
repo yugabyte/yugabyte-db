@@ -10,15 +10,14 @@ menu:
     identifier: client-to-server
     parent: tls-encryption
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB clusters can be configured to use client-to-server encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs. When enabled, [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security), the successor to the deprecated Secure Sockets Layer (SSL), is used to ensure data protection for YSQL and YCQL only. Note that there is no planned support for YEDIS.
 
 ## Prerequisites
 
-Before you can enable client-to-server encryption, you first must [enable server-to-server encryption](../server-to-server).
+Before you can enable client-to-server encryption, you first must [enable server-to-server encryption](../server-to-server/).
 
 ## Configure YB-TServer nodes
 

@@ -12,20 +12,22 @@ package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.MaintenanceWindow.State;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,14 +36,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -52,19 +51,19 @@ public class AlertConfigurationWriter {
   @VisibleForTesting
   static final String CONFIG_SYNC_INTERVAL_PARAM = "yb.alert.config_sync_interval_sec";
 
-  private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicBoolean requiresReload = new AtomicBoolean(true);
+
   private final AtomicBoolean requiresRecordingRulesWrite = new AtomicBoolean(true);
 
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final MetricService metricService;
 
   private final AlertDefinitionService alertDefinitionService;
 
   private final AlertConfigurationService alertConfigurationService;
+
+  private final AlertTemplateSettingsService alertTemplateSettingsService;
 
   private final SwamperHelper swamperHelper;
 
@@ -76,20 +75,20 @@ public class AlertConfigurationWriter {
 
   @Inject
   public AlertConfigurationWriter(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
       AlertConfigurationService alertConfigurationService,
+      AlertTemplateSettingsService alertTemplateSettingsService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory,
       MaintenanceService maintenanceService) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
     this.alertConfigurationService = alertConfigurationService;
+    this.alertTemplateSettingsService = alertTemplateSettingsService;
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
@@ -106,17 +105,11 @@ public class AlertConfigurationWriter {
           MIN_CONFIG_SYNC_INTERVAL_SEC);
       configSyncPeriodSec = MIN_CONFIG_SYNC_INTERVAL_SEC;
     }
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.Zero(),
-            Duration.create(configSyncPeriodSec, TimeUnit.SECONDS),
-            this::process,
-            this.executionContext);
-  }
-
-  public void scheduleDefinitionSync(UUID definitionUuid) {
-    this.actorSystem.dispatcher().execute(() -> syncDefinition(definitionUuid));
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO,
+        Duration.ofSeconds(configSyncPeriodSec),
+        this::process);
   }
 
   private SyncResult syncDefinition(UUID definitionUuid) {
@@ -138,7 +131,10 @@ public class AlertConfigurationWriter {
         log.info("Alert definition {} has config in sync", definitionUuid);
         return SyncResult.IN_SYNC;
       }
-      swamperHelper.writeAlertDefinition(configuration, definition);
+      AlertTemplateSettings templateSettings =
+          alertTemplateSettingsService.get(
+              configuration.getCustomerUUID(), configuration.getTemplate().name());
+      swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
       definition.setConfigWritten(true);
       alertDefinitionService.save(definition);
       requiresReload.set(true);
@@ -151,17 +147,9 @@ public class AlertConfigurationWriter {
 
   @VisibleForTesting
   void process() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of alert configuration writer is still underway");
-      return;
-    }
-    try {
-      applyMaintenanceWindows();
-      writeRecordingRules();
-      syncDefinitions();
-    } finally {
-      running.set(false);
-    }
+    applyMaintenanceWindows();
+    writeRecordingRules();
+    syncDefinitions();
   }
 
   private void applyMaintenanceWindows() {

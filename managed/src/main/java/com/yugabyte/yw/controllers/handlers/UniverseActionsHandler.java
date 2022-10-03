@@ -15,9 +15,10 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
@@ -25,7 +26,6 @@ import com.yugabyte.yw.forms.ToggleTlsParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -39,7 +39,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.mvc.Http;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
 public class UniverseActionsHandler {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
@@ -126,12 +125,7 @@ public class UniverseActionsHandler {
         universe.universeUUID,
         customer.uuid);
 
-    YBPError error = requestParams.verifyParams(universeDetails);
-    if (error != null) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, error.error + " - for universe: " + universe.universeUUID);
-    }
-
+    requestParams.verifyParams(universeDetails);
     if (!universeDetails.isUniverseEditable()) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Universe UUID " + universe.universeUUID + " cannot be edited.");
@@ -223,9 +217,9 @@ public class UniverseActionsHandler {
             requestParams.rootCA != null
                 ? requestParams.rootCA
                 : CertificateHelper.createRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                    customer.uuid);
       }
     }
 
@@ -244,9 +238,9 @@ public class UniverseActionsHandler {
             // and rootCA and clientRootCA needs to be different
             taskParams.clientRootCA =
                 CertificateHelper.createClientRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
-                    customer.uuid,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+                    customer.uuid);
           }
         } else {
           // Set the ClientRootCA to the user provided ClientRootCA if it exists
@@ -267,15 +261,7 @@ public class UniverseActionsHandler {
         if (cert.certType == CertConfigType.SelfSigned
             || cert.certType == CertConfigType.HashicorpVault) {
           CertificateHelper.createClientCertificate(
-              taskParams.clientRootCA,
-              String.format(
-                  CertificateHelper.CERT_PATH,
-                  runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                  customer.uuid.toString(),
-                  taskParams.clientRootCA.toString()),
-              CertificateHelper.DEFAULT_CLIENT,
-              null,
-              null);
+              runtimeConfigFactory.staticApplicationConf(), customer.uuid, taskParams.clientRootCA);
         }
       }
     }
@@ -392,6 +378,8 @@ public class UniverseActionsHandler {
     // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
     taskParams.customerUUID = customer.uuid;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+
     // Submit the task to resume the universe.
     TaskType taskType = TaskType.ResumeUniverse;
 

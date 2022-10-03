@@ -6,18 +6,30 @@ import static com.yugabyte.yw.models.Users.Role;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.typesafe.config.Config;
 import org.junit.Before;
+import org.junit.runner.RunWith;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
+import java.time.Duration;
 
+@RunWith(MockitoJUnitRunner.class)
 public class UsersTest extends FakeDBApplication {
 
   private Customer customer;
+
+  @Mock Config mockConfig;
+
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
@@ -63,6 +75,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testCreateAuthToken() {
+    Duration tokenExpiryDuration = Duration.ofMinutes(15);
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
@@ -70,7 +83,7 @@ public class UsersTest extends FakeDBApplication {
     assertNotNull(authToken);
     assertNotNull(u.getAuthTokenIssueDate());
 
-    Users authUser = Users.authWithToken(authToken);
+    Users authUser = Users.authWithToken(authToken, tokenExpiryDuration);
     assertEquals(authUser.uuid, u.uuid);
   }
 
@@ -88,6 +101,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testDeleteAuthToken() {
+    Duration tokenExpiryDuration = Duration.ofMinutes(15);
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
@@ -101,7 +115,7 @@ public class UsersTest extends FakeDBApplication {
     fetchUser = Users.find.query().where().eq("uuid", u.uuid).findOne();
     assertNull(fetchUser.getAuthTokenIssueDate());
 
-    Users authUser = Users.authWithToken(authToken);
+    Users authUser = Users.authWithToken(authToken, tokenExpiryDuration);
     assertNull(authUser);
   }
 

@@ -11,6 +11,7 @@
 import argparse
 import json
 import logging
+import sys
 
 from ybops.cloud.aws.cloud import AwsCloud
 from ybops.cloud.gcp.cloud import GcpCloud
@@ -18,6 +19,7 @@ from ybops.cloud.onprem.cloud import OnPremCloud
 from ybops.cloud.azure.cloud import AzureCloud
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import init_env, init_logging
+from ybops.common.exceptions import YBOpsExitCodeException
 
 
 class YbCloud(AbstractCommandParser):
@@ -44,7 +46,35 @@ class YbCloud(AbstractCommandParser):
                                  default="INFO",
                                  choices=("INFO", "DEBUG", "WARNING", "ERROR"))
 
+    def exception_hook(self, except_type, except_value, tb):
+        """Handler for uncaught exception to dump well-formed error messages to stdout.
+        """
+        try:
+            cause_tb = tb
+            while cause_tb.tb_next:
+                cause_tb = cause_tb.tb_next
+            filename = cause_tb.tb_frame.f_code.co_filename
+            name = cause_tb.tb_frame.f_code.co_name
+            line_no = cause_tb.tb_lineno
+            output = {
+                "type": "{}.{}".format(except_type.__module__, except_type.__name__),
+                "message": str(except_value),
+                "file": filename,
+                "name": name,
+                "line": line_no
+            }
+            # Write to stdout with markers so that other messages do not interfere.
+            print("<yb-python-error>{}</yb-python-error>".format(json.dumps(output)))
+        except Exception as e:
+            logging.error("Error processing exception. Error: ".format(str(e)))
+        # Propagate the exception.
+        sys.__excepthook__(except_type, except_value, tb)
+
+        if isinstance(except_value, YBOpsExitCodeException):
+            sys.exit(except_value.exitcode())
+
     def run(self):
+        sys.excepthook = self.exception_hook
         self.register(argparse.ArgumentParser())
         self.options = self.parser.parse_args()
 

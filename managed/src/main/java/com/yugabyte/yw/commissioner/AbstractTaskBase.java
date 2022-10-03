@@ -2,12 +2,16 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -21,6 +25,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
@@ -45,6 +50,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   // The threadpool on which the tasks are executed.
   protected ExecutorService executor;
+
+  // The UUID of this task.
+  protected UUID taskUUID;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;
@@ -113,7 +121,8 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public void terminate() {
     if (executor != null && !executor.isShutdown()) {
-      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+      MoreExecutors.shutdownAndAwaitTermination(
+          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
     }
   }
 
@@ -126,8 +135,18 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   @Override
+  public void setTaskUUID(UUID taskUUID) {
+    this.taskUUID = taskUUID;
+  }
+
+  @Override
   public void setUserTaskUUID(UUID userTaskUUID) {
     this.userTaskUUID = userTaskUUID;
+  }
+
+  @Override
+  public boolean isFirstTry() {
+    return taskParams().getPreviousTaskUUID() == null;
   }
 
   /**
@@ -198,7 +217,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(String name) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name);
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+  }
+
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, false);
     subTaskGroup.setSubTaskExecutor(executor);
     return subTaskGroup;
   }
@@ -207,5 +230,17 @@ public abstract class AbstractTaskBase implements ITask {
   // signal is received. It can be a replacement for Thread.sleep in subtasks.
   protected void waitFor(Duration duration) {
     getRunnableTask().waitFor(duration);
+  }
+
+  protected UUID getUserTaskUUID() {
+    return userTaskUUID;
+  }
+
+  protected UUID getTaskUUID() {
+    return taskUUID;
+  }
+
+  protected TaskCache getTaskCache() {
+    return getRunnableTask().getTaskCache();
   }
 }

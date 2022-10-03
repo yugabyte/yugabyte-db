@@ -13,13 +13,14 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
@@ -33,7 +34,7 @@ import java.util.List;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestCompoundKey extends CDCBaseClass {
-  private Logger LOG = Logger.getLogger(TestCompoundKey.class);
+  private Logger LOG = LoggerFactory.getLogger(TestCompoundKey.class);
 
   private void executeScriptAssertRecords(ExpectedRecordCPKProto[] expectedRecords,
                                           String sqlScript) throws Exception {
@@ -120,7 +121,6 @@ public class TestCompoundKey extends CDCBaseClass {
       ExpectedRecordCPKProto[] expectedRecords = {
         new ExpectedRecordCPKProto(1, 2, 3, 4, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
-        new ExpectedRecordCPKProto(1, 2, 4, 4, Op.UPDATE),
         new ExpectedRecordCPKProto(1, 2, 4, 5, Op.UPDATE),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
@@ -132,11 +132,9 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(3, 3, 4, 5, Op.INSERT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
-        new ExpectedRecordCPKProto(3, 3, 5, 5, Op.UPDATE),
         new ExpectedRecordCPKProto(3, 3, 5, 6, Op.UPDATE),
         new ExpectedRecordCPKProto(7, 8, 9, 10, Op.INSERT),
-        new ExpectedRecordCPKProto(7, 8, 1, 10, Op.UPDATE),
-        new ExpectedRecordCPKProto(7, 8, 1, 11, Op.UPDATE),
+        new ExpectedRecordCPKProto(7, 8, 10, 11, Op.UPDATE),
         new ExpectedRecordCPKProto(7, 8, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(8, 8, 10, 11, Op.INSERT),
         new ExpectedRecordCPKProto(8, 8, 0, 0, Op.DELETE),
@@ -150,9 +148,7 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(6, 7, 8, 9, Op.INSERT),
-        new ExpectedRecordCPKProto(6, 7, 17, 9, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 17, 18, Op.UPDATE),
-        new ExpectedRecordCPKProto(6, 7, 26, 18, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 26, 27, Op.UPDATE),
         new ExpectedRecordCPKProto(6, 7, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(15, 7, 26, 27, Op.INSERT),
@@ -169,7 +165,6 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(60, 70, 80, 90, Op.INSERT),
-        new ExpectedRecordCPKProto(60, 70, 89, 90, Op.UPDATE),
         new ExpectedRecordCPKProto(60, 70, 89, 99, Op.UPDATE),
         new ExpectedRecordCPKProto(60, 70, 0, 0, Op.DELETE),
         new ExpectedRecordCPKProto(69, 79, 89, 99, Op.INSERT),
@@ -184,7 +179,6 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),
         new ExpectedRecordCPKProto(11, 12, 13, 14, Op.INSERT),
-        new ExpectedRecordCPKProto(11, 12, 14, 14, Op.UPDATE),
         new ExpectedRecordCPKProto(11, 12, 14, 15, Op.UPDATE),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT),
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.BEGIN),

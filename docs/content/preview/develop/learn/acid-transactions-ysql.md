@@ -11,8 +11,7 @@ menu:
     identifier: acid-transactions-2-ysql
     parent: learn
     weight: 566
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

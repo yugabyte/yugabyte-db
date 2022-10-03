@@ -120,6 +120,24 @@ class ScopedLeaderSharedLock {
     return leader_status_;
   }
 
+  // Is the catalog manager initialized and is it the leader of its Raft configuration.
+  bool IsInitializedAndIsLeader() const { return first_failed_status().ok(); }
+
+  // String representation of first non-OK status. Should only be called when first_failed_status()
+  // is not ok.
+  std::string failed_status_string() const {
+    if (!catalog_status_.ok()) {
+      return "Catalog status failure: " + catalog_status_.ToString();
+    }
+
+    DCHECK(!leader_status_.ok());
+    if (!leader_status_.ok()) {
+      return "Leader status failure: " + leader_status_.ToString();
+    }
+
+    return "Status success.";
+  }
+
   // Check that the catalog manager is initialized. It may or may not be the
   // leader of its Raft configuration.
   //
@@ -146,6 +164,9 @@ class ScopedLeaderSharedLock {
   bool CheckIsInitializedOrRespondTServer(RespClass* resp, rpc::RpcContext* rpc,
                                           bool set_error = true);
 
+  // The term of the leader when the lock was acquired.
+  int64_t GetLeaderReadyTerm() const;
+
  private:
   template<typename RespClass, typename ErrorClass>
   bool CheckIsInitializedAndIsLeaderOrRespondInternal(RespClass* resp, rpc::RpcContext* rpc);
@@ -159,6 +180,7 @@ class ScopedLeaderSharedLock {
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;
+  int64_t leader_ready_term_;
 
   const char* file_name_;
   int line_number_;

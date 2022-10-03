@@ -9,14 +9,18 @@ import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import lombok.NoArgsConstructor;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
+@NoArgsConstructor
 public class BackupTableParams extends TableManagerParams {
   public enum ActionType {
     CREATE,
@@ -45,6 +49,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
 
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
@@ -95,12 +102,18 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Number of concurrent commands to run on nodes over SSH")
   public int parallelism = 8;
 
+  @ApiModelProperty(value = "Don't add -m flag during gsutil upload dir command")
+  public boolean disableParallelism = false;
+
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
 
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUuid = null;
+
+  @ApiModelProperty(value = "Base backup UUID")
+  public UUID baseBackupUUID = null;
 
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
@@ -123,11 +136,45 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Backup size in bytes")
   public long backupSizeInBytes = 0L;
 
+  @ApiModelProperty(value = "Incremental backups chain size")
+  public long fullChainSizeInBytes = 0L;
+
   @ApiModelProperty(value = "Type of backup storage config")
   public StorageConfigType storageConfigType = null;
 
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
+
+  @JsonIgnore
+  public BackupTableParams(BackupRequestParams backupRequestParams) {
+    this.customerUuid = backupRequestParams.customerUUID;
+    // Todo: Should it always be set to true?
+    this.ignoreErrors = true;
+    //    this.ignoreErrors = backupRequestParams.ignoreErrors;
+    this.storageConfigUUID = backupRequestParams.storageConfigUUID;
+    this.universeUUID = backupRequestParams.universeUUID;
+    this.sse = backupRequestParams.sse;
+    this.parallelism = backupRequestParams.parallelism;
+    this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
+    this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
+    this.backupType = backupRequestParams.backupType;
+    this.isFullBackup = CollectionUtils.isEmpty(backupRequestParams.keyspaceTableList);
+    this.scheduleUUID = backupRequestParams.scheduleUUID;
+    this.disableChecksum = backupRequestParams.disableChecksum;
+    this.useTablespaces = backupRequestParams.useTablespaces;
+    this.disableParallelism = backupRequestParams.disableParallelism;
+    this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+  }
+
+  @JsonIgnore
+  public BackupTableParams(BackupRequestParams backupRequestParams, String keySpace) {
+    this(backupRequestParams);
+    this.setKeyspace(keySpace);
+    this.tableNameList = new ArrayList<>();
+    this.tableUUIDList = new ArrayList<>();
+    this.setTableName(null);
+    this.tableUUID = null;
+  }
 
   @JsonIgnore
   public Set<String> getTableNames() {

@@ -27,9 +27,9 @@ class PosixSequentialFile : public SequentialFile {
   PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
   virtual ~PosixSequentialFile();
 
-  CHECKED_STATUS Read(size_t n, Slice* result, uint8_t* scratch) override;
-  CHECKED_STATUS Skip(uint64_t n) override;
-  CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override;
+  Status Skip(uint64_t n) override;
+  Status InvalidateCache(size_t offset, size_t length) override;
 
   const std::string& filename() const override { return filename_; }
 
@@ -47,7 +47,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
                         const FileSystemOptions& options);
   virtual ~PosixRandomAccessFile();
 
-  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       uint8_t* scratch) const override;
 
   Result<uint64_t> Size() const override;
@@ -62,7 +62,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
   virtual size_t GetUniqueId(char* id) const override;
 #endif
   virtual void Hint(AccessPattern pattern) override;
-  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+  virtual Status InvalidateCache(size_t offset, size_t length) override;
 
  private:
   std::string filename_;
@@ -71,5 +71,46 @@ class PosixRandomAccessFile : public RandomAccessFile {
 };
 
 } // namespace yb
+
+namespace rocksdb {
+
+// TODO(unify_env): remove `using` statement once filesystem classes are fully merged into yb
+// namespace:
+using yb::FileSystemOptions;
+
+class PosixWritableFile : public WritableFile {
+ private:
+  const std::string filename_;
+  int fd_;
+  uint64_t filesize_;
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  bool allow_fallocate_;
+  bool fallocate_with_keep_size_;
+#endif
+
+ public:
+  PosixWritableFile(const std::string& fname, int fd,
+                    const FileSystemOptions& options);
+  ~PosixWritableFile();
+
+  // Means Close() will properly take care of truncate
+  // and it does not need any additional information
+  Status Truncate(uint64_t size) override;
+  Status Close() override;
+  Status Append(const Slice& data) override;
+  Status Flush() override;
+  Status Sync() override;
+  Status Fsync() override;
+  uint64_t GetFileSize() override;
+  bool IsSyncThreadSafe() const override;
+  Status InvalidateCache(size_t offset, size_t length) override;
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+  Status Allocate(uint64_t offset, uint64_t len) override;
+  Status RangeSync(uint64_t offset, uint64_t nbytes) override;
+  size_t GetUniqueId(char* id) const override;
+#endif
+};
+
+} // namespace rocksdb
 
 #endif  // YB_UTIL_FILE_SYSTEM_POSIX_H

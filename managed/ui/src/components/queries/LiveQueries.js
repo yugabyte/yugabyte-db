@@ -66,7 +66,6 @@ const LiveQueriesComponent = ({ location }) => {
   const [type, setType] = useState('');
   const [searchTokens, setSearchTokens] = useState([]);
   const [selectedRow, setSelectedRow] = useState([]);
-  const customer = useSelector((state) => state.customer);
   const currentUniverse = useSelector((state) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
   const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
@@ -109,7 +108,7 @@ const LiveQueriesComponent = ({ location }) => {
 
   const getTserverLink = (cell, row) => {
     const tserverPort = currentUniverse?.data?.universeDetails?.communicationPorts?.tserverHttpPort;
-    const href = getProxyNodeAddress(universeUUID, customer, row.privateIp, tserverPort);
+    const href = getProxyNodeAddress(universeUUID, row.privateIp, tserverPort);
 
     return (
       <a href={href} title={cell} target="_blank" rel="noopener noreferrer">
@@ -209,13 +208,13 @@ const LiveQueriesComponent = ({ location }) => {
               </h2>
             </div>
             {failedQueries}
-            {hasQueryData && (
-              <div className="pull-right">
-                <YBButtonLink
-                  btnIcon="fa fa-refresh"
-                  btnClass="btn btn-default refresh-btn"
-                  onClick={getLiveQueries}
-                />
+            <div className="pull-right">
+              <YBButtonLink
+                btnIcon="fa fa-refresh"
+                btnClass="btn btn-default refresh-btn"
+                onClick={getLiveQueries}
+              />
+              {hasQueryData && (
                 <div>
                   <div className="live-queries__dropdown-label">Show live queries</div>
                   <Dropdown id="queries-filter-dropdown" pullRight={true}>
@@ -233,8 +232,8 @@ const LiveQueriesComponent = ({ location }) => {
                     </Dropdown.Menu>
                   </Dropdown>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         }
         body={

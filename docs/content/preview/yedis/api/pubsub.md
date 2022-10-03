@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/pubsub
   - /preview/api/yedis/pubsub
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

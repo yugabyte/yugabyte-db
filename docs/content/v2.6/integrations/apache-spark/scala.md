@@ -8,8 +8,7 @@ menu:
     identifier: apache-spark-1-scala
     parent: integrations
     weight: 572
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

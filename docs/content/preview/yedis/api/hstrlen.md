@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/hstrlen
   - /preview/api/yedis/hstrlen
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

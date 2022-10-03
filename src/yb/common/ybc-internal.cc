@@ -56,7 +56,7 @@ void FreeYBCStatus(YBCStatus status) {
 }
 
 YBCStatus YBCStatusOK() {
-  return nullptr;
+  return YBCStatusOKValue;
 }
 
 YBCStatus YBCStatusNotSupport(const string& feature_name) {

@@ -46,7 +46,7 @@ class PgTableCache::Impl {
   explicit Impl(std::shared_future<client::YBClient*> client_future)
       : client_future_(client_future) {}
 
-  CHECKED_STATUS GetInfo(
+  Status GetInfo(
       const TableId& table_id,
       master::GetTableSchemaResponsePB* info,
       PgTablePartitionsPB* partitions) {
@@ -98,7 +98,7 @@ class PgTableCache::Impl {
     return std::make_pair(it->second, true);
   }
 
-  CHECKED_STATUS OpenTable(
+  Status OpenTable(
       const TableId& table_id, client::YBTablePtr* table, master::GetTableSchemaResponsePB* info) {
     RETURN_NOT_OK(client().OpenTable(table_id, table, info));
     RSTATUS_DCHECK(

@@ -61,6 +61,7 @@ set(DOCDB_SRCS
         consensus_frontier.cc
         cql_operation.cc
         deadline_info.cc
+        deadlock_detector.cc
         doc_boundary_values_extractor.cc
         docdb.cc
         docdb_debug.cc
@@ -80,6 +81,7 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        doc_ql_filefilter.cc
         expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
@@ -90,12 +92,14 @@ set(DOCDB_SRCS
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
         rocksdb_writer.cc
+        schema_packing.cc
         shared_lock_manager.cc
         subdocument.cc
-        subdoc_reader.cc
         transaction_dump.cc
         transaction_status_cache.cc
         value.cc
+        local_waiting_txn_registry.cc
+        wait_queue.cc
         kv_debug.cc
         )
 

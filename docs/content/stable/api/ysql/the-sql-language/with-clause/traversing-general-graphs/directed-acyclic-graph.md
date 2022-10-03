@@ -1,15 +1,14 @@
 ---
 title: Using a recursive CTE to traverse a directed acyclic graph
 headerTitle: Finding the paths in a directed acyclic graph
-linkTitle: directed acyclic graph
+linkTitle: Directed acyclic graph
 description: This section shows how to use a recursive CTE to traverse a directed acyclic graph.
 menu:
   stable:
     identifier: directed-acyclic-graph
     parent: traversing-general-graphs
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/).

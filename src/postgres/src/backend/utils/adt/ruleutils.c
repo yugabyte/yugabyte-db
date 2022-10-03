@@ -410,6 +410,9 @@ static void get_rule_windowspec(WindowClause *wc, List *targetList,
 					deparse_context *context);
 static char *get_variable(Var *var, int levelsup, bool istoplevel,
 			 deparse_context *context);
+static void get_batched_expr(YbBatchedExpr *var,
+							 deparse_context *context,
+							 bool showimplicit);
 static void get_special_variable(Node *node, deparse_context *context,
 					 void *private);
 static void resolve_special_varno(Node *node, deparse_context *context,
@@ -1093,7 +1096,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 static void
 YbAppendIndexReloptions(StringInfoData buf,
 						Oid index_oid,
-						const YBCPgTableProperties* yb_table_properties)
+						YbTableProperties yb_table_properties)
 {
 	char *str = flatten_reloptions(index_oid);
 
@@ -1484,20 +1487,15 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 	if (!attrsOnly)
 	{
-		YBCPgTableDesc yb_tabledesc = NULL;
-		YBCPgTableProperties yb_table_properties;
-
-		if (includeYbMetadata && IsYBRelationById(indexrelid) &&
-			!idxrec->indisprimary)
-		{
-			YbGetTableDescAndProps(indexrelid, false,
-								   &yb_tabledesc, &yb_table_properties);
-		}
+		Relation indexrel = index_open(indexrelid, AccessShareLock);
 
 		appendStringInfoChar(&buf, ')');
 
-		YbAppendIndexReloptions(buf, indexrelid,
-			yb_tabledesc ? &yb_table_properties : NULL);
+		if (includeYbMetadata && IsYBRelation(indexrel) &&
+			!idxrec->indisprimary)
+		{
+			YbAppendIndexReloptions(buf, indexrelid, YbGetTableProperties(indexrel));
+		}
 
 		/*
 		 * Print tablespace, but only if requested
@@ -1506,7 +1504,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		{
 			Oid			tblspc;
 
-			tblspc = get_rel_tablespace(indexrelid);
+			tblspc = indexrel->rd_rel->reltablespace;
 			if (!OidIsValid(tblspc))
 				tblspc = MyDatabaseTableSpace;
 			if (isConstraint)
@@ -1518,28 +1516,25 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		/*
 		 * Print SPLIT INTO/AT clause.
 		 */
-		if (includeYbMetadata && yb_tabledesc)
+		if (includeYbMetadata && indexrel->yb_table_properties)
 		{
-			if (yb_table_properties.num_hash_key_columns > 0)
+			if (indexrel->yb_table_properties->num_hash_key_columns > 0)
 			{
 				/* For hash-partitioned tables */
-				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS", yb_table_properties.num_tablets);
+				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
+								 indexrel->yb_table_properties->num_tablets);
 			}
 			else
 			{
 				/* For range-partitioned tables */
-				if (yb_table_properties.num_tablets > 1)
+				if (indexrel->yb_table_properties->num_tablets > 1)
 				{
-					ereport(WARNING,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("exporting SPLIT clause for range-split relations is not yet "
-									"supported"),
-							 errdetail("Index '%s' will be created with default (1) tablets "
-									   "instead of %" PRIu64 ".",
-									   generate_relation_name(indrelid, NIL),
-									   yb_table_properties.num_tablets),
-							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
-									 " Click '+' on the description to raise its priority.")));
+					const char *range_split_clause =
+							DatumGetCString(DirectFunctionCall1(yb_get_range_split_clause,
+																ObjectIdGetDatum(indexrelid)));
+
+					if (strcmp(range_split_clause, "") != 0)
+						appendStringInfo(&buf, " %s", range_split_clause);
 				}
 			}
 
@@ -1547,15 +1542,18 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 			/*
 			 * If the indexed table's tablegroup mismatches that of an
-			 * index table, append an explicit [NO] TABLEGROUP clause.
+			 * index table, this is a leftover from beta days of tablegroup
+			 * feature. We cannot replicate this via DDL statement anymore.
 			 */
-			if (yb_table_properties.tablegroup_oid != RelationGetTablegroupOid(indrel))
+			if (YbGetTableProperties(indexrel)->tablegroup_oid !=
+				YbGetTableProperties(indrel)->tablegroup_oid)
 			{
-				if (OidIsValid(yb_table_properties.tablegroup_oid))
-					appendStringInfo(&buf, " TABLEGROUP %s",
-									 get_tablegroup_name(yb_table_properties.tablegroup_oid));
-				else
-					appendStringInfo(&buf, " NO TABLEGROUP");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("tablegroup of an index %s does not match its "
+								"indexed table, this is no longer supported",
+								NameStr(idxrelrec->relname)),
+						 errhint("Please drop and re-create the index.")));
 			}
 
 			heap_close(indrel, AccessShareLock);
@@ -1587,6 +1585,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			else
 				appendStringInfo(&buf, " WHERE %s", str);
 		}
+
+		index_close(indexrel, AccessShareLock);
 	}
 
 	/* Clean up */
@@ -2249,24 +2249,19 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				/* XXX why do we only print these bits if fullCommand? */
 				if (fullCommand && OidIsValid(indexId))
 				{
-					YBCPgTableDesc		 yb_tabledesc = NULL;
-					YBCPgTableProperties yb_table_properties;
+					Relation indexrel = index_open(indexId, AccessShareLock);
 
-					if (IsYBRelationById(indexId) && conForm->contype != CONSTRAINT_PRIMARY)
-						YbGetTableDescAndProps(indexId, false,
-											   &yb_tabledesc, &yb_table_properties);
-
-					YbAppendIndexReloptions(buf, indexId,
-						yb_tabledesc ? &yb_table_properties : NULL);
+					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
+						YbAppendIndexReloptions(buf, indexId, YbGetTableProperties(indexrel));
 
 					Oid			tblspc;
 
-					tblspc = get_rel_tablespace(indexId);
+					tblspc = indexrel->rd_rel->reltablespace;
 					if (OidIsValid(tblspc))
 						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
 										 quote_identifier(get_tablespace_name(tblspc)));
 
-					/* TODO: Add TABLEGROUP clause when #11600 is implemented. */
+					index_close(indexrel, AccessShareLock);
 				}
 
 				break;
@@ -4764,6 +4759,8 @@ set_deparse_planstate(deparse_namespace *dpns, PlanState *ps)
 	/* Set up referent for INDEX_VAR Vars, if needed */
 	if (IsA(ps->plan, IndexOnlyScan))
 		dpns->index_tlist = ((IndexOnlyScan *) ps->plan)->indextlist;
+	else if (IsA(ps->plan, IndexScan))
+		dpns->index_tlist = ((IndexScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) ps->plan)->fdw_scan_tlist;
 	else if (IsA(ps->plan, CustomScan))
@@ -6871,6 +6868,16 @@ get_variable(Var *var, int levelsup, bool istoplevel, deparse_context *context)
 	return attname;
 }
 
+static void
+get_batched_expr(YbBatchedExpr *bexpr,
+				 deparse_context *context,
+				 bool showimplicit)
+{
+	appendStringInfo(context->buf, "BATCHED EXPR(");
+	(void ) get_rule_expr((Node *) bexpr->orig_expr, context, showimplicit);
+	appendStringInfo(context->buf, ")");
+}
+
 /*
  * Deparse a Var which references OUTER_VAR, INNER_VAR, or INDEX_VAR.  This
  * routine is actually a callback for get_special_varno, which handles finding
@@ -7390,7 +7397,8 @@ find_param_referent(Param *param, deparse_context *context,
 			 * we've crawled up out of a subplan, this couldn't possibly be
 			 * the right match.
 			 */
-			if (IsA(ps, NestLoopState) &&
+			if ((IsA(ps, NestLoopState) || 
+				 IsA(ps, YbBatchedNestLoopState)) &&
 				child_ps == innerPlanState(ps) &&
 				in_same_plan_level)
 			{
@@ -7620,7 +7628,10 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 			 * treat like FieldSelect (probably doesn't matter)
 			 */
 			return (IsA(parentNode, FieldStore) ? false : true);
-
+		case T_YbBatchedExpr:
+			return isSimpleNode((Node *) ((YbBatchedExpr *) node)->orig_expr,
+								parentNode,
+								prettyFlags);
 		case T_CoerceToDomain:
 			/* maybe simple, check args */
 			return isSimpleNode((Node *) ((CoerceToDomain *) node)->arg,
@@ -7941,6 +7952,10 @@ get_rule_expr(Node *node, deparse_context *context,
 
 		case T_WindowFunc:
 			get_windowfunc_expr((WindowFunc *) node, context);
+			break;
+
+		case T_YbBatchedExpr:
+			get_batched_expr((YbBatchedExpr *) node, context, showimplicit);
 			break;
 
 		case T_ArrayRef:
@@ -9538,6 +9553,14 @@ get_coercion_expr(Node *arg, deparse_context *context,
 		if (!PRETTY_PAREN(context))
 			appendStringInfoChar(buf, ')');
 	}
+
+	/*
+	 * Never emit resulttype(arg) functional notation. A pg_proc entry could
+	 * take precedence, and a resulttype in pg_temp would require schema
+	 * qualification that format_type_with_typemod() would usually omit. We've
+	 * standardized on arg::resulttype, but CAST(arg AS resulttype) notation
+	 * would work fine.
+	 */
 	appendStringInfo(buf, "::%s",
 					 format_type_with_typemod(resulttype, resulttypmod));
 }

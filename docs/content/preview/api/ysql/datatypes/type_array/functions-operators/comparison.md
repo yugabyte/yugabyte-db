@@ -8,8 +8,7 @@ menu:
     identifier: array-comparison
     parent: array-functions-operators
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Comparison operators overview

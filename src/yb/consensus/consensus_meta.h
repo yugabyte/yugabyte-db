@@ -44,6 +44,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -80,7 +81,7 @@ class ConsensusMetadata {
  public:
   // Create a ConsensusMetadata object with provided initial state.
   // Encoded PB is flushed to disk before returning.
-  static CHECKED_STATUS Create(FsManager* fs_manager,
+  static Status Create(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                const RaftConfigPB& config,
@@ -90,14 +91,14 @@ class ConsensusMetadata {
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
+  static Status Load(FsManager* fs_manager,
                              const std::string& tablet_id,
                              const std::string& peer_uuid,
                              std::unique_ptr<ConsensusMetadata>* cmeta);
 
   // Delete the ConsensusMetadata file associated with the given tablet from
   // disk.
-  static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
+  static Status DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Accessors for current term.
   int64_t current_term() const;
@@ -126,7 +127,10 @@ class ConsensusMetadata {
 
   // Set & clear the pending configuration.
   void clear_pending_config();
-  void set_pending_config(const RaftConfigPB& config);
+  void set_pending_config(const RaftConfigPB& config, const OpId& config_op_id);
+  Status set_pending_config_op_id(const OpId& config_op_id);
+
+  OpId pending_config_op_id() { return pending_config_op_id_; }
 
   // If a pending configuration is set, return it.
   // Otherwise, return the committed configuration.
@@ -168,7 +172,7 @@ class ConsensusMetadata {
   void MergeCommittedConsensusStatePB(const ConsensusStatePB& committed_cstate);
 
   // Persist current state of the protobuf to disk.
-  CHECKED_STATUS Flush();
+  Status Flush();
 
   // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
   int64_t on_disk_size() const {
@@ -206,6 +210,7 @@ class ConsensusMetadata {
                             // configuration change pending.
   // RaftConfig used by the peers when there is a pending config change operation.
   RaftConfigPB pending_config_;
+  OpId pending_config_op_id_;
 
   // Cached role of the peer_uuid_ within the active configuration.
   PeerRole active_role_;

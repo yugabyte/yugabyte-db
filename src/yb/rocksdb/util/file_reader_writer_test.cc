@@ -53,7 +53,7 @@ TEST_F(WritableFileWriterTest, RangeSync) {
     Status Flush() override { return Status::OK(); }
     Status Sync() override { return Status::OK(); }
     Status Fsync() override { return Status::OK(); }
-    void SetIOPriority(Env::IOPriority pri) override {}
+    void SetIOPriority(yb::IOPriority pri) override {}
     uint64_t GetFileSize() override { return size_; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {}

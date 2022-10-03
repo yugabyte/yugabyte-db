@@ -21,17 +21,23 @@ public class GetDBStreamInfoResponse extends YRpcResponse {
 
     private final List<MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo>
             tableInfoList;
+    private final String namespaceId;
 
     public GetDBStreamInfoResponse(long elapsedMillis, String tsUUID,
                                    List<MasterReplicationOuterClass
                                            .GetCDCDBStreamInfoResponsePB.TableInfo>
-                                           tableInfoList) {
+                                           tableInfoList, String namespaceId) {
         super(elapsedMillis, tsUUID);
         this.tableInfoList = tableInfoList;
+        this.namespaceId = namespaceId;
     }
 
     public List<MasterReplicationOuterClass
             .GetCDCDBStreamInfoResponsePB.TableInfo> getTableInfoList() {
         return tableInfoList;
+    }
+
+    public String getNamespaceId() {
+        return namespaceId;
     }
 }

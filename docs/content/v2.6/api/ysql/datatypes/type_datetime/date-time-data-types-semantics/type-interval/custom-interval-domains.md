@@ -8,8 +8,7 @@ menu:
     identifier: custom-interval-domains
     parent: type-interval
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the kit to create the custom interval domains." >}}
@@ -561,7 +560,7 @@ as $body$
 declare
   total_seconds bigint not null := hours*60*60 + mins*60 + trunc(secs)::bigint;
 begin
-  call assert_interval_seconds_in_range(total_seconds); 
+  call assert_interval_seconds_in_range(total_seconds);
   return make_interval(hours => hours, mins => mins, secs => secs)::interval_seconds_t;
 end;
 $body$;
@@ -906,11 +905,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:           240271-10-10 07:59:58 AD
- 
+
  i_secs:      2147483647:59:58.999552
  i_days:      89478485 days
  i_months:    244983 years 9 mons
- 
+
  yrs_from_ss  244983.772
  yrs_from_dd: 244983.771
  yrs_from_mm: 244983.750
@@ -934,11 +933,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:             1625-09-30 19:33:20 AD
- 
+
  i_secs:      55555555:33:20
  i_days:      2314814 days
  i_months:    6337 years 8 mons
- 
+
  yrs_from_ss  6337.748
  yrs_from_dd: 6337.745
  yrs_from_mm: 6337.667
@@ -955,11 +954,11 @@ This is the result:
 ```output
  t0:             4713-01-01 00:00:00 BC
  t1:             4713-04-12 11:26:40 BC
- 
+
  i_secs:      2459:26:40
  i_days:      102 days
  i_months:    3 mons
- 
+
  yrs_from_ss  0.281
  yrs_from_dd: 0.279
  yrs_from_mm: 0.250

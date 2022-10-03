@@ -24,8 +24,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -40,6 +42,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public static final String YB_CUSTOMER_RUNTIME_ONLY_KEY = "yb.runtime.customer";
   public static final String YB_PROVIDER_RUNTIME_ONLY_KEY = "yb.runtime.provider";
   public static final String YB_UNIVERSE_RUNTIME_ONLY_KEY = "yb.runtime.universe";
+  private static final String YB_CLOUD_ENABLED_KEY = "yb.cloud.enabled";
 
   // Key not defined in any scope
   public static final String YB_NOT_PRESENT_KEY = "yb.not.present";
@@ -61,7 +64,9 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
           YB_STATIC_ONLY_KEY,
           Scope.STATIC.toString(),
           YB_OVERRIDDEN_KEY,
-          Scope.STATIC.toString());
+          Scope.STATIC.toString(),
+          YB_CLOUD_ENABLED_KEY,
+          Boolean.TRUE);
 
   // overrides in global scope:
   private static final Set<String> globalConfigSet =
@@ -136,8 +141,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoCustomers() {
     Customer customer1 = ModelFactory.testCustomer();
     Customer customer2 = ModelFactory.testCustomer();
-    configFactory.forCustomer(customer1).setValue(TASK_GC_FREQUENCY, "1 day", false);
-    configFactory.forCustomer(customer2).setValue(TASK_GC_FREQUENCY, "2 days", false);
+    configFactory.forCustomer(customer1).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forCustomer(customer2).setValue(TASK_GC_FREQUENCY, "2 days");
 
     assertEquals(1L, configFactory.forCustomer(customer1).getDuration(TASK_GC_FREQUENCY).toDays());
     assertEquals(2L, configFactory.forCustomer(customer2).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -170,8 +175,8 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoProviders() {
     Provider awsProvider = ModelFactory.awsProvider(defaultCustomer);
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    configFactory.forProvider(awsProvider).setValue(TASK_GC_FREQUENCY, "1 day", false);
-    configFactory.forProvider(gcpProvider).setValue(TASK_GC_FREQUENCY, "2 days", false);
+    configFactory.forProvider(awsProvider).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forProvider(gcpProvider).setValue(TASK_GC_FREQUENCY, "2 days");
 
     assertEquals(
         1L, configFactory.forProvider(awsProvider).getDuration(TASK_GC_FREQUENCY).toDays());
@@ -206,37 +211,104 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   public void testTwoUniverses() {
     Universe universe1 = ModelFactory.createUniverse("USA", defaultCustomer.getCustomerId());
     Universe universe2 = ModelFactory.createUniverse("Asia", defaultCustomer.getCustomerId());
-    configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day", false);
-    configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days", false);
+    configFactory.forUniverse(universe1).setValue(TASK_GC_FREQUENCY, "1 day");
+    configFactory.forUniverse(universe2).setValue(TASK_GC_FREQUENCY, "2 days");
 
     assertEquals(1L, configFactory.forUniverse(universe1).getDuration(TASK_GC_FREQUENCY).toDays());
     assertEquals(2L, configFactory.forUniverse(universe2).getDuration(TASK_GC_FREQUENCY).toDays());
   }
 
+  @Test
+  public void testToRedactedString() {
+    Map<String, Object> inputMap =
+        ImmutableMap.<String, Object>builder()
+            .put("testemail", "email")
+            .put("testpassword", "password")
+            .put("testserver", "server")
+            .put("email", "test")
+            .put("password", "password")
+            .put("server", "server")
+            .put("test_email", "email")
+            .put("test_password", "password")
+            .put("test_server", "server")
+            .put("test_email_user", "user")
+            .put("test-email", "email")
+            .put("test-password", "password")
+            .put("test-server", "server")
+            .put("test-email-user", "user")
+            .put(
+                "test1",
+                ImmutableMap.of(
+                    "email", "test1@mail.com",
+                    "password", "password1",
+                    "server", "server1",
+                    "email_user", "user1"))
+            .put(
+                "test2",
+                ImmutableMap.of(
+                    "email", "test2@mail.com",
+                    "password", "password2",
+                    "server", "server2",
+                    "email_user", "user2"))
+            .build();
+    Map<String, String> expectedMap =
+        ImmutableMap.<String, String>builder()
+            .put("testemail", "Quoted(\"email\")")
+            .put("testpassword", "Quoted(\"password\")")
+            .put("testserver", "Quoted(\"server\")")
+            .put("email", "REDACTED")
+            .put("password", "REDACTED")
+            .put("server", "REDACTED")
+            .put("test_email", "REDACTED")
+            .put("test_password", "REDACTED")
+            .put("test_server", "REDACTED")
+            .put("test_email_user", "Quoted(\"user\")")
+            .put("test-email", "REDACTED")
+            .put("test-password", "REDACTED")
+            .put("test-server", "REDACTED")
+            .put("test-email-user", "Quoted(\"user\")")
+            .put("test1.email", "REDACTED")
+            .put("test1.password", "REDACTED")
+            .put("test1.server", "REDACTED")
+            .put("test1.email_user", "Quoted(\"user1\")")
+            .put("test2.email", "REDACTED")
+            .put("test2.password", "REDACTED")
+            .put("test2.server", "REDACTED")
+            .put("test2.email_user", "Quoted(\"user2\")")
+            .build();
+
+    String output = SettableRuntimeConfigFactory.toRedactedString(ConfigFactory.parseMap(inputMap));
+    Map<String, String> outputMap =
+        Arrays.stream(output.split(","))
+            .map(s -> s.split("="))
+            .collect(Collectors.toMap(tokens -> tokens[0].trim(), tokens -> tokens[1].trim()));
+    assertEquals(expectedMap, outputMap);
+  }
+
   private RuntimeConfig<Model> setupGlobalConfig() {
     RuntimeConfig<Model> runtimeConfig = configFactory.globalRuntimeConf();
-    globalConfigSet.forEach(s -> runtimeConfig.setValue(s, Scope.GLOBAL.name(), false));
+    globalConfigSet.forEach(s -> runtimeConfig.setValue(s, Scope.GLOBAL.name()));
     return runtimeConfig;
   }
 
   private RuntimeConfig<Customer> setupCustomerConfig() {
     setupGlobalConfig();
     RuntimeConfig<Customer> customerConfig = configFactory.forCustomer(defaultCustomer);
-    customerConfigSet.forEach(s -> customerConfig.setValue(s, Scope.CUSTOMER.name(), false));
+    customerConfigSet.forEach(s -> customerConfig.setValue(s, Scope.CUSTOMER.name()));
     return customerConfig;
   }
 
   private RuntimeConfig<Provider> setupProviderConfig() {
     setupCustomerConfig();
     RuntimeConfig<Provider> providerConfig = configFactory.forProvider(defaultProvider);
-    providerConfigSet.forEach(s -> providerConfig.setValue(s, Scope.PROVIDER.name(), false));
+    providerConfigSet.forEach(s -> providerConfig.setValue(s, Scope.PROVIDER.name()));
     return providerConfig;
   }
 
   private RuntimeConfig<Universe> setupUniverseConfig() {
     setupCustomerConfig();
     RuntimeConfig<Universe> universeConfig = configFactory.forUniverse(defaultUniverse);
-    universeConfigSet.forEach(s -> universeConfig.setValue(s, Scope.UNIVERSE.name(), false));
+    universeConfigSet.forEach(s -> universeConfig.setValue(s, Scope.UNIVERSE.name()));
     return universeConfig;
   }
 

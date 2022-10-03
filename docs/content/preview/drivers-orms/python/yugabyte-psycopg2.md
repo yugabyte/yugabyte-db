@@ -1,46 +1,41 @@
 ---
-title: Python drivers
-linkTitle: Python drivers
+title: Connect an application
+linkTitle: Connect an app
 description: Python drivers for YSQL
-headcontent: Python drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Python drivers
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/python/yugabyte-psycopg2" class="nav-link active">
+    <a href="../yugabyte-psycopg2" class="nav-link active">
       <i class="icon-java-bold" aria-hidden="true"></i>
-      YugabyteDB Psycopg2
+      YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/python/postgres-psycopg2" class="nav-link">
+    <a href="../postgres-psycopg2" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Psycopg2
+      PostgreSQL Psycopg2 Driver
     </a>
   </li>
 
 </ul>
 
-The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
+The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
 
-## CRUD operations with YugabyteDB psycopg2 driver
+## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/python/ysql-psycopg2/).
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 driver.
-
-After completing these steps, you should have a working Python application that uses Psycopg2 to connect to your cluster, set up tables, run queries, and print out results.
+The following sections break down the example to demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
 
 ### Step 1: Add the YugabyteDB driver dependency
 
@@ -48,7 +43,7 @@ Building Psycopg requires a few prerequisites (a C compiler and some development
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
 
-Once you've installed the prerequisites, you install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
 ```sh
 $ pip install psycopg2-yugabytedb
@@ -61,15 +56,27 @@ $ python setup.py build
 $ sudo python setup.py install
 ```
 
-### Step 2: Connect to your cluster
-
-First, import the psycopg2 package.
+Then import the psycopg2 package.
 
 ```python
 import psycopg2
 ```
 
-You can provide the connection details as a string, or as a dictionary.
+### Step 2: Set up the database connection
+
+The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
+
+| Parameter | Description | Default |
+| :-------- | :---------- | :------ |
+| host | Hostname of the YugabyteDB instance | localhost |
+| port | Listen port for YSQL | 5433 |
+| database/dbname | Database name | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| load_balance | Enables uniform load balancing | false |
+| topology_keys | enables topology-aware load balancing | true
+
+You can provide the connection details in one of the following ways:
 
 - Connection string:
 
@@ -83,50 +90,43 @@ You can provide the connection details as a string, or as a dictionary.
   user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True'
   ```
 
-Here's a sample call to connect to YugabyteDB:
+The following is an example connection string for connecting to YugabyteDB.
 
 ```python
-conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte', load_balance='True')
+conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte',load_balance='true')
 ```
-
-| Parameter | Description | Default |
-| :-------- | :---------- | :------ |
-| host | Hostname of the YugabyteDB instance | localhost |
-| port | Listen port for YSQL | 5433 |
-| database/dbname | Database name | yugabyte |
-| user | User connecting to the database | yugabyte |
-| password | User password | yugabyte |
-| load_balance | Enables uniform load balancing | false |
 
 #### Use SSL
 
-Use the following example URL for connecting to a YugabyteDB cluster with SSL enabled:
-
-```python
-conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
-```
+The following table describes the connection parameters required to connect using SSL.
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
 | sslmode | SSL mode | prefer |
 | sslrootcert | path to the root certificate on your computer | ~/.postgresql/ |
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+The following is an example for connecting to a YugabyteDB cluster with SSL enabled:
 
-### Step 3: Query the YugabyteDB cluster from your application
+```python
+conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
+```
 
-1. Create a new Python file called `QuickStartApp.py` in the base package directory of your project.
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-1. Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` with the cluster credentials and SSL certificate, if required.
+### Step 3: Write your application
+
+Create a new Python file called `QuickStartApp.py` in the base package directory of your project.
+
+Copy the following sample code to set up tables and query the table contents. Replace the connection string `connString` with the cluster credentials and SSL certificate, if required.
 
 ```python
 import psycopg2
 
 # Create the database connection.
 
-yburl = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte load_balance=True"
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte     load_balance=True"
 
-conn = psycopg2.connect(yburl)
+conn = psycopg2.connect(connString)
 
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".
@@ -144,9 +144,9 @@ cur.execute(
 cur.execute(
   """
   CREATE TABLE employee (id int PRIMARY KEY,
-                         name varchar,
-                         age int,
-                         language varchar)
+                        name varchar,
+                        age int,
+                        language varchar)
   """)
 print("Created table employee")
 cur.close()
@@ -185,8 +185,9 @@ Query returned: John, 35, Python
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-## Next steps
+## Learn more
 
-- Learn how to build Python applications using [Django](/preview/drivers-orms/python/django/)
-- Learn how to build Python applications using [SQLAlchemy](/preview/drivers-orms/python/sqlalchemy/)
-- Learn more about [fundamentals](../../../reference/drivers/python/yugabyte-psycopg2-reference/) of the YugabyteDB Psycopg2 Driver
+- Build Python applications using [Django](../../../drivers-orms/python/django/)
+- Build Python applications using [SQLAlchemy](../../../drivers-orms/python/sqlalchemy/)
+- [Python driver reference](../../../reference/drivers/python/yugabyte-psycopg2-reference/#fundamentals)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

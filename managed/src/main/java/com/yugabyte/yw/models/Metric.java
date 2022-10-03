@@ -45,6 +45,10 @@ public class Metric {
 
   private String name;
 
+  private String help;
+
+  private String unit;
+
   private Type type;
 
   private Date createTime = nowWithoutMillis();
@@ -74,6 +78,12 @@ public class Metric {
   public Metric setKeyLabel(KnownAlertLabels label, String value) {
     setLabel(label.labelName(), value);
     keyLabels.add(label.labelName());
+    return this;
+  }
+
+  public Metric setKeyLabel(String label, String value) {
+    setLabel(label, value);
+    keyLabels.add(label);
     return this;
   }
 

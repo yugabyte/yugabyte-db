@@ -97,6 +97,22 @@ CREATE TABLE tab_range_nonkey_noco3 (a INT, b INT, PRIMARY KEY (a ASC)) WITH (co
 CREATE INDEX idx_range4 ON tab_range_nonkey_noco3 (a);
 CREATE TABLE tab_range_nonkey5 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
+CREATE TABLE tbl (r1 INT, r2 INT, v1 INT, v2 INT,
+PRIMARY KEY (r1, r2));
+CREATE INDEX idx_hash1 on tbl (r1 HASH);
+CREATE INDEX idx_hash2 on tbl ((r1, r2) HASH);
+CREATE INDEX idx_hash3 on tbl (r1 HASH, r2 ASC);
+CREATE UNIQUE INDEX unique_idx_hash1 on tbl (r1 HASH);
+CREATE UNIQUE INDEX unique_idx_hash2 on tbl ((r1, r2) HASH);
+CREATE UNIQUE INDEX unique_idx_hash3 on tbl (r1 HASH, r2 ASC);
+\d tbl
+-- Make sure nothing bad happens to UNIQUE constraints after disabling HASH columns
+-- for colocated indexes
+CREATE TABLE tbl2 (r1 int PRIMARY KEY, r2 int, v1 int, v2 int, UNIQUE(v1));
+ALTER TABLE tbl2 ADD CONSTRAINT unique_v2_tbl2 UNIQUE(v2);
+\d tbl2
+
+DROP TABLE tbl, tbl2;
 
 -- colocated table with unique index
 CREATE TABLE tab_nonkey2 (a INT) WITH (colocated = true);

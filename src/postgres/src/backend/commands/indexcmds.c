@@ -55,6 +55,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -368,10 +369,15 @@ DefineIndex(Oid relationId,
 	ObjectAddress address;
 	LockRelId	heaprelid;
 	LOCKMODE	lockmode;
+	Oid			root_save_userid;
+	int			root_save_sec_context;
+	int			root_save_nestlevel;
 	int			i;
 
 	Oid			databaseId;
 	bool		relIsShared;
+
+	root_save_nestlevel = NewGUCNestLevel();
 
 	/*
 	 * count key attributes in index
@@ -405,6 +411,15 @@ DefineIndex(Oid relationId,
 	 * its metadata. Stronger lock will be taken later.
 	 */
 	rel = heap_open(relationId, AccessShareLock);
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations.  We
+	 * already arranged to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
+	SetUserIdAndSecContext(rel->rd_rel->relowner,
+						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	databaseId = YBCGetDatabaseOid(rel);
 	relIsShared = rel->rd_rel->relisshared;
@@ -576,7 +591,7 @@ DefineIndex(Oid relationId,
 	{
 		AclResult	aclresult;
 
-		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
+		aclresult = pg_namespace_aclcheck(namespaceId, root_save_userid,
 										  ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
@@ -642,75 +657,35 @@ DefineIndex(Oid relationId,
 	{
 		AclResult	aclresult;
 
-		aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(),
+		aclresult = pg_tablespace_aclcheck(tablespaceId, root_save_userid,
 										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(tablespaceId));
 	}
 
-	/*
-	 * Select tablegroup to use. Default to the tablegroup of the indexed table.
-	 * If no tablegroup for the indexed table then set to InvalidOid (no tablegroup).
-	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
-	 */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists)
+	/* Use tablegroup of the indexed table, if any. */
+	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+		YbGetTableProperties(rel)->tablegroup_oid :
+		InvalidOid;
+
+	if (OidIsValid(tablegroupId) && stmt->split_options)
 	{
-		if (!stmt->tablegroup)
-		{
-			// If NULL tablegroup, follow tablegroup of indexed table.
-			tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-			if (OidIsValid(tablegroupId) && stmt->split_options)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("Cannot use TABLEGROUP with SPLIT."),
-						 errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
-			}
-		}
-		else
-		{
-			OptTableGroup *grp = stmt->tablegroup;
-			if (grp->has_tablegroup)
-			{
-				if (stmt->split_options)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							 errmsg("Cannot use TABLEGROUP with SPLIT.")));
-				}
-				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
-			}
-		}
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 	}
 
-	bool is_colocated = false;
 
 	/*
-	 * Unless there's an explicit tablegroup on an index, follow colocation
-	 * rules of the indexed table.
+	 * Get whether the indexed table is colocated
+	 * (either via database or a tablegroup).
 	 */
-	if (stmt->tablegroup)
-	{
-		is_colocated = stmt->tablegroup->has_tablegroup;
-	}
-	else
-	{
-		/*
-		 * Get whether the indexed table is colocated.  This includes tables
-		 * that are colocated because they are part of a tablegroup with
-		 * colocation.
-		 */
-		if (IsYugaByteEnabled() &&
-			!IsBootstrapProcessingMode() &&
-			!YBIsPreparingTemplates() &&
-			IsYBRelation(rel))
-		{
-			is_colocated = YbIsUserTableColocated(databaseId,
-												  YbGetStorageRelid(rel));
-		}
-	}
+	bool is_colocated =
+		IsYBRelation(rel) &&
+		!IsBootstrapProcessingMode() &&
+		!YbIsConnectedToTemplateDb() &&
+		YbGetTableProperties(rel)->is_colocated;
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -718,6 +693,15 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated index")));
+
+	/*
+	 * Fail if the index is colocated and tablespace
+	 * is specified while creation.
+	 */
+	if (OidIsValid(tablespaceId) && is_colocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 	/*
 	 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
@@ -731,19 +715,6 @@ DefineIndex(Oid relationId,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
-	}
-
-	/*
-	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid.
-	 * We set this here instead of in parse_utilcmd since we need to do the above
-	 * preprocessing and RBAC checks first. This still happens before transformReloptions
-	 * so this option is included in the reloptions text array.
-	 */
-	if (OidIsValid(tablegroupId))
-	{
-		stmt->options = lcons(makeDefElem("tablegroup_oid",
-										  (Node *) makeInteger(tablegroupId), -1),
-										  stmt->options);
 	}
 
 	/*
@@ -839,8 +810,8 @@ DefineIndex(Oid relationId,
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
-						 "Click '+' on the description to raise its priority")));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
+						 "React with thumbs up to raise its priority")));
 	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
 							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
@@ -1146,9 +1117,29 @@ DefineIndex(Oid relationId,
 
 	if (!OidIsValid(indexRelationId))
 	{
+		/*
+		 * Roll back any GUC changes executed by index functions.  Also revert
+		 * to original default_tablespace if we changed it above.
+		 */
+		AtEOXact_GUC(false, root_save_nestlevel);
+
+		/* Restore userid and security context */
+		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
+
 		heap_close(rel, NoLock);
 		return address;
 	}
+
+	/*
+	 * Roll back any GUC changes executed by index functions, and keep
+	 * subsequent changes local to this command.  It's barely possible that
+	 * some index function changed a behavior-affecting GUC, e.g. xmloption,
+	 * that affects subsequent steps.  This improves bug-compatibility with
+	 * older PostgreSQL versions.  They did the AtEOXact_GUC() here for the
+	 * purpose of clearing the above default_tablespace change.
+	 */
+	AtEOXact_GUC(false, root_save_nestlevel);
+	root_save_nestlevel = NewGUCNestLevel();
 
 	/* Add any requested comment */
 	if (stmt->idxcomment != NULL)
@@ -1195,6 +1186,9 @@ DefineIndex(Oid relationId,
 			{
 				Oid			childRelid = part_oids[i];
 				Relation	childrel;
+				Oid			child_save_userid;
+				int			child_save_sec_context;
+				int			child_save_nestlevel;
 				List	   *childidxs;
 				ListCell   *cell;
 				AttrNumber *attmap;
@@ -1202,6 +1196,13 @@ DefineIndex(Oid relationId,
 				int			maplen;
 
 				childrel = heap_open(childRelid, lockmode);
+
+				GetUserIdAndSecContext(&child_save_userid,
+									   &child_save_sec_context);
+				SetUserIdAndSecContext(childrel->rd_rel->relowner,
+									   child_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+				child_save_nestlevel = NewGUCNestLevel();
+
 				childidxs = RelationGetIndexList(childrel);
 				attmap =
 					convert_tuples_by_name_map(RelationGetDescr(childrel),
@@ -1271,6 +1272,9 @@ DefineIndex(Oid relationId,
 				}
 
 				list_free(childidxs);
+				AtEOXact_GUC(false, child_save_nestlevel);
+				SetUserIdAndSecContext(child_save_userid,
+									   child_save_sec_context);
 				heap_close(childrel, NoLock);
 
 				/*
@@ -1315,12 +1319,22 @@ DefineIndex(Oid relationId,
 
 					childStmt->idxname = NULL;
 					childStmt->relationId = childRelid;
+
+					/*
+					 * Recurse as the starting user ID.  Callee will use that
+					 * for permission checks, then switch again.
+					 */
+					Assert(GetUserId() == child_save_userid);
+					SetUserIdAndSecContext(root_save_userid,
+										   root_save_sec_context);
 					DefineIndex(childRelid, childStmt,
 								InvalidOid, /* no predefined OID */
 								indexRelationId,	/* this is our child */
 								createdConstraintId,
 								is_alter_table, check_rights, check_not_in_use,
 								skip_build, quiet);
+					SetUserIdAndSecContext(child_save_userid,
+										   child_save_sec_context);
 				}
 
 				pfree(attmap);
@@ -1357,8 +1371,13 @@ DefineIndex(Oid relationId,
 		 * Indexes on partitioned tables are not themselves built, so we're
 		 * done here.
 		 */
+		AtEOXact_GUC(false, root_save_nestlevel);
+		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 		return address;
 	}
+
+	AtEOXact_GUC(false, root_save_nestlevel);
+	SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 
 	if (!concurrent)
 	{
@@ -1401,7 +1420,6 @@ DefineIndex(Oid relationId,
 	 * No need to break (abort) ongoing txns since this is an online schema
 	 * change.
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1).
 	 */
 	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
@@ -1584,7 +1602,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
 	bool		use_yb_ordering = false;
-	bool		colocated = false;
+	bool		is_colocated = false;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1603,24 +1621,25 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	 * colocated.  For now, regarding colocation, the index always follows the
 	 * indexed table, so just figure out whether the indexed table is
 	 * colocated.
+	 *
+	 * Also get whether the index is part of a tablegroup.
 	 */
+	Oid tablegroupId = InvalidOid;
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates())
+		!YbIsConnectedToTemplateDb())
 	{
 		Relation rel = RelationIdGetRelation(relId);
-		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
-			colocated = YbIsUserTableColocated(YBCGetDatabaseOid(rel),
-											   YbGetStorageRelid(rel));
+		{
+			YbTableProperties yb_props = YbGetTableProperties(rel);
+
+			is_colocated    = yb_props->is_colocated;
+			tablegroupId    = yb_props->tablegroup_oid;
+			use_yb_ordering = !IsSystemRelation(rel);
+		}
 		RelationClose(rel);
 	}
-
-	/* Get whether the index is part of a tablegroup */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
-		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
 	/*
 	 * process attributeList
@@ -1651,7 +1670,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						 * colocated tables, the first attribute defaults to
 						 * ASC.
 						 */
-						if (attn > 0 || colocated || tablegroupId != InvalidOid)
+						if (attn > 0 || is_colocated || tablegroupId != InvalidOid)
 						{
 							range_index = true;
 							break;
@@ -1662,6 +1681,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
+						else if (tablegroupId != InvalidOid)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									 errmsg("cannot create a hash partitioned"
+									 		" index in a TABLEGROUP")));
+						else if (is_colocated)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									 errmsg("cannot colocate hash partitioned index")));
 						break;
 					default:
 						ereport(ERROR,
@@ -1934,7 +1962,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (use_yb_ordering &&
 				attn == 0 &&
 				attribute->ordering == SORTBY_DEFAULT &&
-				!colocated && tablegroupId == InvalidOid)
+				!is_colocated && tablegroupId == InvalidOid)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

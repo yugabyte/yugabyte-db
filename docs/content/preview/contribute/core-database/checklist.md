@@ -5,30 +5,28 @@ linkTitle: Contribution checklist
 description: Review the steps to start contributing code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
-type: page
 menu:
   preview:
     identifier: contribute-checklist
     parent: core-database
     weight: 2911
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Step 1. Build the source
 
 * First, clone [the YugabyteDB GitHub repo](https://github.com/yugabyte/yugabyte-db).
 
-```bash
-git clone https://github.com/yugabyte/yugabyte-db.git
-```
+    ```bash
+    git clone https://github.com/yugabyte/yugabyte-db.git
+    ```
 
 * Next, [build the source code](../build-from-src).
 * Optionally, you may want to [run the unit tests](../run-unit-tests).
 
 ## Step 2. Start a local cluster
 
-Having built the source, you can [start a local cluster](../../../quick-start/create-local-cluster).
+Having built the source, you can [start a local cluster](../../../quick-start/).
 
 ## Step 3. Make the change
 

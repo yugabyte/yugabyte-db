@@ -8,8 +8,7 @@ menu:
     identifier: sdyb
     parent: spring-framework
     weight: 578
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Spring Data modules are used for accessing databases and performing various tasks via Java APIs, therefore eliminating the need to learn a database-specific query language.

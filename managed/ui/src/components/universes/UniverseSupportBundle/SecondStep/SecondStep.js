@@ -3,6 +3,8 @@ import {YBCheckBox} from "../../../common/forms/fields";
 import {DropdownButton, MenuItem} from "react-bootstrap";
 import moment from 'moment';
 import {CustomDateRangePicker} from "../DateRangePicker/DateRangePicker";
+import { useSelector } from "react-redux";
+import { find } from "lodash";
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
@@ -20,8 +22,10 @@ export const selectionOptions = [
   { label: 'G-Flag configurations', value: 'GFlags' },
   { label: 'Instance files', value: 'Instance' },
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
-  { label: 'Tablet meta files', value: 'TabletMeta' },
+  { label: 'Tablet meta files', value: 'TabletMeta' }
 ];
+
+const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
 
 const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
@@ -59,6 +63,15 @@ export const SecondStep = ({ onOptionsChange }) => {
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false)
   const refs = useRef([]);
 
+  const featureFlags = useSelector(state => state.featureFlags)
+
+  if((featureFlags.test.enableYbc || featureFlags.released.enableYbc) && !find(selectionOptions, YbcLogsOption) ){
+    selectionOptions.push(YbcLogsOption);
+    //check option by default
+    selectionOptionsValue.push(true);
+  }
+
+
   return (
     <div className="universe-support-bundle-step-two">
       <p className="subtitle-text">
@@ -68,11 +81,14 @@ export const SecondStep = ({ onOptionsChange }) => {
       </p>
       <div className="filters">
 
-        {isDateTypeCustom && (<CustomDateRangePicker onRangeChange={(startEnd) => {
-          const changedOptions = updateOptions('customWithValue', selectionOptionsValue, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
-          onOptionsChange(changedOptions)
-
-        }} />)}
+        {isDateTypeCustom && (
+          <CustomDateRangePicker
+            onRangeChange={(startEnd) => {
+              const changedOptions = updateOptions('customWithValue', selectionOptionsValue, setIsDateTypeCustom, new moment(startEnd.start), new moment(startEnd.end));
+              onOptionsChange(changedOptions)
+            }}
+          />
+        )}
         <DropdownButton
           title={
             <span className="dropdown-text"><i className="fa fa-calendar" /> {filterTypes.find((type) => type.value === selectedFilterType).label}</span>

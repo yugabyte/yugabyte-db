@@ -22,8 +22,8 @@ interface YSQLTableProps {
   hideRestore?: boolean;
 }
 
-const COLLAPSED_ICON = <i className="fa fa-caret-right" />;
-const EXPANDED_ICON = <i className="fa fa-caret-down" />;
+const COLLAPSED_ICON = <i className="fa fa-caret-right expand-keyspace-icon" />;
+const EXPANDED_ICON = <i className="fa fa-caret-down expand-keyspace-icon" />;
 
 export const YSQLTableList: FC<YSQLTableProps> = ({
   backup,
@@ -45,7 +45,7 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
     });
   return (
     <div className="backup-table-list">
-      <BootstrapTable data={databaseList}>
+      <BootstrapTable data={databaseList} tableHeaderClass="table-list-header">
         <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Database Name</TableHeaderColumn>
         <TableHeaderColumn
@@ -102,9 +102,13 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     return (
       <div className="inset-table">
         <BootstrapTable
+          tableHeaderClass="table-list-header"
           data={row.tablesList.map((t: string, i: number) => {
             return { t, i };
           })}
+          headerStyle={{
+            textTransform: 'capitalize'
+          }}
         >
           <TableHeaderColumn dataField="i" isKey={true} hidden={true} />
           <TableHeaderColumn dataField="t">Tables</TableHeaderColumn>
@@ -123,9 +127,11 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         expandComponent={expandTables}
         expandColumnOptions={{
           expandColumnVisible: true,
-          expandColumnComponent: ({ isExpanded }) => (isExpanded ? EXPANDED_ICON : COLLAPSED_ICON)
+          expandColumnComponent: ({ isExpanded }) => (isExpanded ? EXPANDED_ICON : COLLAPSED_ICON),
+          expandColumnBeforeSelectColumn: true
         }}
         trClassName="clickable"
+        tableHeaderClass="table-list-header"
       >
         <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>

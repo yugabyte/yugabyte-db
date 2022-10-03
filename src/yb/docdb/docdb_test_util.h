@@ -102,14 +102,14 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   size_t NumSSTableFiles();
   StringVector SSTableFileNames();
 
-  CHECKED_STATUS InitRocksDBDir() override;
-  CHECKED_STATUS InitRocksDBOptions() override;
+  Status InitRocksDBDir() override;
+  Status InitRocksDBOptions() override;
   TabletId tablet_id() override;
-  CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
+  Status FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
 };
 
 // Perform a major compaction on the given database.
-CHECKED_STATUS FullyCompactDB(rocksdb::DB* rocksdb);
+Status FullyCompactDB(rocksdb::DB* rocksdb);
 
 class DocDBLoadGenerator {
  public:

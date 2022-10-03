@@ -31,13 +31,13 @@ class LightweightMessage {
  public:
   virtual ~LightweightMessage() = default;
 
-  virtual CHECKED_STATUS ParseFromCodedStream(google::protobuf::io::CodedInputStream* cis) = 0;
+  virtual Status ParseFromCodedStream(google::protobuf::io::CodedInputStream* cis) = 0;
   virtual size_t SerializedSize() const = 0;
   virtual uint8_t* SerializeToArray(uint8_t* out) const = 0;
   virtual void AppendToDebugString(std::string* out) const = 0;
   virtual void Clear() = 0;
 
-  CHECKED_STATUS ParseFromSlice(const Slice& slice);
+  Status ParseFromSlice(const Slice& slice);
 
   size_t SpaceUsedLong() const {
     return SerializedSize(); // TODO(LW)
@@ -93,7 +93,7 @@ class AnyMessagePtr : public AnyMessagePtrBase<google::protobuf::Message*, Light
     message_ = 0;
   }
 
-  CHECKED_STATUS ParseFromSlice(const Slice& slice);
+  Status ParseFromSlice(const Slice& slice);
 };
 
 class AnyMessageConstPtr : public AnyMessagePtrBase<
@@ -174,7 +174,7 @@ class LightweightSerialization<google::protobuf::internal::WireFormatLite::TYPE_
   }
 };
 
-CHECKED_STATUS ParseFailed(const char* field_name);
+Status ParseFailed(const char* field_name);
 
 template <class Serialization, size_t TagSize, class Value>
 inline size_t RepeatedSize(const Value& value) {
@@ -235,18 +235,23 @@ const T& empty_message() {
   return result;
 }
 
+template <class T, class... Args>
+std::shared_ptr<T> SharedMessage(Args&&... args) {
+  AllocatedBuffer buffer;
+  SharedArenaAllocator<Arena> allocator(&buffer);
+  auto arena = std::allocate_shared<PreallocatedArena>(allocator, buffer);
+  auto t = arena->arena().NewObject<T>(&arena->arena(), std::forward<Args>(args)...);
+  return std::shared_ptr<T>(std::move(arena), t);
+}
+
 template <class T>
 std::shared_ptr<T> MakeSharedMessage() {
-  auto arena = std::make_shared<Arena>();
-  auto t = arena->NewObject<T>(arena.get());
-  return std::shared_ptr<T>(std::move(arena), t);
+  return SharedMessage<T>();
 }
 
 template <class T, class PB>
 std::shared_ptr<T> CopySharedMessage(const PB& rhs) {
-  auto arena = std::make_shared<Arena>();
-  auto t = arena->NewObject<T>(arena.get(), rhs);
-  return std::shared_ptr<T>(std::move(arena), t);
+  return SharedMessage<T>(rhs);
 }
 
 template <class T>

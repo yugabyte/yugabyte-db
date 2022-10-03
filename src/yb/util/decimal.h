@@ -104,7 +104,7 @@ class Decimal {
   void clear();
 
   std::string ToDebugString() const;
-  CHECKED_STATUS ToPointString(std::string* string_val, int max_length = kDefaultMaxLength) const;
+  Status ToPointString(std::string* string_val, int max_length = kDefaultMaxLength) const;
   std::string ToScientificString() const;
   std::string ToString() const;
   // Note: We are using decimal -> string -> double using std::stod() function.
@@ -118,12 +118,12 @@ class Decimal {
 
   // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9]+)?,
   // whitespace is not allowed. Use this after removing whitespace.
-  CHECKED_STATUS FromString(const Slice &slice);
+  Status FromString(const Slice &slice);
 
   // Note: We are using double -> string -> decimal using std::to_string() function.
   // In future, it may be better to write a direct conversion function.
-  CHECKED_STATUS FromDouble(double double_val);
-  CHECKED_STATUS FromVarInt(const VarInt& varint_val);
+  Status FromDouble(double double_val);
+  Status FromVarInt(const VarInt& varint_val);
 
   // Checks if this is a whole number. Assumes canonical.
   bool is_integer() const;
@@ -145,14 +145,14 @@ class Decimal {
   std::string EncodeToComparable() const;
 
   // Decodes a Decimal from a given Slice. Sets num_decoded_bytes = number of bytes decoded.
-  CHECKED_STATUS DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
+  Status DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
 
-  CHECKED_STATUS DecodeFromComparable(const Slice& string);
+  Status DecodeFromComparable(const Slice& string);
 
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
-  CHECKED_STATUS DecodeFromSerializedBigDecimal(Slice slice);
+  Status DecodeFromSerializedBigDecimal(Slice slice);
 
   const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
 

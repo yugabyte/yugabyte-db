@@ -117,6 +117,14 @@ typedef struct YbgTypeDesc YbgTypeDesc;
  */
 YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
+/*
+ * For non-primitive types (the ones without a corresponding YBCPgTypeEntity),
+ * get the corresponding primitive type's oid.
+ */
+YbgStatus YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype,
+								 uint32_t typbasetype,
+								 uint32_t *primitive_type_oid);
+
 //-----------------------------------------------------------------------------
 // Expression Evaluation
 //-----------------------------------------------------------------------------

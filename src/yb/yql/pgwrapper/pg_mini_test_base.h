@@ -60,15 +60,19 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   // This allows passing extra tserver options to the underlying mini cluster.
   virtual std::vector<tserver::TabletServerOptions> ExtraTServerOptions();
 
-  Result<PGConn> Connect() {
-    return PGConn::Connect(pg_host_port_);
+  Result<PGConn> Connect() const {
+    return ConnectToDB(std::string() /* db_name */);
   }
 
-  Result<PGConn> ConnectToDB(const std::string& dbname) {
-    return PGConn::Connect(pg_host_port_, dbname);
+  Result<PGConn> ConnectToDB(const std::string& dbname) const {
+    return PGConnBuilder({
+      .host = pg_host_port_.host(),
+      .port = pg_host_port_.port(),
+      .dbname = dbname
+    }).Connect();
   }
 
-  CHECKED_STATUS RestartCluster();
+  Status RestartCluster();
 
   const HostPort& pg_host_port() const {
     return pg_host_port_;

@@ -43,7 +43,7 @@ class BuildPaths:
         if not os.path.exists(build_root):
             raise IOError("Build root directory does not exist: %s" % build_root)
 
-        self.llvm_path = self._read_path_file('llvm_path.txt')
+        self.llvm_path = self._read_path_file('llvm_path.txt') or os.getenv('YB_LLVM_TOOLCHAIN_DIR')
         self.thirdparty_path = self._read_path_file('thirdparty_path.txt')
         self.linuxbrew_path = self._read_path_file('linuxbrew_path.txt')
 

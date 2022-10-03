@@ -39,6 +39,7 @@ set(TABLET_SRCS
   cleanup_aborts_task.cc
   cleanup_intents_task.cc
   remove_intents_task.cc
+  restore_util.cc
   running_transaction.cc
   tablet_snapshots.cc
   tablet.cc

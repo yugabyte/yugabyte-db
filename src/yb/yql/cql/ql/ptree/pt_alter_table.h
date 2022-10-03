@@ -70,7 +70,7 @@ class PTAlterColumnDefinition : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Qualified name of column that's already present.
   PTQualifiedName::SharedPtr old_name() const {
@@ -151,15 +151,15 @@ class PTAlterTable : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  CHECKED_STATUS AppendModColumn(SemContext *sem_context, PTAlterColumnDefinition *column);
+  Status AppendModColumn(SemContext *sem_context, PTAlterColumnDefinition *column);
 
-  CHECKED_STATUS AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop);
+  Status AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop);
 
-  CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
+  Status ToTableProperties(TableProperties *table_properties) const;
 
  private:
   PTQualifiedName::SharedPtr name_;

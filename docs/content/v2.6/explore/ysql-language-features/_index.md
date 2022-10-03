@@ -10,8 +10,7 @@ menu:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.

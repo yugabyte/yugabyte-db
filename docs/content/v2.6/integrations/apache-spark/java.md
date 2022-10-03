@@ -8,8 +8,7 @@ menu:
     identifier: apache-spark-2-java
     parent: integrations
     weight: 572
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -52,7 +51,7 @@ For more information, see [Maven artifact](https://search.maven.org/artifact/com
 
 ## Using Apache Spark with YCQL
 
-Suppose you work with a YCQL table created as follows: 
+Suppose you work with a YCQL table created as follows:
 
 ```sql
 CREATE TABLE test.person (
@@ -66,7 +65,7 @@ CREATE TABLE test.person (
 This table is populated with the following rows:
 
 ```
-id  | name  | address                | phone  
+id  | name  | address                | phone
 ----+-------+------------------------+-----------------------------
 1   | John  | Hammersmith London, UK | {"code":"+44","phone":1000}
 2   | Nick  | Acton London, UK       | {"code":"+43","phone":1200}
@@ -108,17 +107,17 @@ You can use `jsonb` data type for your columns. `jsonb` values are processed usi
 The following example shows how to select the phone code using the `get_json_object` function to select the sub-object at the specific path:
 
 ```java
-Dataset<Row> rows = 
-  spark.sql("SELECT get_json_object(phone, '$.code') as code, 
-  get_json_object(phone, '$.phone') as phone 
+Dataset<Row> rows =
+  spark.sql("SELECT get_json_object(phone, '$.code') as code,
+  get_json_object(phone, '$.phone') as phone
     FROM mycatalog.test.person");
 ```
 
 The following example shows how to apply a filter based on a `jsonb` sub-object:
 
 ```java
-Dataset<Row> rows = 
-  spark.sql("SELECT * FROM mycatalog.test.person 
+Dataset<Row> rows =
+  spark.sql("SELECT * FROM mycatalog.test.person
             WHERE get_json_object(phone, '$.phone') = 1000");
 ```
 
@@ -129,8 +128,8 @@ Note that the preceding operators are currently evaluated by Spark and not propa
 When the `get_json_object` function is used in the projection clause, only the target sub-object is requested and returned by YugabyteDB, as demonstrated in the following example where only the sub-object at `key[1].m[2].b` is returned:
 
 ```java
-String query = "SELECT id, address, 
-                get_json_object(phone, '$.key[1].m[2].b') 
+String query = "SELECT id, address,
+                get_json_object(phone, '$.key[1].m[2].b')
                 as key FROM mycatalog.test.person";
 Dataset<Row> rows = spark.sql(query);
 ```
@@ -159,7 +158,6 @@ assertTrue(explain_text.contains(
 
 For additional examples, see the following:
 
-- [Spark 3 tests](https://github.com/yugabyte/yugabyte-db/tree/master/java/yb-cql-4x/src/test/java/org/yb/loadtest) 
+- [Spark 3 tests](https://github.com/yugabyte/yugabyte-db/tree/master/java/yb-cql-4x/src/test/java/org/yb/loadtest)
 - [Spark 3 sample apps](https://github.com/yugabyte/yugabyte-db/tree/master/java/yb-cql-4x/src/main/java/com/yugabyte/sample/apps)
 - [TestSpark3Jsonb.java](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-cql-4x/src/test/java/org/yb/loadtest/TestSpark3Jsonb.java)
-

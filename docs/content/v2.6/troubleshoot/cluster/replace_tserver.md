@@ -8,8 +8,7 @@ menu:
     identifier: replace-failed-tserver
     parent: troubleshoot-cluster
     weight: 829
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you have a failed YB-TServer in a YugabyteDB cluster that needs to be replaced, follow these steps:
@@ -23,7 +22,7 @@ For details on starting YB-TServers and more options, see [Start YB-TServers](..
 ## Blacklist the failed YB-TServer
 
 To blacklist the failed YB-TServer, run the following command:
- 
+
 ```sh
 ~/master/bin/yb-admin -master_addresses $MASTERS change_blacklist ADD $OLD_IP:9100
 ```
@@ -35,12 +34,12 @@ For details, see [change_blacklist](../../../admin/yb-admin#change-blacklist) co
 Wait for the data to drain from the failed YB-TServer and for the data to be loaded into the new one. You can check for the completion of rebalancing by running the following command:
 
 ```sh
-~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion 
+~/master/bin/yb-admin -master_addresses $MASTERS get_load_move_completion
 ```
 
 {{< note title="Note" >}}
 
-Loading and rebalancing will complete if only data from the failed YB-TSserver has someplace to be stored. 
+Loading and rebalancing will complete if only data from the failed YB-TSserver has someplace to be stored.
 Start the new YB-TServer first, or ensure your remaining YB-TServers have enough capacity and are in the correct placement zones.
 
 {{< /note >}}
@@ -51,12 +50,12 @@ For details on using this command, see [`get_load_move_completion`](../../../adm
 
 When the data move is complete (100%), kill the failed YB-TServer by stopping the `yb-tserver` process, or terminating the VM.
 
-Now, wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader.  
+Now, wait for the YB-TServer to be marked as `DEAD` by the YB-Master leader.
 The YB-Master leader will mark the server as `DEAD` after not responding for one minute (based on the `tserver_unresponsive_timeout_ms` (default is `60000`).
- 
+
 To verify that the failed YB-TServer is dead, open your web browser to `$MASTER_LEADER_IP:7000/tablet-servers` and check the output.
 
-## Remove the failed YB-TServer from the blacklist 
+## Remove the failed YB-TServer from the blacklist
 
 Now that the replacement YB-TServer is up and running, and loaded with data, remove the address for the failed YB-TServer from the blacklist.
 

@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -35,6 +36,7 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import org.mockito.Mockito;
 import play.api.Play;
 import org.junit.Before;
 import org.junit.Rule;
@@ -106,7 +108,13 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
 
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
-    universeTaskBase.createDestroyServerTasks(nodes, false, false, false);
+    Universe universe = Mockito.mock(Universe.class);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+            new UniverseDefinitionTaskParams.UserIntent());
+    Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
+    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);

@@ -46,7 +46,7 @@ class LogIndexTest : public YBTest {
  public:
   void SetUp() override {
     YBTest::SetUp();
-    index_ = new LogIndex(GetTestDataDirectory());
+    index_ = CHECK_RESULT(LogIndex::NewLogIndex(GetTestDataDirectory()));
   }
 
  protected:
@@ -81,10 +81,10 @@ class LogIndexTest : public YBTest {
 
 TEST_F(LogIndexTest, TestBasic) {
   // Insert three entries.
-  ASSERT_OK(AddEntry(MakeOpId(1, 1), 1, 12345));
+  ASSERT_OK(AddEntry(MakeOpId(1, 1), 1, 62345));
   ASSERT_OK(AddEntry(MakeOpId(1, 999999), 1, 999));
   ASSERT_OK(AddEntry(MakeOpId(1, 1500000), 1, 54321));
-  VerifyEntry(MakeOpId(1, 1), 1, 12345);
+  VerifyEntry(MakeOpId(1, 1), 1, 62345);
   VerifyEntry(MakeOpId(1, 999999), 1, 999);
   VerifyEntry(MakeOpId(1, 1500000), 1, 54321);
 
@@ -93,40 +93,61 @@ TEST_F(LogIndexTest, TestBasic) {
   VerifyEntry(MakeOpId(5, 1), 1, 50000);
 }
 
-// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
-// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
-#if !defined(__APPLE__)
 TEST_F(LogIndexTest, TestMultiSegmentWithGC) {
-  ASSERT_OK(AddEntry(MakeOpId(1, 1), 1, 12345));
-  ASSERT_OK(AddEntry(MakeOpId(1, 1000000), 1, 54321));
-  ASSERT_OK(AddEntry(MakeOpId(1, 1500000), 1, 54321));
-  ASSERT_OK(AddEntry(MakeOpId(1, 2500000), 1, 12345));
+  const auto entries_per_chunk = TEST_GetEntriesPerIndexChunk();
 
-  // GCing indexes < 1,000,000 shouldn't have any effect, because we can't remove any whole segment.
-  for (int gc = 0; gc < 1000000; gc += 100000) {
-    SCOPED_TRACE(gc);
-    index_->GC(gc);
-    VerifyEntry(MakeOpId(1, 1), 1, 12345);
-    VerifyEntry(MakeOpId(1, 1000000), 1, 54321);
-    VerifyEntry(MakeOpId(1, 1500000), 1, 54321);
-    VerifyEntry(MakeOpId(1, 2500000), 1, 12345);
+  const std::map<int64_t, int64_t> offset_by_op_index = {
+      {1, 12345},
+      {entries_per_chunk - 1, 23456},
+      {entries_per_chunk, 34567},
+      {entries_per_chunk * 1.5, 45678},
+      {entries_per_chunk * 2.5, 56789},
+  };
+  const auto kTerm = 1;
+  const auto kSegmentNum = 1;
+
+  const auto verify_entry = [&](const int64_t op_index) {
+    VerifyEntry(MakeOpId(kTerm, op_index), kSegmentNum, offset_by_op_index.at(op_index));
+  };
+
+  for (auto& op_index_with_offset : offset_by_op_index) {
+    ASSERT_OK(AddEntry(
+        MakeOpId(kTerm, op_index_with_offset.first),
+        kSegmentNum,
+        op_index_with_offset.second));
   }
 
-  // If we GC index 1000000, we should lose the first op.
-  index_->GC(1000000);
+  for (int min_op_idx_to_retain = 0;
+       min_op_idx_to_retain < entries_per_chunk;
+       min_op_idx_to_retain += entries_per_chunk / 10) {
+    SCOPED_TRACE(min_op_idx_to_retain);
+    index_->GC(min_op_idx_to_retain);
+    if (min_op_idx_to_retain <= 1) {
+      verify_entry(1);
+    }
+    if (min_op_idx_to_retain <= entries_per_chunk - 1) {
+      verify_entry(entries_per_chunk - 1);
+    }
+    verify_entry(entries_per_chunk);
+    verify_entry(entries_per_chunk * 1.5);
+    verify_entry(entries_per_chunk * 2.5);
+  }
+
+  index_->GC(entries_per_chunk);
   VerifyNotFound(1);
-  VerifyEntry(MakeOpId(1, 1000000), 1, 54321);
-  VerifyEntry(MakeOpId(1, 1500000), 1, 54321);
-  VerifyEntry(MakeOpId(1, 2500000), 1, 12345);
+  VerifyNotFound(entries_per_chunk - 1);
+  verify_entry(entries_per_chunk);
+  verify_entry(entries_per_chunk * 1.5);
+  verify_entry(entries_per_chunk * 2.5);
 
   // GC everything
-  index_->GC(9000000);
+  index_->GC(9 * entries_per_chunk);
   VerifyNotFound(1);
-  VerifyNotFound(1000000);
-  VerifyNotFound(1500000);
-  VerifyNotFound(2500000);
+  VerifyNotFound(entries_per_chunk - 1);
+  VerifyNotFound(entries_per_chunk);
+  VerifyNotFound(entries_per_chunk * 1.5);
+  VerifyNotFound(entries_per_chunk * 2.5);
 }
-#endif
 
 } // namespace log
 } // namespace yb

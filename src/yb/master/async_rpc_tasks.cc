@@ -24,7 +24,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -80,6 +79,7 @@ using std::shared_ptr;
 using strings::Substitute;
 using consensus::RaftPeerPB;
 using server::MonitoredTaskState;
+using server::MonitoredTaskType;
 using tserver::TabletServerErrorPB;
 
 void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
@@ -130,14 +130,19 @@ Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
 //  Class RetryingTSRpcTask.
 // ============================================================================
 
-RetryingTSRpcTask::RetryingTSRpcTask(Master *master,
-                                     ThreadPool* callback_pool,
-                                     std::unique_ptr<TSPicker> replica_picker,
-                                     const scoped_refptr<TableInfo>& table)
+// Constructor. The 'async_task_throttler' parameter is optional and may be null if the task does
+// not throttle.
+RetryingTSRpcTask::RetryingTSRpcTask(
+    Master *master,
+    ThreadPool* callback_pool,
+    std::unique_ptr<TSPicker> replica_picker,
+    const scoped_refptr<TableInfo>& table,
+    AsyncTaskThrottlerBase* async_task_throttler)
   : master_(master),
     callback_pool_(callback_pool),
     replica_picker_(std::move(replica_picker)),
     table_(table),
+    async_task_throttler_(async_task_throttler),
     start_ts_(MonoTime::Now()),
     deadline_(start_ts_ + FLAGS_unresponsive_ts_rpc_timeout_ms * 1ms) {
 }
@@ -231,7 +236,21 @@ Status RetryingTSRpcTask::Run() {
     ThreadRestrictions::SetWaitAllowed(old_thread_restriction);
     VLOG_WITH_PREFIX(2) << "Slowing down done. Resuming.";
   }
-  if (!SendRequest(attempt_) && !RescheduleWithBackoffDelay()) {
+
+  bool sent_request = false;
+  if (async_task_throttler_ == nullptr || !async_task_throttler_->Throttle()) {
+    sent_request = SendRequest(attempt_);
+
+    // If the request failed to send, remove the task that was added in
+    // async_task_throttler_->Throttle().
+    if (async_task_throttler_ != nullptr && !sent_request) {
+      async_task_throttler_->RemoveOutstandingTask();
+    }
+  } else {
+    VLOG_WITH_PREFIX(2) << "Throttled request";
+  }
+
+  if (!sent_request && !RescheduleWithBackoffDelay()) {
     UnregisterAsyncTask();  // May call 'delete this'.
   }
   return Status::OK();
@@ -270,6 +289,10 @@ void RetryingTSRpcTask::AbortTask(const Status& status) {
 }
 
 void RetryingTSRpcTask::RpcCallback() {
+  if (async_task_throttler_ != nullptr) {
+    async_task_throttler_->RemoveOutstandingTask();
+  }
+
   // Defer the actual work of the callback off of the reactor thread.
   // This is necessary because our callbacks often do synchronous writes to
   // the catalog table, and we can't do synchronous IO on the reactor.
@@ -293,7 +316,7 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive() && type() == ASYNC_DELETE_REPLICA) {
+    if (!target_ts_desc_->IsLive() && type() == MonitoredTaskType::kDeleteReplica) {
       LOG_WITH_PREFIX(WARNING)
           << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
           << tablet_id() << ". TS is DEAD. No further retry.";
@@ -359,6 +382,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   } else {
     base_delay_ms = max_delay_ms();
   }
+
   // Normal rand is seeded by default with 1. Using the same for rand_r seed.
   unsigned int seed = 1;
   int64_t jitter_ms = rand_r(&seed) % 50;  // Add up to 50ms of additional random delay.
@@ -525,7 +549,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet)
     : RetryingTSRpcTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-          tablet->table().get()),
+          tablet->table().get(), /* async_task_throttler */ nullptr),
       tablet_(tablet) {
 }
 
@@ -533,7 +557,8 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
+          /* async_task_throttler */ nullptr),
       tablet_(tablet) {
 }
 
@@ -559,7 +584,8 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        const string& permanent_uuid,
                                        const scoped_refptr<TabletInfo>& tablet,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules)
-  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
+                           /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
@@ -628,15 +654,17 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
 AsyncStartElection::AsyncStartElection(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
-                                       const scoped_refptr<TabletInfo>& tablet)
-  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get()),
+                                       const scoped_refptr<TabletInfo>& tablet,
+                                       bool initial_election)
+  : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, tablet->table().get(),
+                           /* async_task_throttler */ nullptr),
     tablet_id_(tablet->tablet_id()) {
   deadline_ = start_ts_;
   deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_tablet_creation_timeout_ms));
 
   req_.set_dest_uuid(permanent_uuid_);
   req_.set_tablet_id(tablet_id_);
-  req_.set_initial_election(true);
+  req_.set_initial_election(initial_election);
 }
 
 void AsyncStartElection::HandleResponse(int attempt) {
@@ -665,6 +693,90 @@ bool AsyncStartElection::SendRequest(int attempt) {
   consensus_proxy_->RunLeaderElectionAsync(req_, &resp_, &rpc_, BindRpcCallback());
 
   return true;
+}
+
+// ============================================================================
+//  Class AsyncPrepareDeleteTransactionTablet.
+// ============================================================================
+AsyncPrepareDeleteTransactionTablet::AsyncPrepareDeleteTransactionTablet(
+    Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+    const scoped_refptr<TableInfo>& table, const scoped_refptr<TabletInfo>& tablet,
+    const std::string& msg, HideOnly hide_only)
+    : RetrySpecificTSRpcTask(master, callback_pool, permanent_uuid, table,
+                             /* async_task_throttler */ nullptr),
+      tablet_(tablet), msg_(msg), hide_only_(hide_only) {}
+
+void AsyncPrepareDeleteTransactionTablet::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    // Do not retry on a fatal error
+    TabletServerErrorPB::Code code = resp_.error().code();
+    switch (code) {
+      case TabletServerErrorPB::TABLET_NOT_FOUND:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " because the tablet was not found. No further retry: "
+            << status.ToString();
+        TransitionToCompleteState();
+        break;
+      case TabletServerErrorPB::WRONG_SERVER_UUID:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " due to an incorrect UUID. No further retry: "
+            << status.ToString();
+        TransitionToCompleteState();
+        break;
+      default:
+        LOG_WITH_PREFIX(WARNING)
+            << "TS " << permanent_uuid_ << ": prepare delete failed for tablet "
+            << tablet_id() << " with error code " << TabletServerErrorPB::Code_Name(code)
+            << ": " << status.ToString();
+        break;
+    }
+  } else {
+    if (table_) {
+      LOG_WITH_PREFIX(INFO)
+          << "TS " << permanent_uuid_ << ": tablet " << tablet_id()
+          << " (table " << table_->ToString() << ") successfully done";
+    } else {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << permanent_uuid_ << ": tablet " << tablet_id()
+          << " did not belong to a known table, but was prepared for deletion";
+    }
+    TransitionToCompleteState();
+    VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id();
+  }
+}
+
+std::string AsyncPrepareDeleteTransactionTablet::description() const {
+  return Format("PrepareDeleteTransactionTablet RPC for tablet $0 ($1) on TS=$2",
+                tablet_id(), table_name(), permanent_uuid_);
+}
+
+TabletId AsyncPrepareDeleteTransactionTablet::tablet_id() const {
+  return tablet_->tablet_id();
+}
+
+bool AsyncPrepareDeleteTransactionTablet::SendRequest(int attempt) {
+  tserver::PrepareDeleteTransactionTabletRequestPB req;
+  req.set_dest_uuid(permanent_uuid_);
+  req.set_tablet_id(tablet_id());
+
+  ts_admin_proxy_->PrepareDeleteTransactionTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Send prepare delete transaction tablet request for "
+                      << tablet_id() << " to " << permanent_uuid_
+                      << " (attempt " << attempt << "):\n"
+                      << req.DebugString();
+  return true;
+}
+
+void AsyncPrepareDeleteTransactionTablet::UnregisterAsyncTaskCallback() {
+  // Only notify if we are in a success state.
+  if (state() == MonitoredTaskState::kComplete) {
+    master_->catalog_manager()->NotifyPrepareDeleteTransactionTabletFinished(
+        tablet_, msg_, hide_only_);
+  }
 }
 
 // ============================================================================
@@ -731,6 +843,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   req.set_delete_type(delete_type_);
   if (hide_only_) {
     req.set_hide_only(hide_only_);
+  }
+  if (keep_data_) {
+    req.set_keep_data(keep_data_);
   }
   if (cas_config_opid_index_less_or_equal_) {
     req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
@@ -884,7 +999,8 @@ AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
     : RetryingTSRpcTask(master,
                         callback_pool,
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                        table.get()),
+                        table.get(),
+                        /* async_task_throttler */ nullptr),
       tablet_(tablet), table_(table) {
 }
 
@@ -958,7 +1074,7 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
     const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid)
     : RetryingTSRpcTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-          tablet->table()),
+          tablet->table(), /* async_task_throttler */ nullptr),
       tablet_(tablet),
       cstate_(cstate),
       change_config_ts_uuid_(change_config_ts_uuid) {
@@ -1222,7 +1338,8 @@ AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
+          /* async_task_throttler */ nullptr),
       tablet_(tablet),
       table_(table),
       tablet_id_(tablet->tablet_id()) {
@@ -1284,7 +1401,8 @@ AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(
-          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get()),
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
+          /* async_task_throttler */ nullptr),
       table_(table),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()) {
@@ -1330,8 +1448,11 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 
 namespace {
 
-bool IsDefinitelyPermanentError(const Status& s) {
-  return s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported();
+// These are errors that we are unlikely to recover from by retrying the GetSplitKey or SplitTablet
+// RPC task. Automatic splits that receive these errors may still be retried in the next run, so we
+// should try to not trigger splits that might hit these errors.
+bool ShouldRetrySplitTabletRPC(const Status& s) {
+  return !(s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported() || s.IsIncomplete());
 }
 
 } // namespace
@@ -1354,7 +1475,7 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
-    if (IsDefinitelyPermanentError(s) ||
+    if (!ShouldRetrySplitTabletRPC(s) ||
         (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
       // but followers have not yet completed post-split compaction.
@@ -1404,10 +1525,8 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-    TabletSplitCompleteHandlerIf* tablet_split_complete_handler)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet),
-      tablet_split_complete_handler_(tablet_split_complete_handler) {
+    const std::string& split_encoded_key, const std::string& split_partition_key)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1424,7 +1543,7 @@ void AsyncSplitTablet::HandleResponse(int attempt) {
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (s.IsAlreadyPresent()) {
       TransitionToCompleteState();
-    } else if (IsDefinitelyPermanentError(s)) {
+    } else if (!ShouldRetrySplitTabletRPC(s)) {
       TransitionToFailedState(state(), s);
     }
   } else {
@@ -1446,20 +1565,46 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
   return true;
 }
 
-void AsyncSplitTablet::Finished(const Status& status) {
-  // Also treat AlreadyPresent errors as an error, since we only want to run these post split
-  // operations once.
-  if (tablet_split_complete_handler_ && status.ok() && !resp_.has_error()) {
-    SplitTabletIds split_tablet_ids {
-      .source = req_.tablet_id(),
-      .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
-    };
-    tablet_split_complete_handler_->ProcessSplitTabletResult(table_->id(), split_tablet_ids);
-  } else {
-    VLOG_WITH_PREFIX(1) << "Skipping processing of AsyncSplitTablet result for table "
-                        << table_->id() << ", tablet " << req_.tablet_id() << ".";
-  }
+
+AsyncUpdateTransactionTablesVersion::AsyncUpdateTransactionTablesVersion(
+    Master* master,
+    ThreadPool* callback_pool,
+    const TabletServerId& ts_uuid,
+    uint64_t version,
+    StdStatusCallback callback)
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table */ nullptr,
+                             /* async_task_throttler */ nullptr),
+      version_(version),
+      callback_(std::move(callback)) {}
+
+std::string AsyncUpdateTransactionTablesVersion::description() const {
+  return "Update transaction tables version RPC";
 }
+
+void AsyncUpdateTransactionTablesVersion::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status status = StatusFromPB(resp_.error().status());
+
+    LOG(WARNING) << "Updating transaction tables version on TS " << permanent_uuid_ << "failed: "
+                 << status;
+    return;
+  }
+
+  TransitionToCompleteState();
+}
+
+bool AsyncUpdateTransactionTablesVersion::SendRequest(int attempt) {
+  tserver::UpdateTransactionTablesVersionRequestPB req;
+  req.set_version(version_);
+  ts_admin_proxy_->UpdateTransactionTablesVersionAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Send transaction tables version update to " << permanent_uuid_;
+  return true;
+}
+
+void AsyncUpdateTransactionTablesVersion::Finished(const Status& status) {
+  callback_(status);
+}
+
 
 AsyncTestRetry::AsyncTestRetry(
     Master* master,
@@ -1467,7 +1612,8 @@ AsyncTestRetry::AsyncTestRetry(
     const TabletServerId& ts_uuid,
     const int32_t num_retries,
     StdStatusCallback callback)
-    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr),
+    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, /* table = */ nullptr,
+                             /* async_task_throttler */ nullptr),
       num_retries_(num_retries),
       callback_(std::move(callback)) {}
 

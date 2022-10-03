@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/hmset
   - /preview/api/yedis/hmset
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

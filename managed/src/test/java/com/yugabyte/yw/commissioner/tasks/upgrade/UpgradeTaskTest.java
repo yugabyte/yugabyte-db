@@ -32,9 +32,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.HookScope;
+import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -72,6 +77,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   protected AvailabilityZone az1;
   protected AvailabilityZone az2;
   protected AvailabilityZone az3;
+
+  protected Users defaultUser;
+
+  protected Hook preUpgradeHook, postUpgradeHook, preNodeHook, postNodeHook;
+  protected HookScope preNodeScope, postNodeScope, preUpgradeScope, postUpgradeScope;
 
   protected static final String CERT_CONTENTS =
       "-----BEGIN CERTIFICATE-----\n"
@@ -148,6 +158,10 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.code);
     userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    userIntent.deviceInfo.numVolumes = 2;
+
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
 
     PlacementInfo placementInfo = createPlacementInfo();
@@ -186,8 +200,10 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      lenient().when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      lenient()
+          .when(mockClient.changeMasterClusterConfig(any()))
+          .thenReturn(mockMasterChangeConfigResponse);
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
@@ -198,6 +214,42 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Create dummy shell response
     ShellResponse dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+
+    defaultUser = ModelFactory.testUser(defaultCustomer);
+
+    // Create hooks
+    preNodeHook =
+        Hook.create(
+            defaultCustomer.uuid,
+            "preNodeHook",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    postNodeHook =
+        Hook.create(
+            defaultCustomer.uuid,
+            "postNodeHook",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    preUpgradeHook =
+        Hook.create(
+            defaultCustomer.uuid,
+            "preUpgradeHook",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    postUpgradeHook =
+        Hook.create(
+            defaultCustomer.uuid,
+            "postUpgradeHook",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
   }
 
   protected PlacementInfo createPlacementInfo() {
@@ -223,6 +275,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Need not sleep for default 3min in tests.
     taskParams.sleepAfterMasterRestartMillis = 5;
     taskParams.sleepAfterTServerRestartMillis = 5;
+    // Add the creating user
+    taskParams.creatingUser = defaultUser;
 
     try {
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -310,5 +364,25 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask, position);
       position++;
     }
+  }
+
+  protected void attachHooks(String className) {
+    // Create scopes
+    preUpgradeScope =
+        HookScope.create(defaultCustomer.uuid, TriggerType.valueOf("Pre" + className));
+    postUpgradeScope =
+        HookScope.create(defaultCustomer.uuid, TriggerType.valueOf("Post" + className));
+    preNodeScope =
+        HookScope.create(
+            defaultCustomer.uuid, TriggerType.valueOf("Pre" + className + "NodeUpgrade"));
+    postNodeScope =
+        HookScope.create(
+            defaultCustomer.uuid, TriggerType.valueOf("Post" + className + "NodeUpgrade"));
+
+    // attack hooks
+    preNodeScope.addHook(preNodeHook);
+    postNodeScope.addHook(postNodeHook);
+    preUpgradeScope.addHook(preUpgradeHook);
+    postUpgradeScope.addHook(postUpgradeHook);
   }
 }

@@ -30,7 +30,7 @@ class QLRocksDBStorage : public YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       const QLReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -40,7 +40,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
-  CHECKED_STATUS BuildYQLScanSpec(
+  Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
@@ -51,7 +51,7 @@ class QLRocksDBStorage : public YQLStorageIf {
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
-  CHECKED_STATUS CreateIterator(
+  Status CreateIterator(
       const Schema& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -59,12 +59,12 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadHybridTime& read_time,
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
+  Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override;
 
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       const PgsqlReadRequestPB& request,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -74,7 +74,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const DocKey& start_doc_key,
       YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  CHECKED_STATUS GetIterator(
+  Status GetIterator(
       uint64 stmt_id,
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,

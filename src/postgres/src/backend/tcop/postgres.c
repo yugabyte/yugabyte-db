@@ -2729,6 +2729,10 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
+	if (IsYugaByteEnabled()) {
+		YBCInterruptPgGate();
+	}
+
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
 
@@ -3671,12 +3675,17 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void YBPreloadRelCacheHelper()
+static uint64_t
+YbPreloadRelCacheHelper()
 {
+	uint64_t catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	YBCPgResetCatalogReadTime();
 	YBCStartSysTablePrefetching();
 	PG_TRY();
 	{
+		YbTryRegisterCatalogVersionTableForPrefetching();
 		YBPreloadRelCache();
+		catalog_version = YbGetMasterCatalogVersion();
 	}
 	PG_CATCH();
 	{
@@ -3685,6 +3694,7 @@ static void YBPreloadRelCacheHelper()
 	}
 	PG_END_TRY();
 	YBCStopSysTablePrefetching();
+	return catalog_version;
 }
 
 /*
@@ -3717,8 +3727,6 @@ static void YBRefreshCache()
 		ereport(LOG,(errmsg("Refreshing catalog cache.")));
 	}
 
-	YBCPgResetCatalogReadTime();
-
 	/*
 	 * Get the latest syscatalog version from the master.
 	 * Reset the cached version type if needed to force reading catalog version
@@ -3726,11 +3734,6 @@ static void YBRefreshCache()
 	 */
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
-	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: got master catalog version: %" PRIu64,
-						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3738,7 +3741,7 @@ static void YBRefreshCache()
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
-	YBPreloadRelCacheHelper();
+	const uint64_t catalog_master_version = YbPreloadRelCacheHelper();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());
@@ -4068,7 +4071,8 @@ static bool
 yb_is_restart_possible(const ErrorData* edata,
 					   int attempt,
 					   const YBQueryRestartData* restart_data,
-						 bool* retries_exhausted)
+						 bool* retries_exhausted,
+						 bool* rc_ignoring_ddl_statement)
 {
 	if (!IsYugaByteEnabled())
 	{
@@ -4174,9 +4178,18 @@ yb_is_restart_possible(const ErrorData* edata,
 	bool is_read = strncmp(command_tag, "SELECT", 6) == 0;
 	bool is_dml  = YBIsDmlCommandTag(command_tag);
 
-	if (!(is_read || is_dml))
+	if (IsYBReadCommitted())
 	{
-		// As of now, we only support retries with SELECT/UPDATE/INSERT/DELETE. There are other
+		if (YBGetDdlNestingLevel() != 0) {
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "READ COMMITTED retry semantics don't support DDLs");
+			*rc_ignoring_ddl_statement = true;
+			return false;
+		}
+	}
+	else if (!(is_read || is_dml))
+	{
+		// if !read committed, we only support retries with SELECT/UPDATE/INSERT/DELETE. There are other
 		// statements that might result in a kReadRestart/kConflict like CREATE INDEX. We don't retry
 		// those as of now.
 		if (yb_debug_log_internal_restarts)
@@ -4398,8 +4411,10 @@ yb_attempt_to_restart_on_error(int attempt,
 	MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 	ErrorData*    edata         = CopyErrorData();
 	bool					retries_exhausted = false;
+	bool					rc_ignoring_ddl_statement = false;
 
-	if (yb_is_restart_possible(edata, attempt, restart_data, &retries_exhausted)) {
+	if (yb_is_restart_possible(
+					edata, attempt, restart_data, &retries_exhausted, &rc_ignoring_ddl_statement)) {
 		if (yb_debug_log_internal_restarts)
 		{
 			ereport(LOG,
@@ -4458,6 +4473,7 @@ yb_attempt_to_restart_on_error(int attempt,
 				ResourceOwnerNewParent(portal->resowner, NULL);
 			}
 
+			// TODO(read committed): remove this once the feature is GA
 			Assert(strcmp(GetCurrentTransactionName(), YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0);
 			RollbackAndReleaseCurrentSubTransaction();
 			BeginInternalSubTransactionForReadCommittedStatement();
@@ -4529,10 +4545,18 @@ yb_attempt_to_restart_on_error(int attempt,
 		}
 	} else {
 		/* if we shouldn't restart - propagate the error */
+
+		if (rc_ignoring_ddl_statement) {
+			edata->message = psprintf(
+				"Read Committed txn cannot proceed because of error in DDL. %s", edata->message);
+			ReThrowError(edata);
+		}
+
 		if (retries_exhausted) {
 			edata->message = psprintf("%s. %s", "All transparent retries exhausted", edata->message);
 			ReThrowError(edata);
 		}
+
 		MemoryContextSwitchTo(error_context);
 		PG_RE_THROW();
 	}
@@ -4659,23 +4683,6 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
-	// TODO(neil) Once we have our system DB, remove the following code.
-	// It is a hack to help us getting by for now.
-	for (int i = 0; i < argc; i++) {
-		if (strcmp(argv[i], "template0") == 0 || strcmp(argv[i], "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-	if (dbname) {
-		if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	} else if (username) {
-		if (strcmp(username, "template0") == 0 || strcmp(username, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
@@ -4709,6 +4716,11 @@ PostgresMain(int argc, char *argv[],
 					 errmsg("%s: no database nor user name specified",
 							progname)));
 	}
+
+	// TODO(neil) Once we have our system DB, remove the following code.
+	// It is a hack to help us getting by for now.
+	if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)
+		YbSetConnectedToTemplateDb();
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
 	if (!IsUnderPostmaster)

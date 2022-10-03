@@ -8,9 +8,7 @@ menu:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
@@ -33,7 +31,7 @@ After you created the required tables, you can set up asynchronous replication a
 
 - Look up the producer universe UUID and the table IDs for the two tables and the index table:
 
-    - To find a universe's UUID, check `/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
+    - To find a universe's UUID, check `http://yb-master-ip:7000/varz` for `--cluster_uuid`. If it is not available in this location, check the same field in the cluster configuration.
 
     - To find a table ID, execute the following command as an admin:
 
@@ -62,7 +60,7 @@ After you created the required tables, you can set up asynchronous replication a
     ```
 
 
-The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table. 
+The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
 
 Also, be sure to specify all master addresses for producer and consumer universes in the command.
 

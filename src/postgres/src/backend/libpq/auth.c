@@ -2704,6 +2704,7 @@ CheckLDAPAuth(Port *port)
 		else
 			filter = psprintf("(uid=%s)", port->user_name);
 
+		search_message = NULL;
 		r = ldap_search_s(ldap,
 						  port->hba->ldapbasedn,
 						  port->hba->ldapscope,
@@ -2718,6 +2719,8 @@ CheckLDAPAuth(Port *port)
 					(errmsg("could not search LDAP for filter \"%s\" on server \"%s\": %s",
 							filter, port->hba->ldapserver, ldap_err2string(r)),
 					 errdetail_for_ldap(ldap)));
+			if (search_message != NULL)
+				ldap_msgfree(search_message);
 			ldap_unbind(ldap);
 			pfree(passwd);
 			pfree(filter);

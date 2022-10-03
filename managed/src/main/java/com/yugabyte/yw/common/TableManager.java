@@ -30,10 +30,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -45,11 +45,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManager extends DevopsBase {
 
   public enum CommandSubType {
@@ -82,29 +84,35 @@ public class TableManager extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> namespaceToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
     if (region.provider.code.equals("kubernetes")) {
-      PlacementInfo pi = primaryCluster.placementInfo;
-      namespaceToConfig =
-          PlacementInfoUtil.getConfigPerNamespace(
-              pi, universe.getUniverseDetails().nodePrefix, provider);
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        PlacementInfo pi = cluster.placementInfo;
+        podAddrToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Provider clusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
-          ipToSshKeyPath.put(
-              nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          if (nodeInCluster.cloudInfo.private_ip != null
+              && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
+            ipToSshKeyPath.put(
+                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          }
         }
       }
     }
@@ -234,7 +242,7 @@ public class TableManager extends DevopsBase {
             commandArgs.add("--restore_time");
             commandArgs.add(restoreTimeStampMicroUnix);
           }
-          if (backupTableParams.newOwner != null) {
+          if (StringUtils.isNotBlank(backupTableParams.newOwner)) {
             commandArgs.add("--edit_ysql_dump_sed_reg_exp");
             commandArgs.add(
                 String.format(
@@ -258,7 +266,8 @@ public class TableManager extends DevopsBase {
                 commandArgs.add(regionName.asText().toLowerCase());
                 commandArgs.add("--region_location");
                 commandArgs.add(
-                    BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.asText()));
+                    BackupUtil.getExactRegionLocation(
+                        backupTableParams.storageLocation, regionLocation.asText()));
               }
             }
           }
@@ -269,7 +278,7 @@ public class TableManager extends DevopsBase {
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -277,7 +286,7 @@ public class TableManager extends DevopsBase {
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
         // TODO: Add support for TLS connections for bulk-loading.
         // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
@@ -320,14 +329,14 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
             region,
             customerConfig,
             provider,
-            namespaceToConfig,
+            podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
             commandArgs);
@@ -335,7 +344,7 @@ public class TableManager extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
@@ -388,13 +397,13 @@ public class TableManager extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> namespaceToConfig,
+      Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
@@ -419,7 +428,10 @@ public class TableManager extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
-    if (backupTableParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (backupTableParams.useTablespaces) {
@@ -427,6 +439,18 @@ public class TableManager extends DevopsBase {
     }
     if (backupTableParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
+    }
+    if (backupTableParams.disableMultipart) {
+      commandArgs.add("--disable_multipart");
+    }
+    if (backupTableParams.disableParallelism) {
+      commandArgs.add("--disable_parallelism");
+    }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+      commandArgs.add("--ssh2_enabled");
+    }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+      commandArgs.add("--disable_xxhash_checksum");
     }
   }
 

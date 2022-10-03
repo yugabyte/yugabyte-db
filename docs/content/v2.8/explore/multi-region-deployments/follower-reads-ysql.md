@@ -8,8 +8,7 @@ menu:
     identifier: explore-multi-region-deployments-follower-reads-ysql
     parent: explore-multi-region-deployments
     weight: 280
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

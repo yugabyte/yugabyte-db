@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/pexpire
   - /preview/api/yedis/pexpire
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

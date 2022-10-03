@@ -2,10 +2,12 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.YbcManager;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
-import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import javax.inject.Inject;
@@ -24,6 +26,8 @@ public class RestoreBackup extends UniverseTaskBase {
     return (RestoreBackupParams) taskParams;
   }
 
+  @Inject YbcManager ybcManager;
+
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
@@ -37,31 +41,21 @@ public class RestoreBackup extends UniverseTaskBase {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
 
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(false)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      if (universe.isYbcEnabled()
+          && !universe
+              .getUniverseDetails()
+              .ybcSoftwareVersion
+              .equals(ybcManager.getStableYbcVersion())) {
+        createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
+            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
       }
-      UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.RestoringBackup;
-      if (taskParams().backupStorageInfoList != null) {
-        for (BackupStorageInfo backupStorageInfo : taskParams().backupStorageInfoList) {
-          if (KmsConfig.get(taskParams().kmsConfigUUID) != null) {
-            RestoreBackupParams restoreParams =
-                createParamsBody(taskParams(), backupStorageInfo, ActionType.RESTORE_KEYS);
-            createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-            createEncryptedUniverseKeyRestoreTaskYb(restoreParams).setSubTaskGroupType(groupType);
-          }
 
-          RestoreBackupParams restoreParams =
-              createParamsBody(taskParams(), backupStorageInfo, ActionType.RESTORE);
-          createRestoreBackupTask(restoreParams).setSubTaskGroupType(groupType);
-        }
-      }
+      createAllRestoreSubtasks(
+          taskParams(),
+          UserTaskDetails.SubTaskGroupType.RestoringBackup,
+          taskParams().category.equals(BackupCategory.YB_CONTROLLER));
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      if (taskParams().alterLoadBalancer) {
-        createLoadBalancerStateChangeTask(true)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 

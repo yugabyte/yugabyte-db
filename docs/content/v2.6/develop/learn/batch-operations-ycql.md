@@ -8,8 +8,7 @@ menu:
     identifier: batch-operations-1-ycql
     parent: learn
     weight: 568
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -106,7 +105,7 @@ SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
 SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 ```
 
-- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows. 
+- Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows.
 
 ```sql
 SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);

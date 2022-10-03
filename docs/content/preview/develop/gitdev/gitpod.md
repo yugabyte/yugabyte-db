@@ -7,8 +7,7 @@ menu:
     identifier: gitpod
     parent: gitdev
     weight: 592
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use [Gitpod](https://www.gitpod.io) workspaces to provision an instant development environment with a pre-configured YugabyteDB.

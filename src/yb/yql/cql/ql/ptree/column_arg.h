@@ -100,6 +100,35 @@ class ColumnOp : public ColumnArg {
   yb::QLOperator yb_op_;
 };
 
+// This class represents an operation on multiple columns.
+class MultiColumnOp {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef std::shared_ptr<MultiColumnOp> SharedPtr;
+  typedef std::shared_ptr<const MultiColumnOp> SharedPtrConst;
+
+  MultiColumnOp(
+      const std::vector<const ColumnDesc*> descs, const PTExprPtr& expr, yb::QLOperator yb_op) {
+    descs_ = descs;
+    expr_ = expr;
+    yb_op_ = yb_op;
+  }
+
+  virtual ~MultiColumnOp() {}
+
+  std::vector<const ColumnDesc*> descs() const { return descs_; }
+
+  PTExprPtr expr() const { return expr_; }
+
+  yb::QLOperator yb_op() const { return yb_op_; }
+
+ private:
+  std::vector<const ColumnDesc*> descs_;
+  PTExprPtr expr_;
+  yb::QLOperator yb_op_;
+};
+
 class FuncOp {
  public:
   typedef std::shared_ptr<FuncOp> SharedPtr;

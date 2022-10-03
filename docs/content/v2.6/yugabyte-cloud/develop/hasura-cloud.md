@@ -8,8 +8,7 @@ menu:
     identifier: hasura-cloud
     parent: yugabyte-cloud
     weight: 700
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with Yugabyte Cloud to power your GraphQL applications with a distributed SQL database.
@@ -30,7 +29,7 @@ To get these details, in the Yugabyte Cloud Console:
 
 1. Click **Connect**.
 
-1. **Copy** and save the details. These are provided in the form 
+1. **Copy** and save the details. These are provided in the form
 
     ```output
     PGPASSWORD=password ./bin/ysqlsh -h ip_address -p port -U admin -d yugabyte
@@ -46,14 +45,14 @@ For details on using Hasura Cloud, refer to the [Hasura Cloud documentation](htt
 
 To create a project in Hasura Cloud:
 
-1. From the Hasura Cloud dashboard, under **Projects**, click **New Project**. 
+1. From the Hasura Cloud dashboard, under **Projects**, click **New Project**.
 
 1. Select **Free Tier**, leave the default region, and enter a name for your project.
 
     <br/><br/>
 
     ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)
-    
+
     <br/><br/>
 
 1. Click **Create project**.
@@ -77,7 +76,7 @@ To create a project in Hasura Cloud:
     The Database URL is in the form `postgresql://admin:password@ip_address:port/yugabyte`.
 
     For example, `postgresql://admin:qwerty@12.345.67.890:21301/yugabyte`.
-    
+
     <br/><br/>
 
     ![Connect Hasura database](/images/deploy/yugabyte-cloud/hasura-cloud-connect-database.png)

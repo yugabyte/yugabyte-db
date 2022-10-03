@@ -4,12 +4,11 @@ headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to edit configuration flags.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe can be edited and customized to:

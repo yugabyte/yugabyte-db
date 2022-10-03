@@ -56,7 +56,7 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   ExplainPlanPB AnalysisResultToPB() override;
 
@@ -89,22 +89,22 @@ class PTInsertStmt : public PTDmlStmt {
   // Analyze helper functions
   //
 
-  CHECKED_STATUS AnalyzeInsertingValue(PTCollection* inserting_value,
+  Status AnalyzeInsertingValue(PTCollection* inserting_value,
                                        SemContext* sem_context);
 
-  CHECKED_STATUS AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
+  Status AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
                                       SemContext* sem_context);
 
-  CHECKED_STATUS AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
+  Status AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
                                     SemContext* sem_context);
 
-  CHECKED_STATUS ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
+  Status ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
                                const ColumnDesc* col_desc,
                                const PTExprPtr& value_expr,
                                SemContext* sem_context);
 
   // Initialize all non-initialized columns according to their configured defaults
-  CHECKED_STATUS InitRemainingColumns(bool is_json_clause,
+  Status InitRemainingColumns(bool is_json_clause,
                                       SemContext* sem_context);
 
   // --- The parser will decorate this node with the following information --

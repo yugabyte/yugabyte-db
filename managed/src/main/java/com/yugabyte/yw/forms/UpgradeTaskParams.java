@@ -15,11 +15,8 @@ import play.mvc.Http.Status;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = UpgradeTaskParams.Converter.class)
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
-  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
-  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
-  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
   public enum UpgradeTaskType {
     Everything,
@@ -30,7 +27,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Restart,
     Certs,
     ToggleTls,
-    ResizeNode
+    ResizeNode,
+    Reboot
   }
 
   public enum UpgradeTaskSubType {
@@ -39,7 +37,10 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Install,
     CopyCerts,
     Round1GFlagsUpdate,
-    Round2GFlagsUpdate
+    Round2GFlagsUpdate,
+    PackageReInstall,
+    YbcInstall,
+    YbcGflagsUpdate
   }
 
   public enum UpgradeOption {

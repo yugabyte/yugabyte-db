@@ -84,6 +84,7 @@ class TypeInfoResolver {
     AddMapping<TIMEUUID>();
     AddMapping<USER_DEFINED_TYPE>();
     AddMapping<FROZEN>();
+    AddMapping<TUPLE>();
   }
 
   template<DataType type> void AddMapping() {
@@ -126,6 +127,11 @@ void DataTypeTraits<UUID>::AppendDebugStringForValue(const void *val, std::strin
 void DataTypeTraits<TIMEUUID>::AppendDebugStringForValue(const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
   str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
+}
+
+bool TypeInfo::is_collection() const {
+  return type == DataType::LIST || type == DataType::MAP || type == DataType::SET ||
+         type == DataType::USER_DEFINED_TYPE;
 }
 
 } // namespace yb

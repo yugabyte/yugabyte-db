@@ -46,6 +46,8 @@
 
 #include "yb/master/master_cluster.proxy.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
@@ -82,6 +84,20 @@ class ExternalMiniClusterITestBase : public YBTest {
     }
     YBTest::TearDown();
     ts_map_.clear();
+  }
+
+  Result<TabletId> GetSingleTabletId(const TableName& table_name) {
+    TabletId tablet_id_to_split;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
+      for (const auto& tablet : tablets) {
+        if (tablet.table_name() == table_name) {
+          return tablet.tablet_id();
+        }
+      }
+    }
+    return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
   }
 
  protected:

@@ -9,14 +9,12 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-mz-gke-1
     weight: 628
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/deploy/kubernetes/multi-zone/gke/helm-chart" class="nav-link active">
+    <a href="../helm-chart/" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
@@ -92,9 +90,9 @@ my-regional-cluster  us-central1  1.14.10-gke.17  35.226.36.261  n1-standard-8  
 
 As stated in the Prerequisites section, the default configuration in the YugabyteDB Helm Chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest Google Cloud machine type that meets this requirement is `n1-standard-8` which has 8 CPU cores and 30 GB RAM.
 
-### Create a storage class per zone
+### Create a storage class
 
-We need to ensure that the storage classes used by the pods in a given zone are always pinned to that zone only.
+We need to specify `WaitForFirstConsumer` mode for the volumeBindingMode so that volumes will be provisioned according to pods' zone affinities.
 
 Copy the contents below to a file named `storage.yaml`.
 
@@ -102,33 +100,13 @@ Copy the contents below to a file named `storage.yaml`.
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
-  name: standard-us-central1-a
+  name: yb-storage
 provisioner: kubernetes.io/gce-pd
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
 parameters:
-  type: pd-standard
-  replication-type: none
-  zone: us-central1-a
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-central1-b
-provisioner: kubernetes.io/gce-pd
-parameters:
-  type: pd-standard
-  replication-type: none
-  zone: us-central1-b
----
-kind: StorageClass
-apiVersion: storage.k8s.io/v1
-metadata:
-  name: standard-us-central1-c
-provisioner: kubernetes.io/gce-pd
-parameters:
-  type: pd-standard
-  replication-type: none
-  zone: us-central1-c
-
+  type: pd-ssd
+  fsType: xfs
 ```
 
 Apply the above configuration to your cluster.
@@ -177,9 +155,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-central1-a.svc.cluster.local
 
 storage:
   master:
-    storageClass: "standard-us-central1-a"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-central1-a"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -208,9 +186,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-central1-a.svc.cluster.local
 
 storage:
   master:
-    storageClass: "standard-us-central1-b"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-central1-b"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -239,9 +217,9 @@ masterAddresses: "yb-master-0.yb-masters.yb-demo-us-central1-a.svc.cluster.local
 
 storage:
   master:
-    storageClass: "standard-us-central1-c"
+    storageClass: "yb-storage"
   tserver:
-    storageClass: "standard-us-central1-c"
+    storageClass: "yb-storage"
 
 replicas:
   master: 1
@@ -275,26 +253,23 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-central1-a yugabytedb/yugabyte \
- --namespace yb-demo-us-central1-a \
- -f overrides-us-central1-a.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-central1-a \
+ -f overrides-us-central1-a.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-central1-b \
- -f overrides-us-central1-b.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-central1-b \
+ -f overrides-us-central1-b.yaml --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-c yugabytedb/yugabyte \
- --namespace yb-demo-us-central1-c \
- -f overrides-us-central1-c.yaml \
  --version {{<yb-version version="stable" format="short">}} \
- --wait
+ --namespace yb-demo-us-central1-c \
+ -f overrides-us-central1-c.yaml --wait
 ```
 
 ## 3. Check the cluster status
@@ -378,7 +353,7 @@ $ kubectl exec -n yb-demo-us-central1-a -it yb-tserver-0 -- ycqlsh \
 yb-tserver-0.yb-tservers.yb-demo-us-central1-a
 ```
 
-You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
+You can follow the [Explore YSQL](../../../../../quick-start/explore/ysql/) tutorial and then go to the `http://<external-ip>:7000/tablet-servers` page of the yb-master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data.
 
 ![mz-ybtserver](/images/deploy/kubernetes/gke-multizone-ybtserver.png)
 

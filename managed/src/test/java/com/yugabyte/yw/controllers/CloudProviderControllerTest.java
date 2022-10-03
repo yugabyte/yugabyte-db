@@ -46,7 +46,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -75,7 +74,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -327,8 +325,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         configFileJson.put("GOOGLE_APPLICATION_CREDENTIALS", "credentials");
         configJson.put("config_file_contents", configFileJson);
       } else if (code.equals("aws")) {
-        configJson.put("foo", "bar");
-        configJson.put("foo2", "bar2");
+        configJson.put("AWS_ACCESS_KEY_ID", "key");
+        configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
       }
       bodyJson.set("config", configJson);
       Result result = createProvider(bodyJson);
@@ -644,8 +642,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     userIntent.regionList.add(r.uuid);
     universe =
         Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    customer.addUniverseUUID(universe.universeUUID);
-    customer.save();
     Result result = assertPlatformException(() -> deleteProvider(p.uuid));
     assertBadRequest(result, "Cannot delete Provider with Universes");
     assertAuditEntry(0, customer.uuid);
@@ -769,7 +765,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result = assertPlatformException(() -> editProvider(bodyJson, p.uuid));
     verify(mockDnsManager, times(0)).listDnsRecord(any(), any());
-    assertBadRequest(result, "Required field hosted zone id");
+    assertBadRequest(result, "No changes to be made for provider type: aws");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -806,7 +802,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     ObjectNode configJson = Json.newObject();
     configJson.put("AWS_ACCESS_KEY_ID", "test");
     configJson.put("AWS_SECRET_ACCESS_KEY", "secret");
-    configJson.put("AWS_HOSTED_ZONE_ID", "1234");
+    configJson.put("HOSTED_ZONE_ID", "1234");
     bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);

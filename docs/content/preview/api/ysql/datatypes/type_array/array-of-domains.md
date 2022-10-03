@@ -8,8 +8,7 @@ menu:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 An array of `DOMAIN` values lets you create, for example, a one-dimensional array whose values are themselves one-dimensional arrays of _different_ lengths. Stating this generally, it lets you implement a ragged multidimensional array, thereby overcoming the restriction that an array must normally be rectilinear. It meets other use cases too.
 
@@ -655,4 +654,3 @@ This is the result:
  35 | 35
  36 | 36
 ```
-

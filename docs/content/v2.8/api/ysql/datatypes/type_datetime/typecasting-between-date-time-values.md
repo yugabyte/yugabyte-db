@@ -8,8 +8,7 @@ menu:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ datatype. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
@@ -194,7 +193,7 @@ The rule here is trivial. The to-be-typecast _time_ value is taken as a real num
 
 ```plpgsql
 select (
-    (select time_value()::interval) = 
+    (select time_value()::interval) =
     (
       select make_interval(secs=>
         (
@@ -261,7 +260,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::date) = 
+    (select plain_timestamp_value()::date) =
     (
       select (
         extract(year  from plain_timestamp_value())::text||'-'||
@@ -296,7 +295,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::time) = 
+    (select plain_timestamp_value()::time) =
     (
     select (
       extract(hours   from plain_timestamp_value())::text||':'||
@@ -331,7 +330,7 @@ This best defines the semantics:
 ```plpgsql
 set time zone interval '-7 hours';
 select (
-    (select plain_timestamp_value()::timestamptz) = 
+    (select plain_timestamp_value()::timestamptz) =
     (select plain_timestamp_value() at time zone interval '-7 hours')
   )::text;
 ```
@@ -742,7 +741,7 @@ execute qry;
 This is the first result:
 
 ```output
-          winter           |          summer           
+          winter           |          summer
 ---------------------------+---------------------------
  2021-01-01 12:00:00+03:30 | 2021-07-01 12:00:00+04:30
 ```
@@ -757,7 +756,7 @@ execute qry;
 This is the second result:
 
 ```output
-         winter         |         summer         
+         winter         |         summer
 ------------------------+------------------------
  2021-01-01 12:00:00+02 | 2021-07-01 12:00:00+03
 ```

@@ -9,9 +9,7 @@ menu:
     identifier: enable-audit-logging-2-ycql
     parent: audit-logging
     weight: 755
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

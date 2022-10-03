@@ -5,12 +5,12 @@ linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes.
-type: page
-section: YUGABYTEDB ANYWHERE
 menu:
-  preview:
+  preview_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: security
 weight: 645
+type: indexpage
 ---
 
 <div class="row">

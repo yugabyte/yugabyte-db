@@ -7,9 +7,9 @@ import { fetchUniverseList, fetchUniverseListResponse } from '../../actions/univ
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    getLogs: (maxLines, regex, universe) => {
+    getLogs: (maxLines, regex, universe, startDate, endDate) => {
       dispatch(setLogsLoading());
-      return dispatch(getLogs(maxLines, regex, universe)).then((response) => {
+      return dispatch(getLogs(maxLines, regex, universe, startDate, endDate)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(getLogsFailure(response.payload));
           const payload = response.payload;

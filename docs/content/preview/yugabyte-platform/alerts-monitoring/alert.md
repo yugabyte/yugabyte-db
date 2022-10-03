@@ -3,12 +3,11 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: alert
     parent: alerts-monitoring
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to view a list of generated alerts and manage these alerts by navigating to **Alerts**, as per the following illustration:
@@ -29,4 +28,3 @@ For additional information, see the following:
 
 - [Alerts and notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
 - [Metrics in YugabyteDB Anywhere](../../troubleshoot/universe-issues/#use-metrics)
-

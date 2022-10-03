@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/flushdb
   - /preview/api/yedis/flushdb
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

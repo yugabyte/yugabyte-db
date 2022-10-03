@@ -13,6 +13,8 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
@@ -65,6 +67,20 @@ void PgWrapperTestBase::SetUp() {
   DontVerifyClusterBeforeNextTearDown();
 }
 
+Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_name) {
+  TabletId tablet_id_to_split;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    const auto ts = cluster_->tablet_server(i);
+    const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() == table_name) {
+        return tablet.tablet_id();
+      }
+    }
+  }
+  return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
+}
+
 namespace {
 
 string TrimSqlOutput(string output) {
@@ -78,20 +94,17 @@ string CertsDir() {
 
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &expected_output) {
+Result<std::string> PgCommandTestBase::RunPsqlCommand(
+    const std::string& statement, TuplesOnly tuples_only) {
   string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
+  RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
   unique_ptr<WritableFile> tmp_file;
   string tmp_file_name;
-  ASSERT_OK(
-      Env::Default()->NewTempWritableFile(
-          WritableFileOptions(),
-          tmp_dir + "/psql_statementXXXXXX",
-          &tmp_file_name,
-          &tmp_file));
-  ASSERT_OK(tmp_file->Append(statement));
-  ASSERT_OK(tmp_file->Close());
+  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), tmp_dir + "/psql_statementXXXXXX", &tmp_file_name, &tmp_file));
+  RETURN_NOT_OK(tmp_file->Append(statement));
+  RETURN_NOT_OK(tmp_file->Close());
 
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
@@ -112,6 +125,10 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
         CertsDir()));
   }
 
+  if (tuples_only) {
+    argv.push_back("-t");
+  }
+
   LOG(INFO) << "Run tool: " << yb::ToString(argv);
   Subprocess proc(argv.front(), argv);
   if (use_auth_) {
@@ -120,9 +137,17 @@ void PgCommandTestBase::RunPsqlCommand(const string &statement, const string &ex
 
   string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
-  ASSERT_OK(proc.Call(&psql_stdout));
+  RETURN_NOT_OK(proc.Call(&psql_stdout));
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
+
+  return TrimSqlOutput(psql_stdout);
+}
+
+void PgCommandTestBase::RunPsqlCommand(
+    const string& statement, const string& expected_output, bool tuples_only) {
+  string psql_stdout = ASSERT_RESULT(
+      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse));
   ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
 }
 

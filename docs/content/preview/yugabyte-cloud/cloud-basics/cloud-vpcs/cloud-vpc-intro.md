@@ -3,13 +3,13 @@ title: VPC network overview
 headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
+headcontent: What you need to know before setting up a VPC network
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
@@ -28,7 +28,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for free clusters.
+There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
 ## Limitations
 
@@ -37,9 +37,9 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 - You can't peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
-- VPCs are not supported on free clusters.
+- VPCs are not supported on Sandbox clusters.
 
-If you need additional VPCs, contact {{<support-cloud>}}.
+If you need additional VPCs, contact {{% support-cloud %}}.
 
 ## Prerequisites
 
@@ -65,7 +65,7 @@ For AWS, you can only define a single region per VPC.
 
 ### Set the CIDR and size your VPC
 
-A VPC is defined by a block of IP addresses, entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). Because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
 When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16` as shown in the following table. For typical applications, `/26` is more than sufficient.
 
@@ -75,11 +75,15 @@ When entering the range for your VPC in YugabyteDB Managed, the size of the netw
 | GCP (custom) | /24<br>/25<br>/26 | 256<br>128<br>64 | In a GCP custom network, you can customize the regions for the VPC. |
 | AWS | /26 | 64 | In AWS, you assign the range to a single region. If you need multiple regions, you must create a separate VPC for each. |
 
-You can use the IP addresses in the following ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
+### Private IP address ranges
+
+You can use the private IP addresses in the following ranges (per [RFC 1918](https://datatracker.ietf.org/doc/html/rfc1918)) for your VPCs:
 
 - 10.0.0.0        -   10.255.255.255  (10/8 prefix)
 - 172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
 - 192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
+
+Peered VPCs also use addresses in these ranges. Once peered, you also need to add the addresses of the peered VPCs to your cluster IP allow list. Private IP addresses added to the cluster allow list that are not part of a peered network are ignored, and can't be used to connect to the cluster.
 
 Addresses have the following restrictions:
 

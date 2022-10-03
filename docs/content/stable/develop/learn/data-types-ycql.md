@@ -8,21 +8,20 @@ menu:
     identifier: data-types-1-ycql
     parent: learn
     weight: 565
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/develop/learn/data-types-ysql" class="nav-link">
+    <a href="../data-types-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/develop/learn/data-types-ycql" class="nav-link active">
+    <a href="../data-types-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -30,7 +29,7 @@ showAsideToc: true
 
 </ul>
 
-This topic lists the various data types available in YugabyteDB’s [Cassandra-compatible YCQL API](../../../api/ycql).
+This topic lists the various data types available in YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql/).
 
 ## JSONB
 

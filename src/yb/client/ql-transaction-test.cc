@@ -43,6 +43,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -103,12 +104,12 @@ class QLTransactionTest : public TransactionTestBase<MiniCluster> {
                            bool perform_write,
                            bool written_intents_expected);
 
-  CHECKED_STATUS WaitTransactionsCleaned() {
+  Status WaitTransactionsCleaned() {
     return WaitFor(
       [this] { return !HasTransactions(); }, kTransactionApplyTime, "Transactions cleaned");
   }
 
-  CHECKED_STATUS WaitIntentsCleaned() {
+  Status WaitIntentsCleaned() {
     return WaitFor(
       [this] { return CountIntents(cluster_.get()) == 0; }, kIntentsCleanupTime, "Intents cleaned");
   }
@@ -1211,7 +1212,13 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         int idx = narrow_cast<int>(states.size());
         ASSERT_OK(WriteRow(session, idx, idx));
       }
-      states.push_back({ txn, txn->GetMetadata(TransactionRpcDeadline()) });
+      states.push_back(TransactionState{
+          .transaction = txn,
+          .metadata_future = txn->GetMetadata(TransactionRpcDeadline()),
+          .commit_future = {},
+          .status_future = {},
+          .metadata = {}
+      });
       ++active_transactions;
       --transactions_to_create;
     }

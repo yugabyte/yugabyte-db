@@ -47,6 +47,9 @@ message TransactionStatePB {
 
   // Set of subtransaction IDs which are aborted.
   optional AbortedSubTransactionSetPB aborted = 7;
+
+  // For xcluster writes, the propagated commit ht from the source.
+  optional fixed64 external_commit_ht = 8;
 }
 
 message TruncatePB {
@@ -88,6 +91,9 @@ message ChangeMetadataRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional tablet.TableInfoPB add_table = 8;
+
+  // For batching multiple adds.
+  repeated tablet.TableInfoPB add_multiple_tables = 17;
 
   optional uint32 wal_retention_secs = 9;
 

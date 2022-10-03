@@ -1,0 +1,75 @@
+.admonition-title,
+.admonition .title {
+  &::before {
+    position: relative;
+    top: -4px;
+  }
+}
+
+main .td-content .admonition {
+  margin: 20px 0 0 0;
+  padding: 25px 32px 30px;
+  border-radius: 7px;
+  background: $YB_LIGHT_GRAY_2;
+  position: relative;
+  overflow: hidden;
+  color: inherit;
+  margin-bottom: 30px;
+
+  &::before {
+    content: "";
+    top: 0;
+    left: 0;
+    position: absolute;
+    width: 5px;
+    height: 100%;
+  }
+
+  .admonition-title,
+  .title {
+    margin: 0 0 10px 0;
+    color: $YB_DARK_BLUE;
+    padding: 0;
+    font-family: "Rubik", sans-serif;
+    font-weight: 500;
+    display: block;
+    font-size: 20px;
+
+    &::before {
+      content: none;
+    }
+  }
+
+  &.note {
+    background: #f0f9ff;
+
+    &::before {
+      background-color: #35a3ff;
+    }
+  }
+
+  &.tip {
+    background: #f4ffed;
+
+    &::before {
+      background-color: #59ac39;
+    }
+  }
+
+  &.warning {
+    background: #fff7f0;
+
+    &::before {
+      background-color: #f74020;
+    }
+  }
+
+  &.hero {
+    background: $YB_LIGHT_GRAY_BACK;
+    box-shadow: 0 1px 2px rgba($YB_DARK, 0.1);
+
+    &::before {
+      content: none;
+    }
+  }
+}

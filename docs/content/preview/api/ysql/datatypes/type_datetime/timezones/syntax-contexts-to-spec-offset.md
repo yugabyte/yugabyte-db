@@ -8,8 +8,7 @@ menu:
     identifier: syntax-contexts-to-spec-offset
     parent: timezones
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can specify the _UTC_ offset, either _directly_ as an _interval_ value or _indirectly_ as a timezone name in three different syntax contexts:

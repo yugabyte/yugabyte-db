@@ -37,7 +37,7 @@ class YBNamespaceAlterer {
   YBNamespaceAlterer* RenameTo(const std::string& new_name);
   YBNamespaceAlterer* SetDatabaseType(YQLDatabase type);
 
-  CHECKED_STATUS Alter(CoarseTimePoint deadline = CoarseTimePoint());
+  Status Alter(CoarseTimePoint deadline = CoarseTimePoint());
 
  private:
   friend class YBClient;
@@ -45,7 +45,7 @@ class YBNamespaceAlterer {
   YBNamespaceAlterer(
       YBClient* client, const std::string& namespace_name, const std::string& namespace_id);
 
-  CHECKED_STATUS ToRequest(master::AlterNamespaceRequestPB* req);
+  Status ToRequest(master::AlterNamespaceRequestPB* req);
 
   YBClient* const client_;
   const std::string namespace_name_;

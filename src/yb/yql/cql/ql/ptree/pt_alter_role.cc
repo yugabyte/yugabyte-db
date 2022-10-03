@@ -47,7 +47,7 @@ PTAlterRole::PTAlterRole(MemoryContext* memctx,
 PTAlterRole::~PTAlterRole() {
 }
 
-CHECKED_STATUS PTAlterRole::Analyze(SemContext* sem_context) {
+Status PTAlterRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
 
   RETURN_NOT_AUTH_ENABLED(sem_context);

@@ -47,8 +47,11 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "yb/common/ybc_util.h"
 
 #include "plpgsql.h"
+
+#include "pg_yb_utils.h"
 
 
 typedef struct
@@ -1874,6 +1877,26 @@ exec_stmts(PLpgSQL_execstate *estate, List *stmts)
 	foreach(s, stmts)
 	{
 		PLpgSQL_stmt *stmt = (PLpgSQL_stmt *) lfirst(s);
+
+		/*
+		 * Flush buffered operations before executing a new statement since it might
+		 * have non-transactional side-effects that won't be reverted in case the
+		 * buffered operations (i.e., from previous statements) lead to an
+		 * exception.
+		 */
+		if (stmt->cmd_type != PLPGSQL_STMT_EXECSQL)
+		{
+			/*
+			 * PLPGSQL_STMT_EXECSQL commands require flushing for everything except
+			 * UPDATE, INSERT and DELETE. So the handling for that is present in
+			 * exec_stmt_execsql().
+			 *
+			 * The reason for not flushing in case of UPDATE, INSERT and DELETE is
+			 * mentioned in exec_stmt_execsql() which handles PLPGSQL_STMT_EXECSQL.
+			 */
+			YBFlushBufferedOperations();
+		}
+
 		int			rc = exec_stmt(estate, stmt);
 
 		if (rc != PLPGSQL_RC_OK)
@@ -2795,7 +2818,9 @@ exec_stmt_fors(PLpgSQL_execstate *estate, PLpgSQL_stmt_fors *stmt)
 	/*
 	 * Execute the loop
 	 */
-	rc = exec_for_query(estate, (PLpgSQL_stmt_forq *) stmt, portal, true);
+	rc = exec_for_query(
+			estate, (PLpgSQL_stmt_forq *) stmt, portal,
+			!yb_plpgsql_disable_prefetch_in_for_query);
 
 	/*
 	 * Close the implicit cursor
@@ -4156,6 +4181,20 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 		}
 		stmt->mod_stmt_set = true;
 	}
+
+	/*
+	 * Flush buffered operations before executing a new statement since it might
+	 * have non-transactional side-effects that won't be reverted in case the
+	 * buffered operations (i.e., from previous statements) lead to an exception.
+	 *
+	 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
+	 * can skip flushing since these statements have only transactional
+	 * effects. And an exception that occurs later due to previously buffered
+	 * operations (i.e., from previous statements) will lead to reverting
+	 * of the transactional effects of the new statement too.
+	 */
+	if (!stmt->mod_stmt)
+		YBFlushBufferedOperations();
 
 	/*
 	 * Set up ParamListInfo to pass to executor

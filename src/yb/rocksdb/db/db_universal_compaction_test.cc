@@ -875,7 +875,8 @@ TEST_P(DBTestUniversalCompactionWithParam, UniversalCompactionCompressRatio2) {
     ASSERT_OK(dbfull()->TEST_WaitForFlushMemTable());
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
   }
-  ASSERT_LT(TotalSize(), 120000U * 12 * 0.8 + 120000 * 2);
+  // Adding 10000 to account for regression in compression in Snappy added in google/snappy#d53de18.
+  ASSERT_LT(TotalSize(), 120000U * 12 * 0.8 + 120000 * 2 + 10000);
 }
 
 // Test that checks trivial move in universal compaction

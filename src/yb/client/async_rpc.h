@@ -116,10 +116,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // Is this a local call?
   bool IsLocalCall() const;
 
-  // Creates the Local node tablet invoker or remote tablet invoker based on the GFLAG
-  // 'FLAGS_ysql_forward_rpcs_to_local_tserver'.
-  TabletInvoker *GetTabletInvoker(AsyncRpcData *data, YBConsistencyLevel yb_consistency_level);
-
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
   BatcherPtr batcher_;

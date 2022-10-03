@@ -8,8 +8,7 @@ menu:
     identifier: tableplus
     parent: tools
     weight: 2750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [TablePlus](https://tableplus.io/) is an increasingly popular database developer console with built-in integrations with major databases including PostgreSQL, Cassandra, and Redis. It is free to get started with the option of upgrading to a [perpetual paid license](https://tableplus.io/pricing) for a small cost.

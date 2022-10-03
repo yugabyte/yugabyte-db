@@ -1,5 +1,5 @@
 ---
-title: ysql_dumpall - back up all YSQL databases
+title: ysql_dumpall
 headerTitle: ysql_dumpall
 linkTitle: ysql_dumpall
 description: ysql_dumpall
@@ -9,11 +9,10 @@ menu:
     identifier: ysql-dumpall
     parent: admin
     weight: 2468
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-`ysql_dumpall` is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [`ysql_dump`](../ysql-dump) for each database in the YugabyteDB cluster. `ysql_dumpall` also dumps global objects that are common to all databases, such as database roles. (`ysql_dump` does not export roles.)
+`ysql_dumpall` is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [`ysql_dump`](../ysql-dump/) for each database in the YugabyteDB cluster. `ysql_dumpall` also dumps global objects that are common to all databases, such as database roles. (`ysql_dump` does not export roles.)
 
 Because `ysql_dumpall` reads tables from all databases, you will most likely have to connect as a database superuser in order to produce a complete dump. Also, you will need superuser privileges to execute the saved script in order to be allowed to add roles and create databases.
 
@@ -76,7 +75,7 @@ Specify the superuser username to use when disabling triggers. This is relevant 
 
 #### -v, --verbose
 
-Specifies verbose mode. This will cause `ysql_dumpall` to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [`ysql_dump`](../ysql-dump).
+Specifies verbose mode. This will cause `ysql_dumpall` to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [`ysql_dump`](../ysql-dump/).
 
 #### --version, -V
 
@@ -216,7 +215,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Notes
 
-- Since `ysql_dumpall` calls [`ysql_dump`](../ysql-dump) internally, some diagnostic messages will refer to `ysql_dump`.
+- Since `ysql_dumpall` calls [`ysql_dump`](../ysql-dump/) internally, some diagnostic messages will refer to `ysql_dump`.
 - The [`-c|--clean`](#c-clean) option can be useful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
 - Once restored, it is wise to run `ANALYZE` on each database so the optimizer has useful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
 - The dump script should not be expected to run completely without errors. In particular, because the script will issue `CREATE ROLE` statements for every role existing in the source cluster, it is certain to get a `role already exists` error for the bootstrap superuser, unless the destination cluster was initialized with a different bootstrap superuser name. This error is harmless and should be ignored. Use of the [`-c|--clean`](#c-clean) option is likely to produce additional harmless error messages about non-existent objects, although you can minimize those by adding [`--if-exists`](#if-exists).
@@ -239,5 +238,5 @@ It is not important to which database you connect here since the script file cre
 
 ## See Also
 
-- [ysql_dump](../ysql-dump)
-- [ysqlsh](../ysqlsh)
+- [ysql_dump](../ysql-dump/)
+- [ysqlsh](../ysqlsh/)

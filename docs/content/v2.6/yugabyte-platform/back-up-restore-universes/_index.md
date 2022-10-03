@@ -6,10 +6,11 @@ description: Use Yugabyte Platform to back up and restore YugabyteDB universe da
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 menu:
-  v2.6:
-    parent: yugabyte-platform
+  v2.6_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
 weight: 645
+type: indexpage
 ---
 
 Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.

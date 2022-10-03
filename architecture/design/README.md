@@ -7,32 +7,33 @@ Below you can find a table of high level and non-trivial features, relevant desi
 
 | Feature | Main reference |
 | -------- | ------------ |
-|[Distributed backup / restore](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md)|Sergei, Oleg|
-|[Distributed PITR](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md)|Sergei|
-|[Automatic tablet splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md)|Timur|
-|[Async xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md)|Rahul, Nicolas|
-|[Online index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md)|Amitanand|
-|[Encryption at rest](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-encryption-at-rest.md)|Rahul|
-|Cluster load balancing|Rahul, Sanket|
+|Admin debug UIs|TBD|
+|[Async xCluster replication](multi-region-xcluster-async-replication.md)|Julien, Rahul, Nicolas|
+|[Auto Flags](auto_flags.md)|Hari|
+|[Automatic tablet splitting](docdb-automatic-tablet-splitting.md)|Timur|
+|Cluster load balancing|Julien, Rahul, Sanket|
+|Command line tools|TBD|
+|[Distributed backup / restore](distributed-backup-and-restore.md)|Oleg, Sanket, Sergei|
+|[Distributed PITR](distributed-backup-point-in-time-recovery.md)|Sanket, Sergei|
+|Distributed transactions|Mikhail B, Sergei|
+|DocDB encoding|TBD|
+|[Encryption at rest](docdb-encryption-at-rest.md)|Rahul|
 |Master DDL operation handling|TBD|
-|YCQL virtual system tables|TBD|
-|Tablet server heartbeat|Nicolas|
-|Tablet local bootstrap|TBD|
-|Tablet remote bootstrap|TBD|
+|[Online index backfill](online-index-backfill.md)|Amitanand|
 |Raft consensus|TBD|
 |Raft read replica support|Rahul|
-|Read from followers|TBD|
-|DocDB encoding|TBD|
-|Distributed transactions|Sergei|
+|Read from followers|Amit|
 |RocksDB|Timur, Sergei|
 |[RocksDB: Advanced delta-encoding](advanced-delta-encoding.md)|Timur|
+|Tablet local bootstrap|TBD|
+|Tablet remote bootstrap|Amit|
+|Tablet server heartbeat|Nicolas|
 |TLS|Sergei|
-|Yugabyted|Sanket|
-|Command line tools|TBD|
-|Admin debug UIs|TBD|
-|YEDIS server component|Amitanand|
 |YCQL server component|TBD|
-|[YSQL colocated tables](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md)|Jason|
-|[YSQL tablespaces](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/wip-ysql-tablespaces.md)|Deepthi|
-|[YSQL tablegroups](ysql-tablegroups.md)|Mihnea|
+|YCQL virtual system tables|TBD|
+|YEDIS server component|Amitanand|
+|[YSQL colocated tables](ysql-colocated-tables.md)|Jason|
 |[YSQL row level partitioning](ysql-row-level-partitioning.md)|Deepthi|
+|[YSQL tablegroups](ysql-tablegroups.md)|Mihnea|
+|[YSQL tablespaces](wip-ysql-tablespaces.md)|Deepthi|
+|Yugabyted|Sanket|

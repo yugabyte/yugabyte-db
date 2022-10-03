@@ -92,14 +92,11 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       preparer_(preparer),
-      trace_(new Trace()),
+      trace_(Trace::NewTraceForParent(Trace::CurrentTrace())),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
       table_type_(table_type) {
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
   DCHECK(IsAcceptableAtomicImpl(op_id_copy_));
 }
 
@@ -395,7 +392,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    auto status = operation_->Replicated(leader_term);
+    auto status = operation_->Replicated(leader_term, WasPending::kTrue);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

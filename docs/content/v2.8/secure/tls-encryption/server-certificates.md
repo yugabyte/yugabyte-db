@@ -10,8 +10,7 @@ menu:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before you can enable server-to-server and client-to-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.
@@ -72,7 +71,7 @@ policy = my_policy
 
 [ my_policy ]
 
-# Policy for nodes and users. If the value is "match" then 
+# Policy for nodes and users. If the value is "match" then
 # field value must match the same field in the CA certificate.
 # If the value is "supplied" then it must be present. Optional
 # means it may be present.

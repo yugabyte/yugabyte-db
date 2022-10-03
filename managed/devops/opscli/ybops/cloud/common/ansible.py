@@ -14,8 +14,9 @@ import logging
 import os
 import subprocess
 
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
+from ybops.utils.ssh import SSH, SSH2, parse_private_key, check_ssh2_bin_present
 
 
 class AnsibleProcess(object):
@@ -59,13 +60,18 @@ class AnsibleProcess(object):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
 
-    def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
+    def run(self, filename, extra_vars=None, host_info=None, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
             extra_args: A dictionary of KVs to pass as extra-vars to ansible-playbook
             host_info: A dictionary of host level attributes which is empty for localhost.
         """
+
+        if host_info is None:
+            host_info = {}
+        if extra_vars is None:
+            extra_vars = dict()
 
         playbook_args = self.playbook_args
         vars = extra_vars.copy()
@@ -79,14 +85,33 @@ class AnsibleProcess(object):
         ask_sudo_pass = vars.pop("ask_sudo_pass", None)
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
+        ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        ssh_key_type = parse_private_key(ssh_key_file)
+        env = os.environ.copy()
+        if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
+            env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
 
         playbook_args.update(vars)
 
         if self.can_ssh:
             playbook_args.update({
                 "ssh_user": ssh_user,
-                "yb_server_ssh_user": ssh_user
+                "yb_server_ssh_user": ssh_user,
+                "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
+
+        if ssh2_enabled:
+            # Will be moved as part of task of license upload api.
+            configure_ssh2_args = [
+                "ansible-playbook", os.path.join(ybutils.YB_DEVOPS_HOME, "configure_ssh2.yml")
+            ]
+            p = subprocess.Popen(configure_ssh2_args,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE,
+                                 env=env)
+            stdout, stderr = p.communicate()
+            if p.returncode != 0:
+                raise YBOpsRuntimeError("Failed to configure ssh2 on the platform")
 
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
 
@@ -106,14 +131,23 @@ class AnsibleProcess(object):
         elif tags is not None:
             process_args.extend(["--tags", tags])
 
+        process_args.extend([
+            "--user", ssh_user
+        ])
+
         if ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
         elif self.can_ssh:
-            process_args.extend([
-                "--private-key", ssh_key_file,
-                "--user", ssh_user
-            ])
+            if ssh2_enabled:
+                process_args.extend([
+                    '--ssh-common-args=\'-K%s\'' % (ssh_key_file),
+                    '--ssh-extra-args=\'-l%s\'' % (ssh_user),
+                ])
+            else:
+                process_args.extend([
+                    "--private-key", ssh_key_file,
+                ])
 
             playbook_args.update({
                 "yb_ansible_host": ssh_host,
@@ -130,7 +164,7 @@ class AnsibleProcess(object):
         # Set inventory, connection type, and pythonpath.
         process_args.extend([
             "-i", inventory_target,
-            "-c", connection_type,
+            "-c", connection_type
         ])
 
         redacted_process_args = process_args.copy()
@@ -139,20 +173,25 @@ class AnsibleProcess(object):
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
         redacted_process_args.extend(
             ["--extra-vars", json.dumps(self.redact_sensitive_data(playbook_args))])
-        env = os.environ.copy()
-        if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
-            env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
         logging.info("[app] Running ansible playbook {} against target {}".format(
                         filename, inventory_target))
+
         logging.info("Running ansible command {}".format(json.dumps(redacted_process_args,
                                                                     separators=(' ', ' '))))
         p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
+
         if print_output:
             print(stdout.decode('utf-8'))
-        EXCEPTION_MSG_FORMAT = ("Playbook run of {} against {} with args {} " +
-                                "failed with return code {} and error '{}'")
+
         if p.returncode != 0:
-            raise YBOpsRuntimeError(EXCEPTION_MSG_FORMAT.format(
-                    filename, inventory_target, redacted_process_args, p.returncode, stderr))
+            errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
+                     f"{redacted_process_args} failed with return code {p.returncode} " \
+                     f"and error '{stderr}'"
+
+            if p.returncode == 4:  # host unreachable
+                raise YBOpsRecoverableError(errmsg)
+            else:
+                raise YBOpsRuntimeError(errmsg)
+
         return p.returncode

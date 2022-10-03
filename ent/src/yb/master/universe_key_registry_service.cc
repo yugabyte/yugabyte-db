@@ -41,7 +41,7 @@ Result<std::string> EncryptUniverseKeyRegistry(const Slice& s, const Slice& univ
   return DecryptUniverseKeyRegistry(s, universe_key);
 }
 
-CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
+Status RotateUniverseKey(const Slice& old_universe_key,
                                  const Slice& new_universe_key,
                                  const encryption::UniverseKeyId& new_key_version_id,
                                  bool enable,

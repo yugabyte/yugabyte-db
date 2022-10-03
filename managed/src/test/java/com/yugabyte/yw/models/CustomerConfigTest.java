@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,7 +28,9 @@ public class CustomerConfigTest extends FakeDBApplication {
 
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
-        Json.parse("{\"name\": \"Test\", \"type\": \"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
+        Json.parse(
+            "{\"name\": \"Test\", \"configName\": \"Test\", \"type\": "
+                + "\"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -50,8 +53,9 @@ public class CustomerConfigTest extends FakeDBApplication {
   public void testGetData() {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"Test\", \"type\": \"STORAGE\", "
-                + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", \"DATA\": \"HELLO\"}}");
+            "{\"name\": \"Test\", \"configName\": \"Test\", \"type\": \"STORAGE\", "
+                + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", "
+                + "\"DATA\": \"HELLO\"}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
 

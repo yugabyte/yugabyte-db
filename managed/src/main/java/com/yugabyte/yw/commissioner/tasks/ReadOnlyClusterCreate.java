@@ -10,8 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
-
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -47,7 +46,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                if (isFirstTryForTask(taskParams())) {
+                if (isFirstTry()) {
                   preTaskActions(u);
                   // Set all the in-memory node names.
                   setNodeNames(u);
@@ -67,6 +66,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
+      boolean ignoreUseCustomImageConfig = !readOnlyNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
@@ -93,13 +93,21 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           nodesToProvision,
           true /* isShell */,
           false /* ignore node status check */,
-          false /*ignoreUseCustomImageConfig*/);
+          ignoreUseCustomImageConfig);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
       // Start the tservers in the clusters.
       createStartTserverProcessTasks(newTservers);
+
+      // Start ybc process on all the nodes
+      if (taskParams().enableYbc) {
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Set the node state to live.
       createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)
@@ -124,7 +132,18 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      Universe universe = unlockUniverseForUpdate();
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
     log.info("Finished {} task.", getName());
   }

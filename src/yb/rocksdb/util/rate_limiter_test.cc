@@ -66,9 +66,9 @@ TEST_F(RateLimiterTest, Rate) {
     while (thread_env->NowMicros() < until) {
       for (int i = 0; i < static_cast<int>(r.Skewed(arg->burst) + 1); ++i) {
         arg->limiter->Request(r.Uniform(arg->request_size - 1) + 1,
-                              Env::IO_HIGH);
+                              yb::IOPriority::kHigh);
       }
-      arg->limiter->Request(r.Uniform(arg->request_size - 1) + 1, Env::IO_LOW);
+      arg->limiter->Request(r.Uniform(arg->request_size - 1) + 1, yb::IOPriority::kLow);
     }
   };
 

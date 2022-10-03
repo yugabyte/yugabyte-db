@@ -8,8 +8,7 @@ menu:
     identifier: stress-test
     parent: traversing-general-graphs
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/). Make sure that you start by choosing the option that adds a tracing column and a trigger to the _"raw_paths"_ table. (You will later re-create the _"raw_paths"_ table without the tracing code before you do some timing tests.)
@@ -74,39 +73,39 @@ select node_1, node_2 from edges order by node_1, node_2;
 
 This is the result:
 
-```plpgsql
- node_1 | node_2 
+```output
+ node_1 | node_2
 --------+--------
  n001   | n002
  n001   | n003
  n001   | n004
  n001   | n005
  n001   | n006
- 
+
  n002   | n001
  n002   | n003
  n002   | n004
  n002   | n005
  n002   | n006
- 
+
  n003   | n001
  n003   | n002
  n003   | n004
  n003   | n005
  n003   | n006
- 
+
  n004   | n001
  n004   | n002
  n004   | n003
  n004   | n005
  n004   | n006
- 
+
  n005   | n001
  n005   | n002
  n005   | n003
  n005   | n004
  n005   | n006
- 
+
  n006   | n001
  n006   | n002
  n006   | n003
@@ -118,9 +117,9 @@ The whitespace was added by hand to group the results into the sets of five edge
 
 ## The number of paths in a maximally connected graph grows very much faster than linearly with the number of nodes
 
-Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql)  is expressed:
+Recall how the logic of the recursive CTE from [`cr-find-paths-with-nocycle-check.sql`](../undirected-cyclic-graph/#cr-find-paths-with-nocycle-check-sql) is expressed:
 
-```
+```sql
 with
   recursive paths(path) as (
     select array[start_node, node_2]
@@ -140,7 +139,7 @@ with
 
 Using node "_n001"_ as the start node for the six-node example maximally connected graph, the result of the non-recursive term will be _five_ paths. Then, the result of the first repeat of the recursive term will be _four_ longer paths for each of the input five paths because the cycle prevention logic will exclude, for each input path in turn, the node that can be reached from its terminal that has already been found. And so it goes on: the result of the next repeat of the recursive term will be _three_ longer paths for each input path; the next result will be _two_ longer paths for each input path; the next result will be _one_ longer path for each input path; and the next repeat will find no paths so that the repetition will end. The number of paths that each repetition finds will therefore grow like this:
 
-```
+```output
 Repeat number    Number of paths Found
             0                        5  -- non-recursive term
             1                5*4 =  20  -- 1st recursive term
@@ -148,7 +147,7 @@ Repeat number    Number of paths Found
             3            5*4*3*2 = 120  -- 3rd recursive term
             4          5*4*3*2*1 = 120  -- 4th recursive term
                                    ---
-Final total number of paths:       325            
+Final total number of paths:       325
 ```
 
 You can see this in action by re-creating the _"find_paths()"_ implementation shown in [`cr-find-paths-with-pruning.sql`](../undirected-cyclic-graph/#cr-find-paths-with-pruning-sql) and invoking it like this:
@@ -168,8 +167,8 @@ order by 1;
 
 This is the result:
 
-```
- repeat_nr |  n  
+```output
+ repeat_nr |  n
 -----------+-----
          0 |   5
          1 |  20
@@ -208,7 +207,7 @@ begin
 
       t := case total < 10000000
              when true then
-                lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9,999,999'), 15) 
+                lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9,999,999'), 15)
              else
                 lpad(to_char(j, '9999'), 12)||lpad(to_char(total, '9.9EEEE'), 15)
            end;
@@ -229,7 +228,7 @@ select t from total_paths_versus_number_of_nodes(20);
 
 This is the result:
 
-```
+```output
  no. of nodes   no. of paths
  ------------   ------------
             4             15
@@ -302,6 +301,7 @@ begin
 end;
 $body$;
 ```
+
 The stress-test kernel must spool the output to a file whose name encodes the present number of nodes and method name. A well-known pattern comes to the rescue: use a table function to write the script that turns on spooling and invoke that script. This is the function:
 
 ##### `cr-start-spooling-script.sql`
@@ -371,7 +371,7 @@ Decide on the number of nodes, for example 7. And choose the method, for example
 
 This will produce the `7-nodes--prune-false.txt` spool file. It will look like this:
 
-```
+```output.text
  prune-false -- 7 nodes
 
  elapsed time: 40 ms.
@@ -381,7 +381,7 @@ This will produce the `7-nodes--prune-false.txt` spool file. It will look like t
 
 Of course, the reported elapsed time that you see will doubtless differ from _"40 ms"_.
 
-### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest. 
+### Implement scripts to execute the stress-test kernel for each method for each of the numbers of nodes in the range of interest
 
 First, implement a script to invoke each of the three methods for a particular, pre-set, value of `:nr_nodes`. Get a clean slate for the "paths" tables before each timing test by dropping and re-creating each of them.
 
@@ -437,6 +437,7 @@ _Save this script_.
 \set nr_nodes 10
 \i do-stress-test-for-all-methods.sql
 ```
+
 Then invoke `do-stress-test-kernel.sql` by hand for each of the three methods, setting the number of nodes to _11_. You'll see that each of _"pure-with"_ and _"prune-false"_ fails, with error messages that reflect the fact that the implementation can't handle as many as _9,864,100_ nodes. But _"prune-true"_ completes without error very quickly.
 
 Finally, invoke `do-stress-test-kernel.sql` by hand using the  _"prune-true"_ method and _100_ nodes. You'll see that it completes without error in about the same time as for any smaller number of nodes.
@@ -446,7 +447,7 @@ Here are the results:
 _The elapsed times are in seconds._
 
 | no. of nodes | no. of paths | pure-with | prune-false | prune-true |
-| ---- | ---------- | --------- | --------- | ---- |
+| -----------: | -----------: | --------: | ----------: | ---------: |
 |    4 |         15 |       0.1 |       0.1 |  0.2 |
 |    5 |         64 |       0.1 |       0.1 |  0.2 |
 |    6 |        325 |       0.1 |       0.2 |  0.2 |
@@ -478,4 +479,4 @@ The introduction to the section [Using a recursive CTE to compute Bacon Numbers 
 
 - [imdb.small.txt](http://cs.oberlin.edu/~gr151/imdb/imdb.small.txt): a... file with just a handful of performers (161), fully connected
 
-It seems very likely that a fully connected undirected cyclic graph with 161 nodes, even if it isn't _maximally_ connected will be highly connected—very many of the nodes will have edges to very many of the other nodes. It's therefore likely that the implementation of the computation of Bacon Numbers will have to use the _"prune-true"_ approach. 
+It seems very likely that a fully connected undirected cyclic graph with 161 nodes, even if it isn't _maximally_ connected will be highly connected—very many of the nodes will have edges to very many of the other nodes. It's therefore likely that the implementation of the computation of Bacon Numbers will have to use the _"prune-true"_ approach.

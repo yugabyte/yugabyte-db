@@ -157,7 +157,12 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
     // The offset field seems to have no effect; the file is always allocated
     // with space from 0 to the size. This is probably because OS X does not
     // support sparse files.
-    fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, size};
+    auto store = fstore_t{
+        .fst_flags = F_ALLOCATECONTIG,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = size,
+        .fst_bytesalloc = 0};
     if (fcntl(fd, F_PREALLOCATE, &store) < 0) {
       LOG(INFO) << "Unable to allocate contiguous disk space, attempting non-contiguous allocation";
       store.fst_flags = F_ALLOCATEALL;
@@ -440,7 +445,7 @@ class PosixWritableFile : public WritableFile {
     bool sync_on_close_;
     uint64_t filesize_;
     uint64_t pre_allocated_size_;
-    bool pending_sync_;
+    std::atomic<bool> pending_sync_;
 
  private:
   Status DoWritev(const Slice* slices, size_t n) {
@@ -989,7 +994,7 @@ class PosixEnv : public Env {
     return false;
   }
 
-  CHECKED_STATUS GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
@@ -1086,7 +1091,7 @@ class PosixEnv : public Env {
         fname, "PosixEnv::GetBlockSize", [](const struct stat& sbuf) { return sbuf.st_blksize; });
   }
 
-  CHECKED_STATUS LinkFile(const std::string& src,
+  Status LinkFile(const std::string& src,
                           const std::string& target) override {
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
@@ -1410,11 +1415,11 @@ class PosixEnv : public Env {
     return limits;
   }
 
-  CHECKED_STATUS SetUlimit(int resource, ResourceLimit value) override {
+  Status SetUlimit(int resource, ResourceLimit value) override {
     return SetUlimit(resource, value, strings::Substitute("resource no. $0", resource));
   }
 
-  CHECKED_STATUS SetUlimit(
+  Status SetUlimit(
       int resource, ResourceLimit value, const std::string& resource_name) override {
 
     auto limits = VERIFY_RESULT(GetUlimit(resource));

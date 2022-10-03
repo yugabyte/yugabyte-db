@@ -55,6 +55,14 @@ public class PlaceholderSubstitutor {
       if (suffixPosition == -1) {
         break;
       }
+      int nextPrefixPosition =
+          templateStr.indexOf(parameterPrefix, prefixPosition + parameterPrefix.length());
+      if (nextPrefixPosition > 0 && nextPrefixPosition < suffixPosition) {
+        // we need to find prefix right before suffix
+        result.append(templateStr, position, nextPrefixPosition);
+        position = nextPrefixPosition;
+        continue;
+      }
       result.append(templateStr, position, prefixPosition);
       String parameter =
           templateStr.substring(prefixPosition + parameterPrefix.length(), suffixPosition);

@@ -18,7 +18,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        DeleteRootVolumesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.utils import format_rsa_key, validated_key_file
+from ybops.utils.ssh import format_rsa_key, validated_key_file
 
 
 class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
@@ -33,7 +33,7 @@ class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (args, host_info["root_volume_device_name"])
+        return (vars(args), host_info["root_volume_device_name"])
 
 
 class GcpCreateInstancesMethod(CreateInstancesMethod):
@@ -180,8 +180,6 @@ class GcpQueryInstanceTypesMethod(AbstractMethod):
         self.parser.add_argument("--regions", nargs='+')
         self.parser.add_argument("--custom_payload", required=False,
                                  help="JSON payload of per-region data.")
-        self.parser.add_argument("--gcp_internal", action="store_true", default=False,
-                                 help="display internal testing instance types")
 
     def callback(self, args):
         print(json.dumps(self.cloud.get_instance_types(args)))
@@ -299,7 +297,7 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return args
+        return vars(args)
 
 
 class GcpResumeInstancesMethod(AbstractInstancesMethod):
@@ -312,7 +310,7 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, [args.custom_ssh_port])
+        self.cloud.start_instance(vars(args), [args.custom_ssh_port])
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):
@@ -325,7 +323,7 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to pause.")
 
     def callback(self, args):
-        self.cloud.stop_instance(args)
+        self.cloud.stop_instance(vars(args))
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
@@ -336,3 +334,16 @@ class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
         super(GcpUpdateMountedDisksMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+
+
+class GcpTagsMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpTagsMethod, self).__init__(base_command, "tags")
+
+    def add_extra_args(self):
+        super(GcpTagsMethod, self).add_extra_args()
+        self.parser.add_argument("--remove_tags", required=False,
+                                 help="Tag keys to remove.")
+
+    def callback(self, args):
+        self.cloud.modify_tags(args)

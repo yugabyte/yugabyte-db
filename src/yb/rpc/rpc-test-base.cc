@@ -431,11 +431,11 @@ TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
       options.endpoint, &bound_endpoint_));
 }
 
-CHECKED_STATUS TestServer::Start() {
+Status TestServer::Start() {
   return messenger_->StartAcceptor();
 }
 
-CHECKED_STATUS TestServer::RegisterService(std::unique_ptr<ServiceIf> service) {
+Status TestServer::RegisterService(std::unique_ptr<ServiceIf> service) {
   const std::string& service_name = service->service_name();
 
   auto service_pool = make_scoped_refptr<ServicePool>(kQueueLength,
@@ -476,7 +476,7 @@ void RpcTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-CHECKED_STATUS RpcTestBase::DoTestSyncCall(Proxy* proxy, const RemoteMethod* method) {
+Status RpcTestBase::DoTestSyncCall(Proxy* proxy, const RemoteMethod* method) {
   AddRequestPB req;
   req.set_x(RandomUniformInt<uint32_t>());
   req.set_y(RandomUniformInt<uint32_t>());
@@ -592,7 +592,7 @@ void RpcTestBase::StartTestServerWithGeneratedCode(std::unique_ptr<Messenger>&& 
   *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
 }
 
-CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* listen_hostport) {
+Status RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* listen_hostport) {
   RETURN_NOT_OK(listen_sock->Init(0));
   RETURN_NOT_OK(listen_sock->BindAndListen(Endpoint(), 1));
   Endpoint endpoint;

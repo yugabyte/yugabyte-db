@@ -77,6 +77,8 @@ message SetFlagResponsePB {
 
     // The flag is not safe to change at runtime without the 'force' flag.
     NOT_SAFE = 4;
+
+    PG_SET_FAILED = 5;
   }
 
   required Code result = 1;
@@ -146,6 +148,13 @@ message ReloadCertificatesRequestPB {
 message ReloadCertificatesResponsePB {
 }
 
+message GetAutoFlagsConfigVersionRequestPB {
+}
+
+message GetAutoFlagsConfigVersionResponsePB {
+  required uint32 config_version = 1;
+}
+
 service GenericService {
   rpc SetFlag(SetFlagRequestPB)
     returns (SetFlagResponsePB);
@@ -155,6 +164,9 @@ service GenericService {
 
   rpc RefreshFlags(RefreshFlagsRequestPB)
     returns (RefreshFlagsResponsePB);
+
+  rpc GetAutoFlagsConfigVersion(GetAutoFlagsConfigVersionRequestPB)
+    returns (GetAutoFlagsConfigVersionResponsePB);
 
   rpc FlushCoverage(FlushCoverageRequestPB)
     returns (FlushCoverageResponsePB);

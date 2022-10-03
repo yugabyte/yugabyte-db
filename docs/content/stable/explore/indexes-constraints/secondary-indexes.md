@@ -8,9 +8,7 @@ menu:
     identifier: secondary-indexes
     parent: explore-indexes-constraints
     weight: 220
-isTocNested: true
-showAsideToc: true
-
+type: docs
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
@@ -33,7 +31,7 @@ You can apply sort order on the indexed columns as `HASH` (default option for th
 
 ## List indexes and verify the query plan
 
-YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
+YSQL inherits all the functionality of the PostgreSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
 
 ```sql
 SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
@@ -41,7 +39,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-For YCQL, you can use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to check the indexes as follows:
+For YCQL, you can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
 DESCRIBE INDEX <index name>
@@ -58,7 +56,7 @@ For information regarding the EXPLAIN statement, see:
 
 You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL and YCQL with the following syntax:
 
-```ysql
+```sql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 
@@ -118,7 +116,7 @@ For additional information, see:
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
 - [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
 
-The following example shows how to remove index_employees_department that was created in Create indexes:
+The following example shows how to remove `index_employees_department` that was created in Create indexes:
 
 ```sql
 DROP INDEX index_employees_department;
@@ -127,5 +125,4 @@ DROP INDEX index_employees_department;
 ## Learn more
 
 - [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
-
 - [Pushdown #3: Filtering using index predicates](https://blog.yugabyte.com/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.

@@ -4,12 +4,11 @@ headerTitle: Configure alerts
 linkTitle: Configure alerts
 description: Configure alerts and health check
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications.
@@ -18,14 +17,14 @@ You can access Yugabyte Platform health monitor and configure alerts by navigati
 
 ![Configure alerts](/images/yp/config-alerts1.png)
 
-The **Alert Creation** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
+The **Alert Creation** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform:
 
 - Create new alerts.
 - Configure, delete, activate or deactivate existing alerts via **Actions**.
 
-Regardless of the alert level, you create and configure an alert as follows: 
+Regardless of the alert level, you create and configure an alert as follows:
 
-- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**.  
+- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**.
 
 - Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration: <br><br>
 
@@ -39,7 +38,7 @@ Regardless of the alert level, you create and configure an alert as follows:
 
   The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.<br>
 
-  The **Destination** field allows you to select one of the previously defined recipients of the alert. 
+  The **Destination** field allows you to select one of the previously defined recipients of the alert.
 
 - Click **Save**.
 
@@ -66,4 +65,3 @@ Regardless of the alert level, you create and configure an alert as follows:
   - Complete the remaining fields or accept the default settings.
   - If you enable **Custom SMTP Configuration**, you need to provide the address for the Simple Mail Transfer Protocol server, the port number, the email and user credentials, and the desired security settings.
   - Click **Save**.
-

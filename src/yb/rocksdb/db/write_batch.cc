@@ -76,27 +76,27 @@ enum ContentFlags : uint32_t {
 struct BatchContentClassifier : public WriteBatch::Handler {
   uint32_t content_flags = 0;
 
-  CHECKED_STATUS PutCF(uint32_t, const SliceParts&, const SliceParts&) override {
+  Status PutCF(uint32_t, const SliceParts&, const SliceParts&) override {
     content_flags |= ContentFlags::HAS_PUT;
     return Status::OK();
   }
 
-  CHECKED_STATUS DeleteCF(uint32_t, const Slice&) override {
+  Status DeleteCF(uint32_t, const Slice&) override {
     content_flags |= ContentFlags::HAS_DELETE;
     return Status::OK();
   }
 
-  CHECKED_STATUS SingleDeleteCF(uint32_t, const Slice&) override {
+  Status SingleDeleteCF(uint32_t, const Slice&) override {
     content_flags |= ContentFlags::HAS_SINGLE_DELETE;
     return Status::OK();
   }
 
-  CHECKED_STATUS MergeCF(uint32_t, const Slice&, const Slice&) override {
+  Status MergeCF(uint32_t, const Slice&, const Slice&) override {
     content_flags |= ContentFlags::HAS_MERGE;
     return Status::OK();
   }
 
-  CHECKED_STATUS Frontiers(const UserFrontiers& range) override {
+  Status Frontiers(const UserFrontiers& range) override {
     content_flags |= ContentFlags::HAS_FRONTIERS;
     return Status::OK();
   }
@@ -686,7 +686,7 @@ class MemTableInserter : public WriteBatch::Handler {
     return true;
   }
 
-  CHECKED_STATUS PutCF(
+  Status PutCF(
       uint32_t column_family_id, const SliceParts& key, const SliceParts& value) override {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
@@ -748,7 +748,7 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  CHECKED_STATUS DeleteImpl(uint32_t column_family_id, const Slice& key,
+  Status DeleteImpl(uint32_t column_family_id, const Slice& key,
                             ValueType delete_type) {
     Status seek_status;
     if (!SeekToColumnFamily(column_family_id, &seek_status)) {
@@ -785,17 +785,17 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS DeleteCF(uint32_t column_family_id,
+  virtual Status DeleteCF(uint32_t column_family_id,
                                   const Slice& key) override {
     return DeleteImpl(column_family_id, key, kTypeDeletion);
   }
 
-  virtual CHECKED_STATUS SingleDeleteCF(uint32_t column_family_id,
+  virtual Status SingleDeleteCF(uint32_t column_family_id,
                                         const Slice& key) override {
     return DeleteImpl(column_family_id, key, kTypeSingleDeletion);
   }
 
-  virtual CHECKED_STATUS MergeCF(uint32_t column_family_id, const Slice& key,
+  virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                                  const Slice& value) override {
     assert(!insert_flags_.Test(InsertFlag::kConcurrentMemtableWrites));
     Status seek_status;
@@ -878,7 +878,7 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  CHECKED_STATUS Frontiers(const UserFrontiers& frontiers) override {
+  Status Frontiers(const UserFrontiers& frontiers) override {
     Status seek_status;
     if (!SeekToColumnFamily(0, &seek_status)) {
       return seek_status;

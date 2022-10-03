@@ -46,10 +46,10 @@ class FlushManager {
         catalog_manager_(DCHECK_NOTNULL(catalog_manager)) {}
 
   // API to start a table flushing.
-  CHECKED_STATUS FlushTables(const FlushTablesRequestPB* req,
+  Status FlushTables(const FlushTablesRequestPB* req,
                              FlushTablesResponsePB* resp);
 
-  CHECKED_STATUS IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
+  Status IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                                    IsFlushTablesDoneResponsePB* resp);
 
   void HandleFlushTabletsResponse(const FlushRequestId& flush_id,

@@ -39,11 +39,11 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -65,6 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import play.api.Play;
 
+/** @deprecated Use separate tasks based on UpgradeTaskBase */
+@Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
@@ -671,14 +673,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Stop yb-master and yb-tserver on node
-      if (node.isMaster) {
-        createServerControlTasks(nodeList, ServerType.MASTER, "stop")
-            .setSubTaskGroupType(subGroupType);
-      }
-      if (node.isTserver) {
-        createServerControlTasks(nodeList, ServerType.TSERVER, "stop")
-            .setSubTaskGroupType(subGroupType);
-      }
+      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
       // Conditional Provisioning
       createSetupServerTasks(nodeList, p -> p.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -686,6 +681,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(nodeList, params -> params.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       subGroupType = SubTaskGroupType.ConfigureUniverse;
+      // Start using systemd services.
+      createServerControlTask(node, processType, "start", params -> params.useSystemd = true)
+          .setSubTaskGroupType(subGroupType);
 
       // Wait for server to get ready
       createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
@@ -834,9 +832,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
   private void createPostUpgradeTasks() {
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      // Run YSQL upgrade on the universe
-      createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
-          .setSubTaskGroupType(getTaskSubGroupType());
+      if (taskParams().upgradeSystemCatalog) {
+        // Run YSQL upgrade on the universe
+        createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+            .setSubTaskGroupType(getTaskSubGroupType());
+      }
       // Update the software version on success.
       createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
           .setSubTaskGroupType(getTaskSubGroupType());
@@ -922,7 +922,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     if (taskParams().taskType == UpgradeTaskType.Software) {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
       createSoftwareInstallTasks(
-          Collections.singletonList(node), processType, taskParams().ybSoftwareVersion);
+          Collections.singletonList(node),
+          processType,
+          taskParams().ybSoftwareVersion,
+          subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
       createServerConfFileUpdateTasks(Collections.singletonList(node), processType);
       // Stop is done after conf file update to reduce unavailability.
@@ -1018,7 +1021,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
 
     if (taskParams().taskType == UpgradeTaskType.Software) {
-      createSoftwareInstallTasks(nodes, processType, taskParams().ybSoftwareVersion);
+      createSoftwareInstallTasks(nodes, processType, taskParams().ybSoftwareVersion, subGroupType);
     }
 
     if (isActiveProcess) {
@@ -1159,12 +1162,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
-  }
-
   private int getNodeToNodeChangeForToggleTls(UserIntent userIntent, UpgradeParams params) {
     return userIntent.enableNodeToNodeEncrypt != params.enableNodeToNodeEncrypt
         ? (params.enableNodeToNodeEncrypt ? 1 : -1)
@@ -1181,7 +1178,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -1206,6 +1203,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;

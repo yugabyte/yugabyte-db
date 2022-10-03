@@ -81,6 +81,29 @@ Slice MakeCollationEncodedString(
 
 } // namespace
 
+void DecodeCollationEncodedString(const char** text_ptr, int64_t* text_len_ptr) {
+  DCHECK(*text_len_ptr >= 0 && (*text_ptr)[*text_len_ptr] == '\0')
+    << "Data received from DocDB does not have expected format";
+  // is_original_value = true means that we have done storage space optimization
+  // to only store the original value for non-key columns.
+  const bool is_original_value = (*text_len_ptr == 0 || (*text_ptr)[0] != '\0');
+  if (!is_original_value) {
+    // This is a collation encoded string, we need to fetch the original value.
+    CHECK_GE(*text_len_ptr, 3);
+    uint8_t collation_flags = (*text_ptr)[1];
+    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
+    // Skip the collation and sortkey get the original character value.
+    const char *p = static_cast<const char*>(memchr(*text_ptr + 2, '\0', *text_len_ptr - 2));
+    CHECK(p);
+    ++p;
+    const char* end = *text_ptr + *text_len_ptr;
+    CHECK_LE(p, end);
+    // update *text_ptr && *text_len_ptr to reflect original string value
+    *text_ptr = p;
+    *text_len_ptr = end - p;
+  }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Mapping Postgres operator names to YugaByte opcodes.
 // When constructing expresions, Postgres layer will pass the operator name.
@@ -267,26 +290,8 @@ void TranslateCollateText(
   const char* text = yb_cursor->cdata();
   int64_t text_len = data_size - 1;
 
-  DCHECK(text_len >= 0 && text[text_len] == '\0')
-    << "Data received from DocDB does not have expected format";
-  const bool is_original_value = (text_len == 0 || text[0] != '\0');
-  if (is_original_value) {
-    // This means that we have done storage space optimization to only store the
-    // original value for non-key columns.
-    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
-  } else {
-    // This is a collation encoded string, we need to fetch the original value.
-    CHECK_GE(text_len, 3);
-    uint8_t collation_flags = text[1];
-    CHECK_EQ(collation_flags, kCollationMarker | kDeterministicCollation);
-    // Skip the collation and sortkey get the original character value.
-    const char *p = static_cast<const char*>(memchr(text + 2, '\0', text_len - 2));
-    CHECK(p);
-    ++p;
-    const char* end = text + text_len;
-    CHECK_LE(p, end);
-    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(p, end - p, type_attrs));
-  }
+  DecodeCollationEncodedString(&text, &text_len);
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
   yb_cursor->remove_prefix(data_size);
 }
 

@@ -10,8 +10,7 @@ menu:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB’s distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
@@ -48,7 +47,7 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Savepoints](savepoints/)</span> | Savepoints in YSQL |
 | <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
 | <span style="font-size:16px">[Indexes](indexes-1/)</span> | Indexes to enhance database performance |
-| <span style="font-size:16px">[Constraints](constraints/)</span> | Define constraints in YSQL |  
+| <span style="font-size:16px">[Constraints](constraints/)</span> | Define constraints in YSQL |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |

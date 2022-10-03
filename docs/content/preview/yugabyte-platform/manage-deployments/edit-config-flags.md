@@ -7,12 +7,11 @@ aliases:
   - /preview/manage/enterprise-edition/edit-flags/
   - /preview/manage/enterprise-edition/edit-config-flags/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Adding and modifying configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe allows you to resolve issues, improve performance, and customize functionality.
@@ -59,4 +58,3 @@ You can add configuration flags when you are creating a new universe, as follows
 - Navigate to either **Dashboard** or **Universes** and click **Create Universe**.
 - Complete the required sections of the **Create Universe** page.
 - When you reach **G-Flags**, perform steps described in [Modify configuration flags](#modify-configuration-flags).
-

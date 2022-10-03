@@ -330,6 +330,12 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
+		
+		if (YBIsRefreshMatviewFailureInjected())
+		{
+			elog(ERROR, "Injecting error.");
+		}
+	
 		/*
 		 * In YB mode, we must also rename the relation in DocDB.
 		 *
@@ -496,7 +502,10 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	tuple = ExecMaterializeSlot(slot);
 	if (IsYBRelation(myState->transientrel))
 	{
-		YBCExecuteInsert(myState->transientrel, RelationGetDescr(myState->transientrel), tuple);
+		YBCExecuteInsert(myState->transientrel,
+						 RelationGetDescr(myState->transientrel),
+						 tuple,
+						 ONCONFLICT_NONE);
 	}
 	else
 	{

@@ -13,7 +13,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
-import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;

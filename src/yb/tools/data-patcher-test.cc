@@ -102,7 +102,7 @@ void CheckAndGetWriteTimes(
 }
 
 template <class Range>
-CHECKED_STATUS InsertValues(CassandraSession* session, const Range& range) {
+Status InsertValues(CassandraSession* session, const Range& range) {
   std::vector<CassandraFuture> futures;
   for (auto i : range) {
     auto expr = Format("INSERT INTO t (i, j) VALUES ($0, $0);", i);

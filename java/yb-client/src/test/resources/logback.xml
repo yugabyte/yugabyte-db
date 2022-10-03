@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--  Built in 2022-04-18 02:25 by logback-translator            -->
+<!--                                                             -->
+<!--  For sponsoring SLF4J/logback/reload4j projects see         -->
+<!--    https://github.com/sponsors/qos-ch                       -->
+<!--                                                             -->
+<configuration>
+  <appender name="out" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>
+    %d{HH:mm:ss.SSS} \(%thread\) [%level - %replace(%caller{1}){'Caller\+0\s|\n|\sat\s', ''}] %msg%n
+      </pattern>
+    </encoder>
+  </appender>
+  <logger name="com.yugabyte.driver.core.policies.PartitionAwarePolicy" level="INFO"/>
+  <logger name="com.stumbleupon.async.Deferred" level="INFO"/>
+  <logger name="org.yb" level="DEBUG"/>
+  <logger name="org.yb.client.TabletClient" level="INFO"/>
+  <logger name="com.datastax.driver.core" level="INFO"/>
+  <logger name="com.yugabyte.driver.core.TableSplitMetadata" level="INFO"/>
+  <root level="DEBUG">
+    <appender-ref ref="out"/>
+  </root>
+</configuration>

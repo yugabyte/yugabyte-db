@@ -43,7 +43,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
       const std::vector<TabletInfo*>& mutated_tablets) const;
 
   // Process a filtered list of tablets and add them to the system.partitions vtable.
-  CHECKED_STATUS ProcessMutatedTablets(
+  Status ProcessMutatedTablets(
       const std::vector<TabletInfoPtr>& mutated_tablets,
       const std::map<TabletId, TabletInfo::WriteLock>& tablet_write_locks) const;
 
@@ -55,7 +55,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
   // Called by bg task if both generate_partitions_vtable_on_changes and
   // partitions_vtable_cache_refresh_secs are set.
-  CHECKED_STATUS UpdateCache() const;
+  Status UpdateCache() const;
 
   static bool GeneratePartitionsVTableWithBgTask();
   static bool GeneratePartitionsVTableOnChanges();
@@ -68,14 +68,14 @@ class YQLPartitionsVTable : public YQLVirtualTable {
     TabletLocationsPB* locations;
   };
 
-  CHECKED_STATUS ProcessTablets(const std::vector<TabletInfoPtr>& tablets) const REQUIRES(mutex_);
+  Status ProcessTablets(const std::vector<TabletInfoPtr>& tablets) const REQUIRES(mutex_);
 
   Result<TabletData> GetTabletData(
       const scoped_refptr<TabletInfo>& tablet,
       DnsLookupMap* dns_lookups,
       google::protobuf::Arena* arena) const;
 
-  CHECKED_STATUS InsertTabletIntoRowUnlocked(const TabletData& tablet, QLRow* row,
+  Status InsertTabletIntoRowUnlocked(const TabletData& tablet, QLRow* row,
       const std::unordered_map<std::string, InetAddress>& dns_results) const;
 
   Schema CreateSchema() const;

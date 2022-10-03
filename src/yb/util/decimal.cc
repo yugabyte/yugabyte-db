@@ -304,7 +304,7 @@ string Decimal::EncodeToComparable() const {
   return output;
 }
 
-CHECKED_STATUS DecodeFromDigitPairs(
+Status DecodeFromDigitPairs(
     const Slice& slice, size_t *num_decoded_bytes, std::vector<uint8_t>* digits) {
   digits->clear();
   digits->reserve(slice.size() * 2);

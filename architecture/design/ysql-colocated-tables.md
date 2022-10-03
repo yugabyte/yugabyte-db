@@ -137,8 +137,6 @@ Today, there is one RocksDB created per tablet. This RocksDB only has data for a
 1. Use single RocksDB for the entire tablet (i.e. for all tables).
 1. Use multiple RocksDBs with one RocksDB per table.
 
-More analysis on this can be found here.
-
 We decided to use single RocksDB for entire tablet. This is because:
 
 * It enables us to leverage code that was written for postgres system tables. Today, all postgres system tables are colocated on a single tablet in master and uses a single RocksDB. We can leverage a lot of that code.

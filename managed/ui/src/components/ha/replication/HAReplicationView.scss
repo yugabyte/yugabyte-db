@@ -61,4 +61,27 @@
       width: 100%;
     }
   }
+  &__no-cert--add-button {
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: $YB_ORANGE;
+    &:hover {
+      color: $YB_ORANGE_HOVER;
+      text-decoration: underline;
+    }
+    cursor: pointer;
+  }
+  
+
+  &__cert-container {
+    display: flex;
+    &--identifier {
+      min-width: 750px;
+    }
+    &--ellipse {
+      min-width: 35px;
+    }
+  }
 }

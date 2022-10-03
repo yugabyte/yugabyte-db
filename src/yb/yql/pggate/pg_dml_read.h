@@ -15,6 +15,8 @@
 #ifndef YB_YQL_PGGATE_PG_DML_READ_H_
 #define YB_YQL_PGGATE_PG_DML_READ_H_
 
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "yb/common/pgsql_protocol.fwd.h"
@@ -29,6 +31,7 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb {
 namespace pggate {
@@ -63,7 +66,7 @@ class PgDmlRead : public PgDml {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
 
-  virtual CHECKED_STATUS Prepare() = 0;
+  virtual Status Prepare() = 0;
 
   // Allocate binds.
   virtual void PrepareBinds();
@@ -72,27 +75,28 @@ class PgDmlRead : public PgDml {
   void SetForwardScan(const bool is_forward_scan);
 
   // Bind a range column with a BETWEEN condition.
-  CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+  Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
+                               bool start_inclusive,
+                               PgExpr *attr_value_end,
+                               bool end_inclusive);
 
   // Bind a column with an IN condition.
-  CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+  Status BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
-  CHECKED_STATUS BindHashCode(bool start_valid, bool start_inclusive,
-                                uint64_t start_hash_val, bool end_valid,
-                                bool end_inclusive, uint64_t end_hash_val);
+  Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.
-  CHECKED_STATUS AddRowLowerBound(YBCPgStatement handle, int n_col_values,
+  Status AddRowLowerBound(YBCPgStatement handle, int n_col_values,
                                     PgExpr **col_values, bool is_inclusive);
 
   // Add an upper bound to the scan. If an upper bound has already been added
   // this call will set the upper bound to the stricter of the two bounds.
-  CHECKED_STATUS AddRowUpperBound(YBCPgStatement handle, int n_col_values,
+  Status AddRowUpperBound(YBCPgStatement handle, int n_col_values,
                                     PgExpr **col_values, bool is_inclusive);
 
   // Execute.
-  virtual CHECKED_STATUS Exec(const PgExecParameters *exec_params);
+  virtual Status Exec(const PgExecParameters *exec_params);
 
   void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
     DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);
@@ -136,14 +140,14 @@ class PgDmlRead : public PgDml {
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
-  CHECKED_STATUS ProcessEmptyPrimaryBinds();
+  Status ProcessEmptyPrimaryBinds();
   bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
   bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
-  CHECKED_STATUS SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
+  Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   Result<docdb::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
-  CHECKED_STATUS MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
+  Status MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
   Result<LWQLValuePB*> GetBoundValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src) const;
   Result<docdb::KeyEntryValue> BuildKeyColumnValue(

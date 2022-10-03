@@ -28,6 +28,7 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 
 using namespace std::literals;
@@ -55,7 +56,7 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     return client_->IsLoadBalanced(narrow_cast<uint32_t>(num_tablet_servers()));
   }
 
-  CHECKED_STATUS WaitLoadBalanced(MonoDelta timeout) {
+  Status WaitLoadBalanced(MonoDelta timeout) {
     return WaitFor([&]() -> Result<bool> {
       return IsLoadBalanced();
     }, timeout, "IsLoadBalanced");
@@ -75,7 +76,6 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     opts->extra_tserver_flags.push_back("--placement_cloud=c");
     opts->extra_tserver_flags.push_back("--placement_region=r");
     opts->extra_tserver_flags.push_back("--placement_zone=z${index}");
-    opts->extra_tserver_flags.push_back("--transaction_tables_use_preferred_zones=false");
   }
 };
 

@@ -60,26 +60,29 @@ class EasyCurl {
   // Any existing data in the buffer is replaced.
   // The optional param 'headers' holds additional headers.
   // e.g. {"Accept-Encoding: gzip"}
-  CHECKED_STATUS FetchURL(
+  Status FetchURL(
       const std::string& url,
       faststring* dst,
       int64_t timeout_sec = kDefaultTimeoutSec,
-      const std::vector<std::string>& headers = {});
+      const std::vector<std::string>& headers = {},
+      const std::string& ca_cert = "");
 
   // Issue an HTTP POST to the given URL with the given data.
   // Returns results in 'dst' as above.
-  CHECKED_STATUS PostToURL(
+  Status PostToURL(
       const std::string& url,
       const std::string& post_data,
       faststring* dst,
-      int64_t timeout_sec = kDefaultTimeoutSec);
+      int64_t timeout_sec = kDefaultTimeoutSec,
+      const std::string& ca_cert = "");
 
-  CHECKED_STATUS PostToURL(
+  Status PostToURL(
       const std::string& url,
       const std::string& post_data,
       const std::string& content_type,
       faststring* dst,
-      int64_t timeout_sec = kDefaultTimeoutSec);
+      int64_t timeout_sec = kDefaultTimeoutSec,
+      const std::string& ca_cert = "");
 
   std::string EscapeString(const std::string& data);
 
@@ -92,13 +95,14 @@ class EasyCurl {
  private:
   // Do a request. If 'post_data' is non-NULL, does a POST.
   // Otherwise, does a GET.
-  CHECKED_STATUS DoRequest(
+  Status DoRequest(
       const std::string& url,
       const boost::optional<const std::string>& post_data,
       const boost::optional<const std::string>& content_type,
       int64_t timeout_sec,
       faststring* dst,
-      const std::vector<std::string>& headers = {});
+      const std::vector<std::string>& headers = {},
+      const std::string& ca_cert = "");
 
   CURL* curl_;
   // Whether to return the HTTP headers with the response.

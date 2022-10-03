@@ -12,7 +12,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -40,7 +39,6 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
-          PlacementInfo placementInfo = cluster.placementInfo;
 
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
@@ -52,7 +50,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // So, generated node certs will still be of old rootCA after this step
           createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), placementInfo, userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
 
           // Now we will change the order of certs: new cert first, followed by old root cert
           // Also cert key will be pointing to new root cert key
@@ -60,13 +58,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Essentially equivalent to updating only node certs in this step
           createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCertReverse);
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), placementInfo, userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
 
           // Reset the temporary certs and update the universe to use new rootCA
           createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
           createUniverseSetTlsParamsTask();
           // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(getUniverse(), placementInfo, userIntent.ybSoftwareVersion, true, true);
+          createUpgradeTask(getUniverse(), userIntent.ybSoftwareVersion, true, true);
         });
   }
 

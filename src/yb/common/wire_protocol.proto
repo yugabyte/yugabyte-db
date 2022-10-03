@@ -84,6 +84,7 @@ message AppStatusPB {
     COMBINED_ERROR = 29;
     SNAPSHOT_TOO_OLD = 30;
     DEPRECATED_HOST_UNREACHABLE = 31;
+    CACHE_MISS_ERROR = 32;
   }
 
   required ErrorCode code = 1;
@@ -149,4 +150,16 @@ message ServerEntryPB {
   // If an error has occurred earlier in the RPC call, the role
   // may be not be set.
   optional PeerRole role = 4;
+}
+
+// AutoFlags configuration
+message PromotedFlagsPerProcessPB {
+  // Ex: yb-master, yb-tserver.
+  required string process_name = 1;
+  repeated string flags = 2;
+}
+
+message AutoFlagsConfigPB {
+  required uint32 config_version = 1;
+  repeated PromotedFlagsPerProcessPB promoted_flags = 2;
 }

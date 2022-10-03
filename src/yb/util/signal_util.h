@@ -38,7 +38,7 @@ Result<sigset_t> ThreadSignalMaskBlock(const std::vector<int>& signals_to_block)
 
 // Restore previous signal mask on the current thread.
 // Unblocking signals lets the blocked signals be delivered if they had been raised in the meantime.
-CHECKED_STATUS ThreadSignalMaskRestore(sigset_t old_mask);
+Status ThreadSignalMaskRestore(sigset_t old_mask);
 
 //
 // Specific functions

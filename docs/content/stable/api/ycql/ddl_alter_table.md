@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1220
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -147,8 +146,8 @@ CREATE TABLE example.employees (
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DELETE`](../dml_delete)
+- [`DELETE`](../dml_delete/)
 - [`DROP TABLE`](../ddl_drop_table)
 - [`INSERT`](../dml_insert)
-- [`SELECT`](../dml_select)
-- [`UPDATE`](../dml_update)
+- [`SELECT`](../dml_select/)
+- [`UPDATE`](../dml_update/)

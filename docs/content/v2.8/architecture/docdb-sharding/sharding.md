@@ -8,8 +8,7 @@ menu:
     identifier: docdb-sharding
     parent: architecture-docdb-sharding
     weight: 1142
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Sharding is the process of breaking up large tables into smaller chunks called shards that are spread across multiple servers. Sharding is also referred to as horizontal partitioning, and a shard is essentially a horizontal data partition that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically — storing different table columns in a separate database, or horizontally — storing rows of the same table in multiple database nodes.

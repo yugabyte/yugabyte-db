@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/rename
   - /preview/api/yedis/rename
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -8,8 +8,7 @@ menu:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
     weight: 707
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,10 +33,10 @@ CREATE KEYSPACE load;
 USE load;
 
 CREATE TABLE users(
-	user_id varchar, 
-	score1 double, 
+	user_id varchar,
+	score1 double,
 	score2 double,
-	points int, 
+	points int,
 	object_id varchar,
    PRIMARY KEY (user_id));
 ```

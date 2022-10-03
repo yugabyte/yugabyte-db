@@ -10,6 +10,7 @@ menu:
     identifier: client-drivers-yedis
     parent: develop-yedis
     weight: 2900
+type: indexpage
 ---
 
 An application interacts with YugabyteDB using of a client library, also known as a client driver. Client drivers handle all interaction with the database in a language appropriate to the application. The applications use client drivers in various languages for the Redis-compatible YEDIS API.

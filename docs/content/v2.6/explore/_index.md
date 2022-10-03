@@ -3,13 +3,8 @@ title: Explore features
 headerTitle: Explore features
 linkTitle: Explore features
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
-headcontent:
 image: /images/section_icons/index/explore.png
-section: YUGABYTEDB CORE
-menu:
-  v2.6:
-    identifier: explore
-    weight: 540
+type: indexpage
 ---
 
 {{< tip title="Tip" >}}
@@ -78,7 +73,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-   
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">

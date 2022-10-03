@@ -36,14 +36,17 @@ namespace docdb {
 
 namespace {
 
-// Lock state stores number of locks acquires for each intent type.
+// Lock state stores number of locks acquired for each intent type.
 // Count for each intent type resides in sequential bits (block) in lock state.
 // For example count of lock on particular intent type could be received as:
 // (lock_state >> kIntentTypeShift[type]) & kSingleIntentMask.
 
-// We have 128 bits in LockState and 6 types of intents. So 21 bits is max number of bits
+// We have 64 bits in LockState and 4 types of intents. So 16 bits is max number of bits
 // that we could reserve for block of single intent type.
 const size_t kIntentTypeBits = 16;
+// kSingleIntentMask represents the LockState which, when &'d with another LockState, would result
+// in the LockState tracking only the count for intent type represented by the region of bits that
+// is "least significant", as in furthest to the right.
 const LockState kSingleIntentMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
 
 bool IntentTypesConflict(IntentType lhs, IntentType rhs) {
@@ -56,14 +59,17 @@ bool IntentTypesConflict(IntentType lhs, IntentType rhs) {
          ((lhs_value & kWriteIntentFlag) != (rhs_value & kWriteIntentFlag));
 }
 
-LockState IntentTypeMask(IntentType intent_type) {
-  return kSingleIntentMask << (to_underlying(intent_type) * kIntentTypeBits);
+LockState IntentTypeMask(IntentType intent_type, LockState single_intent_mask = kSingleIntentMask) {
+  return single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
 }
 
-// Generate conflict mask for all possible subsets of intent type set.
+// Generate conflict mask for all possible subsets of intent type set. The i-th index of the
+// returned array represents a conflict mask for the i-th possible IntentTypeSet. To determine if a
+// given IntentTypeSet i conflicts with the key's existing LockState l, you can do the following:
+// bool is_conflicting = kIntentTypeSetConflicts[i.ToUintPtr()] & l != 0;
 std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
   std::array<LockState, kIntentTypeSetMapSize> result;
-  for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
+  for (size_t idx = 0; idx < kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
       for (auto other_intent_type : IntentTypeList()) {
@@ -76,7 +82,7 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
   return result;
 }
 
-// Generate array for all possible subsets of intent type set.
+// Generate array of LockState's with one entry for each possible subset of intent type set.
 // The entry is combination of single_intent_mask for intents from set.
 std::array<LockState, kIntentTypeSetMapSize> GenerateByMask(LockState single_intent_mask) {
   DCHECK_EQ(single_intent_mask & kSingleIntentMask, single_intent_mask);
@@ -84,15 +90,33 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateByMask(LockState single_int
   for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
-      result[idx] |= single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
+      result[idx] |= IntentTypeMask(intent_type, single_intent_mask);
     }
   }
   return result;
 }
 
-const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetAdd = GenerateByMask(1);
 
 } // namespace
+
+// The following three arrays are indexed by the integer representation of the IntentTypeSet which
+// the value at that index corresponds to. For example, an IntentTypeSet with the 0th and 2nd
+// element present would be represented by the number = (2^0 + 2^2) = 5. The fifth index of an
+// IntentTypeSetMap stores some value which corresponds to this IntentTypeSet.
+// TODO -- clarify the semantics of IntentTypeSetMap by making it a class.
+typedef std::array<LockState, kIntentTypeSetMapSize> IntentTypeSetMap;
+
+// Maps IntentTypeSet to a LockState mask which determines if another LockState will conflict with
+// any of the elements present in the IntentTypeSet.
+const IntentTypeSetMap kIntentTypeSetConflicts = GenerateConflicts();
+
+// Maps IntentTypeSet to the LockState representing one count for each intent type in the set. Can
+// be used to "add one" occurence of an IntentTypeSet to an existing key's LockState.
+const IntentTypeSetMap kIntentTypeSetAdd = GenerateByMask(1);
+
+// Maps IntentTypeSet to the LockState representing max count for each intent type in the set. Can
+// be used to extract a LockState corresponding to having only that set's elements counts present.
+const IntentTypeSetMap kIntentTypeSetMask = GenerateByMask(kSingleIntentMask);
 
 bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   for (auto intent1 : lhs) {
@@ -112,7 +136,7 @@ struct LockedBatchEntry {
   std::condition_variable cond_var;
 
   // Refcounting for garbage collection. Can only be used while the global mutex is locked.
-  // Global mutex resides in lock manager and the same for all LockBatchEntries.
+  // Global mutex resides in lock manager and covers this field for all LockBatchEntries.
   size_t ref_count = 0;
 
   // Number of holders for each type
@@ -162,11 +186,6 @@ class SharedLockManager::Impl {
   std::vector<LockedBatchEntry*> free_lock_entries_ GUARDED_BY(global_mutex_);
 };
 
-const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask = GenerateByMask(
-    kSingleIntentMask);
-
-const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts = GenerateConflicts();
-
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
   bool first = true;
@@ -205,10 +224,16 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
     old_value = num_holding.load(std::memory_order_acquire);
     if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
       if (deadline != CoarseTimePoint::max()) {
+        // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
+        // detection since this eventually succeeds (in which case thread gets to queue) or times
+        // out (thereby eliminating any possibly untraced deadlock).
         if (cond_var.wait_until(lock, deadline) == std::cv_status::timeout) {
           return false;
         }
       } else {
+        // TODO(pessimistic): Hitting this branch with pessimistic locking could cause deadlocks if
+        // we never reach the wait queue and register the "waiting for" relationship. We should add
+        // a DCHECK that pessimistic locking is not enabled in this branch, or remove the branch.
         cond_var.wait(lock);
       }
     }

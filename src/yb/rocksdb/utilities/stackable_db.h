@@ -280,7 +280,7 @@ class StackableDB : public DB {
     return db_->GetFlushedFrontier();
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(
+  Status ModifyFlushedFrontier(
       UserFrontierPtr values,
       FrontierModificationMode mode) override {
     return db_->ModifyFlushedFrontier(std::move(values), mode);

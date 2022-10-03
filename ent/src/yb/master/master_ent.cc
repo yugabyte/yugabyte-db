@@ -58,16 +58,9 @@ Status Master::RegisterServices() {
 
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
-  if (!FLAGS_cert_node_filename.empty()) {
-    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        fs_manager_->GetDefaultRootDir(),
-        FLAGS_cert_node_filename,
-        server::SecureContextType::kInternal,
-        builder));
-  } else {
-    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        options_.HostsString(), *fs_manager_, server::SecureContextType::kInternal, builder));
-  }
+
+  secure_context_ = VERIFY_RESULT(
+      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
 
   return Status::OK();
 }
@@ -82,6 +75,12 @@ Status Master::ReloadKeysAndCertificates() {
         fs_manager_->GetDefaultRootDir(),
         server::SecureContextType::kInternal,
         options_.HostsString());
+}
+
+std::string Master::GetCertificateDetails() {
+  if(!secure_context_) return "";
+
+  return secure_context_.get()->GetCertificateDetails();
 }
 
 } // namespace enterprise

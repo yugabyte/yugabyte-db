@@ -10,6 +10,7 @@ menu:
     identifier: audit-logging
     parent: secure
     weight: 750
+type: indexpage
 ---
 
 <div class="row">

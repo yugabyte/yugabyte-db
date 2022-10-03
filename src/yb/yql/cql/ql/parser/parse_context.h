@@ -58,12 +58,12 @@ class ParseContext : public ProcessContext {
   void Warn(const location& loc, const char *msg, ErrorCode error_code);
 
   // Handling parsing error.
-  CHECKED_STATUS Error(const location& loc,
+  Status Error(const location& loc,
                        const char *msg,
                        ErrorCode error_code,
                        const char* token = nullptr);
-  CHECKED_STATUS Error(const location& loc, const char *msg, const char* token = nullptr);
-  CHECKED_STATUS Error(const location& loc, ErrorCode error_code, const char* token = nullptr);
+  Status Error(const location& loc, const char *msg, const char* token = nullptr);
+  Status Error(const location& loc, ErrorCode error_code, const char* token = nullptr);
 
   // Access function for ql_file_.
   std::istream *ql_file() {

@@ -19,7 +19,7 @@
 #include "parser/parse_node.h"
 #include "tcop/dest.h"
 
-#define DEFAULT_BATCH_ROWS_PER_TRANSACTION  1000
+#define DEFAULT_BATCH_ROWS_PER_TRANSACTION  20000
 
 /* CopyStateData is private in commands/copy.c */
 typedef struct CopyStateData *CopyState;
@@ -41,7 +41,7 @@ extern CopyState BeginCopyFrom(ParseState *pstate, Relation rel, const char *fil
 			  bool is_program, copy_data_source_cb data_source_cb, List *attnamelist, List *options);
 extern void EndCopyFrom(CopyState cstate);
 extern bool NextCopyFrom(CopyState cstate, ExprContext *econtext,
-			 Datum *values, bool *nulls, Oid *tupleOid);
+			 Datum *values, bool *nulls, Oid *tupleOid, bool skip_row);
 extern bool NextCopyFromRawFields(CopyState cstate,
 					  char ***fields, int *nfields);
 extern void CopyFromErrorCallback(void *arg);

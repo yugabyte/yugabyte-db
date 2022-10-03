@@ -14,6 +14,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -24,12 +25,15 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -66,6 +70,22 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result pause(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    // Check if the universe is of type kubernetes, if yes throw an exception
+    Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+    CloudType cloudType = cluster.userIntent.providerType;
+    Boolean isKubernetesCluster = (cloudType == CloudType.kubernetes);
+    for (Cluster readCluster : readOnlyClusters) {
+      cloudType = readCluster.userIntent.providerType;
+      isKubernetesCluster = isKubernetesCluster || cloudType == CloudType.kubernetes;
+    }
+
+    if (isKubernetesCluster) {
+      String msg =
+          String.format("Pause task is not supported for Kubernetes universe - %s", universe.name);
+      log.error(msg);
+      throw new IllegalArgumentException(msg);
+    }
 
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
     auditService()

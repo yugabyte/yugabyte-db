@@ -8,11 +8,12 @@ image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
   - /preview/develop/tools/
-section: REFERENCE
 menu:
   preview:
     identifier: tools
+    parent: reference
     weight: 2900
+type: indexpage
 ---
 
 Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters.

@@ -8,13 +8,12 @@ menu:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
 
-The [JSONB document data type](../../json-support/jsonb-ysql) is described in a separate section.
+The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
 
 ## Strings
 
@@ -308,7 +307,7 @@ The output should be as follows:
  e_contact_method | Phone
 ```
 
-### 2. Create a table with an `ENUM` column
+### 3. Create a table with an `ENUM` column
 
 ```sql
 CREATE TABLE contact_method_info (
@@ -318,18 +317,18 @@ CREATE TABLE contact_method_info (
 );
 ```
 
-### 3. Insert a row with `ENUM`
+### 4. Insert a row with `ENUM`
 
 The `ENUM` should have a valid value, as follows:
 
 ```sql
-INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com')
+INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com');
 ```
 
 Execute the following to verify:
 
 ```sql
-yugabyte=# select * from contact_method_info;
+select * from contact_method_info;
 ```
 
 ```output
@@ -342,7 +341,7 @@ yugabyte=# select * from contact_method_info;
 Inserting an invalid `ENUM` value would fail, as shown in the following example:
 
 ```sql
-yugabyte=# INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563456');
+INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563456');
 ```
 
 You should see the following error (which is compatible with that of PostgreSQL):

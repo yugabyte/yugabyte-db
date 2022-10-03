@@ -92,6 +92,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequest("GET", uri);
   }
 
+  private Result getNodeDetails(UUID universeUUID, String nodeName) {
+    String uri =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universeUUID
+            + "/nodes/"
+            + nodeName
+            + "/details";
+    return FakeApiHelper.doRequest("GET", uri);
+  }
+
   private Result listByZone(UUID zoneUuid) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes/list";
     return FakeApiHelper.doRequest("GET", uri);
@@ -213,6 +225,29 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     UUID uuid = UUID.randomUUID();
     Result r = assertPlatformException(() -> getNode(uuid));
     String expectedError = "Invalid node UUID: " + uuid;
+    assertBadRequest(r, expectedError);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetNodeDetailsWithValidUuid() {
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse("node-allowed-actions", customer.getCustomerId())
+                .universeUUID,
+            ApiUtils.mockUniverseUpdater());
+    Result r = getNodeDetails(u.universeUUID, "host-n1");
+    checkOk(r);
+    JsonNode json = parseResult(r);
+    assertTrue(json.isObject());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetNodeDetailsWithInValidUuid() {
+    UUID uuid = UUID.randomUUID();
+    Result r = assertPlatformException(() -> getNodeDetails(uuid, "host-n1"));
+    String expectedError = "Cannot find universe " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
@@ -350,8 +385,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     verify(mockCommissioner, times(0)).submit(any(), any());
     final Universe u = ModelFactory.createUniverse();
     Universe universe = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(universe.universeUUID);
-    customer.save();
     Result r =
         assertPlatformException(
             () ->
@@ -365,8 +398,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testInvalidNodeAction() {
     for (NodeActionType nodeActionType : NodeActionType.values()) {
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
-      customer.addUniverseUUID(u.universeUUID);
-      customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
       Result r =
           assertPlatformException(
@@ -391,8 +422,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
           .thenReturn(fakeTaskUUID);
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
       u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-      customer.addUniverseUUID(u.universeUUID);
-      customer.save();
       Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1", nodeActionType, false);
       verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
       assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());
@@ -445,6 +474,12 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + curNode.nodeName
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
+    Result invalidReboot =
+        assertPlatformException(
+            () ->
+                performNodeAction(
+                    customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REBOOT, false));
+
     // Changing to another node as n1 is in progress by previous operations.
     NodeDetails nodeToDelete = u.getNode("host-n3");
     Result invalidDelete =
@@ -494,8 +529,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     u.getUniverseDetails().rootCA = UUID.randomUUID();
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1", nodeActionType, false);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());

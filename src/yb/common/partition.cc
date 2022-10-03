@@ -33,6 +33,7 @@
 #include "yb/common/partition.h"
 
 #include <algorithm>
+#include <limits>
 #include <set>
 
 #include <glog/logging.h>
@@ -438,14 +439,40 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(Slice partition_key) {
   return BigEndian::Load16(partition_key.data());
 }
 
-string PartitionSchema::GetEncodedKeyPrefix(
-    const string& partition_key, const PartitionSchemaPB& partition_schema) {
+uint16_t PartitionSchema::DecodeMultiColumnHashLeftBound(Slice partition_key) {
+  return partition_key.empty()
+             ? std::numeric_limits<uint16_t>::min()
+             : DecodeMultiColumnHashValue(partition_key);
+}
+
+uint16_t PartitionSchema::DecodeMultiColumnHashRightBound(Slice partition_key) {
+  if (partition_key.empty()) {
+    return std::numeric_limits<uint16_t>::max();
+  }
+  uint16_t value = DecodeMultiColumnHashValue(partition_key);
+  DCHECK_GT(value, 0);
+  return value - 1;
+}
+
+Result<std::string> PartitionSchema::GetEncodedKeyPrefix(
+    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
   if (partition_schema.has_hash_schema()) {
     const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-    docdb::KeyBytes split_encoded_key_bytes;
-    docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
-      .Hash(doc_key_hash, std::vector<docdb::KeyEntryValue>());
-    return split_encoded_key_bytes.ToStringBuffer();
+
+    // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
+    // in order to be guarded from any possible future update in the flow.
+    docdb::KeyBytes prefix_bytes;
+    docdb::DocKeyEncoderAfterTableIdStep(&prefix_bytes)
+        .Hash(doc_key_hash, std::vector<docdb::KeyEntryValue>());
+    const auto prefix_size = VERIFY_RESULT(docdb::DocKey::EncodedSize(
+        prefix_bytes, docdb::DocKeyPart::kUpToHashCode));
+    if (PREDICT_FALSE((prefix_size == 0))) {
+      // Sanity check, should not happen for normal state.
+      return STATUS(IllegalState,
+          Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
+    }
+    prefix_bytes.Truncate(prefix_size);
+    return prefix_bytes.ToStringBuffer();
   }
   return partition_key;
 }
@@ -456,13 +483,8 @@ Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_st
       !IsValidHashPartitionKeyBound(partition_key_end)) {
     return STATUS(InvalidArgument, "Passed in partition keys are not hash partitions.");
   }
-  if (partition_key_start.empty() || partition_key_end.empty()) {
-    // We consider the empty string an open bound (0 for start, 0xFFFF for end), so this is a valid
-    // range.
-    return Status::OK();
-  }
-  if (PartitionSchema::DecodeMultiColumnHashValue(partition_key_start) >=
-      PartitionSchema::DecodeMultiColumnHashValue(partition_key_end)) {
+  if (PartitionSchema::DecodeMultiColumnHashLeftBound(partition_key_start) >
+      PartitionSchema::DecodeMultiColumnHashRightBound(partition_key_end)) {
     return STATUS(InvalidArgument,
                   Format("Invalid arguments for partition_key_start: $0 and partition_key_end: $1",
                   Slice(partition_key_start).ToDebugHexString(),
@@ -473,6 +495,32 @@ Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_st
 
 bool PartitionSchema::IsValidHashPartitionKeyBound(const string& partition_key) {
   return partition_key.empty() || partition_key.size() == kPartitionKeySize;
+}
+
+uint32_t PartitionSchema::GetOverlap(
+    const std::string& key_start,
+    const std::string& key_end,
+    const std::string& other_key_start,
+    const std::string& other_key_end) {
+  uint16_t first_start_val = PartitionSchema::DecodeMultiColumnHashLeftBound(key_start);
+  uint16_t second_start_val = PartitionSchema::DecodeMultiColumnHashLeftBound(other_key_start);
+  uint16_t first_end_val = PartitionSchema::DecodeMultiColumnHashRightBound(key_end);
+  uint16_t second_end_val = PartitionSchema::DecodeMultiColumnHashRightBound(other_key_end);
+
+  // Use uint32 as max Overlap is uint16_t max + 1
+  uint32_t start_key = max(first_start_val, second_start_val);
+  uint32_t end_key = min(first_end_val, second_end_val);
+
+  if (end_key >= start_key) {
+    return end_key - start_key + 1;
+  }
+
+  return 0;
+}
+
+uint32_t PartitionSchema::GetPartitionRangeSize(
+    const std::string& key_start, const std::string& key_end) {
+  return GetOverlap(key_start, key_end, key_start, key_end);
 }
 
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
@@ -494,6 +542,28 @@ Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions
   partition.partition_key_start_.append(start_key);
   partitions->push_back(partition);
   return Status::OK();
+}
+
+boost::optional<std::pair<Partition, Partition>> PartitionSchema::SplitHashPartitionForStatusTablet(
+    const Partition& partition) {
+  auto start = DecodeMultiColumnHashLeftBound(partition.partition_key_start_);
+  auto end = DecodeMultiColumnHashRightBound(partition.partition_key_end_);
+  if (start >= end) {
+    return boost::none;
+  }
+
+  // Not using (start + end) / 2 + 1, in order to avoid overflow.
+  auto encoded_mid = EncodeMultiColumnHashValue((end - start) / 2 + start + 1);
+
+  Partition left;
+  left.partition_key_start_ = partition.partition_key_start_;
+  left.partition_key_end_ = encoded_mid;
+
+  Partition right;
+  right.partition_key_start_ = encoded_mid;
+  right.partition_key_end_ = partition.partition_key_end_;
+
+  return std::make_pair(left, right);
 }
 
 Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
@@ -852,9 +922,9 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
       case YBHashSchema::kMultiColumnHash: {
         const string& pstart = partition.partition_key_start();
         const string& pend = partition.partition_key_end();
-        uint16_t hash_start = !pstart.empty() ? DecodeMultiColumnHashValue(pstart) : 0;
-        uint16_t hash_end = !pend.empty() ? DecodeMultiColumnHashValue(pend) : UINT16_MAX;
-        s.append(Substitute("hash_split: [0x$0, 0x$1)",
+        uint16_t hash_start = PartitionSchema::DecodeMultiColumnHashLeftBound(pstart);
+        uint16_t hash_end = PartitionSchema::DecodeMultiColumnHashRightBound(pend);
+        s.append(Substitute("hash_split: [0x$0, 0x$1]",
                             Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
@@ -1118,17 +1188,10 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
   }
 
   // Compare range component.
-  if (range_schema_.column_ids != other.range_schema_.column_ids) return false;
+  if (range_schema_ != other.range_schema_) return false;
 
   // Compare hash bucket components.
-  if (hash_bucket_schemas_.size() != other.hash_bucket_schemas_.size()) return false;
-  for (size_t i = 0; i < hash_bucket_schemas_.size(); i++) {
-    if (hash_bucket_schemas_[i].seed != other.hash_bucket_schemas_[i].seed) return false;
-    if (hash_bucket_schemas_[i].num_buckets
-        != other.hash_bucket_schemas_[i].num_buckets) return false;
-    if (hash_bucket_schemas_[i].column_ids
-        != other.hash_bucket_schemas_[i].column_ids) return false;
-  }
+  if (hash_bucket_schemas_ != other.hash_bucket_schemas_) return false;
 
   return true;
 }
@@ -1303,6 +1366,10 @@ bool PartitionSchema::IsHashPartitioning() const {
 YBHashSchema PartitionSchema::hash_schema() const {
   CHECK(hash_schema_);
   return *hash_schema_;
+}
+
+const PartitionSchema::RangeSchema& PartitionSchema::range_schema() const {
+  return range_schema_;
 }
 
 void PartitionSchema::ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out) {

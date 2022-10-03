@@ -13,9 +13,10 @@
 
 package org.yb.cdc.ysql;
 
-import org.apache.log4j.Logger;
 import org.junit.*;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.Value;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
@@ -30,7 +31,7 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestNullValues extends CDCBaseClass {
-  private final static Logger LOG = Logger.getLogger(TestNullValues.class);
+  private final static Logger LOG = LoggerFactory.getLogger(TestNullValues.class);
 
   protected int DEFAULT_KEY_VALUE = 1;
 
@@ -366,17 +367,11 @@ public class TestNullValues extends CDCBaseClass {
       assertEquals(1, rowMessage.getNewTuple(0).getDatumInt32());
       assertEquals("b", rowMessage.getNewTuple(1).getColumnName());
       assertEquals(2, rowMessage.getNewTuple(1).getDatumInt32());
-
-      // UPDATE record for update of column d.
-      rowMessage = outputList.get(4).getRowMessage();
-      assertEquals(Op.UPDATE, rowMessage.getOp());
-      assertEquals("a", rowMessage.getNewTuple(0).getColumnName());
-      assertEquals(1, rowMessage.getNewTuple(0).getDatumInt32());
-      assertEquals("d", rowMessage.getNewTuple(1).getColumnName());
-      assertEquals(4, rowMessage.getNewTuple(1).getDatumInt32());
+      assertEquals("d", rowMessage.getNewTuple(2).getColumnName());
+      assertEquals(4, rowMessage.getNewTuple(2).getDatumInt32());
 
       // COMMIT record.
-      rowMessage = outputList.get(5).getRowMessage();
+      rowMessage = outputList.get(4).getRowMessage();
       assertEquals(Op.COMMIT, rowMessage.getOp());
     } catch (Exception e) {
       LOG.error("Test to verify partial insert of columns failed");

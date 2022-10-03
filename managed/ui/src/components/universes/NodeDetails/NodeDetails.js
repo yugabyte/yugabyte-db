@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import _ from 'lodash';
+
 import { NodeDetailsTable } from '../../universes';
 import {
   isNonEmptyArray,
@@ -17,16 +19,18 @@ import {
 } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
-import _ from 'lodash';
 
 export default class NodeDetails extends Component {
   componentDidMount() {
     const {
-      universe: { currentUniverse }
+      universe: { 
+        currentUniverse, 
+      },
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
       const uuid = currentUniverse.data.universeUUID;
       this.props.getUniversePerNodeStatus(uuid);
+      this.props.resetNodeDetails();
       this.props.getMasterLeader(uuid);
       if (hasLiveNodes(currentUniverse.data)) {
         this.props.getUniversePerNodeMetrics(uuid);
@@ -58,6 +62,7 @@ export default class NodeDetails extends Component {
         nodeInstanceList,
         replicaNodeInstanceList,
         universePerNodeStatus,
+        universeNodeDetails,
         universePerNodeMetrics,
         universeMasterLeader
       },
@@ -72,7 +77,6 @@ export default class NodeDetails extends Component {
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
-
     const universeCreated = universeDetails.updateInProgress;
     const sortedNodeDetails = nodeDetails.sort((a, b) =>
       nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters)
@@ -88,6 +92,14 @@ export default class NodeDetails extends Component {
       let masterAlive = false;
       let tserverAlive = false;
       let isLoading = universeCreated;
+      let allowedNodeActions = nodeDetail.allowedActions;
+      const nodeName = nodeDetail.nodeName;
+      const hasUniverseNodeDetails = getPromiseState(universeNodeDetails).isSuccess() && 
+        isNonEmptyObject(universeNodeDetails.data);
+
+      // When node operation is in progress and when user swicthes between different tabs,
+      // polling stops and when user comes back to the nodes tab, this gives current status 
+      // of all the nodes during mount
       if (
         getPromiseState(universePerNodeStatus).isSuccess() &&
         isNonEmptyObject(universePerNodeStatus.data) &&
@@ -96,15 +108,19 @@ export default class NodeDetails extends Component {
         nodeStatus = insertSpacesFromCamelCase(
           universePerNodeStatus.data[nodeDetail.nodeName]['node_status']
         );
+        masterAlive = universePerNodeStatus.data[nodeDetail.nodeName]['master_alive'];
+        tserverAlive = universePerNodeStatus.data[nodeDetail.nodeName]['tserver_alive'];
+      }
 
-        masterAlive = universePerNodeStatus.data[nodeDetail.nodeName]['master_alive']
-        tserverAlive = universePerNodeStatus.data[nodeDetail.nodeName]['tserver_alive']
-        
+      if (hasUniverseNodeDetails && nodeName === universeNodeDetails.data.nodeName) {
+        allowedNodeActions = universeNodeDetails.data.allowedActions;
+        masterAlive = universeNodeDetails.data.isMaster;
+        tserverAlive = universePerNodeStatus.data.isTserver;
+        nodeStatus =  insertSpacesFromCamelCase(universeNodeDetails.data.state);
         isLoading = false;
       }
 
       let instanceName = '';
-      const nodeName = nodeDetail.nodeName;
 
       if (isDefinedNotNull(nodeInstanceList)) {
         const matchingInstance = nodeInstanceList.data.filter(
@@ -144,6 +160,7 @@ export default class NodeDetails extends Component {
           };
       return {
         nodeIdx: nodeDetail.nodeIdx,
+        nodeUuid: nodeDetail.nodeUuid,
         name: nodeName,
         instanceName: instanceName,
         cloudItem: `${nodeDetail.cloudInfo.cloud}`,
@@ -156,13 +173,14 @@ export default class NodeDetails extends Component {
         isTServer: nodeDetail.isTserver ? 'Details' : '-',
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
-        nodeStatus: nodeStatus,
-        allowedActions: nodeDetail.allowedActions,
+        nodeStatus,
+        allowedActions: allowedNodeActions,
         cloudInfo: nodeDetail.cloudInfo,
         isLoading: isLoading,
         isMasterAlive: masterAlive,
         isTserverAlive: tserverAlive,
         placementUUID: nodeDetail.placementUuid,
+        dedicatedTo: nodeDetail.dedicatedTo,
         ...metricsData
       };
     });

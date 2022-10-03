@@ -35,10 +35,12 @@ package yb.tserver;
 
 option java_package = "org.yb.tserver";
 
+import "yb/common/common_net.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/tablet/metadata.proto";
+import "yb/util/opid.proto";
 
 // RaftConfig remote bootstrap RPC calls.
 service RemoteBootstrapService {
@@ -47,7 +49,7 @@ service RemoteBootstrapService {
       returns (BeginRemoteBootstrapSessionResponsePB);
 
   // Check whether the specified session is active.
-  rpc CheckSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
+  rpc CheckRemoteBootstrapSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
       returns (CheckRemoteBootstrapSessionActiveResponsePB);
 
   // Fetch data (blocks, logs) from the server.
@@ -58,7 +60,31 @@ service RemoteBootstrapService {
   rpc EndRemoteBootstrapSession(EndRemoteBootstrapSessionRequestPB)
       returns (EndRemoteBootstrapSessionResponsePB);
 
-  rpc RemoveSession(RemoveSessionRequestPB) returns (RemoveSessionResponsePB);
+  rpc RemoveRemoteBootstrapSession(RemoveRemoteBootstrapSessionRequestPB)
+      returns (RemoveRemoteBootstrapSessionResponsePB);
+
+  // Register Log Anchor on the leader. RBS source calls this function on the
+  // tablet leader while beginning the RemoteBootstrapSession
+  rpc RegisterLogAnchor(RegisterLogAnchorRequestPB)
+      returns (RegisterLogAnchorResponsePB);
+
+  // Updates the Log Anchor on the tablet leader. RBS source calls the function
+  // whenever the LogAnchor is being updated locally.
+  rpc UpdateLogAnchor(UpdateLogAnchorRequestPB)
+      returns (UpdateLogAnchorResponsePB);
+
+  // Unregisters the Log Anchor on the leader, called by RBS source.
+  rpc UnregisterLogAnchor(UnregisterLogAnchorRequestPB)
+      returns (UnregisterLogAnchorResponsePB);
+
+  // Request to refresh the Log Anchor Session, called by RBS source.
+  rpc KeepLogAnchorAlive(KeepLogAnchorAliveRequestPB)
+      returns (KeepLogAnchorAliveResponsePB);
+
+  // RBS source asks the leader to change the role of the new peer post
+  // bootstrap.
+  rpc ChangePeerRole(ChangePeerRoleRequestPB)
+      returns (ChangePeerRoleResponsePB);
 }
 
 // Remote bootstrap-specific errors use this protobuf.
@@ -95,6 +121,12 @@ message RemoteBootstrapErrorPB {
 
     // Unknown RocksDB file.
     ROCKSDB_FILE_NOT_FOUND = 8;
+
+    // Unable to register/update LogAnchor on the tablet leader peer
+    REMOTE_LOG_ANCHOR_FAILURE = 9;
+
+    // Cannot ChangeRole for the new peer on the tablet-leader
+    REMOTE_CHANGE_PEER_ROLE_FAILURE = 10;
   }
 
   // The error code.
@@ -112,6 +144,9 @@ message BeginRemoteBootstrapSessionRequestPB {
 
   // tablet_id of the tablet the requester desires to bootstrap from.
   required bytes tablet_id = 2;
+
+  // connection info of the tablet leader peer for the corresponding tablet_id
+  optional ServerRegistrationPB tablet_leader_conn_info = 3;
 }
 
 message BeginRemoteBootstrapSessionResponsePB {
@@ -232,9 +267,62 @@ message EndRemoteBootstrapSessionResponsePB {
   optional bool session_kept = 1 [default = false];
 }
 
-message RemoveSessionRequestPB {
+message RemoveRemoteBootstrapSessionRequestPB {
   optional bytes session_id = 1;
 }
 
-message RemoveSessionResponsePB {
+message RemoveRemoteBootstrapSessionResponsePB {
 }
+
+message RegisterLogAnchorRequestPB {
+  // information on the owner requesting this anchor. can be something suffixed
+  // with the session id of the ongoing RemoteBootstrapSession. Used to map the
+  // incoming requests with the LogAnchors maintained.
+  required bytes owner_info = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+
+  // op id where the log anchor needs to be dropped.
+  required OpIdPB op_id = 3;
+}
+
+message RegisterLogAnchorResponsePB {}
+
+message UpdateLogAnchorRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+
+  // op id to which the log anchor needs to be updated to.
+  required OpIdPB op_id = 2;
+}
+
+message UpdateLogAnchorResponsePB {}
+
+message UnregisterLogAnchorRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+}
+
+message UnregisterLogAnchorResponsePB {}
+
+message KeepLogAnchorAliveRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+}
+
+message KeepLogAnchorAliveResponsePB {}
+
+message ChangePeerRoleRequestPB {
+  // RemoteBootstrapSession session_id that was used earlier to initiate a
+  // RemoteBootstrapAnchor request.
+  required bytes owner_info = 1;
+
+  // peer uuid of the new peer being bootstrapped.
+  required bytes requestor_uuid = 2;
+}
+
+message ChangePeerRoleResponsePB {}

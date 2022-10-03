@@ -56,7 +56,7 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
 
 PTInsertStmt::~PTInsertStmt() = default;
 
-CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
+Status PTInsertStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -87,7 +87,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
+Status PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
                                                    SemContext* sem_context) {
   RETURN_NOT_OK(inserting_value->Analyze(sem_context));
   if (auto values_clause = dynamic_cast<PTInsertValuesClause*>(inserting_value)) {
@@ -99,7 +99,7 @@ CHECKED_STATUS PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value
   }
 }
 
-CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
+Status PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
                                                   SemContext* sem_context) {
   if (values_clause->TupleCount() == 0) {
     return sem_context->Error(values_clause, ErrorCode::TOO_FEW_ARGUMENTS);
@@ -212,7 +212,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
+Status PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
                                                 SemContext* sem_context) {
   // Since JSON could be a PTBindVar, at this stage we don't have a clue about a JSON we've got
   // other than its type is a string.
@@ -224,7 +224,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
+Status PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
                                            const ColumnDesc* col_desc,
                                            const PTExpr::SharedPtr& value_expr,
                                            SemContext* sem_context) {
@@ -251,7 +251,7 @@ CHECKED_STATUS PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_n
 // For INSERT VALUES, default behaviour is to not modify missing columns
 // For INSERT JSON,   default behaviour is to replace missing columns with nulls - that is, unless
 // DEFAULT UNSET is specified
-CHECKED_STATUS PTInsertStmt::InitRemainingColumns(bool init_to_null,
+Status PTInsertStmt::InitRemainingColumns(bool init_to_null,
                                                   SemContext* sem_context) {
   if (!init_to_null) {
     // Not much we can do here

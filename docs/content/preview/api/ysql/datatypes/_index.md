@@ -9,11 +9,10 @@ menu:
   preview:
     identifier: api-ysql-datatypes
     parent: api-ysql
-    weight: 4200
+    weight: 400
 aliases:
   - /preview/api/ysql/datatypes/
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The following table lists the primitive and compound data types in YSQL.

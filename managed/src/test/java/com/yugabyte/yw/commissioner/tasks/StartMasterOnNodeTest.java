@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -74,9 +75,27 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-    ShellResponse dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .then(
+            invocation -> {
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                ShellResponse listResponse = new ShellResponse();
+                NodeTaskParams params = invocation.getArgument(1);
+                if (params.nodeUuid == null) {
+                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                } else {
+                  listResponse.message =
+                      "{\"universe_uuid\":\""
+                          + params.universeUUID
+                          + "\", "
+                          + "\"node_uuid\": \""
+                          + params.nodeUuid
+                          + "\"}";
+                }
+                return listResponse;
+              }
+              return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
+            });
 
     YBClient mockClient = mock(YBClient.class);
 

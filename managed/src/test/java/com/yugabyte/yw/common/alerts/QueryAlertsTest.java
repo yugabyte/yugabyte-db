@@ -6,11 +6,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
@@ -19,6 +16,7 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -53,16 +51,13 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(JUnitParamsRunner.class)
 public class QueryAlertsTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @Mock private ExecutionContext executionContext;
-
-  @Mock private ActorSystem actorSystem;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock private MetricQueryHelper queryHelper;
 
@@ -110,11 +105,9 @@ public class QueryAlertsTest extends FakeDBApplication {
             alertDestinationService,
             channelsManager,
             metricService);
-    when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     queryAlerts =
         new QueryAlerts(
-            executionContext,
-            actorSystem,
+            mockPlatformScheduler,
             alertService,
             queryHelper,
             metricService,

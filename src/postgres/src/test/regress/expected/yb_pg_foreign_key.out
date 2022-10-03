@@ -874,7 +874,7 @@ create table pktable (ptest1 int, primary key(base1), unique(base1, ptest1)) inh
 ERROR:  INHERITS not supported yet
 LINE 1: ...1 int, primary key(base1), unique(base1, ptest1)) inherits (...
                                                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 /*
 create table fktable (ftest1 int references pktable(base1));
 -- now some ins, upd, del
@@ -1194,7 +1194,7 @@ ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRABLE INITIALLY IMMEDI
 ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey DEFERRA...
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 BEGIN;
 -- doesn't match FK, should throw error now
 UPDATE pktable SET id = 10 WHERE id = 5;
@@ -1212,7 +1212,7 @@ ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE;
 ERROR:  ALTER TABLE ALTER CONSTRAINT not supported yet
 LINE 1: ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEF...
                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- illegal option
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY DEFERRED;
 ERROR:  constraint declared INITIALLY DEFERRED must be DEFERRABLE

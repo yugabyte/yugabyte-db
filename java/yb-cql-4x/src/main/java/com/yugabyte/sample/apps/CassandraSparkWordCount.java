@@ -21,11 +21,12 @@ import com.datastax.oss.driver.api.core.type.DataTypes;
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.commons.cli.CommandLine;
-import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Tuple2;
 import com.datastax.spark.connector.cql.CassandraConnector;
 import static com.datastax.spark.connector.japi.CassandraJavaUtil.javaFunctions;
@@ -34,7 +35,7 @@ import static com.datastax.spark.connector.japi.CassandraJavaUtil.someColumns;
 
 public class CassandraSparkWordCount extends AppBase {
 
-  private static final Logger LOG = Logger.getLogger(CassandraSparkWordCount.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CassandraSparkWordCount.class);
   // Static initialization of this workload's config.
   static {
     // Set the app type to simple.
@@ -90,7 +91,7 @@ public class CassandraSparkWordCount extends AppBase {
     //--------------------- Setting Input source (Cassandra table or file) -----------------------\\
     if (commandLine.hasOption("wordcount_input_file") &&
         commandLine.hasOption("wordcount_input_table")) {
-      LOG.fatal("Input source can be EITHER file or table: found both options set");
+      LOG.error("Input source can be EITHER file or table: found both options set");
       System.exit(1);
     } else if (commandLine.hasOption("wordcount_input_file")) {
       inputFile = commandLine.getOptionValue("wordcount_input_file");

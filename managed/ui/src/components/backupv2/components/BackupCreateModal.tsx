@@ -22,7 +22,7 @@ import {
 } from '../../common/forms/fields';
 import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
 import { useSelector } from 'react-redux';
-import { find, groupBy, uniqBy } from 'lodash';
+import { find, flatten, groupBy, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
@@ -35,7 +35,14 @@ import { createBackupSchedule, editBackupSchedule } from '../common/BackupSchedu
 
 import { IBackupSchedule } from '../common/IBackupSchedule';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
+import { components } from 'react-select';
+
+import Close from '../../universes/images/close.svg';
+
+import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
 import './BackupCreateModal.scss';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -50,10 +57,22 @@ type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 
 const DURATIONS = ['Days', 'Months', 'Years'];
 
-const PARALLEL_THREADS_RANGE = {
-  MIN: 1,
-  MAX: 100
-};
+const TABLES_NOT_PRESENT_MSG = (api: string) => (
+  <span className="alert-message warning">
+    <i className="fa fa-warning" /> There are no {api} databases in this universe to backup.
+  </span>
+);
+
+const CONFIG_DOESNT_SATISFY_NODES_MSG = () => (
+  <span className="alert-message warning">
+    <i className="fa fa-warning" />{' '}
+    <span>
+      <b>Warning!</b> This config does not have buckets for all regions that this universe has nodes
+      in. This will lead to increased costs due to cross region data transfer and can result in
+      violations related to data handling such as gdpr.{' '}
+    </span>
+  </span>
+);
 
 const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   return {
@@ -87,24 +106,6 @@ const STEPS = [
   }
 ];
 
-const validationSchema = Yup.object().shape({
-  storage_config: Yup.object().required('Required'),
-  db_to_backup: Yup.object().nullable().required('Required'),
-  retention_interval: Yup.number().when('keep_indefinitely', {
-    is: (keep_indefinitely) => !keep_indefinitely,
-    then: Yup.number().min(1, 'Duration must be greater than or equal to one')
-  }),
-  parallel_threads: Yup.number()
-    .min(
-      PARALLEL_THREADS_RANGE.MIN,
-      `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
-    )
-    .max(
-      PARALLEL_THREADS_RANGE.MAX,
-      `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
-    )
-});
-
 const initialValues = {
   scheduleName: '',
   policy_interval: 1,
@@ -118,7 +119,8 @@ const initialValues = {
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
-  parallel_threads: PARALLEL_THREADS_RANGE.MIN
+  parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+  storage_config: null as any
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -143,64 +145,111 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     (state: any) => state.universe?.currentUniverse?.data?.universeDetails
   );
 
+  const nodesInRegionsList =
+    uniq(flatten(universeDetails?.clusters.map((e: any) => e.regions.map((r: any) => r.code)))) ??
+    [];
+
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
 
   initialValues['parallel_threads'] =
     Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
     PARALLEL_THREADS_RANGE.MIN;
 
+  let isYbcEnabledinCurrentUniverse = false;
+
+  if (isDefinedNotNull(currentUniverseUUID)) {
+    isYbcEnabledinCurrentUniverse = isYbcEnabledUniverse(universeDetails);
+  }
+
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
 
-  const doCreateBackup = useMutation((values: any) => createBackup(values), {
-    onSuccess: (resp) => {
-      toast.success(
-        <span>
-          Backup is in progress. Click &nbsp;
-          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-            here
-          </a>
-          &nbsp; for task details
-        </span>
-      );
-      queryClient.invalidateQueries(['backups']);
-      onHide();
+  const doCreateBackup = useMutation(
+    (values: any) => {
+      if (isYbcEnabledinCurrentUniverse) {
+        values = omit(values, 'parallel_threads');
+      }
+      return createBackup(values);
     },
-    onError: (err: any) => {
-      onHide();
-      toast.error(err.response.data.error);
+    {
+      onSuccess: (resp) => {
+        toast.success(
+          <span>
+            Backup is in progress. Click &nbsp;
+            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+              here
+            </a>
+            &nbsp; for task details
+          </span>
+        );
+        queryClient.invalidateQueries(['backups']);
+        onHide();
+      },
+      onError: (err: any) => {
+        onHide();
+        toast.error(err.response.data.error);
+      }
     }
-  });
+  );
 
-  const doCreateBackupSchedule = useMutation((values: any) => createBackupSchedule(values), {
-    onSuccess: () => {
-      toast.success('Schedule policy created');
-      queryClient.invalidateQueries(['scheduled_backup_list']);
-      onHide();
-    },
-    onError: (err: any) => {
-      onHide();
-      toast.error(err?.data?.error ?? 'An Error occurred');
-    }
-  });
+  const doCreateBackupSchedule = useMutation(
+    (values: any) => {
+      if (isYbcEnabledinCurrentUniverse) {
+        values = omit(values, 'parallel_threads');
+      }
 
-  const doEditBackupSchedule = useMutation((val: ToogleScheduleProps) => editBackupSchedule(val), {
-    onSuccess: () => {
-      toast.success(`Schedule policy is updated`);
-      queryClient.invalidateQueries('scheduled_backup_list');
-      onHide();
+      return createBackupSchedule(values);
     },
-    onError: (resp: any) => {
-      onHide();
-      toast.error(resp?.response?.data?.error ?? 'An error occurred');
+    {
+      onSuccess: () => {
+        toast.success('Schedule policy created');
+        queryClient.invalidateQueries(['scheduled_backup_list']);
+        onHide();
+      },
+      onError: (err: any) => {
+        onHide();
+        toast.error(err?.response?.data?.error ?? 'An Error occurred');
+      }
     }
-  });
+  );
+
+  const doEditBackupSchedule = useMutation(
+    (val: ToogleScheduleProps) => {
+      if (isYbcEnabledinCurrentUniverse) {
+        val = omit(val, 'parallel_threads');
+      }
+
+      return editBackupSchedule(val);
+    },
+    {
+      onSuccess: () => {
+        toast.success(`Schedule policy is updated`);
+        queryClient.invalidateQueries('scheduled_backup_list');
+        onHide();
+      },
+      onError: (resp: any) => {
+        onHide();
+        toast.error(resp?.response?.data?.error ?? 'An error occurred');
+      }
+    }
+  );
 
   const groupedStorageConfigs = useMemo(() => {
+    // if user has only one storage config, select it by default
+    if (storageConfigs.data.length === 1) {
+      const { configUUID, configName, name } = storageConfigs.data[0];
+      initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
+    }
+
     const configs = storageConfigs.data
       .filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
-        return { value: c.configUUID, label: c.configName, name: c.name };
+        return {
+          value: c.configUUID,
+          label: c.configName,
+          name: c.name,
+          regions: c.data?.REGION_LOCATIONS
+        };
       });
 
     return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
@@ -211,11 +260,54 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   }, [storageConfigs]);
 
   if (!visible) return null;
+
+  const validationSchema = Yup.object().shape({
+    scheduleName: Yup.string().when('storage_config', {
+      is: () => isScheduledBackup,
+      then: Yup.string().required('Required')
+    }),
+    // we don't support schedules backups less than an hour
+    policy_interval: Yup.number().test({
+      message: 'Interval should be greater than an hour',
+      test: function (value) {
+        if (this.parent.use_cron_expression || !isScheduledBackup) {
+          return true;
+        }
+        return (
+          value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
+          MILLISECONDS_IN['HOURS']
+        );
+      }
+    }),
+    cron_expression: Yup.string().when('use_cron_expression', {
+      is: (use_cron_expression) => isScheduledBackup && use_cron_expression,
+      then: Yup.string().required('Required')
+    }),
+    storage_config: Yup.object().nullable().required('Required'),
+    db_to_backup: Yup.object().nullable().required('Required'),
+    retention_interval: Yup.number().when('keep_indefinitely', {
+      is: (keep_indefinitely) => !keep_indefinitely,
+      then: Yup.number().min(1, 'Duration must be greater than or equal to one')
+    }),
+    parallel_threads: Yup.number().when('storage_config', {
+      is: !isYbcEnabledinCurrentUniverse,
+      then: Yup.number()
+        .min(
+          PARALLEL_THREADS_RANGE.MIN,
+          `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+        )
+        .max(
+          PARALLEL_THREADS_RANGE.MAX,
+          `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+        )
+    })
+  });
+
   return (
     <YBModalForm
       size="large"
       title={STEPS[currentStep].title(isScheduledBackup, isEditMode)}
-      className="backup-create-modal"
+      className="backup-modal"
       visible={visible}
       validationSchema={validationSchema}
       showCancelButton={isScheduledBackup}
@@ -224,6 +316,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         { setSubmitting }: { setSubmitting: any; setFieldError: any }
       ) => {
         setSubmitting(false);
+
+        if (!tablesInUniverse?.data.some((t: ITable) => t.tableType === values['api_type'].value)) {
+          return;
+        }
+
         if (isScheduledBackup) {
           if (isEditMode) {
             doEditBackupSchedule.mutateAsync({
@@ -270,7 +367,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               isScheduledBackup,
               storageConfigs: groupedStorageConfigs,
               tablesInUniverse: tablesInUniverse?.data,
-              isEditMode
+              isEditMode,
+              nodesInRegionsList,
+              isYbcEnabledinCurrentUniverse
             })}
           </>
         )
@@ -287,7 +386,9 @@ function BackupConfigurationForm({
   tablesInUniverse,
   errors,
   isScheduledBackup,
-  isEditMode
+  isEditMode,
+  nodesInRegionsList,
+  isYbcEnabledinCurrentUniverse
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -303,11 +404,35 @@ function BackupConfigurationForm({
   errors: Record<string, string>;
   isScheduledBackup: boolean;
   isEditMode: boolean;
+  nodesInRegionsList: string[];
+  isYbcEnabledinCurrentUniverse: boolean;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
     value: null
   };
+
+  const isTableAvailableForBackup = tablesInUniverse?.some(
+    (t: ITable) => t.tableType === values['api_type'].value
+  );
+
+  const tablesByAPI =
+    tablesInUniverse?.filter((t: any) => t.tableType === values['api_type'].value) ?? [];
+
+  const uniqueKeyspaces = uniqBy(tablesByAPI, 'keySpace').map((t: any) => {
+    return {
+      label: t.keySpace,
+      value: t.keySpace
+    };
+  });
+
+  let regions_satisfied_by_config = true;
+
+  if (values['storage_config']?.regions?.length > 0) {
+    regions_satisfied_by_config = nodesInRegionsList.every((e) =>
+      find(values['storage_config'].regions, { REGION: e })
+    );
+  }
 
   return (
     <div className="backup-configuration-form">
@@ -367,6 +492,11 @@ function BackupConfigurationForm({
                 Use cron expression (UTC)
               </Col>
             </Row>
+            {errors['policy_interval'] && (
+              <Col lg={12} className="no-padding help-block standard-error">
+                {errors['policy_interval']}
+              </Col>
+            )}
           </Col>
           {errors['retention_interval'] && (
             <Col lg={12} className="no-padding help-block standard-error">
@@ -388,9 +518,14 @@ function BackupConfigurationForm({
             onChange={(_: any, val: any) => {
               setFieldValue('api_type', val);
               setFieldValue('db_to_backup', null);
+              setFieldValue('backup_tables', Backup_Options_Type.ALL);
+              setFieldValue('selected_ycql_tables', []);
             }}
             isDisabled={isEditMode}
           />
+        </Col>
+        <Col lg={12} className="no-padding">
+          {!isTableAvailableForBackup && TABLES_NOT_PRESENT_MSG(values['api_type'].label)}
         </Col>
       </Row>
       <Row>
@@ -406,7 +541,20 @@ function BackupConfigurationForm({
                   <span className="storage-cfg-name">{data.label}</span>
                   <StatusBadge statusType={Badge_Types.DELETED} customLabel={data.name} />
                 </>
-              )
+              ),
+              Option: (props: any) => {
+                return (
+                  <components.Option {...props}>
+                    <div className="storage-cfg-select-label">{props.data.label}</div>
+                    <div className="storage-cfg-select-meta">
+                      <span>{`${props.data.name}${
+                        props.data.regions?.length > 0 ? ',' : ''
+                      }`}</span>
+                      {props.data.regions?.length > 0 && <span>Multi-region support</span>}
+                    </div>
+                  </components.Option>
+                );
+              }
             }}
             styles={{
               singleValue: (props: any) => {
@@ -416,6 +564,7 @@ function BackupConfigurationForm({
             isClearable
             isDisabled={isEditMode}
           />
+          {!regions_satisfied_by_config && CONFIG_DOESNT_SATISFY_NODES_MSG()}
         </Col>
       </Row>
       <Row>
@@ -424,17 +573,7 @@ function BackupConfigurationForm({
             name="db_to_backup"
             component={YBFormSelect}
             label="Select the Database you want to backup"
-            options={[
-              ALL_DB_OPTION,
-              ...uniqBy(tablesInUniverse, 'keySpace')
-                .filter((t: any) => t.tableType === values['api_type'].value)
-                .map((t: any) => {
-                  return {
-                    label: t.keySpace,
-                    value: t.keySpace
-                  };
-                })
-            ]}
+            options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
               if (
@@ -463,7 +602,11 @@ function BackupConfigurationForm({
                     name="backup_tables"
                     component="input"
                     defaultChecked={values['backup_tables'] === target.value}
-                    disabled={values['db_to_backup']?.value === null || isEditMode}
+                    disabled={
+                      values['db_to_backup'] === null ||
+                      values['db_to_backup']?.value === null ||
+                      isEditMode
+                    }
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setFieldValue('backup_tables', e.target.value, false);
                       if (
@@ -541,24 +684,26 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
-      <Row>
-        <Col lg={6} className="no-padding">
-          <Field
-            name="parallel_threads"
-            component={YBNumericInput}
-            input={{
-              onChange: (val: number) => setFieldValue('parallel_threads', val),
-              value: values['parallel_threads']
-            }}
-            minVal={1}
-            label="Parallel threads (Optional)"
-            readOnly={isEditMode}
-          />
-          {errors['parallel_threads'] && (
-            <span className="standard-error">{errors['parallel_threads']}</span>
-          )}
-        </Col>
-      </Row>
+      {!isYbcEnabledinCurrentUniverse && (
+        <Row>
+          <Col lg={6} className="no-padding">
+            <Field
+              name="parallel_threads"
+              component={YBNumericInput}
+              input={{
+                onChange: (val: number) => setFieldValue('parallel_threads', val),
+                value: values['parallel_threads']
+              }}
+              minVal={1}
+              label="Parallel threads (Optional)"
+              readOnly={isEditMode}
+            />
+            {errors['parallel_threads'] && (
+              <span className="standard-error">{errors['parallel_threads']}</span>
+            )}
+          </Col>
+        </Row>
+      )}
       <SelectYCQLTablesModal
         tablesList={tablesInUniverse}
         visible={values['show_select_ycql_table']}
@@ -602,7 +747,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
   isEditMode
 }) => {
   const tablesInKeyspaces = tablesList
-    ?.filter((t) => t.tableType === values['api_type'].value)
+    ?.filter((t) => t.tableType === values['api_type'].value && !t.isIndexTable)
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );
@@ -611,6 +756,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
       formName="alertDestinationForm"
       title={'Select Tables'}
       visible={visible}
+      className="backup-modal"
       onHide={onHide}
       submitLabel="Confirm"
       onFormSubmit={(_values: any, { setSubmitting }: { setSubmitting: any }) => {
@@ -691,7 +837,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
                         );
                       }}
                     >
-                      X
+                      <img alt="Remove" src={Close} width="22" />
                     </span>
                   </div>
                 );

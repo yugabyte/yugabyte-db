@@ -57,6 +57,7 @@
       font-weight: 100;
       width: 136px;
       display: flex;
+      justify-content: center;
       align-items: center;
       font-size: 14px;
     }
@@ -96,18 +97,6 @@
       margin-top: 36px;
     }
 
-    .table-row {
-      cursor: pointer;
-
-      td {
-        font-weight: 400 !important;
-      }
-    }
-
-    .selected-row {
-      background: #f6f6f6;
-    }
-
     .backup-cancel {
       height: 30px;
       padding: 6px 10px;
@@ -129,23 +118,6 @@
 
   .action-danger > a {
     color: $YB_ERROR_ICON_COLOR !important;
-  }
-
-  .backup-list-table {
-    .react-bs-table .table-bordered > tbody > tr > td {
-      vertical-align: middle;
-      height: 45px;
-      padding: 0 !important;
-    }
-
-    .table-bordered thead th {
-      font-weight: 700;
-      padding: 0;
-    }
-
-    .react-bs-table-no-data {
-      font-weight: 400 !important;
-    }
   }
 
   .no-padding {
@@ -195,11 +167,14 @@
   overflow-y: auto !important;
 }
 
-// for content-title
-#backups-v2-title {
-  display: flex;
-
-  .yb-tag {
-    margin-top: 4px;
+.backup-modal {
+  .modal-body {
+    padding: 24px !important;
+  }
+  .modal-header {
+    padding: 22px 24px !important;
+    &.show-back-button {
+      padding: 11px 11px !important;
+    }
   }
 }

@@ -4,17 +4,16 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable YugabyteDB Anywhere's high availabilit
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte’s distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.
 
-YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with asynchronous replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere's high availability is an active standby model for multiple instances in a cluster with xCluster replication. Your YugabyteDB Anywhere data is replicated across multiple virtual machines (VMs), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
 Each high-availability cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
 
@@ -41,8 +40,6 @@ You can configure the active instance as follows:
 
 1. Navigate to **Admin** and make sure that **High Availability > Replication Configuration > Active** is selected, as per the following illustration:
 
-    <br><br>
-
     ![Replication configuration tab](/images/yp/high-availability/replication-configuration.png)<br><br>
 
 1. Enter the instance’s IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
@@ -51,19 +48,15 @@ You can configure the active instance as follows:
 
 1. Select your desired replication frequency, in minutes.
 
-    <br/>
-
     In most cases, you do not need to replicate very often. A replication interval of 5-10 minutes is recommended. For testing purposes, a 1-minute interval is more convenient.
 
 1. Click **Create**.
 
 1. Switch to **Instance Configuration**.
 
-    <br/>
-
     The address for this instance should be the only information under **Instances**.
 
-    <br/>
+
 
 Your active instance is now configured.
 
@@ -79,7 +72,7 @@ Once the active instance has been configured, you can configure one or more stan
 
 1. Paste the shared authentication key from the active instance into the **Shared Authentication Key** field.
 
-1. Switch to the active instance and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443, and then click **Continue** on the **Add Standby Instance** dialog.
+1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443, and then click **Continue** on the **Add Standby Instance** dialog.
 
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the high-availability cluster should now appear in the list of instances.
 
@@ -93,14 +86,22 @@ You can make a standby instance active as follows:
 
 1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup in the vast majority of cases) and enable **Confirm promotion**.
 
-1. Click **Continue**.
-
-    \
-    The restore take a few seconds, after which expect to be logged out.
+1. Click **Continue**.<br>
+The restore take a few seconds, after which expect to be logged out.
 
 1. Login using credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
+
+## Upgrade instances
+
+All instances involved in high availability should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
+
+Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these guidelines: 
+
+- Start an upgrade with an active instance.
+- After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
+- Proceed with upgrading standby instances. 
 
 ## Remove a standby instance
 
@@ -113,3 +114,13 @@ To remove a standby instance from a high-availability cluster, you need to remov
 The standby instance is now a standalone instance again.
 
 After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is recommended to wipe out the state information before using it in standalone mode. For assistance with resetting the state of a standby instance that you removed from a high-availability cluster, contact Yugabyte Support.
+
+## Limitations
+
+If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for high availability with other YugabyteDB Anywhere instances, then the following limitation applies:
+
+- All YugabyteDB Anywhere instances configured under high availability must use the same custom port.
+
+  The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
+
+  For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/).

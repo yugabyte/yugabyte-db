@@ -35,6 +35,7 @@ class MemTracker;
 namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
+using PgConfigReloader = std::function<Status(void)>;
 
 class TabletServerIf : public LocalTabletServer {
  public:
@@ -49,15 +50,18 @@ class TabletServerIf : public LocalTabletServer {
   virtual void get_ysql_catalog_version(uint64_t* current_version,
                                         uint64_t* last_breaking_version) const = 0;
 
+  virtual Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
-  virtual client::TransactionPool* TransactionPool() = 0;
+  virtual client::TransactionPool& TransactionPool() = 0;
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
 
   virtual tserver::TServerSharedData& SharedObject() = 0;
 
-  virtual CHECKED_STATUS GetLiveTServers(
+  virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 
   virtual const std::shared_ptr<MemTracker>& mem_tracker() const = 0;

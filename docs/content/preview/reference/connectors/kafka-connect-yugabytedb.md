@@ -3,14 +3,12 @@ title: Kafka Connect YugabyteDB
 headerTitle: Kafka Connect YugabyteDB
 linkTitle: Kafka Connect YugabyteDB
 description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to Kafka topics.
-section: REFERENCE
 menu:
   preview:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are two approaches of integrating [YugabyteDB](https://github.com/yugabyte/yugabyte-db) with Apache Kafka. Kafka provides [Kafka Connect](https://docs.confluent.io/3.0.0/connect/intro.html), a connector SDK for building such integrations.
@@ -42,7 +40,7 @@ For building and using this project, the following tools must be installed on yo
     ```sh
     mkdir -p ~/yb-kafka
     cd ~/yb-kafka
-    wget http://apache.cs.utah.edu/kafka/2.5.0/kafka_2.12-2.5.0.tgz
+    wget https://archive.apache.org/dist/kafka/2.5.0/kafka_2.12-2.5.0.tgz
     tar -xzf kafka_2.12-2.5.0.tgz
     ```
 
@@ -79,10 +77,9 @@ For building and using this project, the following tools must be installed on yo
 
      Feel free to `Ctrl-C` this process or switch to a different shell as more values can be added later as well to the same topic.
 
-1. Install YugabyteDB and create the database table.
+1. [Install YugabyteDB and start a local cluster](../../../quick-start/).
 
-    [Install YugabyteDB and start a local cluster](../../../quick-start/install/).
-    Create a database and table by running the following command. You can find `ycqlsh` in the `bin`  subdirectory located inside the YugabyteDB installation folder.
+1. Create the database and table by running the following commands in ysqlsh. You can find ysqlsh in the `bin` subdirectory located in the YugabyteDB installation folder.
 
     ```sql
     yugabyte=# CREATE DATABASE IF NOT EXISTS demo;

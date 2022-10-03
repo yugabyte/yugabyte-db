@@ -6,12 +6,11 @@ description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
 aliases:
   - /preview/deploy/enterprise-edition/prepare-environment/
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -62,12 +61,12 @@ showAsideToc: true
 
 The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
 
-- Kubernetes 1.18 or later.
+- Kubernetes 1.20 or later.
 - Helm 3.4 or later.
-- Ability to pull YugabyteDB Anywhere Docker image from quay.io repository
+- Ability to pull YugabyteDB Anywhere Docker image from [Quay.io](https://quay.io/) repository
 
 
-Before installing the YugabyteDB Admin Console, verify you have the following:
+Before installing the YugabyteDB Admin Console, verify that you have the following:
 
 - A Kubernetes cluster configured with [Helm](https://helm.sh/).
 - A Kubernetes node with minimum 4 CPU core and 15 GB RAM can be allocated to YugabyteDB Anywhere.
@@ -76,7 +75,7 @@ Before installing the YugabyteDB Admin Console, verify you have the following:
 To confirm that `helm` is configured correctly, run the following command:
 
 ```sh
-$ helm version
+helm version
 ```
 
 The output should be similar to the following:

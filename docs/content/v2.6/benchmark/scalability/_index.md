@@ -10,6 +10,7 @@ menu:
     identifier: scalability
     parent: benchmark
     weight: 20
+type: indexpage
 ---
 
 <div class="row">

@@ -8,8 +8,7 @@ menu:
     identifier: rank-dense-rank-percent-rank-cume-dist
     parent: aggregate-function-syntax-semantics
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes the uses of [`rank()`](./#rank), [`dense_rank()`](./#dense-rank), [`percent_rank()`](./#percent-rank), and [`cume_dist()`](./#cume-dist) as "within-group hypothetical-set" aggregate functions.

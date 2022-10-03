@@ -162,6 +162,11 @@
     flex: 1;
   }
 
+  .ua-auth-radio-field {
+    flex-shrink: 1;
+    margin-right: 16px;
+  }
+
   .ua-field {
     padding-right: 0px;
     display: flex;
@@ -257,18 +262,6 @@
 .ldap-info-popover,
 .oidc-info-popover {
   max-width: 650px;
-}
-
-.oidc-footer {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 8px 20px;
-}
-
-.oidc_footer_text {
-  display: flex;
-  flex-direction: row;
 }
 
 .oidc-modal-c {

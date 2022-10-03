@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNotNull;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;

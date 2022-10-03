@@ -463,8 +463,9 @@ InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& q
       return InternalType::kFrozenValue;
     case GIN_NULL:
       return InternalType::kGinNullValue;
+    case TUPLE:
+      return InternalType::kTupleValue;
 
-    case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       return InternalType::VALUE_NOT_SET;
@@ -559,9 +560,9 @@ bool YBSchema::Equals(const YBSchema& other) const {
          (schema_.get() && other.schema_.get() && schema_->Equals(*other.schema_));
 }
 
-bool YBSchema::EquivalentForDataCopy(const YBSchema& other) const {
-  return this == &other ||
-      (schema_.get() && other.schema_.get() && schema_->EquivalentForDataCopy(*other.schema_));
+bool YBSchema::EquivalentForDataCopy(const YBSchema& source) const {
+  return this == &source ||
+      (schema_.get() && source.schema_.get() && schema_->EquivalentForDataCopy(*source.schema_));
 }
 
 Result<bool> YBSchema::Equals(const SchemaPB& other) const {
@@ -572,12 +573,12 @@ Result<bool> YBSchema::Equals(const SchemaPB& other) const {
   return Equals(yb_schema);
 }
 
-Result<bool> YBSchema::EquivalentForDataCopy(const SchemaPB& other) const {
-  Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(other, &schema));
+Result<bool> YBSchema::EquivalentForDataCopy(const SchemaPB& source) const {
+  Schema source_schema;
+  RETURN_NOT_OK(SchemaFromPB(source, &source_schema));
 
-  YBSchema yb_schema(schema);
-  return EquivalentForDataCopy(yb_schema);
+  YBSchema source_yb_schema(source_schema);
+  return EquivalentForDataCopy(source_yb_schema);
 }
 
 const TableProperties& YBSchema::table_properties() const {

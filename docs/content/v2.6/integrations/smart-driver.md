@@ -7,8 +7,7 @@ menu:
     identifier: smart-driver
     parent: integrations
     weight: 577
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 JDBC Smart Driver for YSQL is a distributed driver based on the [PostgreSQL JDBC Driver](https://github.com/pgjdbc/pgjdbc).

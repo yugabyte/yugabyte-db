@@ -1,8 +1,19 @@
 // Copyright (c) YugaByte, Inc.
+import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
-import _ from 'lodash';
+import { PROVIDER_TYPES } from '../config';
+import { NodeState } from '../redesign/helpers/dtos';
+import { BASE_URL } from '../config';
+
+export const nodeInClusterStates = [
+  NodeState.Live,
+  NodeState.Stopping,
+  NodeState.Stopped,
+  NodeState.Starting,
+  NodeState.Unreachable,
+  NodeState.MetricsUnavailable
+];
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -76,27 +87,18 @@ export function getClusterProviderUUIDs(clusters) {
   return providers;
 }
 
-export function getUniverseNodes(clusters) {
-  const primaryCluster = getPrimaryCluster(clusters);
-  const readOnlyCluster = getReadOnlyCluster(clusters);
-  let numNodes = 0;
-  if (
-    isNonEmptyObject(primaryCluster) &&
-    isNonEmptyObject(primaryCluster.userIntent) &&
-    isDefinedNotNull(primaryCluster.userIntent.numNodes)
-  ) {
-    numNodes += primaryCluster.userIntent.numNodes;
-  }
-  if (
-    isNonEmptyObject(readOnlyCluster) &&
-    isNonEmptyObject(readOnlyCluster.userIntent) &&
-    isDefinedNotNull(readOnlyCluster.userIntent.numNodes)
-  ) {
-    numNodes += readOnlyCluster.userIntent.numNodes;
-  }
-
-  return numNodes;
-}
+/**
+ * @returns The number of nodes in "Live" or "Stopped" state.
+ * Restricted to a particular cluster if provided.
+ */
+export const getUniverseNodeCount = (nodeDetailsSet, cluster = null) => {
+  const nodes = nodeDetailsSet ?? [];
+  return nodes.filter(
+    (node) =>
+      (cluster === null || node.placementUuid === cluster.uuid) &&
+      _.includes(nodeInClusterStates, node.state)
+  ).length;
+};
 
 export function getProviderMetadata(provider) {
   return PROVIDER_TYPES.find((providerType) => providerType.code === provider.code);
@@ -137,8 +139,12 @@ export function isKubernetesUniverse(currentUniverse) {
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
     getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
-      'kubernetes'
+    'kubernetes'
   );
+}
+
+export const isYbcEnabledUniverse = (universeDetails) => {
+  return universeDetails?.enableYbc;
 }
 
 /**
@@ -164,7 +170,7 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp');
+  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
 };
 
 // Reads file and passes content into Promise.resolve
@@ -184,12 +190,6 @@ export const readUploadedFile = (inputFile, isRequired) => {
   });
 };
 
-export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) => {
-  let href = '';
-  if (IN_DEVELOPMENT_MODE || !!customer.INSECURE_apiToken) {
-    href = `http://${nodeIp}:${nodePort}`;
-  } else {
-    href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
-  }
-  return href;
+export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
+  return `${BASE_URL}/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
 };

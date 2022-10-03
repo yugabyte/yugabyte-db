@@ -8,19 +8,18 @@ menu:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```
-     1 | 
-     1 | 
-     1 | 
-     1 | 
-     5 | 
-    12 | 
-    25 | 
-    25 | 
+     1 |
+     1 |
+     1 |
+     1 |
+     5 |
+    12 |
+    25 |
+    25 |
     72 | =
    109 | =
    162 | ==
@@ -58,9 +57,9 @@ showAsideToc: true
    125 | =
     82 | =
     65 | =
-    25 | 
-     9 | 
-     8 | 
-     2 | 
-     1 | 
+    25 |
+     9 |
+     8 |
+     2 |
+     1 |
 ```

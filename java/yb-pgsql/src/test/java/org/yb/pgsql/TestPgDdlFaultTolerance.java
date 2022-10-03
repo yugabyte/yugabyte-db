@@ -330,6 +330,37 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
     }
   }
 
+  /*
+   * Test failure injection for REFRESHes on materialized views.
+   */
+  @Test
+  public void testRefreshMatviewFailureInjection() throws Exception {
+      try (Connection connection = getConnectionBuilder().connect();
+           Statement statement = connection.createStatement()) {
+
+      statement.execute("CREATE TABLE test (col int)");
+      statement.execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM test");
+
+      HostAndPort masterLeaderAddress = getMasterLeaderAddress();
+
+      setYSQLCatalogWriteRejection(masterLeaderAddress, 100);
+
+      runInvalidQuery(statement,"REFRESH MATERIALIZED VIEW mv",
+                      "Injected random failure for testing");
+
+      setYSQLCatalogWriteRejection(masterLeaderAddress, 0);
+
+      // Materialized view should still be usable.
+      statement.execute("SELECT * FROM mv");
+      statement.execute("INSERT INTO test VALUES (1)");
+      statement.execute("REFRESH MATERIALIZED VIEW mv");
+
+      Set<Row> expectedRows = new HashSet<>();
+      expectedRows.add(new Row(1));
+      assertRowSet(statement, "SELECT * from mv", expectedRows);
+    }
+  }
+
   public boolean checkIntermittentYsqlWriteFailure(HostAndPort masterLeaderAddress,
                                                   Statement statement) throws Exception {
 

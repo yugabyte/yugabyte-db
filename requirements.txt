@@ -18,3 +18,4 @@ wheel
 yugabyte_pycommon
 compiler-identification
 pytest
+llvm-installer

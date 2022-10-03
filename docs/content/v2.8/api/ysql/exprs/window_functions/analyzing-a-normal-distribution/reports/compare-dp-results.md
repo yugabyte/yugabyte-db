@@ -8,12 +8,11 @@ menu:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```
-bucket | pr n equal | pr min_s equal | pr max_s equal | cd n equal | cd min_s equal | cd max_s equal 
+bucket | pr n equal | pr min_s equal | pr max_s equal | cd n equal | cd min_s equal | cd max_s equal
 --------+------------+----------------+----------------+------------+----------------+----------------
       1 | true       | true           | true           | true       | true           | true
       2 | true       | true           | true           | true       | true           | true

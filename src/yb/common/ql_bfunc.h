@@ -50,15 +50,15 @@ namespace yb {
 // - Do not add non-static members to this class as QLBfunc is not meant for creating different
 //   objects with different behaviors. For compability reason, all builtin calls must be processed
 //   the same way across all processes and all releases in YugaByte.
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfql::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB* result);
 
 //--------------------------------------------------------------------------------------------------
 // PGSQL support
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfpg::BFOpcode opcode, std::vector<QLValuePB>* params, QLValuePB *result);
 
-CHECKED_STATUS ExecBfunc(
+Status ExecBfunc(
     bfpg::BFOpcode opcode, std::vector<LWQLValuePB>* params, LWQLValuePB *result);
 
 } // namespace yb

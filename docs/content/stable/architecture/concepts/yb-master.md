@@ -8,8 +8,7 @@ menu:
     identifier: architecture-concepts-yb-master
     parent: key-concepts
     weight: 1126
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YB-Master Service is the keeper of system metadata and records such as what tables exist in the system, where their tablets live, what users and roles exist, the permissions associated with them, and so on.

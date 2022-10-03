@@ -9,9 +9,8 @@ menu:
     parent: explore-indexes-constraints
     weight: 260
 aliases:
-   - /preview/explore/ysql-language-features/gin/
-isTocNested: true
-showAsideToc: true
+  - /preview/explore/ysql-language-features/gin/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

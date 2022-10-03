@@ -9,8 +9,7 @@ menu:
     identifier: linear-regression
     parent: aggregate-function-syntax-semantics
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 This parent section and its two child sections describe these aggregate functions for linear regression analysis:
@@ -172,5 +171,3 @@ The individual functions are described in these two child-sections
 - [`covar_pop()`, `covar_samp()`, `corr()`](./covar-corr/)
 
 - [`regr_%()`](./regr/)
-
-

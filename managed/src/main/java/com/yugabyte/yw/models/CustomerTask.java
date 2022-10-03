@@ -112,6 +112,9 @@ public class CustomerTask extends Model {
     @EnumValue("Release")
     Release,
 
+    @EnumValue("Reboot")
+    Reboot,
+
     @EnumValue("Edit")
     Edit,
 
@@ -127,6 +130,9 @@ public class CustomerTask extends Model {
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
+    @EnumValue("KubernetesOverridesUpgrade")
+    KubernetesOverridesUpgrade,
+
     @EnumValue("CertsRotate")
     CertsRotate,
 
@@ -138,6 +144,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("SystemdUpgrade")
     SystemdUpgrade,
+
+    @EnumValue("RebootUniverse")
+    RebootUniverse,
 
     @Deprecated
     @EnumValue("UpgradeSoftware")
@@ -174,6 +183,12 @@ public class CustomerTask extends Model {
 
     @EnumValue("Restore")
     Restore,
+
+    @EnumValue("CreatePitrConfig")
+    CreatePitrConfig,
+
+    @EnumValue("RestoreSnapshot")
+    RestoreSnapshot,
 
     @Deprecated
     @EnumValue("SetEncryptionKey")
@@ -236,7 +251,25 @@ public class CustomerTask extends Model {
     CreateTableSpaces,
 
     @EnumValue("ThirdpartySoftwareUpgrade")
-    ThirdpartySoftwareUpgrade;
+    ThirdpartySoftwareUpgrade,
+
+    @EnumValue("RotateAccessKey")
+    RotateAccessKey,
+
+    @EnumValue("CreateAndRotateAccessKey")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("RunApiTriggeredHooks")
+    RunApiTriggeredHooks,
+
+    @EnumValue("InstallYbcSoftware")
+    InstallYbcSoftware,
+
+    @EnumValue("UpgradeUniverseYbc")
+    UpgradeUniverseYbc,
+
+    @EnumValue("DisableYbc")
+    DisableYbc;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -248,6 +281,8 @@ public class CustomerTask extends Model {
           return completed ? "Paused " : "Pausing ";
         case Release:
           return completed ? "Released " : "Releasing ";
+        case Reboot:
+          return completed ? "Rebooted " : "Rebooting ";
         case Remove:
           return completed ? "Removed " : "Removing ";
         case ResizeNode:
@@ -274,6 +309,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+        case KubernetesOverridesUpgrade:
+          return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
         case CertsRotate:
           return completed ? "Updated Certificates " : "Updating Certificates ";
         case TlsToggle:
@@ -295,6 +332,10 @@ public class CustomerTask extends Model {
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
           return completed ? "Restored " : "Restoring ";
+        case CreatePitrConfig:
+          return completed ? "Created PITR Config" : "Creating PITR Config";
+        case RestoreSnapshot:
+          return completed ? "Restored Snapshot" : "Restoring Snapshot";
         case Restart:
           return completed ? "Restarted " : "Restarting ";
         case Backup:
@@ -339,6 +380,22 @@ public class CustomerTask extends Model {
               : "Upgrading third-party software for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
+        case RotateAccessKey:
+          return completed ? "Rotated Access Key" : "Rotating Access Key";
+        case RebootUniverse:
+          return completed ? "Rebooted " : "Rebooting ";
+        case CreateAndRotateAccessKey:
+          return completed
+              ? "Creating Access Key and Rotation Tasks"
+              : "Created New Access Key and Rotation Tasks";
+        case RunApiTriggeredHooks:
+          return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
+        case InstallYbcSoftware:
+          return completed ? "Installed Ybc" : "Installing Ybc";
+        case UpgradeUniverseYbc:
+          return completed ? "Upgraded Ybc" : "Upgrading Ybc";
+        case DisableYbc:
+          return completed ? "Disabled Ybc" : "Disabling Ybc";
         default:
           return null;
       }
@@ -364,6 +421,10 @@ public class CustomerTask extends Model {
           return "Start Master Process on";
         case PrecheckNode:
           return "Precheck";
+        case RebootUniverse:
+          return "Reboot";
+        case RestartUniverse:
+          return "Restart";
         default:
           return toFriendlyTypeName();
       }

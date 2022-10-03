@@ -16,6 +16,7 @@
 #include <thread>
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
@@ -48,6 +49,24 @@ DEFINE_bool(enable_automatic_tablet_splitting, true,
 DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
+
+DEFINE_bool(disable_hybrid_scan, false,
+            "If true, hybrid scan will be disabled");
+TAG_FLAG(disable_hybrid_scan, runtime);
+
+DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
+TAG_FLAG(enable_deadlock_detection, advanced);
+TAG_FLAG(enable_deadlock_detection, evolving);
+
+DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+            "Automatically promote transactions touching data outside of region to global.");
+
+DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
+                 "Enable the per database catalog version mode, a DDL statement is assumed to "
+                 "only affect the current database and will only increment catalog version for "
+                 "the current database. For an old cluster that is upgraded, this gflag should "
+                 "only be turned on after pg_yb_catalog_version is upgraded to one row per "
+                 "database.");
 
 namespace yb {
 
@@ -83,12 +102,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_yb_num_shards_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_ysql_num_shards_per_tserver);
+    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
   }
 }
 

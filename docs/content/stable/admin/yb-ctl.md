@@ -8,8 +8,7 @@ menu:
     identifier: yb-ctl
     parent: admin
     weight: 2410
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
@@ -130,6 +129,8 @@ Specifies the data directory for YugabyteDB.
 
 Default: `$HOME/yugabyte-data/`
 
+Changing the value of this flag after the cluster has already been created is not supported.
+
 ##### --master_flags
 
 Specifies a list of YB-Master flags, separated by commas.
@@ -144,7 +145,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/ysql), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -485,7 +486,7 @@ $ ./bin/yb-ctl restart
 - Restart with cloud, region and zone flags
 
 ```sh
-$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1"
 ```
 
 ### Restart with custom flags
@@ -534,7 +535,7 @@ $ ./bin/yb-ctl wipe_restart
 #### Wipe and restart with placement info flags
 
 ```sh
-$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1"
 ```
 
 #### Wipe and restart with custom flags

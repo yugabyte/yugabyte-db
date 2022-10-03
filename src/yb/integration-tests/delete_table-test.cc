@@ -64,6 +64,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
@@ -154,7 +155,7 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
   void WaitForLoadBalanceCompletion(yb::MonoDelta timeout);
 
   // Returns a list of all tablet servers registered with the master leader.
-  CHECKED_STATUS ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
+  Status ListAllLiveTabletServersRegisteredWithMaster(const MonoDelta& timeout,
                                                           vector<string>* ts_list);
 
   Result<bool> VerifyTableCompletelyDeleted(const YBTableName& table, const string& tablet_id);

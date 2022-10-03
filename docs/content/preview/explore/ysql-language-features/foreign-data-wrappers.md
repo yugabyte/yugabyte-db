@@ -1,20 +1,19 @@
 ---
-title: Foreign Data Wrappers
-linkTitle: Foreign Data Wrappers
-description: Foreign Data Wrappers in YSQL
+title: Foreign data wrappers
+linkTitle: Foreign data wrappers
+description: Foreign data wrappers in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-features-foreign-data-wrappers
     parent: explore-ysql-language-features
-    weight: 100
-isTocNested: true
-showAsideToc: true
+    weight: 250
+type: docs
 ---
 
 A foreign data wrapper is a library that you can use to access and interact with an external data (foreign data) source. They allow you to query foreign objects from remote servers as if they were local objects.
 
-To access foreign data, you first create a foreign data _wrapper_. Then, you create a foreign _server_, which specifies how to connect to the external data source. You may also need to create a user mapping to map a specific user to authorization credentials in the foreign server. Finally, you create foreign _tables_, which represent the structure of the data on the external source. 
+To access foreign data, you first create a foreign data _wrapper_. Then, you create a foreign _server_, which specifies how to connect to the external data source. You may also need to create a user mapping to map a specific user to authorization credentials in the foreign server. Finally, you create foreign _tables_, which represent the structure of the data on the external source.
 
 ## Create a foreign data wrapper
 
@@ -59,5 +58,6 @@ yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int)
 ```
 
 The following foreign data wrappers are bundled with YugabyteDB:
+
 - [postgres_fdw](../pg-extensions/#postgres-fdw-example)
 - [file_fdw](../pg-extensions/#file-fdw-example)

@@ -9,10 +9,8 @@ menu:
     identifier: download-the-covidcast-data
     parent: covid-data-case-study
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 Simply follow these step-by-step instructions:
 
 -  Create a directory on the computer where you run `ysqlsh` to hold the files for this case study. Call it, for example, _"covid-data-case-study"_.

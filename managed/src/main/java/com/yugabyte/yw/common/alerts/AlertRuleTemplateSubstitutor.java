@@ -12,18 +12,13 @@ package com.yugabyte.yw.common.alerts;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinitionLabel;
-import java.text.DecimalFormat;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 
 public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
-
-  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
-  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
-  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
   private static final String DEFINITION_NAME = "definition_name";
   private static final String DEFINITION_EXPR = "definition_expr";
   private static final String DURATION = "duration";
@@ -34,26 +29,27 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
   public AlertRuleTemplateSubstitutor(
       AlertConfiguration configuration,
       AlertDefinition definition,
-      AlertConfiguration.Severity severity) {
+      AlertConfiguration.Severity severity,
+      AlertTemplateSettings templateSettings) {
     super(
         key -> {
           switch (key) {
             case DEFINITION_NAME:
               return configuration.getName();
             case DEFINITION_EXPR:
-              return getQueryWithThreshold(
-                  definition.getQuery(), configuration.getThresholds().get(severity));
+              return definition.getQueryWithThreshold(configuration.getThresholds().get(severity));
             case DURATION:
               return configuration.getDurationSec() + "s";
             case LABELS:
               return definition
-                  .getEffectiveLabels(configuration, severity)
+                  .getEffectiveLabels(configuration, templateSettings, severity)
                   .stream()
                   .map(label -> LABEL_PREFIX + label.getName() + ": " + label.getValue())
                   .collect(Collectors.joining("\n"));
             case SUMMARY_TEMPLATE:
               AlertConfigurationLabelProvider labelProvider =
-                  new AlertConfigurationLabelProvider(configuration, definition, severity);
+                  new AlertConfigurationLabelProvider(
+                      configuration, definition, severity, templateSettings);
               AlertTemplateSubstitutor<AlertConfigurationLabelProvider> substitutor =
                   new AlertTemplateSubstitutor<>(labelProvider);
               return substitutor.replace(configuration.getTemplate().getSummaryTemplate());
@@ -64,28 +60,29 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
         });
   }
 
-  public static String getQueryWithThreshold(String query, AlertConfigurationThreshold threshold) {
-    return query
-        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
-        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
-  }
-
   @RequiredArgsConstructor
   private static class AlertConfigurationLabelProvider implements AlertLabelsProvider {
 
     private final AlertConfiguration alertConfiguration;
     private final AlertDefinition alertDefinition;
     private final AlertConfiguration.Severity severity;
+    private final AlertTemplateSettings alertTemplateSettings;
 
     @Override
     public String getLabelValue(String name) {
       return alertDefinition
-          .getEffectiveLabels(alertConfiguration, severity)
+          .getEffectiveLabels(alertConfiguration, alertTemplateSettings, severity)
           .stream()
           .filter(label -> name.equals(label.getName()))
           .map(AlertDefinitionLabel::getValue)
           .findFirst()
           .orElse(null);
+    }
+
+    @Override
+    public String getAnnotationValue(String name) {
+      // Don't have annotations in alert config
+      return null;
     }
 
     @Override

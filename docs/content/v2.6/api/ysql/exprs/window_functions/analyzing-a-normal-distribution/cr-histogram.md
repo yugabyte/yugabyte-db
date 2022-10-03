@@ -8,8 +8,7 @@ menu:
     identifier: cr-histogram
     parent: analyzing-a-normal-distribution
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_histogram.sql`.
 ```plpgsql

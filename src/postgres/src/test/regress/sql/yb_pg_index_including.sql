@@ -26,11 +26,21 @@ SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
 
--- Unique index and unique constraint. Both must fail.
+-- Unique index and unique constraint. Both must fail due to duplicate key values.
 CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
 INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
+
+-- Unique index and unique constraint. Must fail setting non-unique index as constraint.
+CREATE TABLE tbl_include_non_unique (c1 int, c2 int, c3 int, c4 int);
+CREATE INDEX tbl_include_non_unique_idx on tbl_include_non_unique (c1);
+ALTER TABLE tbl_include_non_unique ADD CONSTRAINT constr_non_unique UNIQUE USING INDEX tbl_include_non_unique_idx;
+
+-- Unique index and unique constraint. Must fail setting DESC unique index as constraint.
+CREATE TABLE tbl_include_desc_unique (c1 int, c2 int, c3 int, c4 int);
+CREATE UNIQUE INDEX tbl_include_desc_unique_idx on tbl_include_desc_unique (c1 DESC);
+ALTER TABLE tbl_include_desc_unique ADD CONSTRAINT constr_desc_unique UNIQUE USING INDEX tbl_include_desc_unique_idx;
 
 -- PK constraint
 CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 int);
@@ -167,20 +177,20 @@ DROP TABLE tbl;
 -- CREATE UNIQUE INDEX CONCURRENTLY on tbl (c1, c2) INCLUDE (c3, c4);
 -- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
 -- DROP TABLE tbl;
---
--- /*
---  * 5. REINDEX
---  */
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
--- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
--- ALTER TABLE tbl DROP COLUMN c3;
--- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
--- REINDEX INDEX tbl_c1_c2_c3_c4_key;
--- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
--- ALTER TABLE tbl DROP COLUMN c1;
--- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
--- DROP TABLE tbl;
---
+
+/*
+ * 5. REINDEX
+ */
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
+ALTER TABLE tbl DROP COLUMN c3;
+SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
+REINDEX INDEX tbl_c1_c2_c3_c4_key;
+SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
+ALTER TABLE tbl DROP COLUMN c1;
+SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
+DROP TABLE tbl;
+
 
 /*
  * 7. Check various AMs. All but btree and lsm must fail.

@@ -15,10 +15,6 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-#include "yb/client/yb_op.h"
-
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
@@ -46,6 +42,9 @@ Status PgTableDesc::Init() {
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
     attr_num_map_.emplace(column.order(), idx++);
+  }
+  if (resp_.has_tablegroup_id()) {
+    tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
   }
   return PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
@@ -84,6 +83,10 @@ bool PgTableDesc::IsColocated() const {
 
 YBCPgOid PgTableDesc::GetColocationId() const {
   return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
+}
+
+YBCPgOid PgTableDesc::GetTablegroupOid() const {
+  return tablegroup_oid_;
 }
 
 bool PgTableDesc::IsHashPartitioned() const {
@@ -157,6 +160,14 @@ const client::YBTableName& PgTableDesc::table_name() const {
   return table_name_;
 }
 
+size_t PgTableDesc::num_range_key_columns() const {
+  // skip system column: ybidxbasectid/ybuniqueidxkeysuffix of INDEX/UNIQUE INDEX
+  if (IsIndex()) {
+    return schema().num_range_key_columns() - 1;
+  }
+  return schema().num_range_key_columns();
+}
+
 size_t PgTableDesc::num_hash_key_columns() const {
   return schema().num_hash_key_columns();
 }
@@ -179,6 +190,10 @@ const Schema& PgTableDesc::schema() const {
 
 uint32_t PgTableDesc::schema_version() const {
   return resp_.version();
+}
+
+bool PgTableDesc::IsIndex() const {
+  return resp_.has_index_info();
 }
 
 }  // namespace pggate

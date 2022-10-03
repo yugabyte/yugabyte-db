@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.models;
 
+import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
-import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
-import static com.cronutils.model.CronType.UNIX;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -18,26 +18,26 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
+import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
-import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
 import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
-import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
-import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.PersistenceContextScope;
-import io.ebean.ExpressionList;
+import io.ebean.Query;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -64,7 +64,7 @@ import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -191,6 +191,10 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private UUID ownerUUID;
 
+  public UUID getOwnerUUID() {
+    return this.ownerUUID;
+  }
+
   @ApiModelProperty(value = "Time unit of frequency", accessMode = READ_WRITE)
   private TimeUnit frequencyTimeUnit;
 
@@ -202,6 +206,34 @@ public class Schedule extends Model {
     this.frequencyTimeUnit = frequencyTimeUnit;
   }
 
+  @Column
+  @ApiModelProperty(value = "Time on which schedule is expected to run", accessMode = READ_ONLY)
+  private Date nextScheduleTaskTime;
+
+  public Date getNextScheduleTaskTime() {
+    return nextScheduleTaskTime;
+  }
+
+  public void updateNextScheduleTaskTime(Date nextScheduleTime) {
+    this.nextScheduleTaskTime = nextScheduleTime;
+    save();
+  }
+
+  @ApiModelProperty(
+      value = "Backlog status of schedule arose due to conflicts",
+      accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private boolean backlogStatus;
+
+  public boolean getBacklogStatus() {
+    return this.backlogStatus;
+  }
+
+  public void updateBacklogStatus(boolean backlogStatus) {
+    this.backlogStatus = backlogStatus;
+    save();
+  }
+
   public String getCronExpression() {
     return cronExpression;
   }
@@ -210,7 +242,7 @@ public class Schedule extends Model {
     this.cronExpression = cronExpression;
   }
 
-  public void setCronExperssionandTaskParams(String cronExpression, ITaskParams params) {
+  public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
     this.cronExpression = cronExpression;
     this.taskParams = Json.toJson(params);
     save();
@@ -226,6 +258,10 @@ public class Schedule extends Model {
 
   public void resetSchedule() {
     this.status = State.Active;
+    // Update old next Expected Task time if it expired due to non-active state.
+    if (Util.isTimeExpired(this.nextScheduleTaskTime)) {
+      updateNextScheduleTaskTime(nextExpectedTaskTime(null, this));
+    }
     save();
   }
 
@@ -288,6 +324,7 @@ public class Schedule extends Model {
     schedule.frequencyTimeUnit = frequencyTimeUnit;
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
+    schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
     schedule.save();
     return schedule;
   }
@@ -370,6 +407,24 @@ public class Schedule extends Model {
         .findList();
   }
 
+  public static List<Schedule> getAllActiveSchedulesByOwnerUUIDAndType(
+      UUID ownerUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("owner_uuid", ownerUUID)
+        .eq("status", "Active")
+        .eq("task_type", taskType)
+        .findList();
+  }
+
+  public static List<Schedule> getAllByCustomerUUIDAndType(UUID customerUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .in("task_type", taskType)
+        .findList();
+  }
+
   public static List<Schedule> findAllScheduleWithCustomerConfig(UUID customerConfigUUID) {
     List<Schedule> scheduleList =
         find.query()
@@ -434,13 +489,7 @@ public class Schedule extends Model {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
         schedules.parallelStream().map(s -> toScheduleResp(s)).collect(Collectors.toList());
-    SchedulePagedApiResponse responseMin;
-    try {
-      responseMin = SchedulePagedApiResponse.class.newInstance();
-    } catch (Exception e) {
-      throw new IllegalStateException(
-          "Failed to create " + SchedulePagedApiResponse.class.getSimpleName() + " instance", e);
-    }
+    SchedulePagedApiResponse responseMin = new SchedulePagedApiResponse();
     responseMin.setEntities(schedulesList);
     responseMin.setHasPrev(response.isHasPrev());
     responseMin.setHasNext(response.isHasNext());
@@ -449,6 +498,17 @@ public class Schedule extends Model {
   }
 
   private static ScheduleResp toScheduleResp(Schedule schedule) {
+    Date nextScheduleTaskTime = schedule.nextScheduleTaskTime;
+    // In case of a schedule with a backlog, the next task can be executed in the next scheduler
+    // run.
+    if (schedule.backlogStatus) {
+      nextScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
+    }
+    // No need to show the next expected task time as it won't be able to execute due to non-active
+    // state.
+    if (!schedule.getStatus().equals(State.Active)) {
+      nextScheduleTaskTime = null;
+    }
     ScheduleRespBuilder builder =
         ScheduleResp.builder()
             .scheduleName(schedule.scheduleName)
@@ -459,18 +519,17 @@ public class Schedule extends Model {
             .frequencyTimeUnit(schedule.frequencyTimeUnit)
             .taskType(schedule.taskType)
             .status(schedule.status)
-            .cronExperssion(schedule.cronExpression)
+            .cronExpression(schedule.cronExpression)
             .runningState(schedule.runningState)
-            .failureCount(schedule.failureCount);
+            .failureCount(schedule.failureCount)
+            .nextExpectedTask(nextScheduleTaskTime)
+            .backlogStatus(schedule.backlogStatus);
 
     ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
     Date lastScheduledTime = null;
     if (lastTask != null) {
       lastScheduledTime = lastTask.getScheduledTime();
       builder.prevCompletedTask(lastScheduledTime);
-      builder.nextExpectedTask(nextExpectedTaskTime(lastScheduledTime, schedule));
-    } else {
-      builder.nextExpectedTask(nextExpectedTaskTime(lastScheduledTime, schedule));
     }
 
     JsonNode scheduleTaskParams = schedule.taskParams;
@@ -480,6 +539,8 @@ public class Schedule extends Model {
         BackupRequestParams params =
             mapper.convertValue(scheduleTaskParams, BackupRequestParams.class);
         builder.backupInfo(getV2ScheduleBackupInfo(params));
+        builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
+        builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
       } else if (Util.canConvertJsonNode(scheduleTaskParams, MultiTableBackup.Params.class)) {
         MultiTableBackup.Params params =
             mapper.convertValue(scheduleTaskParams, MultiTableBackup.Params.class);
@@ -496,14 +557,14 @@ public class Schedule extends Model {
     return builder.build();
   }
 
-  private static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
+  public static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
     long nextScheduleTime;
     if (schedule.cronExpression == null) {
       if (lastScheduledTime != null) {
         nextScheduleTime = lastScheduledTime.getTime() + schedule.frequency;
       } else {
         // The task will be definitely executed under 2 minutes (scheduler frequency).
-        return DateUtils.addMinutes(new Date(), 2);
+        return new Date();
       }
     } else {
       lastScheduledTime = new Date();

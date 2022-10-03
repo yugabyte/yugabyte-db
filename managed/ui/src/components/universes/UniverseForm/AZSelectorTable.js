@@ -36,6 +36,7 @@ const nodeStates = {
   ],
   inactiveStates: [
     'Unreachable',
+    'MetricsUnavailable',
     'ToBeRemoved',
     'Removing',
     'Removed',
@@ -682,19 +683,19 @@ export default class AZSelectorTable extends Component {
           {azList}
           {isNonEmptyArray(azListForSelectedRegions) &&
             azList.length <
-              (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
+            (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
             azList.length < azListForSelectedRegions.length && (
-            <Row>
-              <Col xs={4}>
-                <YBButton
-                  btnText="Add Zone"
-                  btnIcon="fa fa-plus"
-                  btnClass={'btn btn-orange universe-form-add-az-btn'}
-                  onClick={addNewAZField}
-                />
-              </Col>
-            </Row>
-          )}
+              <Row>
+                <Col xs={4}>
+                  <YBButton
+                    btnText="Add Zone"
+                    btnIcon="fa fa-plus"
+                    btnClass={'btn btn-orange universe-form-add-az-btn'}
+                    onClick={addNewAZField}
+                  />
+                </Col>
+              </Row>
+            )}
         </div>
       );
     }

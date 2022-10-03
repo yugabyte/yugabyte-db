@@ -8,8 +8,7 @@ menu:
     identifier: sportsdb
     parent: sample-data
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the YugabyteDB distributed SQL database and explore statistics for your favorite sport.
@@ -17,7 +16,7 @@ If you like sports statistics, you can install the PostgreSQL-compatible version
 You can install and use the SportsDB sample database using:
 
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
-- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
+- Using cloud shell or a client shell to connect to a cluster in YugabyteDB Managed. Refer to [Connect to clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Managed, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
@@ -49,7 +48,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to Yugabyte Cloud, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
+If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
 ### Create the SportsDB database
 

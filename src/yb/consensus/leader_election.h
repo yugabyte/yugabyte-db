@@ -82,7 +82,7 @@ class VoteCounter {
   // If the same vote is duplicated, 'is_duplicate' is set to true.
   // Otherwise, it is set to false.
   // If an OK status is not returned, the value in 'is_duplicate' is undefined.
-  CHECKED_STATUS RegisterVote(const std::string& voter_uuid, ElectionVote vote, bool* is_duplicate);
+  Status RegisterVote(const std::string& voter_uuid, ElectionVote vote, bool* is_duplicate);
 
   // If vote is not yet decided, returns ElectionVote::kUnknown.
   ElectionVote GetDecision() const;

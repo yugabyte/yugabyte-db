@@ -1,12 +1,15 @@
 import { useQuery } from 'react-query';
 import { fetchLiveQueries, fetchSlowQueries } from '../../../actions/universe';
 
+const LIVE_QUERY_REFETCH_INTERVAL = 60000;
+
 export const useLiveQueriesApi = ({ universeUUID }) => {
   const { refetch, isFetching, data } = useQuery(
     ['getLiveQueries', universeUUID],
     () => fetchLiveQueries(universeUUID),
     {
-      refetchOnMount: 'always'
+      refetchOnMount: 'always',
+      refetchInterval: LIVE_QUERY_REFETCH_INTERVAL
     }
   );
 
@@ -84,7 +87,7 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
   };
 };
 
-const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
+export const hasSubstringMatch = (textString, patternString, caseSensitive = false) => {
   if (!caseSensitive) {
     textString = textString.toLowerCase();
     patternString = patternString.toLowerCase();
