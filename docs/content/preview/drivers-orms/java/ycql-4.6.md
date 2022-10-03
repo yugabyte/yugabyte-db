@@ -1,82 +1,49 @@
 ---
-title: Build a Java application that uses YCQL
-headerTitle: Build a Java application
-linkTitle: More examples
-description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
+title: Connect an application
+linkTitle: Connect an app
+description: Java driver for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-java
-    identifier: java-46
-    weight: 550
+    identifier: ycql-java-driver-4.6
+    parent: java-drivers
+    weight: 500
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../yugabyte-jdbc/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
- <li >
-    <a href="../ysql-yb-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YB - JDBC
-    </a>
-  </li>
   <li >
-    <a href="../ysql-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-vertx-pg-client/" class="nav-link ">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vert.x PG Client
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC SSL/TLS
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-hibernate/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Hibernate
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-sdyb/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data YugabyteDB
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-spring-data/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA
-    </a>
-  </li>
-  <li>
-    <a href="../ysql-ebean/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebean
-    </a>
-  </li>
-  <li>
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB Java Driver for YCQL (3.10)
     </a>
   </li>
-  <li>
+  <li >
     <a href="../ycql-4.6/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
+      YugabyteDB Java Driver for YCQL (4.6)
     </a>
   </li>
 </ul>
 
 ## Maven
 
-To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.6.0-yb-x/), add the following Maven dependency to your application:
 
 ```xml
  <dependency>
@@ -92,7 +59,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start](../../../quick-start/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 
