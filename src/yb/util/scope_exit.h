@@ -15,6 +15,7 @@
 #define YB_UTIL_SCOPE_EXIT_H
 
 #include <type_traits>
+#include <utility>
 
 #include "yb/util/status_fwd.h"
 
