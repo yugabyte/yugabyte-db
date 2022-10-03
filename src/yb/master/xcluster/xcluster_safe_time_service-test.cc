@@ -212,6 +212,33 @@ TEST(XClusterSafeTimeServiceTest, ComputeSafeTime) {
     ASSERT_TRUE(safe_time_service.create_table_if_not_found_);
     ASSERT_TRUE(further_computation_needed);
   }
+
+  // Lagging transaction status tablet
+  {
+    XClusterSafeTimeServiceMocked safe_time_service;
+    safe_time_service.consumer_registry_ = default_consumer_registry;
+
+    const ProducerTabletInfo t5 = {cluster_uuid, "t5"};
+    safe_time_service.table_entries_[t1] = ht2;
+    safe_time_service.table_entries_[t2] = ht2;
+    safe_time_service.table_entries_[t3] = ht2;
+    safe_time_service.table_entries_[t5] = ht1;
+    safe_time_service.consumer_registry_[t5] = kSystemNamespaceId;
+
+    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
+    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht1);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht1);
+    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht1);
+    ASSERT_EQ(safe_time_service.entries_to_delete_.size(), 0);
+
+    safe_time_service.table_entries_[t5] = ht2;
+    ASSERT_OK(safe_time_service.ComputeSafeTime(dummy_leader_term));
+    ASSERT_EQ(safe_time_service.safe_time_map_.size(), 3);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db1], ht2);
+    ASSERT_EQ(safe_time_service.safe_time_map_[db2], ht2);
+    ASSERT_EQ(safe_time_service.safe_time_map_[kSystemNamespaceId], ht2);
+  }
 }
 
 }  // namespace master
