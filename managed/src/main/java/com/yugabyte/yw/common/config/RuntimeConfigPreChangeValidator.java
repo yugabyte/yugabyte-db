@@ -17,16 +17,20 @@ public interface RuntimeConfigPreChangeValidator {
   String getKeyPath();
 
   default void validateConfigGlobal(UUID scopeUUID, String path, String newValue) {
-    // Do nothing by default
+    validateAny(path, newValue);
   }
 
   default void validateConfigCustomer(
       Customer customer, UUID scopeUUID, String path, String newValue) {
-    // Do nothing by default
+    validateAny(path, newValue);
   }
 
   default void validateConfigUniverse(
       Universe universe, UUID scopeUUID, String path, String newValue) {
-    // Do nothing by default
+    validateAny(path, newValue);
+  }
+
+  default void validateAny(String path, String newValue) {
+    // Do nothing
   }
 }

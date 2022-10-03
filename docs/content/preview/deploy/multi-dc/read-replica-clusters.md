@@ -1,8 +1,9 @@
 ---
 title: Deploy read replica clusters
-headerTitle: Read replica clusters
-linkTitle: Read replica clusters
+headerTitle: Read replica deployment
+linkTitle: Read replicas
 description: Deploy read replica clusters to asynchronously replicate data from the primary cluster and guarantee timeline consistency.
+headContent: Deploy read replicas to asynchronously replicate data to different regions
 menu:
   preview:
     parent: multi-dc
@@ -15,7 +16,7 @@ In a YugabyteDB deployment, replication of data between nodes of your primary cl
 
 In a read replica cluster, read replicas are _observer nodes_ that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
 
-This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Read replicas](../../../yugabyte-platform/create-deployments/read-replicas/).
+This document describes how to deploy a read replica cluster using YugabyteDB. For information on deploying read replica clusters using YugabyteDB Anywhere, see [Create a read replica cluster](../../../yugabyte-platform/create-deployments/read-replicas/).
 
 ## Deploy a read replica cluster
 
@@ -23,7 +24,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
 
 1. Start the primary `yb-master` services and let them form a quorum.
 
-2. Define the primary cluster placement using the [`yb-admin modify_placement_info`](../../../admin/yb-admin/#modify-placement-info) command, as follows:
+1. Define the primary cluster placement using the [`yb-admin modify_placement_info`](../../../admin/yb-admin/#modify-placement-info) command, as follows:
 
     ```sh
     ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 modify_placement_info <placement_info> <replication_factor> [placement_uuid]
@@ -33,7 +34,7 @@ You can deploy a read replica cluster that asynchronously replicates data with a
     - *replication_factor*: Replication factor (RF) of the primary cluster.
     - *placement_uuid*: The placement identifier for the primary cluster, using a meaningful string.
 
-3. Define the read replica placement using the [`yb-admin add_read_replica_placement_info`](../../../admin/yb-admin/#add-read-replica-placement-info) command, as follows:
+1. Define the read replica placement using the [`yb-admin add_read_replica_placement_info`](../../../admin/yb-admin/#add-read-replica-placement-info) command, as follows:
 
     ```sh
     ./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 add_read_replica_placement_info <placement_info> <replication_factor> [placement_uuid]
@@ -43,22 +44,22 @@ You can deploy a read replica cluster that asynchronously replicates data with a
     - *replication_factor*: The total number of read replicas.
     - *placement_uuid*: The identifier for the read replica cluster, using a meaningful string.
 
-4. Start the primary `yb-tserver` services, including the following configuration flags:
+1. Start the primary `yb-tserver` services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *live_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-   <br>The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
+   The placements should match the information in step 2. You do not need to add these configuration flags to your `yb-master` configurations.
 
-5. Start the read replica `yb-tserver` services, including the following configuration flags:
+1. Start the read replica `yb-tserver` services, including the following configuration flags:
 
    - [--placement_cloud *placement_cloud*](../../../reference/configuration/yb-tserver/#placement-cloud)
    - [--placement_region *placement_region*](../../../reference/configuration/yb-tserver/#placement-region)
    - [--placement_zone *placement_zone*](../../../reference/configuration/yb-tserver/#placement-zone)
    - [--placement_uuid *read_replica_id*](../../../reference/configuration/yb-tserver/#placement-uuid)
 
-    <br>The placements should match the information in step 3.
+   The placements should match the information in step 3.
 
 The primary cluster should begin asynchronous replication with the read replica cluster.

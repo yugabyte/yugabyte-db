@@ -10,7 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/tserver/tablet_server.h"
+
 #include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service_context.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
@@ -27,7 +30,6 @@
 
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/cdc_consumer.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flags.h"
@@ -56,8 +58,42 @@ namespace yb {
 namespace tserver {
 namespace enterprise {
 
-using cdc::CDCServiceImpl;
-using yb::rpc::ServiceIf;
+namespace {
+
+class CDCServiceContextImpl : public cdc::CDCServiceContext {
+ public:
+  explicit CDCServiceContextImpl(TabletServer* tablet_server)
+      : tablet_server_(*tablet_server) {
+  }
+
+  tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const override {
+    return tablet_server_.tablet_manager()->LookupTablet(tablet_id);
+  }
+
+  Result<tablet::TabletPeerPtr> GetTablet(const TabletId& tablet_id) const override {
+    return tablet_server_.tablet_manager()->GetTablet(tablet_id);
+  }
+
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const override {
+    return tablet_server_.tablet_manager()->GetServingTablet(tablet_id);
+  }
+
+  const std::string& permanent_uuid() const override {
+    return tablet_server_.permanent_uuid();
+  }
+
+  std::unique_ptr<client::AsyncClientInitialiser> MakeClientInitializer(
+      const std::string& client_name, MonoDelta default_timeout) const override {
+    return std::make_unique<client::AsyncClientInitialiser>(
+        client_name, default_timeout, tablet_server_.permanent_uuid(), &tablet_server_.options(),
+        tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
+  }
+
+ private:
+  TabletServer& tablet_server_;
+};
+
+} // namespace
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
   : super(opts) {}
@@ -81,8 +117,9 @@ Status TabletServer::RegisterServices() {
   });
 #endif
 
-  cdc_service_ = std::make_shared<CDCServiceImpl>(
-      tablet_manager_.get(), metric_entity(), metric_registry());
+  cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
+      std::make_unique<CDCServiceContextImpl>(this), metric_entity(),
+      metric_registry());
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_ts_backup_svc_queue_length,
@@ -121,8 +158,8 @@ Status TabletServer::SetUniverseKeyRegistry(
 
 Status TabletServer::CreateCDCConsumer() {
   auto is_leader_clbk = [this](const string& tablet_id){
-    std::shared_ptr<tablet::TabletPeer> tablet_peer;
-    if (!tablet_manager_->LookupTablet(tablet_id, &tablet_peer)) {
+    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
+    if (!tablet_peer) {
       return false;
     }
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;

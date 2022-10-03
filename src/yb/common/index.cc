@@ -22,6 +22,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/compare_util.h"
 #include "yb/util/result.h"
 
 using std::vector;
@@ -250,6 +251,10 @@ const IndexColumn& IndexInfo::column(const size_t idx) const {
   return columns_[idx];
 }
 
+bool IndexInfo::TEST_Equals(const IndexInfo& lhs, const IndexInfo& rhs) {
+  return lhs.ToString() == rhs.ToString();
+}
+
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   FromPB(indexes);
 }
@@ -274,6 +279,14 @@ Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
     return STATUS(NotFound, Format("Index id $0 not found", index_id));
   }
   return &itr->second;
+}
+
+bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
+  // We can't use std::unordered_map's == because IndexInfo does not define ==.
+  using MapType = std::unordered_map<TableId, IndexInfo>;
+  return util::MapsEqual(static_cast<const MapType&>(lhs),
+                         static_cast<const MapType&>(rhs),
+                         &IndexInfo::TEST_Equals);
 }
 
 }  // namespace yb

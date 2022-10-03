@@ -132,6 +132,10 @@ DEFINE_test_flag(
     int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
+DEFINE_test_flag(
+    bool, skip_index_backfill, false,
+    "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
+
 namespace yb {
 namespace master {
 
@@ -378,6 +382,12 @@ Status MultiStageAlterTable::StartBackfillingData(
   TRACE("Starting backfill process");
   VLOG(0) << __func__ << " starting backfill on " << indexed_table->ToString() << " for "
           << yb::ToString(idx_infos);
+
+  if (FLAGS_TEST_skip_index_backfill) {
+    TRACE("Skipping backfill of data on tservers");
+    LOG(INFO) << "Skipping backfill of data on tservers";
+    return Status::OK();
+  }
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
@@ -1324,6 +1334,11 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
 }
 
 void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kAborted) {
+    VLOG(1) << " was aborted";
+    return;
+  }
+
   Status status;
   HybridTime safe_time;
   if (resp_.has_error()) {
@@ -1353,7 +1368,8 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
     : RetryingTSRpcTask(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
-                        backfill_tablet->tablet()->table().get()),
+                        backfill_tablet->tablet()->table().get(),
+                        /* async_task_throttler */ nullptr),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
       backfill_tablet_(backfill_tablet),
       start_key_(start_key),

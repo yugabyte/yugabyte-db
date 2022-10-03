@@ -2,6 +2,14 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
@@ -12,15 +20,18 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
-import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
+import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -34,17 +45,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 import com.yugabyte.yw.common.Util;
@@ -74,15 +75,25 @@ public class UpgradeUniverseHandler {
   }
 
   public UUID restartUniverse(
-      UpgradeTaskParams requestParams, Customer customer, Universe universe) {
+      RestartTaskParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
 
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
+
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        TaskType.RestartUniverse,
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.RestartUniverseKubernetesUpgrade
+            : TaskType.RestartUniverse,
         CustomerTask.TaskType.RestartUniverse,
         requestParams,
         customer,
@@ -126,6 +137,12 @@ public class UpgradeUniverseHandler {
           throw new PlatformServiceException(Status.BAD_REQUEST, msg);
         }
       }
+    }
+
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
 
     // Verify request params
@@ -180,6 +197,11 @@ public class UpgradeUniverseHandler {
       requestParams.tserverGFlags = trimFlags((requestParams.tserverGFlags));
     }
 
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -196,6 +218,22 @@ public class UpgradeUniverseHandler {
             ? TaskType.GFlagsKubernetesUpgrade
             : TaskType.GFlagsUpgrade,
         CustomerTask.TaskType.GFlagsUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID upgradeKubernetesOverrides(
+      KubernetesOverridesUpgradeParams requestParams, Customer customer, Universe universe) {
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
+    requestParams.verifyParams(universe);
+    return submitUpgradeTask(
+        TaskType.KubernetesOverridesUpgrade,
+        CustomerTask.TaskType.KubernetesOverridesUpgrade,
         requestParams,
         customer,
         universe);
@@ -267,6 +305,12 @@ public class UpgradeUniverseHandler {
     log.debug(
         "rotateCerts called with rootCA: {}",
         (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
+
+    // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
+        && requestParams.getReadOnlyClusters().size() == 0) {
+      requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
@@ -324,6 +368,14 @@ public class UpgradeUniverseHandler {
       }
       if (requestIntent.deviceInfo != null && requestIntent.deviceInfo.volumeSize != null) {
         requestCluster.userIntent.deviceInfo.volumeSize = requestIntent.deviceInfo.volumeSize;
+      }
+      if (requestIntent.masterInstanceType != null) {
+        requestCluster.userIntent.masterInstanceType = requestIntent.masterInstanceType;
+      }
+      if (requestIntent.masterDeviceInfo != null
+          && requestIntent.masterDeviceInfo.volumeSize != null) {
+        requestCluster.userIntent.masterDeviceInfo.volumeSize =
+            requestIntent.masterDeviceInfo.volumeSize;
       }
     }
   }
@@ -471,6 +523,12 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
 
     return submitUpgradeTask(
         TaskType.SystemdUpgrade,
@@ -485,6 +543,13 @@ public class UpgradeUniverseHandler {
     requestParams.verifyParams(universe);
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
+
+    if (universe.isYbcEnabled()) {
+      requestParams.installYbc = true;
+      requestParams.enableYbc = true;
+      requestParams.ybcSoftwareVersion = universe.getUniverseDetails().ybcSoftwareVersion;
+      requestParams.ybcInstalled = true;
+    }
 
     return submitUpgradeTask(
         TaskType.RebootUniverse,

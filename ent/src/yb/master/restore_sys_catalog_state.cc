@@ -385,10 +385,10 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 
   if (pb->version() != it->second.version()) {
     // Force schema update after restoration, if schema has changes.
-    pb->set_version(it->second.version() + 1);
     LOG(INFO) << "PITR: Patching the schema version for table " << id
               << ". Existing version " << it->second.version()
               << ", restoring version " << pb->version();
+    pb->set_version(it->second.version() + 1);
   }
 
   // Patch the partition version.
@@ -408,12 +408,10 @@ Status RestoreSysCatalogState::PatchColocatedTablet(
     return Status::OK();
   }
   auto it = existing_objects_.tablets.find(id);
-  // Since we are not allowed to drop the database on which schedule was set,
-  // it implies that the colocated tablet for the colocated database must always be present.
-  // TODO(Sanket): Probably these semantics will change for tablegroups.
-  if (it == existing_objects_.tablets.end()) {
-    return STATUS(Corruption, "Colocated tablet should be present.");
+  if (TabletDeleted(it->second)) {
+    return Status::OK();
   }
+
   bool colocated_table_deleted = false;
   TableId found_table_id;
   for (const auto& table_id : it->second.table_ids()) {

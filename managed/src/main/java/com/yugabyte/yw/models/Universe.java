@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -44,9 +45,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
@@ -85,6 +88,15 @@ public class Universe extends Model {
     return universe;
   }
 
+  public Boolean getSwamperConfigWritten() {
+    return swamperConfigWritten;
+  }
+
+  public void updateSwamperConfigWritten(Boolean swamperConfigWritten) {
+    this.swamperConfigWritten = swamperConfigWritten;
+    this.save();
+  }
+
   public enum HelmLegacy {
     V3,
     V2TO3
@@ -113,6 +125,8 @@ public class Universe extends Model {
   @DbJson
   @Column(columnDefinition = "TEXT")
   private Map<String, String> config;
+
+  private Boolean swamperConfigWritten;
 
   @JsonIgnore
   public void setConfig(Map<String, String> newConfig) {
@@ -157,6 +171,10 @@ public class Universe extends Model {
     this.version = -1;
     this.update();
   }
+
+  @OneToMany(mappedBy = "universe", cascade = CascadeType.ALL, orphanRemoval = true)
+  @JsonManagedReference
+  private List<PitrConfig> pitrConfigs;
 
   @JsonIgnore
   public List<String> getVersions() {
@@ -224,6 +242,7 @@ public class Universe extends Model {
     universe.universeDetails = taskParams;
     universe.universeDetailsJson =
         Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
+    universe.swamperConfigWritten = true;
     LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
@@ -277,6 +296,11 @@ public class Universe extends Model {
                 Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
   }
 
+  public static Set<Universe> getAllWithoutResources() {
+    List<Universe> rawList = find.query().findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
   public static Set<Universe> getAllWithoutResources(Customer customer) {
     List<Universe> rawList =
         find.query().where().eq("customer_id", customer.getCustomerId()).findList();
@@ -287,6 +311,11 @@ public class Universe extends Model {
     ExpressionList<Universe> query = find.query().where();
     CommonUtils.appendInClause(query, "universeUUID", uuids);
     List<Universe> rawList = query.findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
+  public static Set<Universe> getUniversesForSwamperConfigUpdate() {
+    List<Universe> rawList = find.query().where().eq("swamperConfigWritten", false).findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 

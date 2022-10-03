@@ -75,7 +75,8 @@ const DEFAULT_PORTS = {
   YQL_HTTP_PORT: 12000,
   YQL_RPC_PORT: 9042,
   YSQL_HTTP_PORT: 13000,
-  YSQL_RPC_PORT: 5433
+  YSQL_RPC_PORT: 5433,
+  NODE_EXPORTER_PORT: 9300
 };
 
 const DEFAULT_STORAGE_TYPES = {
@@ -145,6 +146,7 @@ const initialState = {
   enableEncryptionAtRest: false,
   useSystemd: false,
   customizePorts: false,
+  dedicatedNodes: false,
   // Geo-partitioning settings.
   defaultRegion: '',
   mastersInDefaultRegion: true,
@@ -211,6 +213,7 @@ export default class ClusterFields extends Component {
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
     this.tlsCertChanged = this.tlsCertChanged.bind(this);
+    this.toggleDedicatedNodes = this.toggleDedicatedNodes.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -288,7 +291,8 @@ export default class ClusterFields extends Component {
       communicationPorts.yqlServerHttpPort !== DEFAULT_PORTS.YQL_HTTP_PORT ||
       communicationPorts.yqlServerRpcPort !== DEFAULT_PORTS.YQL_RPC_PORT ||
       communicationPorts.ysqlServerHttpPort !== DEFAULT_PORTS.YSQL_HTTP_PORT ||
-      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT
+      communicationPorts.ysqlServerRpcPort !== DEFAULT_PORTS.YSQL_RPC_PORT ||
+      communicationPorts.nodeExporterPort !== DEFAULT_PORTS.NODE_EXPORTER_PORT
     );
   };
 
@@ -332,6 +336,7 @@ export default class ClusterFields extends Component {
       updateFormField('primary.yqlRpcPort', DEFAULT_PORTS.YQL_RPC_PORT);
       updateFormField('primary.ysqlHttpPort', DEFAULT_PORTS.YSQL_HTTP_PORT);
       updateFormField('primary.ysqlRpcPort', DEFAULT_PORTS.YSQL_RPC_PORT);
+      updateFormField('primary.nodeExporterPort', DEFAULT_PORTS.NODE_EXPORTER_PORT);
     } else if (type === 'Edit') {
       const { communicationPorts } = universeDetails;
       const customPorts = this.portsCustomized(communicationPorts);
@@ -347,13 +352,17 @@ export default class ClusterFields extends Component {
       updateFormField('primary.yqlRpcPort', communicationPorts.yqlServerRpcPort);
       updateFormField('primary.ysqlHttpPort', communicationPorts.ysqlServerHttpPort);
       updateFormField('primary.ysqlRpcPort', communicationPorts.ysqlServerRpcPort);
+      updateFormField('primary.nodeExporterPort', communicationPorts.nodeExporterPort);
     }
 
     if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
       this.setState({ universeName: formValues['primary'].universeName });
       this.setState({ ybcSoftwareVersion: formValues['primary'].ybcSoftwareVersion });
       updateFormField(`${clusterType}.universeName`, formValues['primary'].universeName);
-      updateFormField(`${clusterType}.ybcSoftwareVersion`, formValues['primary'].ybcSoftwareVersion);
+      updateFormField(
+        `${clusterType}.ybcSoftwareVersion`,
+        formValues['primary'].ybcSoftwareVersion
+      );
     }
 
     // This flag will prevent configure from being fired on component load
@@ -433,10 +442,10 @@ export default class ClusterFields extends Component {
           regionList: userIntent.regionList,
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
-          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion
+          mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
+          dedicatedNodes: userIntent.dedicatedNodes,
         });
       }
-
       this.props.getRegionListItems(providerUUID);
       if (
         clusterType === 'primary' &&
@@ -526,13 +535,15 @@ export default class ClusterFields extends Component {
             this.setState({ enableEncryptionAtRest: formValues['primary'].enableEncryptionAtRest });
           }
           if (isNonEmptyArray(formValues[clusterType].regionList)) {
-            this.setState({ regionList: formValues[clusterType].regionList});
+            this.setState({ regionList: formValues[clusterType].regionList });
           }
           if (formValues[clusterType].defaultRegion) {
             this.setState({ defaultRegion: formValues[clusterType].defaultRegion });
           }
           if (formValues[clusterType].mastersInDefaultRegion) {
-            this.setState({ mastersInDefaultRegion: formValues[clusterType].mastersInDefaultRegion });
+            this.setState({
+              mastersInDefaultRegion: formValues[clusterType].mastersInDefaultRegion
+            });
           }
         }
       } else {
@@ -1039,6 +1050,12 @@ export default class ClusterFields extends Component {
     const { updateFormField, clusterType } = this.props;
     updateFormField(`${clusterType}.useTimeSync`, event.target.checked);
     this.setState({ useTimeSync: event.target.checked });
+  }
+
+  toggleDedicatedNodes(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.dedicatedNodes`, event.target.checked);
+    this.setState({ nodeSetViaAZList: false, dedicatedNodes: event.target.checked });
   }
 
   toggleAssignPublicIP(event) {
@@ -1677,6 +1694,7 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
+    const isAuthEnforced = !(featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth);
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -1872,6 +1890,7 @@ export default class ClusterFields extends Component {
             />
           );
         }
+
         const numVolumes = (
           <span className="volume-info-field volume-info-count">
             <Field
@@ -1879,7 +1898,11 @@ export default class ClusterFields extends Component {
               component={YBUnControlledNumericInput}
               label="Number of Volumes"
               onInputChanged={self.numVolumesChanged}
-              readOnly={fixedNumVolumes || !hasInstanceTypeChanged}
+              readOnly={
+                fixedNumVolumes ||
+                !hasInstanceTypeChanged ||
+                (this.props.type === 'Edit' && this.state.isKubernetesUniverse)
+              }
             />
           </span>
         );
@@ -1898,7 +1921,11 @@ export default class ClusterFields extends Component {
               label="Volume Size"
               valueFormat={volumeTypeFormat}
               onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || (!hasInstanceTypeChanged && !smartResizePossible)}
+              readOnly={
+                fixedVolumeInfo ||
+                (!hasInstanceTypeChanged && !smartResizePossible) ||
+                (this.props.type === 'Edit' && this.state.isKubernetesUniverse)
+              }
             />
           </span>
         );
@@ -1956,6 +1983,7 @@ export default class ClusterFields extends Component {
       }
     }
 
+    let dedicatedNodes = <span />;
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
@@ -1972,6 +2000,28 @@ export default class ClusterFields extends Component {
     let selectEncryptionAtRestConfig = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
+    const showDedicatedNodesToggle =
+        featureFlags.test['enableDedicatedNodes'] ||
+        featureFlags.released['enableDedicatedNodes'];
+    if (
+        isDefinedNotNull(currentProvider) &&
+        (currentProvider.code === 'aws' ||
+         currentProvider.code === 'gcp' ||
+         currentProvider.code === 'azu' ||
+         currentProvider.code === 'onprem') &&
+         clusterType === 'primary' &&
+         showDedicatedNodesToggle) {
+      dedicatedNodes = (
+        <Field
+          name={`${clusterType}.dedicatedNodes`}
+          component={YBToggle}
+          checkedVal={this.state.dedicatedNodes}
+          onToggle={this.toggleDedicatedNodes}
+          label="Use dedicated nodes for processes"
+          subLabel="Place tserver and master processes on separate nodes."
+        />
+      );
+    }
     if (
       isDefinedNotNull(currentProvider) &&
       (currentProvider.code === 'aws' ||
@@ -1992,7 +2042,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
-      enableYSQLAuth = (
+      enableYSQLAuth = (!isAuthEnforced &&
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2051,7 +2101,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YCQL API endpoint to run cassandra compatible workloads."
         />
       );
-      enableYCQLAuth = (
+      enableYCQLAuth = (!isAuthEnforced &&
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2636,10 +2686,10 @@ export default class ClusterFields extends Component {
                 <Row>
                   <div className="form-right-aligned-labels">
                     {enableGeoPartitioning && (
-	                    <Field
-                        name={`${clusterType}.mastersInDefaultRegion`}C
+                      <Field
+                        name={`${clusterType}.mastersInDefaultRegion`}
                         component={YBToggle}
-                        isReadOnly={isFieldReadOnly || (this.state.defaultRegion === '')}
+                        isReadOnly={isFieldReadOnly || this.state.defaultRegion === ''}
                         disableOnChange={disableToggleOnChange}
                         checkedVal={this.state.mastersInDefaultRegion}
                         onToggle={this.toggleMastersInDefaultRegion}
@@ -2751,6 +2801,14 @@ export default class ClusterFields extends Component {
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
+                {dedicatedNodes}
+              </div>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
                 {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
@@ -2824,8 +2882,6 @@ export default class ClusterFields extends Component {
                     onInputChanged={this.softwareVersionChanged}
                     readOnlySelect={isSWVersionReadOnly}
                   />
-
-
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (
@@ -3077,6 +3133,23 @@ export default class ClusterFields extends Component {
                       normalize={normalizeToValidPort}
                       validate={portValidation}
                       label="Yedis RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && currentProvider.code !== "onPrem" && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.nodeExporterPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Node Exporter Port"
                       isReadOnly={isFieldReadOnly}
                     />
                   </div>

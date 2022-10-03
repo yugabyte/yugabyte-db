@@ -15,6 +15,7 @@
 
 #include <memory>
 
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_metrics.h"
 #include "yb/cdc/cdc_producer.h"
@@ -45,12 +46,6 @@ class TableHandle;
 
 }
 
-namespace tserver {
-
-class TSTabletManager;
-
-}
-
 namespace cdc {
 
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
@@ -72,7 +67,7 @@ struct TabletCheckpoint {
   // Timestamp at which the op ID was last updated.
   CoarseTimePoint last_update_time;
   // Timestamp at which stream polling happen.
-  CoarseTimePoint last_active_time;
+  int64_t last_active_time;
 
   bool ExpiredAt(std::chrono::milliseconds duration, std::chrono::time_point<CoarseMonoClock> now) {
     return !IsInitialized(last_update_time) || (now - last_update_time) >= duration;
@@ -85,16 +80,15 @@ struct TabletCDCCheckpointInfo {
   OpId cdc_op_id = OpId::Max();
   OpId cdc_sdk_op_id = OpId::Invalid();
   MonoDelta cdc_sdk_op_id_expiration = MonoDelta::kZero;
-  CoarseTimePoint cdc_sdk_most_active_time = CoarseTimePoint::min();
-  std::unordered_set<CDCStreamId> active_stream_list;
+  int64_t cdc_sdk_latest_active_time = 0;
 };
 
-using TabletOpIdMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
+using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
-  CDCServiceImpl(tserver::TSTabletManager* tablet_manager,
+  CDCServiceImpl(std::unique_ptr<CDCServiceContext> context,
                  const scoped_refptr<MetricEntity>& metric_entity_server,
                  MetricRegistry* metric_registry);
 
@@ -127,9 +121,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                 UpdateCdcReplicatedIndexResponsePB* resp,
                                 rpc::RpcContext rpc) override;
 
-  void GetLatestEntryOpId(const GetLatestEntryOpIdRequestPB* req,
-                          GetLatestEntryOpIdResponsePB* resp,
-                          rpc::RpcContext context) override;
+  Result<GetLatestEntryOpIdResponsePB> GetLatestEntryOpId(
+      const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) override;
 
   void BootstrapProducer(const BootstrapProducerRequestPB* req,
                          BootstrapProducerResponsePB* resp,
@@ -140,8 +133,10 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
-      const string& tablet_id, int64 replicated_index, boost::optional<int64> replicated_term,
-      const OpId& cdc_sdk_replicated_op, const MonoDelta& cdc_sdk_op_id_expiration);
+      const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
+      const MonoDelta& cdc_sdk_op_id_expiration);
+
+  void RollbackCdcReplicatedIndexEntry(const string& tablet_id);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -194,6 +189,14 @@ class CDCServiceImpl : public CDCServiceIf {
   template <class ReqType, class RespType>
   bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
+  Status CheckStreamActive(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      const int64_t& last_active_time_passed = 0);
+
+  Result<int64_t> GetLastActiveTime(
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      bool ignore_cache = false);
+
   Result<OpId> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                  const client::YBSessionPtr& session);
 
@@ -204,12 +207,14 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<std::string> GetCdcStreamId(const ProducerTabletInfo& producer_tablet,
                                      const std::shared_ptr<client::YBSession>& session);
 
-  Status UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
-                                  const OpId& sent_op_id,
-                                  const OpId& commit_op_id,
-                                  const client::YBSessionPtr& session,
-                                  uint64_t last_record_hybrid_time,
-                                  bool force_update = false);
+  Status UpdateCheckpointAndActiveTime(
+      const ProducerTabletInfo& producer_tablet,
+      const OpId& sent_op_id,
+      const OpId& commit_op_id,
+      const client::YBSessionPtr& session,
+      uint64_t last_record_hybrid_time,
+      const CDCRequestSource& request_source = CDCRequestSource::CDCSDK,
+      bool force_update = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
       const CDCStreamId& stream_id);
@@ -238,17 +243,11 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req,
                                  GetCheckpointResponsePB* resp,
-                                 rpc::RpcContext* context,
-                                 const std::shared_ptr<tablet::TabletPeer>& peer);
+                                 rpc::RpcContext* context);
 
-  void UpdateTabletPeersWithMinReplicatedIndex(TabletOpIdMap* tablet_min_checkpoint_map);
+  void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
-
-  Status TabletLeaderIsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
-                                         IsBootstrapRequiredResponsePB* resp,
-                                         rpc::RpcContext* context,
-                                         const std::shared_ptr<tablet::TabletPeer>& peer);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);
@@ -330,7 +329,7 @@ class CDCServiceImpl : public CDCServiceIf {
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
-  Result<TabletOpIdMap> PopulateTabletCheckPointInfo(
+  Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
       TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
@@ -355,7 +354,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   rpc::Rpcs rpcs_;
 
-  tserver::TSTabletManager* tablet_manager_;
+  std::unique_ptr<CDCServiceContext> context_;
 
   MetricRegistry* metric_registry_;
 

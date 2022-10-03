@@ -11,6 +11,10 @@ export const ROOT_URL =
   process.env.REACT_APP_YUGAWARE_API_URL ||
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
+// Allow requests made to endpoints in ‘routes’ file.
+export const BASE_URL =
+  (IN_DEVELOPMENT_MODE ? "http://localhost:9000" : '');
+
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
   ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/map`
   : '/static/map';

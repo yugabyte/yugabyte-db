@@ -7,5 +7,7 @@ import java.util.UUID;
 public interface AlertLabelsProvider {
   String getLabelValue(String name);
 
+  String getAnnotationValue(String name);
+
   UUID getUuid();
 }

@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.YbPgDbEncrypt;
+import com.yugabyte.yw.common.YbEncryptKeyManager;
+
 import io.ebean.config.ServerConfig;
 import io.ebean.event.ServerConfigStartup;
 import play.libs.Json;
@@ -25,5 +28,9 @@ public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
     // deserialization yields same results. Specifically FAIL_ON_UNKNOWN_PROPERTIES is
     // set to false by play.
     serverConfig.setObjectMapper(Json.mapper());
+    serverConfig.setEncryptKeyManager(new YbEncryptKeyManager());
+
+    // Do not overwrite the test server's encryption object
+    if (serverConfig.getDbEncrypt() == null) serverConfig.setDbEncrypt(new YbPgDbEncrypt());
   }
 }

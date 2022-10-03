@@ -65,6 +65,15 @@ struct ProducerTabletInfo {
   };
 };
 
+struct XClusterTabletInfo {
+  ProducerTabletInfo producer_tablet_info;
+  ConsumerTabletInfo consumer_tablet_info;
+
+  const std::string& producer_tablet_id() const {
+    return producer_tablet_info.tablet_id;
+  }
+};
+
 struct CDCCreationState {
   std::vector<CDCStreamId> created_cdc_streams;
   std::vector<ProducerTabletInfo> producer_entries_modified;

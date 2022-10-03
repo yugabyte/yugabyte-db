@@ -209,7 +209,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
           assertTrue(versions.contains(version));
           assertNotNull(release.filePath);
           assertNotNull(release.chartPath);
-          assertEquals(2, release.packages.size());
+          assertEquals(3, release.packages.size());
         });
   }
 
@@ -353,7 +353,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
                         Architecture.x86_64)
                     .withPackage(
                         TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
-                        Architecture.arm64));
+                        Architecture.arm64)
+                    .withPackage(
+                        TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
+                        Architecture.aarch64));
 
     assertEquals(SoftwareReleases, configType.getValue());
     assertReleases(expectedMap, releaseMap.getValue());
@@ -412,7 +415,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
                     Architecture.x86_64)
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-aarch64.tar.gz",
-                    Architecture.arm64));
+                    Architecture.arm64)
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-0.0.2-b2-almalinux8-aarch64.tar.gz",
+                    Architecture.aarch64));
     assertReleases(expectedMap, releaseMap.getValue());
     assertEquals(SoftwareReleases, configType.getValue());
   }
@@ -536,7 +542,8 @@ public class ReleaseManagerTest extends FakeDBApplication {
             ReleaseManager.ReleaseMetadata.create("0.0.2")
                 .withFilePath("/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz")
                 .withChartPath("")
-                .withPackage("/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz", Architecture.arm64));
+                .withPackage(
+                    "/path/to/yugabyte-0.0.2-centos-aarch64.tar.gz", Architecture.aarch64));
     assertReleases(expectedMap, releaseMap.getValue());
   }
 
@@ -598,7 +605,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
                     Architecture.x86_64)
                 .withPackage(
                     TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
-                    Architecture.arm64));
+                    Architecture.arm64)
+                .withPackage(
+                    TMP_STORAGE_PATH + "/0.0.4-b4/yugabyte-0.0.4-b4-centos-aarch64.tar.gz",
+                    Architecture.aarch64));
     when(configHelper.getConfig(SoftwareReleases)).thenReturn(expectedMap);
     releaseManager.updateCurrentReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;

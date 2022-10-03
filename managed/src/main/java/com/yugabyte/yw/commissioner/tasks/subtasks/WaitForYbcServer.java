@@ -46,6 +46,10 @@ public class WaitForYbcServer extends UniverseTaskBase {
     public Set<NodeDetails> nodeDetailsSet = null;
   }
 
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
+
   @Override
   public void run() {
     boolean isYbcConfigured = true;

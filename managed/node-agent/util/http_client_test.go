@@ -36,12 +36,11 @@ func TestValidate(t *testing.T) {
 }
 
 func TestHttpClientSuccess(t *testing.T) {
-	config, err := GetTestConfig()
-	if err != nil {
-		t.Errorf("Loading test config failed")
-	}
-
-	testClient := NewHttpClient(100, config.GetString(PlatformHost), config.GetString(PlatformPort))
+	config := CurrentConfig()
+	testClient := NewHttpClient(
+		100,
+		config.String(PlatformUrlKey),
+	)
 	res, err := testClient.Do(http.MethodGet, "/test", nil, nil, nil)
 	if err != nil {
 		t.Errorf("Error while calling the request.")

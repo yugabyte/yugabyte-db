@@ -1,11 +1,23 @@
 // Copyright (c) YugaByte, Inc.
 
 import LoginForm from './LoginForm';
-import { login, loginResponse, resetCustomerError } from '../../../../actions/customers';
+import {
+  login,
+  loginResponse,
+  resetCustomerError,
+  fetchYugaWareVersion,
+  fetchYugaWareVersionResponse
+} from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    getYugaWareVersion: () => {
+      dispatch(fetchYugaWareVersion()).then((response) => {
+        dispatch(fetchYugaWareVersionResponse(response.payload));
+      });
+    },
+
     loginCustomer: (formValues) => {
       dispatch(login(formValues)).then((response) => {
         if (response.payload.status === 200) {

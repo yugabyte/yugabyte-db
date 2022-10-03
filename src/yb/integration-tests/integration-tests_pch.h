@@ -40,6 +40,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <fstream>
@@ -54,6 +55,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <ostream>
 #include <random>
 #include <regex>
@@ -63,6 +65,7 @@
 #include <stack>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <type_traits>
@@ -71,6 +74,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/address.hpp>
@@ -79,6 +83,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/assign.hpp>
 #include <boost/atomic.hpp>
+#include <boost/bimap.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/container/container_fwd.hpp>
 #include <boost/container/small_vector.hpp>
@@ -94,6 +99,7 @@
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <boost/intrusive/list.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
@@ -102,6 +108,7 @@
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/config/config.hpp>
+#include <boost/preprocessor/empty.hpp>
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
@@ -122,7 +129,9 @@
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
 #include <boost/variant.hpp>
 #include <boost/version.hpp>
 #undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
@@ -148,6 +157,7 @@
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/port.h>
 #include <google/protobuf/unknown_field_set.h>
+#include <google/protobuf/wire_format_lite.h>
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 #include <gtest/internal/gtest-internal.h>
@@ -196,8 +206,10 @@
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/algorithm_util.h"
+#include "yb/util/async_task_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/auto_flags.h"
 #include "yb/util/background_task.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/blocking_queue.h"
@@ -227,8 +239,12 @@
 #include "yb/util/faststring.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
+#include "yb/util/file_util.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
+#include "yb/util/io.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
@@ -241,6 +257,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/memory/memory_usage.h"
@@ -249,6 +266,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
+#include "yb/util/multi_drive_test_env.h"
 #include "yb/util/mutex.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_fwd.h"
@@ -256,6 +274,7 @@
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/numbered_deque.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/operation_counter.h"
@@ -271,6 +290,7 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
@@ -291,6 +311,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_trim.h"
@@ -313,6 +334,7 @@
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
+#include "yb/util/unique_lock.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
 #include "yb/util/version_info.pb.h"

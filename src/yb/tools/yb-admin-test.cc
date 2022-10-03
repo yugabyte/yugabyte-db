@@ -41,6 +41,7 @@
 #include "yb/client/table_creator.h"
 
 #include "yb/common/json_util.h"
+#include "yb/common/transaction.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -57,6 +58,7 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
@@ -65,14 +67,12 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
 namespace yb {
 namespace tools {
 
-using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTableName;
 using client::YBSchema;
@@ -1007,6 +1007,45 @@ TEST_F(AdminCliTest, SetWalRetentionSecsTest) {
     ASSERT_FALSE(output_getter.ok());
     ASSERT_TRUE(output_getter.status().IsRuntimeError());
   }
+}
+
+TEST_F(AdminCliTest, AddTransactionStatusTablet) {
+  const std::string kNamespaceName = "test_namespace";
+  const std::string kTableName = "test_table";
+  const auto kWaitNewTabletReadyTimeout = MonoDelta::FromMilliseconds(10000);
+
+  BuildAndStart({}, {});
+
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  // Force creation of system.transactions.
+  auto session = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE KEYSPACE IF NOT EXISTS $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", kNamespaceName));
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY) "
+      "WITH transactions = { 'enabled' : true }", kTableName));
+
+  auto global_txn_table = YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
+
+  auto tablets_before = ASSERT_RESULT(CallAdmin(
+      "list_tablets", master::kSystemNamespaceName, kGlobalTransactionsTableName));
+  auto num_tablets_before = std::count(tablets_before.begin(), tablets_before.end(), '\n');
+  LOG(INFO) << "Tablets before adding transaction tablet: " << AsString(tablets_before);
+
+  ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(CallAdmin(
+        "list_tablets", master::kSystemNamespaceName, kGlobalTransactionsTableName));
+    auto num_tablets = std::count(tablets.begin(), tablets.end(), '\n');
+    LOG(INFO) << "Tablets: " << AsString(tablets);
+    return num_tablets == num_tablets_before + 1;
+  }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
 }
 
 }  // namespace tools

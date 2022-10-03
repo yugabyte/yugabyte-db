@@ -7,8 +7,8 @@ aliases:
 menu:
   preview:
     identifier: apache-spark-3-python-ycql
-    parent: integrations
-    weight: 572
+    parent: apache-spark
+    weight: 576
 type: docs
 ---
 

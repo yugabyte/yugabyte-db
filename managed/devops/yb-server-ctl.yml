@@ -28,6 +28,8 @@
 
         - name: Systemd system scope
           block:
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
             - name: Enable the {{ process }}
               shell: "sudo systemctl enable yb-{{ process }}"
               when: command == 'start'
@@ -36,6 +38,8 @@
             - name: Disable the {{ process }}
               shell: "sudo systemctl disable yb-{{ process }}"
               when: command == 'stop'
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
           when: systemd_system.stat.exists
 
         - name: Systemd user scope
@@ -46,6 +50,7 @@
               state: started
               enabled: yes
               scope: user
+              daemon_reload: yes
             when: command == 'start'
           - name: Stop the {{ process }}
             systemd:
@@ -53,6 +58,7 @@
               state: stopped
               enabled: no
               scope: user
+              daemon_reload: yes
             when: command == 'stop'
           when: not systemd_system.stat.exists
       when: systemd_option and process != "thirdparty" and process != "platform-services"

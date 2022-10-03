@@ -20,10 +20,13 @@
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
+DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(transaction_tables_use_preferred_zones);
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -426,7 +429,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactio
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   SetupTables(tables_per_region);
 
-  // Transaction tables created earlier should no longer have a placement and should be unused.
+  // Transaction tables created earlier should no longer have a placement and should be deleted.
   CheckSuccess(
       kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
@@ -481,6 +484,65 @@ TEST_F(GeoTransactionsTest,
   CheckSuccess(
       kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion)) {
+  constexpr int tables_per_region = 2;
+  const auto long_txn_time = 10000ms;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 5000;
+  SetupTables(tables_per_region);
+
+  CreateTransactionTable(kLocalRegion);
+
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kLocal);
+
+  std::vector<pgwrapper::PGConn> connections;
+  for (int i = 0; i < 2; ++i) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0$1_2(value) VALUES (1000)", kTablePrefix, kLocalRegion));
+    connections.push_back(std::move(conn));
+  }
+
+  // This deletion should not go through until the long-running transactions end.
+  StartDeleteTransactionTable(kLocalRegion);
+
+  // New transactions should not use the table being deleted, even though it has not finished
+  // deleting yet.
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
+
+  std::this_thread::sleep_for(long_txn_time);
+
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kFalse, ExpectedLocality::kGlobal);
+
+  ASSERT_OK(connections[0].CommitTransaction());
+  ASSERT_OK(connections[1].RollbackTransaction());
+
+  WaitForDeleteTransactionTableToFinish(kLocalRegion);
+
+  // Restart to force participants to query transaction status for aborted transaction.
+  ASSERT_OK(ShutdownTabletServersByRegion(kLocalRegion));
+  ASSERT_OK(StartTabletServersByRegion(kLocalRegion));
+
+  // Check data.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  int64_t count = EXPECT_RESULT(conn.FetchValue<int64_t>(strings::Substitute(
+        "SELECT COUNT(*) FROM $0$1_1", kTablePrefix, kLocalRegion)));
+  ASSERT_EQ(3, count);
+  count = EXPECT_RESULT(conn.FetchValue<int64_t>(strings::Substitute(
+        "SELECT COUNT(*) FROM $0$1_2", kTablePrefix, kLocalRegion)));
+  ASSERT_EQ(1, count);
 }
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {

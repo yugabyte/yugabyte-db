@@ -54,6 +54,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
@@ -136,7 +137,7 @@ FsManagerOpts::FsManagerOpts()
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
-    FLAGS_fs_wal_dirs = FLAGS_fs_data_dirs;
+    CHECK_OK(SetFlagDefaultAndCurrent("fs_wal_dirs", FLAGS_fs_data_dirs));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
@@ -578,6 +579,7 @@ void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
     hostname = "<unknown host>";
   }
   metadata->set_format_stamp(Substitute("Formatted at $0 on $1", time_str, hostname));
+  metadata->set_initdb_done_set_after_sys_catalog_restore(true);
 }
 
 Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
@@ -659,6 +661,10 @@ Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* creat
 
 const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
+}
+
+bool FsManager::initdb_done_set_after_sys_catalog_restore() const {
+  return CHECK_NOTNULL(metadata_.get())->initdb_done_set_after_sys_catalog_restore();
 }
 
 set<string> FsManager::GetFsRootDirs() const {

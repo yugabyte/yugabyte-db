@@ -295,3 +295,12 @@ SELECT * FROM incremental_value;
 
 DROP TABLE incremental_value;
 DROP FUNCTION increment_value;
+
+-- Verify yb_db_admin can alter system triggers
+CREATE TABLE foo(a INT UNIQUE);
+CREATE TABLE bar(b INT);
+ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
+SET SESSION AUTHORIZATION yb_db_admin;
+ALTER TABLE bar ENABLE TRIGGER ALL;
+ALTER TABLE bar DISABLE TRIGGER ALL;
+ALTER TABLE pg_shdepend ENABLE TRIGGER ALL;

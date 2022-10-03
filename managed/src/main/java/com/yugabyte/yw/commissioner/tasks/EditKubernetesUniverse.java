@@ -25,8 +25,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -101,7 +102,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix,
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle);
+              newNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       // validate clusters
       for (Cluster cluster : taskParams().clusters) {
@@ -175,10 +177,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // This method uses rep factor to place masters.
       selectNumMastersAZ(newPI);
     }
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    }
+
     KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
-    boolean isMultiAZ =
-        PlacementInfoUtil.isMultiAZ(Provider.getOrBadRequest(UUID.fromString(newIntent.provider)));
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
@@ -273,6 +280,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
     // Now roll all the old pods that haven't been removed and aren't newly added.
     // This will update the master addresses as well as the instance type changes.
     if (restartAllPods) {
@@ -283,6 +295,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.MASTER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
+          universeOverrides,
+          azOverrides,
           true,
           true,
           newNamingStyle,
@@ -296,6 +310,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
           DEFAULT_WAIT_TIME_MS,
+          universeOverrides,
+          azOverrides,
           false,
           true,
           newNamingStyle,
@@ -314,7 +330,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newPlacement,
           instanceTypeChanged,
           isMultiAZ,
-          isReadOnlyCluster);
+          provider,
+          isReadOnlyCluster,
+          newNamingStyle);
       createModifyBlackListTask(
               new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -328,6 +346,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
     // TODO we should look for y(c)sql auth, gflags changes and so on.
+    // Move this logic to UniverseDefinitionTaskBase.
     if (newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
       String msg =
           String.format(

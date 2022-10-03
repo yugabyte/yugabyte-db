@@ -1,8 +1,9 @@
 ---
-title: xCluster replication
+title: xCluster
 headerTitle: xCluster replication
-linkTitle: xCluster replication
-description: Asynchronous replication between multiple YugabyteDB clusters.
+linkTitle: xCluster
+description: xCluster replication between multiple YugabyteDB clusters.
+headContent: Asynchronous replication between independent YugabyteDB clusters
 aliases:
   - /preview/architecture/docdb/2dc-deployments/
   - /preview/architecture/2dc-deployments/
@@ -14,17 +15,13 @@ menu:
 type: docs
 ---
 
-xCluster replication enables asynchronous replication between independent YugabyteDB clusters.
+YugabyteDB provides [synchronous replication](../replication/) of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use xCluster replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
-## Overview
-
-YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
-
-For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/async-replication).
+For details about configuring an xCluster deployment, see [xCluster deployment](../../../deploy/multi-dc/async-replication).
 
 {{< note title="Note" >}}
 
-Asynchronous replication of data works across all the APIs (YSQL, YCQL), because the replication across the clusters is done at the DocDB level.
+xCluster replication of data works across all APIs (YSQL, YCQL), because the replication across the clusters is done at the DocDB level.
 
 {{</note >}}
 

@@ -121,3 +121,25 @@ CREATE INDEX ON tr2(c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 -- Range-partitioned table with multi-column key
 CREATE INDEX ON tr2(c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
+
+------------------------------------
+-- Extensions
+CREATE EXTENSION pg_hint_plan;
+
+------------------------------------------------
+-- Test alter with add constraint using unique index.
+------------------------------------------------
+
+-- Setting range-partitioned unique index with SPLIT AT clause
+CREATE TABLE p1 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c1 ON p1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
+
+ALTER TABLE p1 ADD UNIQUE USING INDEX c1;
+
+-- Setting hash partitioned unique index with SPLIT INTO clause
+CREATE TABLE p2 (k INT PRIMARY KEY, v TEXT);
+
+CREATE UNIQUE INDEX c2 ON p2 (v) SPLIT INTO 10 TABLETS;
+
+ALTER TABLE p2 ADD UNIQUE USING INDEX c2;

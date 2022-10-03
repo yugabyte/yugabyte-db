@@ -820,8 +820,7 @@ bool YBCExecuteUpdate(Relation rel,
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
-			Expr *expr = YbExprInstantiateParams(tle->expr,
-												 estate->es_param_list_info);
+			Expr *expr = YbExprInstantiateParams(tle->expr, estate);
 			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 			pushdown_lc = lnext(pushdown_lc);

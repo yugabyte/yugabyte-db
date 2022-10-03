@@ -9,6 +9,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,15 +22,20 @@ import java.util.UUID;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import play.libs.Json;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 
 @RunWith(JUnitParamsRunner.class)
 public class BackupUtilTest extends FakeDBApplication {
 
+  private Customer testCustomer;
+  private final String DEFAULT_UNIVERSE_UUID = "univ-00000000-0000-0000-0000-000000000000";
   private static final Map<String, String> REGION_LOCATIONS =
       new HashMap<String, String>() {
         {
@@ -36,13 +45,14 @@ public class BackupUtilTest extends FakeDBApplication {
         }
       };
 
-  @InjectMocks BackupUtil backupUtil;
+  @Spy @InjectMocks BackupUtil backupUtil;
 
   @Mock YBClientService ybService;
 
   @Before
   public void setup() {
     initMocks(this);
+    testCustomer = ModelFactory.testCustomer();
   }
 
   @Test(expected = Test.None.class)
@@ -94,8 +104,7 @@ public class BackupUtilTest extends FakeDBApplication {
     String backupSuccessWithRegions = "backup/backup_success_with_regions.json";
 
     return new Object[] {
-      new Object[] {backupSuccessWithNoRegions, 0},
-      new Object[] {backupSuccessWithRegions, 3}
+      new Object[] {backupSuccessWithNoRegions, 0}, new Object[] {backupSuccessWithRegions, 3}
     };
   }
 
@@ -119,50 +128,90 @@ public class BackupUtilTest extends FakeDBApplication {
   @Test
   @Parameters(
       value = {
-        "/tmp/nfs/, /tmp/nfs//yugabyte_backup/foo, yugabyte_backup/foo",
-        "/tmp/nfs, /tmp/nfs/yugabyte_backup/foo, yugabyte_backup/foo",
-        "/tmp/nfs/, /tmp/nfs//foo, foo",
-        "s3://backup, s3://backup/foo, foo",
-        "s3://backup/, s3://backup//foo, foo"
-      })
-  public void testGetBackupIdentifierWithoutNfsCheck(
-      String configDefaultLocation, String defaultBackupLocation, String expectedIdentifier) {
-    String actualIdentifier =
-        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation, false);
-    assertEquals(expectedIdentifier, actualIdentifier);
-  }
-
-  @Test
-  @Parameters(
-      value = {
-        "/tmp/nfs/, /tmp/nfs//yugabyte_backup/foo, foo",
-        "/tmp/nfs, /tmp/nfs/yugabyte_backup/foo, foo",
-        "/tmp/nfs/, /tmp/nfs//foo, foo",
-        "s3://backup, s3://backup/foo, foo",
-        "s3://backup/, s3://backup//foo, foo"
+        "/tmp/nfs/yugabyte_backup/, /ybc_backup-foo/bar",
+        "/yugabyte_backup/, /ybc_backup-foo/bar",
+        "s3://backup/, /ybc_backup-foo/bar",
+        "s3://backup/test/, /ybc_backup-foo/bar",
+        "/tmp/nfs/yugabyte_backup/, /backup-foo/bar",
+        "/yugabyte_backup/, /backup-foo/bar",
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo" + "/bar",
+        "s3://backup/, /backup-foo/bar",
+        "gs://backup/test/, /backup-foo/bar",
+        "https://test.blob.windows.net/backup/, " + "/backup-foo/bar",
+        "https://test.blob.windows.net/backup/, " + "/ybc_backup-foo/bar"
       })
   public void testGetBackupIdentifierWithNfsCheck(
-      String configDefaultLocation, String defaultBackupLocation, String expectedIdentifier) {
-    String actualIdentifier =
-        BackupUtil.getBackupIdentifier(configDefaultLocation, defaultBackupLocation, true);
-    assertEquals(expectedIdentifier, actualIdentifier);
+      String defaultBackupLocationPrefix, String defaultBackupLocationSuffix) {
+    String defaultBackupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
+    String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, true);
+    assertTrue(actualIdentifier.startsWith("univ-00000000-0000-0000-0000-000000000000/"));
   }
 
   @Test
   @Parameters(
       value = {
-        "s3://backup/foo, s3://backup, s3://region/, s3://region//foo",
-        "s3://backup/foo, s3://backup, s3://region, s3://region/foo",
-        "s3://backup//foo, s3://backup/, s3://region, s3://region/foo"
+        "/tmp/nfs/yugabyte_backup/, /ybc_backup-foo/bar" + ", true",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, true",
+        "s3://backup/, /ybc_backup-foo/bar, false",
+        "s3://backup/test/, /ybc_backup-foo/bar, false",
+        "/tmp/nfs/yugabyte_backup/, /backup-foo/bar, false",
+        "/yugabyte_backup/, /backup-foo/bar, false",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, true",
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo/bar" + ", false",
+        "/yugabyte_backup/yugabyte_backup/, /ybc_backup-foo" + "/bar, true",
+        "s3://backup/, /backup-foo/bar, false",
+        "gs://backup/test/, /backup-foo/bar, false",
+        "https://test.blob.windows.net/backup/, /backup-foo" + "/bar, false",
+        "https://test.blob.windows.net/backup/, " + "/ybc_backup-foo/bar, false"
       })
-  public void getExactRegionLocation(
-      String backupLocation,
-      String configDefaultLocation,
+  public void testGetBackupIdentifierWithoutNfsCheck(
+      String defaultBackupLocationPrefix, String defaultBackupLocationSuffix, boolean expectedNfs) {
+    String defaultBackupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
+    String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, false);
+    if (expectedNfs) {
+      assertTrue(
+          actualIdentifier.startsWith(
+              "yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/"));
+    } else {
+      assertTrue(actualIdentifier.startsWith("univ-00000000-0000-0000-0000-000000000000/"));
+    }
+  }
+
+  @Test
+  @Parameters(
+      value = {
+        "s3://backup/, /ybc_backup-foo/bar, s3://region," + " s3://region/, /ybc_backup-foo/bar",
+        "s3://backup/, /backup-foo/bar, s3://region," + " s3://region/, /backup-foo/bar",
+        "s3://backup/, /ybc_backup-foo/bar, s3://region/," + " s3://region/, /ybc_backup-foo/bar",
+        "s3://yugabyte_backup/, /ybc_backup-foo/bar,"
+            + " s3://region/, s3://region/, /ybc_backup-foo"
+            + "/bar",
+        "s3://yugabyte_backup/, /backup-foo/bar, " + "s3://region/, s3://region/, /backup-foo/bar",
+        "/backup/, /ybc_backup-foo/bar, /region/, " + "/region/, /ybc_backup-foo/bar",
+        "/yugabyte_backup/, /ybc_backup-foo/bar, /region/, "
+            + "/region/yugabyte_backup/, /ybc_backup-foo"
+            + "/bar",
+        "/yugabyte_backup/, /backup-foo/bar, /region/, " + "/region/, /backup-foo/bar",
+        "/yugabyte_backup/yugabyte_backup/, /ybc_backup-foo"
+            + "/bar, /region/, /region/yugabyte_backup/, "
+            + "/ybc_backup-foo/bar",
+        "/yugabyte_backup/yugabyte_backup/, /backup-foo/bar"
+            + ", /region/, /region/, /backup-foo/bar"
+      })
+  public void testGetExactRegionLocation(
+      String defaultBackupLocationPrefix,
+      String defaultBackupLocationSuffix,
       String configRegionLocation,
-      String expectedRegionLocation) {
+      String expectedRegionLocationPrefix,
+      String expectedRegionLocationSuffix) {
+    String backupLocation =
+        defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualRegionLocation =
-        BackupUtil.getExactRegionLocation(
-            backupLocation, configDefaultLocation, configRegionLocation);
+        BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation);
+    String expectedRegionLocation =
+        expectedRegionLocationPrefix + DEFAULT_UNIVERSE_UUID + expectedRegionLocationSuffix;
     assertEquals(expectedRegionLocation, actualRegionLocation);
   }
 
@@ -199,19 +248,116 @@ public class BackupUtilTest extends FakeDBApplication {
   @Test
   @Parameters(
       value = {
-        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo, s3://foo/univ-318EEf98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo, s3://foo/univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup_ybc-foo/bar, false",
-        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/bar_ybc, false",
-        "s3://foo, s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
-        "/tmp/nfs, /tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
-        "/tmp/nfs, /tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
-        "/nfs, /nfs/yugabyte_backup/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar"
+        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo/univ-318EEf98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo/univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo//univ-318eef98-044B-42A3-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup_ybc-foo/bar, false",
+        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/bar_ybc, false",
+        "s3://foo/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
+        "/tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/backup-foo/ybc_backup, false",
+        "/tmp/nfs/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar, true",
+        "/nfs/yugabyte_backup/univ-318eef98-044b-4293-b560-73ef2e1f2df9/ybc_backup-foo/bar"
             + ", true"
       })
-  public void testIsYbcBackup(String configLocation, String backupLocation, boolean expected) {
-    boolean actual = backupUtil.isYbcBackup(configLocation, backupLocation);
+  public void testIsYbcBackup(String backupLocation, boolean expected) {
+    boolean actual = backupUtil.isYbcBackup(backupLocation);
     assertEquals(expected, actual);
+  }
+
+  @SuppressWarnings("unused")
+  private Object[] updateStorageLocationParams() {
+
+    JsonNode s3FormDataWithSlash =
+        Json.parse(
+            "{\"configName\": \""
+                + "test-S3_1"
+                + "\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\":"
+                + " \"s3://def_bucket/default/\","
+                + " \"AWS_ACCESS_KEY_ID\": \"A-KEY\", \"AWS_SECRET_ACCESS_KEY\": \"A-SECRET\"}}");
+
+    JsonNode s3FormDataNoSlash =
+        Json.parse(
+            "{\"configName\": \""
+                + "test-S3_2"
+                + "\", \"name\": \"S3\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\":"
+                + " \"s3://def_bucket/default\","
+                + " \"AWS_ACCESS_KEY_ID\": \"A-KEY\", \"AWS_SECRET_ACCESS_KEY\": \"A-SECRET\"}}");
+
+    JsonNode nfsFormData =
+        Json.parse(
+            "{\"configName\": \""
+                + "test-NFS_1"
+                + "\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\":"
+                + " \"/tmp/nfs\"}}");
+
+    JsonNode nfsFormDataSlash =
+        Json.parse(
+            "{\"configName\": \""
+                + "test-NFS_2"
+                + "\", \"name\": \"NFS\","
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\":"
+                + " \"/\"}}");
+
+    return new Object[] {s3FormDataWithSlash, s3FormDataNoSlash, nfsFormData, nfsFormDataSlash};
+  }
+
+  @Test
+  @Parameters(method = "updateStorageLocationParams")
+  public void testUpdateDefaultStorageLocationWithoutYbc(JsonNode formData) {
+    CustomerConfig testConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), formData);
+    BackupTableParams tableParams = new BackupTableParams();
+    tableParams.storageConfigUUID = testConfig.configUUID;
+    tableParams.backupUuid = UUID.randomUUID();
+    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setKeyspace("foo");
+    String backupIdentifier = "univ-" + tableParams.universeUUID.toString() + "/";
+    BackupUtil.updateDefaultStorageLocation(
+        tableParams, testCustomer.getUuid(), BackupCategory.YB_BACKUP_SCRIPT);
+    String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
+    expectedStorageLocation =
+        expectedStorageLocation.endsWith("/")
+            ? (expectedStorageLocation + backupIdentifier)
+            : (expectedStorageLocation + "/" + backupIdentifier);
+    assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
+    if (testConfig.name.equals("NFS")) {
+      // Assert no double slash occurance
+      assertEquals(1, tableParams.storageLocation.split("//").length);
+    } else {
+      assertEquals(2, tableParams.storageLocation.split("//").length);
+    }
+  }
+
+  @Test
+  @Parameters(method = "updateStorageLocationParams")
+  public void testUpdateDefaultStorageLocationWithYbc(JsonNode formData) {
+    CustomerConfig testConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), formData);
+    BackupTableParams tableParams = new BackupTableParams();
+    tableParams.storageConfigUUID = testConfig.configUUID;
+    tableParams.backupUuid = UUID.randomUUID();
+    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setKeyspace("foo");
+    String backupIdentifier = "univ-" + tableParams.universeUUID.toString() + "/";
+    BackupUtil.updateDefaultStorageLocation(
+        tableParams, testCustomer.getUuid(), BackupCategory.YB_CONTROLLER);
+    String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
+    if (testConfig.name.equals("NFS")) {
+      backupIdentifier = "yugabyte_backup/" + backupIdentifier;
+      expectedStorageLocation =
+          expectedStorageLocation.endsWith("/")
+              ? (expectedStorageLocation + backupIdentifier)
+              : (expectedStorageLocation + "/" + backupIdentifier);
+      assertEquals(1, tableParams.storageLocation.split("//").length);
+    } else {
+      expectedStorageLocation =
+          expectedStorageLocation.endsWith("/")
+              ? (expectedStorageLocation + backupIdentifier)
+              : (expectedStorageLocation + "/" + backupIdentifier);
+      assertEquals(2, tableParams.storageLocation.split("//").length);
+    }
+    assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
   }
 }

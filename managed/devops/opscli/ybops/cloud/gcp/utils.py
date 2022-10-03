@@ -42,6 +42,7 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 STARTUP_SCRIPT_META_KEY = "startup-script"
 SERVER_TYPE_META_KEY = "server_type"
 SSH_KEYS_META_KEY = "ssh-keys"
+BLOCK_PROJECT_SSH_KEY = "block-project-ssh-keys"
 
 META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
@@ -734,10 +735,13 @@ class GoogleCloudAdmin():
     @gcp_request_limit_retry
     def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
-        if not filters:
-            filters = "(status = \"RUNNING\")"
+        filter_params = []
+        if filters:
+            filter_params.append(filters)
         if instance_name is not None:
-            filters += " AND (name = \"{}\")".format(instance_name)
+            filter_params.append("(name = \"{}\")".format(instance_name))
+        if len(filter_params) > 0:
+            filters = " AND ".join(filter_params)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
             filter=filters,
@@ -785,6 +789,8 @@ class GoogleCloudAdmin():
             zone = data["zone"].split("/")[-1]
             region = zone[:-2]
             machine_type = data["machineType"].split("/")[-1]
+            instance_state = data.get("status")
+            logging.info("VM state {}".format(instance_state))
             result = dict(
                 id=data.get("name"),
                 name=data.get("name"),
@@ -802,7 +808,9 @@ class GoogleCloudAdmin():
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
                 root_volume=root_vol["source"],
-                root_volume_device_name=root_vol["deviceName"]
+                root_volume_device_name=root_vol["deviceName"],
+                instance_state=instance_state,
+                is_running=True if instance_state == "RUNNING" else False
             )
             if not get_all:
                 return result
@@ -827,6 +835,8 @@ class GoogleCloudAdmin():
         if boot_disk_size_gb is not None:
             # Default: 10GB
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+        # Create boot disk backed by a zonal persistent SSD
+        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}
@@ -865,6 +875,10 @@ class GoogleCloudAdmin():
                     {
                         "key": SSH_KEYS_META_KEY,
                         "value": ssh_keys
+                    },
+                    {
+                        "key": BLOCK_PROJECT_SSH_KEY,
+                        "value": True
                     }
                 ]
             },

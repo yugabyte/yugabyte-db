@@ -1033,8 +1033,8 @@ YBCheckDeferrableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 	ereport(ERROR,
 			 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("%s", message),
-			 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1129. "
-			         "Click '+' on the description to raise its priority"),
+			 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1129. "
+			         "React with thumbs up to raise its priority"),
 			 parser_errposition(cxt->pstate, constraint->location)));
 }
 

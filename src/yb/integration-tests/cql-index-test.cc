@@ -15,11 +15,11 @@
 #include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -266,6 +266,9 @@ void CqlIndexTest::TestConcurrentModify2Columns(const std::string& expr) {
       "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
       "transactions = { 'enabled' : true }"));
   ASSERT_OK(session.ExecuteQuery("CREATE INDEX v1_idx ON t (v1)"));
+
+  // Wait for the table alterations to complete.
+  std::this_thread::sleep_for(5000ms);
 
   auto prepared1 = ASSERT_RESULT(session.Prepare(Format(expr, "v1")));
   auto prepared2 = ASSERT_RESULT(session.Prepare(Format(expr, "v2")));

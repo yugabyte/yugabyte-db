@@ -27,7 +27,7 @@ type: docs
   <li >
     <a href="../ysql-vertx-pg-client/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vertx PG Client
+      YSQL - Vert.x PG Client
     </a>
   </li>
   <li >
@@ -58,18 +58,6 @@ type: docs
     <a href="../ysql-ebean/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Ebean
-    </a>
-  </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../ycql-4.6/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
     </a>
   </li>
 </ul>

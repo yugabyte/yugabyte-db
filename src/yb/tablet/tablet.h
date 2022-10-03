@@ -699,6 +699,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return retention_policy_.get();
   }
 
+  // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
+  // compacted. It is an error to call this method if a post-split compaction has been triggered
+  // previously by this tablet.
+  void TriggerPostSplitCompactionIfNeeded();
+
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
 
@@ -742,6 +747,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return unique_index_key_schema_.get();
   }
 
+  bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -763,7 +770,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      const rocksdb::UserFrontiers* frontiers);
+      const rocksdb::UserFrontiers* frontiers,
+      bool external_transaction = false);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
@@ -829,11 +837,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
-
-  // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
-  // compacted. It is an error to call this method if a post-split compaction has been triggered
-  // previously by this tablet.
-  Status TriggerPostSplitCompactionIfNeeded();
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's
   // parent which are now outside of its key range removed.
@@ -1032,7 +1035,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ThreadPool* post_split_compaction_pool_ = nullptr;
 
   // Gauge to monitor post-split compactions that have been started.
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
   simple_spinlock operation_filters_mutex_;
 

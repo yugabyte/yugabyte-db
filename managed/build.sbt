@@ -90,11 +90,11 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
-lazy val buildNodeAgent = taskKey[Int]("Build Node Agent")
+lazy val buildModules = taskKey[Int]("Build modules")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
-lazy val cleanNodeAgent = taskKey[Int]("Clean Node Agent")
+lazy val cleanModules = taskKey[Int]("Clean modules")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -126,7 +126,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
-  "org.postgresql" % "postgresql" % "42.2.25",
+  "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -144,8 +144,13 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.cronutils" % "cron-utils" % "9.1.6",
+  // Be careful when changing azure library versions.
+  // Make sure all itests and existing functionality works as expected.
+  "com.azure" % "azure-core" % "1.13.0",
+  "com.azure" % "azure-identity" % "1.2.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
   "com.azure" % "azure-storage-blob" % "12.7.0",
-  "com.azure" % "azure-core" % "1.1.0",
+  "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
@@ -182,6 +187,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -279,10 +285,9 @@ externalResolvers := {
 }
 
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+  ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
   buildUI.value
-  //buildNodeAgent.value
   versionGenerate.value
 }
 
@@ -290,7 +295,7 @@ cleanPlatform := {
   clean.value
   cleanVenv.value
   cleanUI.value
-  cleanNodeAgent.value
+  cleanModules.value
 }
 
 versionGenerate := {
@@ -316,9 +321,9 @@ buildUI := {
   status
 }
 
-buildNodeAgent := {
-  ybLog("Building node agent...")
-  val status = Process("./build.sh clean build package " + version.value, baseDirectory.value / "node-agent").!
+buildModules := {
+  ybLog("Building modules...")
+  val status = Process("mvn install -f parent.xml").!
   status
 }
 
@@ -334,9 +339,9 @@ cleanUI := {
   status
 }
 
-cleanNodeAgent := {
+cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("./build.sh clean", baseDirectory.value / "node-agent").!
+  val status = Process("mvn clean -f parent.xml").!
   status
 }
 
@@ -400,21 +405,18 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b1"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
-  "io.netty" % "netty-handler" % "4.1.71.Final",
-  "io.netty" % "netty-codec-http" % "4.1.71.Final",
-  "io.netty" % "netty" % "3.10.6.Final",
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16",
+  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"

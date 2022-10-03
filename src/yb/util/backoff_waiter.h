@@ -19,6 +19,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
@@ -94,6 +95,66 @@ class GenericBackoffWaiter {
 
 typedef GenericBackoffWaiter<std::chrono::steady_clock> BackoffWaiter;
 typedef GenericBackoffWaiter<CoarseMonoClock> CoarseBackoffWaiter;
+
+constexpr int kDefaultInitialWaitMs = 1;
+constexpr double kDefaultWaitDelayMultiplier = 1.1;
+constexpr int kDefaultMaxWaitDelayMs = 2000;
+
+// Retry helper, takes a function like:
+//     Status funcName(const MonoTime& deadline, bool *retry, ...)
+// The function should set the retry flag (default true) if the function should
+// be retried again. On retry == false the return status of the function will be
+// returned to the caller, otherwise a Status::Timeout() will be returned.
+// If the deadline is already expired, no attempt will be made.
+Status RetryFunc(
+    CoarseTimePoint deadline,
+    const std::string& retry_msg,
+    const std::string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func,
+    const CoarseDuration max_wait = std::chrono::seconds(2));
+
+
+// Waits for the given condition to be true or until the provided deadline happens.
+Status Wait(
+    const std::function<Result<bool>()>& condition,
+    MonoTime deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+    double delay_multiplier = kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
+
+Status Wait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+    double delay_multiplier = kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
+
+Status LoggedWait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+    double delay_multiplier = kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
+
+// Waits for the given condition to be true or until the provided timeout has expired.
+Status WaitFor(
+    const std::function<Result<bool>()>& condition,
+    MonoDelta timeout,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+    double delay_multiplier = kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
+
+Status LoggedWaitFor(
+    const std::function<Result<bool>()>& condition,
+    MonoDelta timeout,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+    double delay_multiplier = kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(kDefaultMaxWaitDelayMs));
 
 } // namespace yb
 

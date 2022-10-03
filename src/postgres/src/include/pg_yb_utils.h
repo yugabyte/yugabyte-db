@@ -33,6 +33,7 @@
 #include "common/pg_yb_common.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 
@@ -346,10 +347,10 @@ extern void YBReportIfYugaByteEnabled();
 bool YBShouldRestartAllChildrenIfOneCrashes();
 
 /*
- * These functions help indicating if we are creating system catalog.
+ * These functions help indicating if we are connected to template0 or template1.
  */
-void YBSetPreparingTemplates();
-bool YBIsPreparingTemplates();
+void YbSetConnectedToTemplateDb();
+bool YbIsConnectedToTemplateDb();
 
 /*
  * Whether every ereport of the ERROR level and higher should log a stack trace.
@@ -542,6 +543,7 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
  *    However, TableDesc cache makes this low-priority.
  */
 YbTableProperties YbGetTableProperties(Relation rel);
+YbTableProperties YbGetTablePropertiesById(Oid relid);
 YbTableProperties YbTryGetTableProperties(Relation rel);
 
 /*
@@ -640,6 +642,7 @@ void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntr
  * Register system table for prefetching.
  */
 void YbRegisterSysTableForPrefetching(int sys_table_id);
+void YbTryRegisterCatalogVersionTableForPrefetching();
 
 /*
  * Returns true if the relation is a non-system relation in the same region.
@@ -655,5 +658,10 @@ bool YBCIsRegionLocal(Relation rel);
  * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
+
+extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
+												GucSource source);
+extern void assign_yb_xcluster_consistency_level(const char *newval,
+												 void		*extra);
 
 #endif /* PG_YB_UTILS_H */

@@ -612,7 +612,7 @@ alter table testoids set with oids;
 ERROR:  ALTER TABLE SET WITH OIDS not supported yet
 LINE 1: alter table testoids set with oids;
                              ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 -- update existing row, that didn't have an oid
 insert into testoids values(1, '3') on conflict (key) do update set data = excluded.data RETURNING *;
  key | data

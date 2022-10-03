@@ -10,66 +10,28 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static com.yugabyte.yw.common.ha.PlatformInstanceClient.YB_HA_WS_KEY;
+
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigRenderOptions;
-import com.typesafe.config.ConfigValue;
+import com.google.inject.name.Named;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import java.io.IOException;
+import com.yugabyte.yw.common.WSClientRefresher;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.ws.WSClient;
 
 @Singleton
 @Slf4j
 public class PlatformInstanceClientFactory {
 
-  public static final String YB_HA_WS_KEY = "yb.ha.ws";
-  private final CustomWsClientFactory customWsClientFactory;
-  private final RuntimeConfigFactory runtimeConfigFactory;
-  private WSClient customWsClient = null;
+  private final WSClientRefresher wsClientRefresher;
 
   @Inject
-  public PlatformInstanceClientFactory(
-      CustomWsClientFactory customWsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
-    this.customWsClientFactory = customWsClientFactory;
-    this.runtimeConfigFactory = runtimeConfigFactory;
-  }
-
-  public synchronized void refreshWsClient(String haWsConfigPath) {
-    ConfigValue haWsOverrides = runtimeConfigFactory.globalRuntimeConf().getValue(haWsConfigPath);
-    log.info(
-        "Creating ws client with config override: {}",
-        haWsOverrides.render(ConfigRenderOptions.concise()));
-    Config customWsConfig =
-        ConfigFactory.empty()
-            .withValue("play.ws", haWsOverrides)
-            .withFallback(runtimeConfigFactory.staticApplicationConf())
-            .withOnlyPath("play.ws");
-    // Enable trace level logging to debug actual config value being resolved:
-    log.trace("Creating ws client with config: {}", customWsConfig.root().render());
-    closePreviousClient(customWsClient);
-    customWsClient = customWsClientFactory.forCustomConfig(customWsConfig);
-  }
-
-  private void closePreviousClient(WSClient previousWsClient) {
-    if (previousWsClient != null) {
-      try {
-        previousWsClient.close();
-      } catch (IOException e) {
-        log.warn("Exception while closing wsClient. Ignored", e);
-      }
-    }
+  public PlatformInstanceClientFactory(@Named(YB_HA_WS_KEY) WSClientRefresher wsClientRefresher) {
+    this.wsClientRefresher = wsClientRefresher;
   }
 
   public PlatformInstanceClient getClient(String clusterKey, String remoteAddress) {
-    if (customWsClient == null) {
-      log.info("Creating customWsClient for first time");
-      refreshWsClient(YB_HA_WS_KEY);
-    }
-    return new PlatformInstanceClient(new ApiHelper(customWsClient), clusterKey, remoteAddress);
+    return new PlatformInstanceClient(
+        new ApiHelper(wsClientRefresher.getClient(YB_HA_WS_KEY)), clusterKey, remoteAddress);
   }
 }

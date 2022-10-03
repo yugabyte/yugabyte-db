@@ -27,6 +27,11 @@ namespace pggate {
 
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
 
+struct Bound {
+  uint64_t value;
+  bool is_inclusive;
+};
+
 } // namespace pggate
 } // namespace yb
 

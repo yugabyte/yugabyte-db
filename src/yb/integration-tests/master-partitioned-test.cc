@@ -43,8 +43,8 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;

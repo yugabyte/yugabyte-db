@@ -80,7 +80,7 @@ type: indexpage
     <a class="section-link icon-offset" href="async-replication-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Enable asynchronous replication </div>
+        <div class="title">Enable xCluster replication </div>
       </div>
       <div class="body">
         Enable unidirectional and bidirectional replication between two data sources

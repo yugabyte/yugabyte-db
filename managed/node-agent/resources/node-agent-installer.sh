@@ -240,12 +240,12 @@ if [ "$TYPE" = "install-service" ]; then
 fi
 
 
-#Trim leading and trailing whitespaces
+#Trim leading and trailing whitespaces.
 PLATFORM_URL=$(echo $PLATFORM_URL | xargs)
 API_TOKEN=$(echo $API_TOKEN | xargs)
 JWT=$(echo $JWT | xargs)
 
-#Return error if type is not passed
+#Return error if type is not passed.
 if [ -z "$PLATFORM_URL" ]; then
   show_usage >&2
   exit 1

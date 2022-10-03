@@ -233,8 +233,6 @@ class Executor : public QLExprExecutor {
                                  const client::YBqlOpPtr& op,
                                  ExecContext* exec_context);
 
-  std::shared_ptr<client::YBTable> GetTableFromStatement(const TreeNode *tnode) const;
-
   // Process status of FlushAsyncDone.
   using OpErrors = std::unordered_map<const client::YBqlOp*, Status>;
   Status ProcessAsyncStatus(const OpErrors& op_errors, ExecContext* exec_context);

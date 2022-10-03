@@ -214,11 +214,33 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 Status WaitForServersToAgree(const MonoDelta& timeout,
-                             const vector<TServerDetails*>& tablet_servers,
-                             const string& tablet_id,
+                             const std::vector<TServerDetails*>& tablet_servers,
+                             const TabletId& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index = nullptr,
                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
+
+// Wait until all of the servers have converged on some log operation.
+//
+// Requires that all servers are running. Returns Status::TimedOut if servers were not converge
+// within the given timeout.
+//
+// If last_logged_opid is specified, the OpId that the servers have agreed on is written to
+// last_logged_opid. If the servers fail to agree, it is not updated.
+//
+// If must_be_committed is false, the converge is happening only for recieved operations, and if
+// the parameter is true, both received and commited operations are taken into account.
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const TabletServerMap& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid = nullptr,
+                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
+
+Status WaitForServerToBeQuite(const MonoDelta& timeout,
+                              const std::vector<TServerDetails*>& tablet_servers,
+                              const TabletId& tablet_id,
+                              OpId* last_logged_opid = nullptr,
+                              MustBeCommitted must_be_committed = MustBeCommitted::kFalse);
 
 // Wait until all specified replicas have logged at least the given index.
 // Unlike WaitForServersToAgree(), the servers do not actually have to converge
@@ -336,20 +358,20 @@ Status FindTabletLeader(const TabletServerMap& tablet_servers,
                         TServerDetails** leader);
 
 Status FindTabletLeader(const TabletServerMapUnowned& tablet_servers,
-                        const string& tablet_id,
+                        const std::string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 
-Status FindTabletLeader(const vector<TServerDetails*>& tservers,
-                        const string& tablet_id,
+Status FindTabletLeader(const std::vector<TServerDetails*>& tservers,
+                        const std::string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 
 // Grabs list of followers using FindTabletLeader() above.
 Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
-                           const string& tablet_id,
+                           const std::string& tablet_id,
                            const MonoDelta& timeout,
-                           vector<TServerDetails*>* followers);
+                           std::vector<TServerDetails*>* followers);
 
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The

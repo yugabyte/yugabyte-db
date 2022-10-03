@@ -1,0 +1,14 @@
+.image-with-map {
+  display: inline-block;
+  position: relative;
+
+  map {
+    position: absolute;
+    inset: 0;
+
+    area {
+      position: absolute;
+      display: block;
+    }
+  }
+}

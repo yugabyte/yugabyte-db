@@ -15,24 +15,27 @@
 
 
 /**
- * 
+ *
  * @export
  * @interface NodeDataCloudInfo
  */
 export interface NodeDataCloudInfo  {
   /**
-   * 
+   *
+   * @type {string}
+   * @memberof NodeDataCloudInfo
+   */
+  cloud?: string;
+  /**
+   *
    * @type {string}
    * @memberof NodeDataCloudInfo
    */
   region: string;
   /**
-   * 
+   *
    * @type {string}
    * @memberof NodeDataCloudInfo
    */
   zone: string;
 }
-
-
-

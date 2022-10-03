@@ -660,7 +660,7 @@ void IntentAwareIterator::ProcessIntent() {
     return;
   }
   VLOG(4) << "Intent decode: " << DebugIntentKeyToString(intent_iter_.key())
-          << " => " << intent_iter_.value().ToDebugHexString() << ", result: " << *decode_result;
+      << " => " << intent_iter_.value().ToDebugHexString() << ", result: " << *decode_result;
   DOCDB_DEBUG_LOG(
       "resolved_intent_txn_dht_: $0 value_time: $1 read_time: $2",
       resolved_intent_txn_dht_.ToString(),
@@ -668,6 +668,9 @@ void IntentAwareIterator::ProcessIntent() {
       read_time_.ToString());
   auto resolved_intent_time = decode_result->same_transaction ? intent_dht_from_same_txn_
                                                               : resolved_intent_txn_dht_;
+  VLOG(4) << "Intent decode: " << DebugIntentKeyToString(intent_iter_.key())
+          << " => " << intent_iter_.value().ToDebugHexString() << ", result: " << *decode_result
+          << ", resolved_intent_time: " << resolved_intent_time.ToString();
   // If we already resolved intent that is newer that this one, we should ignore current
   // intent because we are interested in the most recent intent only.
   if (decode_result->value_time <= resolved_intent_time) {
@@ -1015,19 +1018,19 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
   }
   auto prefix = CurrentPrefix();
   while (iter_.Valid()) {
-    if (!iter_.key().starts_with(prefix)) {
+    Slice encoded_doc_ht = iter_.key();
+    if (!encoded_doc_ht.starts_with(prefix)) {
       VLOG(4) << "Unmatched prefix: " << SubDocKey::DebugSliceToString(iter_.key())
               << ", prefix: " << SubDocKey::DebugSliceToString(prefix);
       iter_valid_ = false;
       return;
     }
-    if (!SatisfyBounds(iter_.key())) {
+    if (!SatisfyBounds(encoded_doc_ht)) {
       VLOG(4) << "Out of bounds: " << SubDocKey::DebugSliceToString(iter_.key())
               << ", upperbound: " << SubDocKey::DebugSliceToString(upperbound_);
       iter_valid_ = false;
       return;
     }
-    Slice encoded_doc_ht = iter_.key();
     if (encoded_doc_ht.TryConsumeByte(KeyEntryTypeAsChar::kTransactionApplyState)) {
       if (!NextRegular(direction)) {
         return;

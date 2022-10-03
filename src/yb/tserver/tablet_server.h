@@ -35,6 +35,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
@@ -51,6 +52,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -193,6 +195,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
   virtual Env* GetEnv();
@@ -226,6 +231,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
+
+  std::shared_ptr<XClusterSafeTimeMap> GetXClusterSafeTimeMap() const;
+
+  void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
+      const NamespaceId& namespace_id, HybridTime commit_ht);
 
  protected:
   virtual Status RegisterServices();
@@ -289,7 +301,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
-  master::DbOidToCatalogVersionMap ysql_db_catalog_version_map_;
+  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+
+  // If shared memory array db_catalog_versions_ slot is used by a database OID, the
+  // corresponding slot in this boolean array is set to true.
+  std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
+    ysql_db_catalog_version_index_used_;
+
+  // When searching for a free slot in the shared memory array db_catalog_versions_, we start
+  // from this index.
+  int search_starting_index_ = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
@@ -303,6 +324,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
+
+  std::shared_ptr<XClusterSafeTimeMap> xcluster_safe_time_map_;
+
+  PgConfigReloader pg_config_reloader_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

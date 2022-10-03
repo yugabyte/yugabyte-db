@@ -12,22 +12,19 @@
 //
 package org.yb.util;
 
+import com.google.common.net.HostAndPort;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBDaemon;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import com.google.common.net.HostAndPort;
-
-import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.yb.client.TestUtils;
-import org.yb.minicluster.MiniYBDaemon;
 
 public final class YBBackupUtil {
   private static final Logger LOG = LoggerFactory.getLogger(YBBackupUtil.class);
@@ -126,7 +123,7 @@ public final class YBBackupUtil {
       processCommand.add("--ts_web_hosts_ports=" + tsWebHostsAndPorts);
     }
 
-    if (!TestUtils.IS_LINUX) {
+    if (!SystemUtil.IS_LINUX) {
       processCommand.add("--mac");
       // Temporary flag to get more detailed log while the tests are failing on MAC: issue #4924.
       processCommand.add("--verbose");

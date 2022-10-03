@@ -19,9 +19,6 @@ public interface CloudUtil extends StorageUtil {
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception;
 
-  public boolean canCredentialListObjects(
-      CustomerConfigData configData, List<String> storageLocations);
-
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception;
 

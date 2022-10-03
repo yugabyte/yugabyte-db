@@ -6,6 +6,7 @@ headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
+body_class: yb-page-style
 aliases:
   - /preview/yugabyte-cloud/cloud-quickstart/
 menu:
@@ -39,13 +40,36 @@ The quickest way to get started with YugabyteDB is to create a free Sandbox clus
 
 The first time you log in, YugabyteDB Managed provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
-- Connect to the database, load sample data, and run queries
+- Connect to the database
+- Load sample data and run queries
 - Explore a sample application
 
-To learn more about YugabyteDB Managed, see the following resources:
+After you complete the tutorial, learn more about managing clusters and your account features using the YugabyteDB Managed documentation.
 
-- [YugabyteDB Managed Documentation](../yugabyte-cloud/)
-- [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
+<div class="row cloud-laptop">
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
+        </div>
+        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
+        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
+        </div>
+        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
+        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## Quick start
 
@@ -147,7 +171,7 @@ Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
   {{% tab header="Java" lang="java" %}}
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [YugabyteDB JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
 This tutorial requires the following:
 
@@ -306,16 +330,16 @@ To build and run the application, do the following:
 
     1. Open the `sample-app.py` file.
 
-    2. Set the following configuration parameter constants:
+    1. Set the following configuration parameter constants:
 
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
         - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
-    3. Save the file.
+    1. Save the file.
 
 1. Install psycopg2 PostgreSQL database adapter.
 

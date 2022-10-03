@@ -219,7 +219,9 @@ class BackfillTableJob : public server::MonitoredTask {
         backfill_table_(backfill_table),
         requested_index_names_(backfill_table_->requested_index_names()) {}
 
-  Type type() const override { return BACKFILL_TABLE; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTable;
+  }
 
   std::string type_name() const override { return "Backfill Table"; }
 
@@ -319,7 +321,8 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
       HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
-            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
+            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get(),
+            /* async_task_throttler */ nullptr),
         backfill_table_(backfill_table),
         tablet_(tablet),
         min_cutoff_(min_cutoff) {
@@ -328,7 +331,9 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 
   Status Launch();
 
-  Type type() const override { return ASYNC_GET_SAFE_TIME; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kGetSafeTime;
+  }
 
   std::string type_name() const override { return "Get SafeTime for Tablet"; }
 
@@ -363,7 +368,9 @@ class BackfillChunk : public RetryingTSRpcTask {
 
   Status Launch();
 
-  Type type() const override { return ASYNC_BACKFILL_TABLET_CHUNK; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTabletChunk;
+  }
 
   std::string type_name() const override { return "Backfill Index Table"; }
 

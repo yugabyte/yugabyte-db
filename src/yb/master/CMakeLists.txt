@@ -40,6 +40,7 @@ YRPC_GENERATE(
   PROTO_FILES
       master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
+      master_backup.proto
   MESSAGES_PROTO_FILES
       master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
@@ -113,9 +114,10 @@ set(MASTER_SRCS
   tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
+  util/yql_vtable_helpers.cc
+  xcluster/xcluster_safe_time_service.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
-  util/yql_vtable_helpers.cc
   yql_auth_roles_vtable.cc
   yql_auth_role_permissions_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -207,32 +209,34 @@ ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
+ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 
 foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
   ADD_YB_TEST(${ADDITIONAL_TEST})
 endforeach(ADDITIONAL_TEST)
 
 # Actual master executable
-add_executable(yb-master master_main.cc)
-target_link_libraries(yb-master
+add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
+target_link_libraries(
+  "${YB_MASTER_DYNAMIC_EXE_NAME}"
   master
   ${YB_BASE_LIBS})
 
 # Generate master_flags.xml
 set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
-add_custom_command(TARGET yb-master POST_BUILD
+add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "yb-master"
+    "--program_name" "${YB_MASTER_DYNAMIC_EXE_NAME}"
     "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
 
 # Generate auto_flags.json
 set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
-  "--program_list" "yb-master,yb-tserver"
+  "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
   "--output_file_path" "${AUTO_FLAGS_FILE}")
 add_custom_target(
   gen_auto_flags_json ALL
   COMMAND ${GEN_AUTO_FLAGS_COMMAND}
   BYPRODUCTS "${AUTO_FLAGS_FILE}"
-  DEPENDS yb-master yb-tserver)
+  DEPENDS "${YB_MASTER_DYNAMIC_EXE_NAME}" "${YB_TSERVER_DYNAMIC_EXE_NAME}")

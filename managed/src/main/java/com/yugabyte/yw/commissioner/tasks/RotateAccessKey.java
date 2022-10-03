@@ -7,7 +7,6 @@ import java.util.UUID;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
@@ -30,7 +29,6 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@Retryable
 public class RotateAccessKey extends UniverseTaskBase {
 
   @Inject NodeManager nodeManager;
@@ -213,7 +211,10 @@ public class RotateAccessKey extends UniverseTaskBase {
               + " cannot run access key rotation. Retry with access key "
               + newAccessKey.getKeyCode()
               + " after resuming it!");
-    } else if (!universe.allNodesLive()) {
+    } else if (!universe.allNodesLive() && !universe.getUniverseDetails().updateInProgress) {
+      // Throw Runtime Exception for non-live nodes when the nodes are actually down,
+      // & not undergoing any other ops, during other ops nodes states can be
+      // stopping/starting, etc.
       setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "

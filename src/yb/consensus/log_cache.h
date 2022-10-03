@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include <glog/logging.h>
 #include <gtest/gtest_prod.h>
 
@@ -200,23 +202,30 @@ class LogCache {
     bool tracked = false;
   };
 
+  typedef boost::container::small_vector<ReplicateMsgPtr, 8> ReplicateMsgVector;
+
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
   // 'stop_after_index' has been evicted, whichever comes first.
-  size_t EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
+  size_t EvictSomeUnlocked(int64_t stop_after_index,
+      int64_t bytes_to_evict,
+      ReplicateMsgVector* evicted_messages) REQUIRES(lock_);
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.
-  void AccountForMessageRemovalUnlocked(const CacheEntry& entry);
+  void AccountForMessageRemovalUnlocked(const CacheEntry& entry) REQUIRES(lock_);
 
   // Return a string with stats
   std::string StatsStringUnlocked() const;
 
-  std::string ToStringUnlocked() const;
+  std::string ToStringUnlocked() const REQUIRES(lock_);
 
-  std::string LogPrefixUnlocked() const;
+  std::string LogPrefix() const;
 
-  void LogCallback(int64_t last_idx_in_batch,
+  std::string LogPrefixUnlocked() const REQUIRES(lock_);
+
+  void LogCallback(bool overwrite,
+                   int64_t last_idx_in_batch,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 
@@ -225,6 +234,8 @@ class LogCache {
     int64_t mem_required = 0;
     // Last idx in batch of provided operations.
     int64_t last_idx_in_batch = -1;
+    // If log cache has been overwritten when preparing append.
+    bool overwritten_cache = false;
   };
 
   PrepareAppendResult PrepareAppendOperations(const ReplicateMsgs& msgs);
@@ -237,6 +248,8 @@ class LogCache {
   // The id of the tablet.
   const std::string tablet_id_;
 
+  const std::string log_prefix_;
+
   mutable simple_spinlock lock_;
 
   // An ordered map that serves as the buffer for the cached messages.
@@ -244,16 +257,19 @@ class LogCache {
   // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
   // CacheEntry
   typedef std::map<int64_t, CacheEntry> MessageCache;
-  MessageCache cache_;
+  MessageCache cache_ GUARDED_BY(lock_);
 
   // The next log index to append. Each append operation must either start with this log index, or
   // go backward (but never skip forward).
-  int64_t next_sequential_op_index_;
+  int64_t next_sequential_op_index_ GUARDED_BY(lock_);
 
   // Any operation with an index >= min_pinned_op_ may not be evicted from the cache. This is used
   // to prevent ops from being evicted until they successfully have been appended to the underlying
   // log.  Protected by lock_.
-  int64_t min_pinned_op_index_;
+  int64_t min_pinned_op_index_ GUARDED_BY(lock_);
+
+  // Number of batches in progress of preparing that have overwritten min_pinned_op_index_.
+  int64_t num_batches_overwritten_cache_;
 
   // Pointer to a parent memtracker for all log caches. This exists to compute server-wide cache
   // size and enforce a server-wide memory limit.  When the first instance of a log cache is

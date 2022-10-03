@@ -1,7 +1,7 @@
 ---
-title: Deploy to two data centers with asynchronous replication
-headerTitle: Asynchronous replication
-linkTitle: Asynchronous replication
+title: Deploy to two data centers with xCluster replication
+headerTitle: xCluster replication
+linkTitle: xCluster replication
 description: Enable deployment using asynchronous replication between two data centers
 menu:
   preview_yugabyte-platform:
@@ -12,7 +12,7 @@ aliases:
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
+YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) xCluster replication between two data centers.
 
 Within the concept of replication, universes are divided into the following categories:
 
@@ -22,16 +22,16 @@ Within the concept of replication, universes are divided into the following cate
 
 - A target universe is the recipient of the replicated data. One source universe can replicate to one or more target universes.
 
-For additional information on asynchronous replication in YugabyteDB, see the following:
+For additional information on xCluster replication in YugabyteDB, see the following:
 
-- [Asynchronous replication: overview and architecture](/preview/architecture/docdb-replication/async-replication/)
-- [Asynchronous replication between universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
+- [xCluster replication: overview and architecture](/preview/architecture/docdb-replication/async-replication/)
+- [xCluster replication between universes in YugabyteDB](/preview/deploy/multi-dc/async-replication/)
 
-You can use the YugabyteDB Anywhere UI to set up and configure asynchronous replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
+You can use the YugabyteDB Anywhere UI to set up and configure xCluster replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
 ## Set up replication
 
-You can set up asynchronous replication as follows:
+You can set up xCluster replication as follows:
 
 1. Open the YugabyteDB Anywhere UI and navigate to **Universes**.
 
@@ -61,7 +61,7 @@ You can configure an existing replication as follows:
 
    ![Replication](/images/yp/asynch-replication-1.png)<br><br>
 
-3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up).
+3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up-replication).
 
 ## View, manage, and monitor replication
 
@@ -119,7 +119,7 @@ You can set up bidirectional replication using either the YugabyteDB Anywhere UI
 
 ## Use the REST API
 
-You may choose to use the API to manage universes. You can call the following REST API endpoint on your YugabyteDB Anywhere instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
+You may choose to use the API to manage universes. You can call the following REST API endpoint on your YugabyteDB Anywhere instance for the source universe and the target universe involved in the xCluster replication between two data sources:
 
 ```http
 PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc

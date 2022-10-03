@@ -46,6 +46,7 @@ CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_place
 -- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -55,6 +56,24 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
 
 --
 -- YSQL database dump complete
@@ -70,6 +89,7 @@ SET row_security = off;
 -- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -79,6 +99,24 @@ SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
 
 --
 -- YSQL database dump complete
@@ -92,6 +130,7 @@ SET row_security = off;
 -- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -114,6 +153,7 @@ ALTER DATABASE system_platform OWNER TO postgres;
 \connect system_platform
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -132,6 +172,24 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 
 
 --
+-- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
 -- YSQL database dump complete
 --
 
@@ -143,6 +201,7 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- Dumped by ysql_dump version 11.2-YB-2.11.3.0-b0
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -165,6 +224,7 @@ ALTER DATABASE yugabyte OWNER TO postgres;
 \connect yugabyte
 
 SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -313,6 +373,24 @@ SET default_tablespace = tsp1;
 --
 
 CREATE INDEX idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
+
+
+--
+-- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+
+
+--
+-- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --

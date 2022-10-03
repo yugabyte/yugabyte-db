@@ -2,7 +2,7 @@
 title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: More examples
-description: Build a sample Java application with the Vertx PG Client and use the YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application with the Vert.x PG Client and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
     parent: cloud-java
@@ -27,7 +27,7 @@ type: docs
   <li >
     <a href="../ysql-vertx-pg-client/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Vertx PG Client
+      YSQL - Vert.x PG Client
     </a>
   </li>
   <li >
@@ -60,23 +60,11 @@ type: docs
       YSQL - Ebean
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../ycql-4.6/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
-    </a>
-  </li>
 </ul>
 
-[Vertx PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
+[Vert.x PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
-Since YugabyteDB is wire compatible with PostgreSQL, Vertx PG Client works with YugabyteDB as well.
+Since YugabyteDB is wire compatible with PostgreSQL, Vert.x PG Client works with YugabyteDB as well.
 
 ## Prerequisites
 
@@ -84,9 +72,9 @@ This tutorial assumes that:
 
 - YugabyteDB up and running. Download and install the latest version of YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 {{< note title="Note" >}}
-The `executeBatch()` API of the Vertx PG Client is supported in the YugabyteDB version - `2.15.2.0-b0` onwards. 
+The `executeBatch()` API of the Vert.x PG Client is supported in the YugabyteDB version - `2.15.2.0-b0` onwards.
 {{< /note >}}
-- Java Development Kit (JDK) 1.8, or later, is installed. 
+- Java Development Kit (JDK) 1.8, or later, is installed.
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ## Create and configure the Java project
@@ -111,7 +99,7 @@ The `executeBatch()` API of the Vertx PG Client is supported in the YugabyteDB v
     </properties>
     ```
 
-1. Add the following dependency for the Vertx PG Client within the `<dependencies>` element in the `pom.xml` file.
+1. Add the following dependency for the Vert.x PG Client within the `<dependencies>` element in the `pom.xml` file.
 
     ```xml
     <dependency>
@@ -219,5 +207,5 @@ The `executeBatch()` API of the Vertx PG Client is supported in the YugabyteDB v
     ```
 ## Limitation
 
-[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vertx PG client is currently not supported with YugabyteDB. This limitation will go away when `LISTEN`/`NOTIFY` support is added to YugabyteDB. See [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1872).
+[Pub/sub](https://vertx.io/docs/vertx-pg-client/java/#_pubsub) feature of Vert.x PG client is currently not supported with YugabyteDB. This limitation will go away when `LISTEN`/`NOTIFY` support is added to YugabyteDB. See [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/1872).
 

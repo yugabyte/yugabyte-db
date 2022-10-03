@@ -120,7 +120,7 @@ To deploy a geo-partioned cluster, contact {{% support-cloud %}}.
 
 ## Cross-cluster
 
-In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers asynchronous replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
+In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers xCluster replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 
 Here's how it works:
 
@@ -138,7 +138,7 @@ The sink cluster can be used to serve low-latency reads that are timeline consis
 
 This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use cross cluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
 
-![Multi-region deployment with single-direction asynchronous replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
+![Multi-region deployment with single-direction xCluster replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
 
 **Resilience**: If you deploy the nodes of each cluster across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery in the event that the source cluster goes down.
 
@@ -161,7 +161,7 @@ This configuration is used for use cases such as data recovery, auditing, and co
 
 In an active-active configuration, both clusters can handle writes to potentially the same data. Writes to either cluster are asynchronously replicated to the other cluster with a timestamp for the update. Cross cluster with bi-directional replication is used for disaster recovery.
 
-![Multi-region deployment with bi-directional asynchronous replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
+![Multi-region deployment with bi-directional xCluster replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
 
 **Resilience**: If you deploy the nodes of each cluster across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery if either cluster goes down.
 

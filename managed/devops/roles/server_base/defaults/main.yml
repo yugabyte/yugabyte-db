@@ -16,9 +16,6 @@ linux_packages:
   - openssl
   - xxhash
 
-azure_packages:
-  - libselinux-python
-
 aarch64_packages:
   - libatomic
 

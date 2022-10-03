@@ -255,7 +255,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return a non-leader master index
   Result<size_t> GetFirstNonLeaderMasterIndex();
 
-  Result<size_t> GetTabletLeaderIndex(const std::string& tablet_id);
+  Result<size_t> GetTabletLeaderIndex(const yb::TableId& tablet_id);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
@@ -367,7 +367,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   consensus::ConsensusServiceProxy GetConsensusProxy(ExternalDaemon* daemon);
 
   template <class T>
-  T GetProxy(ExternalDaemon* daemon);
+  T GetProxy(const ExternalDaemon* daemon);
 
   template <class T>
   T GetTServerProxy(size_t i) {
@@ -416,7 +416,12 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
+  Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
+      const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
+
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const yb::TabletId& tablet_id);
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const ExternalTabletServer& ts,
+      const yb::TabletId& tablet_id, bool fail_on_response_error = true);
 
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
@@ -939,7 +944,7 @@ struct MasterComparator {
 };
 
 template <class T>
-T ExternalMiniCluster::GetProxy(ExternalDaemon* daemon) {
+T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
   return T(proxy_cache_.get(), daemon->bound_rpc_addr());
 }
 

@@ -103,10 +103,10 @@ public class UserTaskDetails {
     // Resuming universe
     ResumeUniverse,
 
-    // Start master and tserver processes on a node
+    // Start master, tserver and yb-controller processes on a node
     StartingNodeProcesses,
 
-    // Stop master and tserver processes on a node
+    // Stop master, tserver and yb-controller processes on a node
     StoppingNodeProcesses,
 
     // Adding a node.
@@ -197,7 +197,13 @@ public class UserTaskDetails {
     RunningHooks,
 
     // Updating Packages
-    UpdatePackage
+    UpdatePackage,
+
+    // Upgrading Yb-Controller
+    UpgradingYbc,
+
+    // Updating kubernetes overrides.
+    UpdatingKubernetesOverrides
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -270,6 +276,10 @@ public class UserTaskDetails {
       case UpdatingGFlags:
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
+        break;
+      case UpdatingKubernetesOverrides:
+        title = "Updating kubernetes overrides";
+        description = "Updating kubernetes overrides on kubernetes pods.";
         break;
       case BootstrappingCloud:
         title = "Bootstrapping Cloud";
@@ -460,6 +470,10 @@ public class UserTaskDetails {
       case UpdatePackage:
         title = "Update Packages";
         description = "Updating packages installed on the nodes";
+        break;
+      case UpgradingYbc:
+        title = "Upgrading Yb-controller";
+        description = "Upgrading yb-controller on each node";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

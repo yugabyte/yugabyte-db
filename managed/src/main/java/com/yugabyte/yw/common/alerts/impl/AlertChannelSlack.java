@@ -27,13 +27,12 @@ public class AlertChannelSlack extends AlertChannelBase {
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
-    String title = getNotificationTitle(alert, channel);
     String text = getNotificationText(alert, channel);
 
     SlackMessage message = new SlackMessage();
     message.username = params.getUsername();
     message.icon_url = params.getIconUrl();
-    message.text = String.format("*%s*\n%s", title, text);
+    message.text = text;
 
     HttpPost httpPost = new HttpPost(params.getWebhookUrl());
     try (CloseableHttpClient client = HttpClients.createDefault()) {

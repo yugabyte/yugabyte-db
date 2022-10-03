@@ -4,10 +4,11 @@ import { NodeActionModal } from '../../universes';
 import { connect } from 'react-redux';
 
 import {
-  getUniversePerNodeStatus,
-  getUniversePerNodeStatusResponse,
+  getNodeDetails,
+  getNodeDetailsResponse,
   performUniverseNodeAction,
-  performUniverseNodeActionResponse
+  performUniverseNodeActionResponse,
+
 } from '../../../actions/universe';
 
 function mapStateToProps(state) {
@@ -18,17 +19,17 @@ function mapStateToProps(state) {
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    getNodeDetails: (universeUUID, nodeName) => {
+        return dispatch(getNodeDetails(universeUUID, nodeName));
+    },
+    getNodeDetailsResponse: (payload) => {
+      dispatch(getNodeDetailsResponse(payload));
+    },
     performUniverseNodeAction: (universeUUID, nodeName, actionType) => {
       return dispatch(performUniverseNodeAction(universeUUID, nodeName, actionType));
     },
     performUniverseNodeActionResponse: (payload) => {
       dispatch(performUniverseNodeActionResponse(payload));
-    },
-    preformGetUniversePerNodeStatus: (universeUUID) => {
-      return dispatch(getUniversePerNodeStatus(universeUUID));
-    },
-    preformGetUniversePerNodeStatusResponse: (payload) => {
-      dispatch(getUniversePerNodeStatusResponse(payload));
     }
   };
 };

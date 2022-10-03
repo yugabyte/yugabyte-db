@@ -8,12 +8,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.Com
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -102,17 +105,33 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       String softwareVersion,
       boolean isMasterChanged,
       boolean isTServerChanged) {
+    createUpgradeTask(
+        universe, softwareVersion, isMasterChanged, isTServerChanged, CommandType.HELM_UPGRADE);
+  }
+
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      CommandType commandType) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    PlacementInfo placementInfo = primaryCluster.placementInfo;
     createSingleKubernetesExecutorTask(
         CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
     Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
@@ -121,7 +140,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             taskParams().nodePrefix,
             provider,
             universeDetails.communicationPorts.masterRpcPort,
-            newNamingStyle);
+            newNamingStyle,
+            provider.getK8sPodAddrTemplate());
 
     if (isMasterChanged) {
       upgradePodsTask(
@@ -131,10 +151,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.MASTER,
           softwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
+          universeOverrides,
+          azOverrides,
           isMasterChanged,
           isTServerChanged,
           newNamingStyle,
-          /*isReadOnlyCluster*/ false);
+          /*isReadOnlyCluster*/ false,
+          commandType);
     }
 
     if (isTServerChanged) {
@@ -149,10 +172,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ServerType.TSERVER,
           softwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
+          universeOverrides,
+          azOverrides,
           false, // master change is false since it has already been upgraded.
           isTServerChanged,
           newNamingStyle,
-          /*isReadOnlyCluster*/ false);
+          /*isReadOnlyCluster*/ false,
+          commandType);
 
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
@@ -171,10 +197,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             ServerType.TSERVER,
             softwareVersion,
             taskParams().sleepAfterTServerRestartMillis,
+            universeOverrides,
+            azOverrides,
             false, // master change is false since it has already been upgraded.
             isTServerChanged,
             newNamingStyle,
-            /*isReadOnlyCluster*/ true);
+            /*isReadOnlyCluster*/ true,
+            commandType);
       }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
     }

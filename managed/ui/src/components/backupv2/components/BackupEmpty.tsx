@@ -20,7 +20,7 @@ interface BackupEmptyProps {
   classNames?: string;
 }
 
-const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
+export const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
   return <div className={clsx('backup-empty', classNames)}>{children}</div>;
 };
 

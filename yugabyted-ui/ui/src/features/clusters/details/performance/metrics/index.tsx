@@ -1,6 +1,6 @@
 import React, { FC, useState, useEffect } from 'react';
 import { Box, Grid, makeStyles, MenuItem, LinearProgress } from '@material-ui/core';
-import { useLocalStorage } from 'react-use';
+// import { useLocalStorage } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { ArrayParam, StringParam, useQueryParams, withDefault } from 'use-query-params';
@@ -45,25 +45,30 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const defaultVisibleGraphList = ['operations', 'latency', 'cpuUsage', 'diskUsage'];
+const defaultVisibleGraphList =
+  ['operations', 'latency', 'cpuUsage', 'diskUsage', 'totalLiveNodes'];
 
 export const Metrics: FC = () => {
   const { t } = useTranslation();
   const classes = useStyles();
   const chartConfig = useChartConfig();
-  // since we assume only one cluster, for local storage we hard code the key instead of using the cluster id
-  const [savedCharts, setSavedCharts] = useLocalStorage<string[]>("defaultClusterId", defaultVisibleGraphList);
+  // since we assume only one cluster, we hard code the key instead of using the cluster id
+  // const [savedCharts, setSavedCharts] =
+  //   useLocalStorage<string[]>("defaultClusterId", defaultVisibleGraphList);
+  const [savedCharts, setSavedCharts] = useState(defaultVisibleGraphList);
   const displayedCharts = savedCharts?.filter((chart) => chartConfig[chart] !== undefined);
   const [refresh, doRefresh] = useState(0);
 
   // Check if feature flag enabled
   // const { data: runtimeConfig, isLoading: runtimeConfigLoading } = useRuntimeConfig();
-  // const { data: runtimeConfigAccount, isLoading: runtimeConfigAccountLoading } = useRuntimeConfig(
+  // const { data: runtimeConfigAccount, isLoading: runtimeConfigAccountLoading } =
+  // useRuntimeConfig(
   //   params.accountId ?? ''
   // );
 
   // const isMultiRegionEnabled =
-  //   runtimeConfig && (runtimeConfig?.MultiRegionEnabled || runtimeConfigAccount?.MultiRegionEnabled);
+  //   runtimeConfig &&
+  //   (runtimeConfig?.MultiRegionEnabled || runtimeConfigAccount?.MultiRegionEnabled);
   
   const isMultiRegionEnabled = false;
 

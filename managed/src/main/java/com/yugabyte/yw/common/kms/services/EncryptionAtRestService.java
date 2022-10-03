@@ -40,14 +40,14 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
 
   protected abstract T[] getSupportedAlgorithms();
 
-  private T validateEncryptionAlgorithm(String algorithm) {
+  public T validateEncryptionAlgorithm(String algorithm) {
     return Arrays.stream(getSupportedAlgorithms())
         .filter(algo -> algo.name().equals(algorithm))
         .findFirst()
         .orElse(null);
   }
 
-  private boolean validateKeySize(int keySize, T algorithm) {
+  public boolean validateKeySize(int keySize, T algorithm) {
     return algorithm
         .getKeySizes()
         .stream()
@@ -224,17 +224,13 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public KmsConfig createAuthConfig(UUID customerUUID, String configName, ObjectNode config) {
-    ObjectNode maskedConfig =
-        EncryptionAtRestUtil.maskConfigData(customerUUID, config, this.keyProvider);
     KmsConfig result =
-        KmsConfig.createKMSConfig(customerUUID, this.keyProvider, maskedConfig, configName);
+        KmsConfig.createKMSConfig(customerUUID, this.keyProvider, config, configName);
     UUID configUUID = result.configUUID;
     ObjectNode existingConfig = getAuthConfig(configUUID);
     ObjectNode updatedConfig = createAuthConfigWithService(configUUID, existingConfig);
     if (updatedConfig != null) {
-      ObjectNode updatedMaskedConfig =
-          EncryptionAtRestUtil.maskConfigData(customerUUID, updatedConfig, this.keyProvider);
-      KmsConfig.updateKMSConfig(configUUID, updatedMaskedConfig);
+      KmsConfig.updateKMSConfig(configUUID, updatedConfig);
     } else {
       result.delete();
       result = null;
@@ -245,16 +241,12 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public KmsConfig updateAuthConfig(UUID customerUUID, UUID configUUID, ObjectNode config) {
-    ObjectNode maskedConfig =
-        EncryptionAtRestUtil.maskConfigData(customerUUID, config, this.keyProvider);
     KmsConfig result = KmsConfig.get(configUUID);
-    KmsConfig.updateKMSConfig(configUUID, maskedConfig);
+    KmsConfig.updateKMSConfig(configUUID, config);
     ObjectNode existingConfig = getAuthConfig(configUUID);
     ObjectNode updatedConfig = createAuthConfigWithService(configUUID, existingConfig);
     if (updatedConfig != null) {
-      ObjectNode updatedMaskedConfig =
-          EncryptionAtRestUtil.maskConfigData(customerUUID, updatedConfig, this.keyProvider);
-      result = KmsConfig.updateKMSConfig(configUUID, updatedMaskedConfig);
+      result = KmsConfig.updateKMSConfig(configUUID, updatedConfig);
     } else {
       return null;
     }
@@ -262,7 +254,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
   }
 
   public ObjectNode getAuthConfig(UUID configUUID) {
-    return EncryptionAtRestUtil.getAuthConfig(configUUID, this.keyProvider);
+    return EncryptionAtRestUtil.getAuthConfig(configUUID);
   }
 
   public boolean UpdateAuthConfigProperties(
@@ -272,11 +264,7 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
         customerUUID.toString(),
         configUUID.toString());
     if (updatedConfig == null) return false;
-
-    ObjectNode updatedMaskedConfig =
-        EncryptionAtRestUtil.maskConfigData(customerUUID, updatedConfig, this.keyProvider);
-    KmsConfig result = KmsConfig.updateKMSConfig(configUUID, updatedMaskedConfig);
-
+    KmsConfig result = KmsConfig.updateKMSConfig(configUUID, updatedConfig);
     return (result == null) ? false : true;
   }
 

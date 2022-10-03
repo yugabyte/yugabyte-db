@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/metrics.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -87,13 +88,25 @@ class Share {
   std::atomic<uint64_t> stop_{0};
 };
 
+struct TestTaskMetrics {
+  std::atomic<uint64_t> queued_added;
+  std::atomic<uint64_t> queued_removed;
+  std::atomic<uint64_t> paused_added;
+  std::atomic<uint64_t> paused_removed;
+  std::atomic<uint64_t> active_added;
+  std::atomic<uint64_t> active_removed;
+};
+
 class Task : public PriorityThreadPoolTask {
  public:
-  Task(int index, Share* share, uint64_t drive, bool pause = true, bool compaction = false)
+  Task(int index, Share* share, uint64_t drive, bool pause = true, bool compaction = false,
+      TestTaskMetrics* metrics = nullptr)
       : index_(index),
         share_(share),
         pause_(pause),
-        compaction_(compaction) {}
+        compaction_(compaction),
+        metrics_(metrics) {
+  }
 
   void Run(const Status& status, PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
@@ -119,6 +132,42 @@ class Task : public PriorityThreadPoolTask {
     return YB_CLASS_TO_STRING(index);
   }
 
+  void UpdateStatsStateChangedTo(PriorityThreadPoolTaskState state) const override {
+    if (!metrics_) {
+      return;
+    }
+    switch (state) {
+      case yb::PriorityThreadPoolTaskState::kNotStarted:
+        metrics_->queued_added++;
+        return;
+      case yb::PriorityThreadPoolTaskState::kPaused:
+        metrics_->paused_added++;
+        return;
+      case yb::PriorityThreadPoolTaskState::kRunning:
+        metrics_->active_added++;
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  }
+
+  void UpdateStatsStateChangedFrom(PriorityThreadPoolTaskState state) const override {
+    if (!metrics_) {
+      return;
+    }
+    switch (state) {
+      case yb::PriorityThreadPoolTaskState::kNotStarted:
+        metrics_->queued_removed++;
+        return;
+      case yb::PriorityThreadPoolTaskState::kPaused:
+        metrics_->paused_removed++;
+        return;
+      case yb::PriorityThreadPoolTaskState::kRunning:
+        metrics_->active_removed++;
+        return;
+    }
+    FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
+  }
+
   int CalculateGroupNoPriority(int active_tasks) const override {
     return compaction_
         ? kTopDiskCompactionPriority - active_tasks
@@ -130,6 +179,7 @@ class Task : public PriorityThreadPoolTask {
   Share* const share_;
   const bool pause_;
   const bool compaction_;
+  TestTaskMetrics* metrics_;
 };
 
 // Test randomly submits and stops task to priority thread pool.
@@ -258,8 +308,8 @@ namespace {
 
 size_t SubmitTask(
     int index, Share* share, PriorityThreadPool* thread_pool, int drive = kNoDrive,
-    bool pause = true, bool compaction = false) {
-  auto task = std::make_unique<Task>(index, share, drive, pause, compaction);
+    bool pause = true, bool compaction = false, TestTaskMetrics* metrics = nullptr) {
+  auto task = std::make_unique<Task>(index, share, drive, pause, compaction, metrics);
   size_t serial_no = task->SerialNo();
   EXPECT_OK(thread_pool->Submit(index /* priority */, &task, drive));
   EXPECT_TRUE(task == nullptr);
@@ -313,6 +363,74 @@ TEST(PriorityThreadPoolTest, ChangePriority) {
   ASSERT_TRUE(thread_pool.ChangeTaskPriority(task5, 6));
   share.FillRunningTaskPriorities(&running);
   ASSERT_EQ(running, std::vector<int>({2, 5, 6}));
+}
+
+// Verify that the queued, paused, and active task metrics are updated as expected.
+TEST(PriorityThreadPoolTest, TaskMetrics) {
+
+  const int kMaxRunningTasks = 3;
+  auto metrics = TestTaskMetrics();
+
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+
+  Share share;
+  std::vector<int> running;
+
+  auto se = ScopeExit([&share, &thread_pool] {
+    thread_pool.StartShutdown();
+    share.StopAll();
+    thread_pool.CompleteShutdown();
+  });
+
+  // Add 4 tasks. First 3 run, 4th is in queue.
+  SubmitTask(6, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  SubmitTask(5, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  SubmitTask(4, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  SubmitTask(3, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(metrics.active_added.load(), 3);
+  ASSERT_EQ(metrics.active_removed.load(), 0);
+  ASSERT_EQ(metrics.queued_added.load(), 1);
+  ASSERT_EQ(metrics.queued_removed.load(), 0);
+  ASSERT_EQ(metrics.paused_added.load(), 0);
+  ASSERT_EQ(metrics.paused_removed.load(), 0);
+
+  // Add a higher priority task + a lower priority task.
+  // Task 4 should pause, lower task is queued.
+  SubmitTask(7, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  SubmitTask(2, &share, &thread_pool, kNoDrive, /* pause */ true,
+      /* compaction */ false, &metrics);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(metrics.active_added.load(), 4);
+  ASSERT_EQ(metrics.active_removed.load(), 1);
+  ASSERT_EQ(metrics.queued_added.load(), 3);
+  ASSERT_EQ(metrics.queued_removed.load(), 1);
+  ASSERT_EQ(metrics.paused_added.load(), 1);
+  ASSERT_EQ(metrics.paused_removed.load(), 0);
+
+  // Finish one of the running tasks.
+  // This should take the previously paused task and make it active.
+  share.Stop(7);
+  share.FillRunningTaskPriorities(&running);
+  ASSERT_EQ(metrics.active_added.load(), 5);
+  ASSERT_EQ(metrics.active_removed.load(), 2);
+  ASSERT_EQ(metrics.queued_added.load(), 3);
+  ASSERT_EQ(metrics.queued_removed.load(), 1);
+  ASSERT_EQ(metrics.paused_added.load(), 1);
+  ASSERT_EQ(metrics.paused_removed.load(), 1);
+
+  // After shutdown, the number of tasks added and removed from each catagory should be equivalent.
+  thread_pool.StartShutdown();
+  share.StopAll();
+  thread_pool.CompleteShutdown();
+  ASSERT_EQ(metrics.active_added.load(), metrics.active_removed.load());
+  ASSERT_EQ(metrics.queued_added.load(), metrics.queued_removed.load());
+  ASSERT_EQ(metrics.paused_added.load(), metrics.paused_removed.load());
 }
 
 TEST(PriorityThreadPoolTest, GroupNoActiveIORebalancing) {

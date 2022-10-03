@@ -46,8 +46,8 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     try {
       // Validate the crypto key settings if it already exists
       String cryptoKeyRN = gcpEARServiceUtil.getCryptoKeyRN(config);
-      if (gcpEARServiceUtil.checkCryptoKeyExists(config, cryptoKeyRN)
-          && !gcpEARServiceUtil.validateCryptoKeySettings(config, cryptoKeyRN)) {
+      if (gcpEARServiceUtil.checkCryptoKeyExists(config)
+          && !gcpEARServiceUtil.validateCryptoKeySettings(config)) {
         LOG.info(
             "Crypto key with given name exists, but has invalid settings. "
                 + "Cryptokey RN = "
@@ -82,15 +82,15 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
-    if (!gcpEARServiceUtil.checkKeyRingExists(authConfig, keyRingRN)) {
+    if (!gcpEARServiceUtil.checkKeyRingExists(authConfig)) {
       String errMsg = "Key Ring does not exist: " + keyRingRN;
       LOG.error(errMsg);
       throw new RuntimeException(errMsg);
     }
     // Ensure the crypto key exists in GCP KMS
     String cryptoKeyRN = gcpEARServiceUtil.getCryptoKeyRN(authConfig);
-    if (!gcpEARServiceUtil.checkCryptoKeyExists(authConfig, cryptoKeyRN)) {
-      String errMsg = "Crypto Key does not exist: " + keyRingRN;
+    if (!gcpEARServiceUtil.checkCryptoKeyExists(authConfig)) {
+      String errMsg = "Crypto Key does not exist: " + cryptoKeyRN;
       LOG.error(errMsg);
       throw new RuntimeException(errMsg);
     }
@@ -117,15 +117,15 @@ public class GcpEARService extends EncryptionAtRestService<GcpAlgorithm> {
     ObjectNode authConfig = gcpEARServiceUtil.getAuthConfig(configUUID);
     // Ensure the key ring exists from GCP KMS to universe UUID
     String keyRingRN = gcpEARServiceUtil.getKeyRingRN(authConfig);
-    if (!gcpEARServiceUtil.checkKeyRingExists(authConfig, keyRingRN)) {
+    if (!gcpEARServiceUtil.checkKeyRingExists(authConfig)) {
       String errMsg = "Key Ring does not exist: " + keyRingRN;
       LOG.error(errMsg);
       throw new RuntimeException(errMsg);
     }
     // Ensure the crypto key exists in GCP KMS
     String cryptoKeyRN = gcpEARServiceUtil.getCryptoKeyRN(authConfig);
-    if (!gcpEARServiceUtil.checkCryptoKeyExists(authConfig, cryptoKeyRN)) {
-      String errMsg = "Crypto Key does not exist: " + keyRingRN;
+    if (!gcpEARServiceUtil.checkCryptoKeyExists(authConfig)) {
+      String errMsg = "Crypto Key does not exist: " + cryptoKeyRN;
       LOG.error(errMsg);
       throw new RuntimeException(errMsg);
     }

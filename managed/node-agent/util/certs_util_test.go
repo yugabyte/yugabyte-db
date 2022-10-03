@@ -15,21 +15,18 @@ import (
 
 func TestSaveCerts(t *testing.T) {
 	certString, keyString := "test-cert", "test-key"
-	config, err := GetTestConfig()
-	if err != nil {
-		t.Errorf("Error while reading test config")
-	}
-	err = SaveCerts(config, certString, keyString, "test1")
+	config := CurrentConfig()
+	err := SaveCerts(config, certString, keyString, "test1")
 	if err != nil {
 		t.Errorf("Error while saving certs - %s ", err.Error())
 	}
 
-	dir := GetCertsDir()
+	dir := CertsDir()
 	if err != nil {
 		t.Errorf("Error while getting certs dir - %s ", err.Error())
 	}
 	//Check if the certs are saved and check the value of the files.
-	path := dir + "/test1/" + AgentCertFile
+	path := dir + "/test1/" + NodeAgentCertFile
 	if _, err := os.Stat(path); err == nil {
 		privateKey, err := ioutil.ReadFile(path)
 		if err != nil {
@@ -44,13 +41,9 @@ func TestSaveCerts(t *testing.T) {
 }
 
 func TestCreateJWTToken(t *testing.T) {
-	config, err := GetTestConfig()
-	if err != nil {
-		t.Errorf("Error while reading test config")
-	}
-
+	config := CurrentConfig()
 	private, public := getPublicAndPrivateKey()
-	err = SaveCerts(config, string(public), string(private), "test2")
+	err := SaveCerts(config, string(public), string(private), "test2")
 	_, err = GenerateJWT(config)
 	if err != nil {
 		t.Errorf("Error generating JWT")

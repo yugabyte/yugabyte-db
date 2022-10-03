@@ -83,7 +83,7 @@ At times, you may need to move your database infrastructure to new hardware or y
 
 ## Need to scale beyond single or 2-DC deployments
 
-The current RDBMS solutions (using async replication) and NoSQL solutions work up to 2 data center deployments; but in a very restrictive manner. With Apache Cassandra’s 2-DC deployments, one has to chose between write unavailability on a partition between the DCs, or cope with async replication model where on a DC failure some inflight data is lost.
+Current RDBMS (using asynchronous replication) and NoSQL solutions work up to 2 data center deployments, but in a very restrictive manner. With Apache Cassandra’s 2-DC deployments, you have to choose between write unavailability on a partition between the DCs, or cope with an asynchronous replication model where on a DC failure some inflight data is lost.
 
 YugabyteDB’s distributed consensus based replication design, in 3-DC deployments for example, enables enterprise to “have their cake and eat it too”. It gives use cases the choice to be highly available for reads and writes even on a complete DC outage, without having to take a down time or resort to an older/asynchronous copy of the data (which may not have all the changes to the system).
 

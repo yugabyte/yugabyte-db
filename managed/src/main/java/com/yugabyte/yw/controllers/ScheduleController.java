@@ -2,17 +2,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.cronutils.model.Cron;
-import com.cronutils.model.definition.CronDefinitionBuilder;
-import com.cronutils.model.time.ExecutionTime;
-import com.cronutils.parser.CronParser;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
@@ -30,20 +24,11 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.data.Form;
 import play.mvc.Result;
-
-import static com.cronutils.model.CronType.UNIX;
 
 @Api(
     value = "Schedule management",
@@ -121,7 +106,6 @@ public class ScheduleController extends AuthenticatedController {
   public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
-
     EditBackupScheduleParams params = parseJsonAndValidate(EditBackupScheduleParams.class);
     if (params.status.equals(State.Paused)) {
       throw new PlatformServiceException(

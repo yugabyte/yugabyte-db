@@ -66,13 +66,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
         xClusterConfig
             .tables
             .stream()
-            .filter(
-                tableConfig ->
-                    (tableConfig.needBootstrap
-                            && !tableConfig.replicationSetupDone
-                            && tableConfig.bootstrapCreateTime != null
-                            && tableConfig.streamId != null)
-                        || xClusterConfig.targetUniverseUUID == null)
+            .filter(tableConfig -> tableConfig.streamId != null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId

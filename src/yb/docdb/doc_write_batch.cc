@@ -112,7 +112,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   {
     auto value_copy = recent_value;
     control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
-    current_entry_.user_timestamp = control_fields.user_timestamp;
+    current_entry_.user_timestamp = control_fields.timestamp;
     current_entry_.value_type = DecodeValueEntryType(value_copy);
   }
 
@@ -138,7 +138,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     if (value != recent_value) {
       auto value_copy = value;
       current_entry_.user_timestamp = VERIFY_RESULT(
-          ValueControlFields::Decode(&value_copy)).user_timestamp;
+          ValueControlFields::Decode(&value_copy)).timestamp;
       current_entry_.value_type = DecodeValueEntryType(value_copy);
     }
     current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
@@ -186,7 +186,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
     const ValueControlFields& control_fields,
     LazyIterator* iter) {
-  if (!control_fields.has_user_timestamp()) {
+  if (!control_fields.has_timestamp()) {
     return true;
   }
   // Seek for the older version of the key that we're about to write to. This is essentially a
@@ -200,8 +200,8 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
     return true;
   }
 
-  if (current_entry_.user_timestamp != ValueControlFields::kInvalidUserTimestamp) {
-    return control_fields.user_timestamp >= current_entry_.user_timestamp;
+  if (current_entry_.user_timestamp != ValueControlFields::kInvalidTimestamp) {
+    return control_fields.timestamp >= current_entry_.user_timestamp;
   }
 
   // Look at the hybrid time instead.
@@ -210,8 +210,8 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
     return true;
   }
 
-  return control_fields.user_timestamp >= 0 &&
-         implicit_cast<size_t>(control_fields.user_timestamp) >=
+  return control_fields.timestamp >= 0 &&
+         implicit_cast<size_t>(control_fields.timestamp) >=
              doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
 }
 
@@ -242,7 +242,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
         numeric_limits<IntraTxnWriteId>::max());
   }
 
-  if (control_fields.has_user_timestamp() && !optional_init_markers()) {
+  if (control_fields.has_timestamp() && !optional_init_markers()) {
     return STATUS(IllegalState,
                   "User Timestamp is only supported for Optional Init Markers");
   }
@@ -335,7 +335,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
         return Status::OK();
       }
 
-      DCHECK(!control_fields.has_user_timestamp());
+      DCHECK(!control_fields.has_timestamp());
 
       // Add the parent key to key/value batch before appending the encoded HybridTime to it.
       // (We replicate key/value pairs without the HybridTime and only add it before writing to
@@ -382,7 +382,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
     // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's
     // the key we expect to look up.
     cache_.Put(key_prefix_, hybrid_time, static_cast<ValueEntryType>(encoded_value[prefix_len]),
-               control_fields.user_timestamp);
+               control_fields.timestamp);
   }
 
   return Status::OK();
@@ -510,7 +510,7 @@ Status DocWriteBatch::ExtendSubDocument(
   }
   auto control_fields = ValueControlFields{
     .ttl = ttl,
-    .user_timestamp = user_timestamp,
+    .timestamp = user_timestamp,
   };
   return SetPrimitive(doc_path, control_fields, value, read_ht, deadline, query_id);
 }
@@ -528,7 +528,7 @@ Status DocWriteBatch::InsertSubDocument(
     auto key_ttl = init_marker_ttl ? ttl : ValueControlFields::kMaxTtl;
     auto control_fields = ValueControlFields {
       .ttl = key_ttl,
-      .user_timestamp = user_timestamp,
+      .timestamp = user_timestamp,
     };
     RETURN_NOT_OK(SetPrimitive(
         doc_path, control_fields, ValueRef(value.ContainerValueType()), read_ht, deadline,

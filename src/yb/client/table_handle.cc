@@ -171,6 +171,27 @@ void TableHandle::AddCondition(QLConditionPB* const condition, const QLOperator 
   condition->add_operands()->mutable_condition()->set_op(op);
 }
 
+QLMapValuePB* TableHandle::AddMapColumnValue(
+    QLWriteRequestPB* req, const int32_t& column_id, const string& entry_key,
+    const string& entry_value) const {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  QLMapValuePB* map_value = (column_value->mutable_expr()->mutable_value()->mutable_map_value());
+  QLValuePB* elem = map_value->add_keys();
+  elem->set_string_value(entry_key);
+  elem = map_value->add_values();
+  elem->set_string_value(entry_value);
+  return map_value;
+}
+
+void TableHandle::AddMapEntryToColumn(
+    QLMapValuePB* map_value_pb, const string& entry_key, const string& entry_value) const {
+  QLValuePB* elem = map_value_pb->add_keys();
+  elem->set_string_value(entry_key);
+  elem = map_value_pb->add_values();
+  elem->set_string_value(entry_value);
+}
+
 void TableHandle::AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const {
   QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
   for (const auto& column : columns) {

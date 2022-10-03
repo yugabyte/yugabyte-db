@@ -1,0 +1,41 @@
+           List of relations
+ Schema | Name | Type  |     Owner
+--------+------+-------+---------------
+ public | p1   | table | yugabyte_test
+ public | p2   | table | yugabyte_test
+ public | p3   | table | yugabyte_test
+(3 rows)
+
+                              List of tablegroups
+ Name |     Owner     | Access privileges | Description | Tablespace | Options
+------+---------------+-------------------+-------------+------------+---------
+ t    | yugabyte_test |                   |             |            |
+(1 row)
+
+                 Table "public.p1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+ c      | integer |           |          |
+Indexes:
+    "c1" UNIQUE CONSTRAINT, lsm (a HASH, b ASC)
+
+                 Table "public.p2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+ c      | integer |           |          |
+Indexes:
+    "c2" UNIQUE CONSTRAINT, lsm (a ASC, b ASC), tablegroup "t"
+Tablegroup: "t"
+
+                 Table "public.p3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+ c      | integer |           |          |
+Indexes:
+    "c3" UNIQUE CONSTRAINT, lsm ((a, b) HASH, c ASC)

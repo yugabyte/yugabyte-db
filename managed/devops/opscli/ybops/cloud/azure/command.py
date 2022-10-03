@@ -18,7 +18,8 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
     AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
-    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks
+    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
+    WaitForSSHConnection
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -52,6 +53,7 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(AzureResumeInstancesMethod(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
+        self.add_method(WaitForSSHConnection(self))
 
 
 class AzureAccessCommand(AccessCommand):

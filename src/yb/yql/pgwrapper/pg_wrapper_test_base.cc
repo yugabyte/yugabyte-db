@@ -94,21 +94,17 @@ string CertsDir() {
 
 } // namespace
 
-void PgCommandTestBase::RunPsqlCommand(
-    const string& statement, const string& expected_output, bool tuples_only) {
+Result<std::string> PgCommandTestBase::RunPsqlCommand(
+    const std::string& statement, TuplesOnly tuples_only) {
   string tmp_dir;
-  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
+  RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
   unique_ptr<WritableFile> tmp_file;
   string tmp_file_name;
-  ASSERT_OK(
-      Env::Default()->NewTempWritableFile(
-          WritableFileOptions(),
-          tmp_dir + "/psql_statementXXXXXX",
-          &tmp_file_name,
-          &tmp_file));
-  ASSERT_OK(tmp_file->Append(statement));
-  ASSERT_OK(tmp_file->Close());
+  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
+      WritableFileOptions(), tmp_dir + "/psql_statementXXXXXX", &tmp_file_name, &tmp_file));
+  RETURN_NOT_OK(tmp_file->Append(statement));
+  RETURN_NOT_OK(tmp_file->Close());
 
   vector<string> argv{
       GetPostgresInstallRoot() + "/bin/ysqlsh",
@@ -141,9 +137,17 @@ void PgCommandTestBase::RunPsqlCommand(
 
   string psql_stdout;
   LOG(INFO) << "Executing statement: " << statement;
-  ASSERT_OK(proc.Call(&psql_stdout));
+  RETURN_NOT_OK(proc.Call(&psql_stdout));
   LOG(INFO) << "Output from statement {{ " << statement << " }}:\n"
             << psql_stdout;
+
+  return TrimSqlOutput(psql_stdout);
+}
+
+void PgCommandTestBase::RunPsqlCommand(
+    const string& statement, const string& expected_output, bool tuples_only) {
+  string psql_stdout = ASSERT_RESULT(
+      RunPsqlCommand(statement, tuples_only ? TuplesOnly::kTrue : TuplesOnly::kFalse));
   ASSERT_EQ(TrimSqlOutput(expected_output), TrimSqlOutput(psql_stdout));
 }
 

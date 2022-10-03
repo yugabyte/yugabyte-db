@@ -25,7 +25,9 @@ const prepareInitialValues = (values) => {
     slack_name: values.name,
     email_name: values.name,
     pagerDuty_name: values.name,
-    webHook_name: values.name
+    webHook_name: values.name,
+    notificationTitle: values.params.titleTemplate,
+    notificationText: values.params.textTemplate
   };
 
   switch (values.params.channelType) {
@@ -80,10 +82,13 @@ export const AlertDestinationChannels = (props) => {
   const [type, setType] = useState('');
   const [initialValues, setInitialValues] = useState({});
   const {
-    customer
+    customer, featureFlags
   } = props;
   const isReadOnly = isNonAvailable(
     customer.data.features, 'alert.channels.actions');
+
+  const enableNotificationTemplates = featureFlags.test.enableNotificationTemplates
+    || featureFlags.released.enableNotificationTemplates;
 
   const getAlertChannelsList = () => {
     dispatch(getAlertChannels()).then((resp) => setAlertChannels(resp.payload.data));
@@ -249,6 +254,7 @@ export const AlertDestinationChannels = (props) => {
           editAlertChannel={editAlertChannel}
           editValues={type === 'edit' ? initialValues : {}}
           updateDestinationChannel={getAlertChannelsList}
+          enableNotificationTemplates={enableNotificationTemplates}
           {...props}
         />
       )}

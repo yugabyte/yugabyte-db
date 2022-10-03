@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -157,6 +158,10 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.code);
     userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    userIntent.deviceInfo.numVolumes = 2;
+
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
 
     PlacementInfo placementInfo = createPlacementInfo();

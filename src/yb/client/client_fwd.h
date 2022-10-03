@@ -94,6 +94,7 @@ class YBTableName;
 class UniverseKeyClient;
 
 struct ChildTransactionData;
+struct TableSizeInfo;
 struct VersionedTablePartitionList;
 struct YBTableInfo;
 struct YBTabletServer;

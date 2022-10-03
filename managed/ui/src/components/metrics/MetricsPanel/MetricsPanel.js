@@ -191,9 +191,10 @@ export default class MetricsPanel extends Component {
       url.hostname = window.location.hostname;
       return url.href;
     };
+
     return (
       <div id={this.props.metricKey} className="metrics-panel">
-        {prometheusQueryEnabled && this.props.metric.directURLs.length > 0 ? (
+        {prometheusQueryEnabled && isNonEmptyArray(this.props.metric?.directURLs) ? (
           <OverlayTrigger placement="top" overlay={tooltip}>
             <a
               target="_blank"

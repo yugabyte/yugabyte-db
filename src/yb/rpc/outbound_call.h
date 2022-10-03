@@ -310,7 +310,6 @@ class OutboundCall : public RpcCall {
   const ConnectionId& conn_id() const { return conn_id_; }
   const std::string& hostname() const { return *hostname_; }
   const RemoteMethod& remote_method() const { return *remote_method_; }
-  const ResponseCallback& callback() const { return callback_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
   AnyMessagePtr response() const { return response_; }

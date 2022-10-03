@@ -53,10 +53,12 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
 </ul>
 
+<div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">
 
 <map name="image-map">
-    <area target="_blank" alt="Configure Azure" title="Configure Azure" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect">
-    <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect">
-    <area target="_blank" alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect">
+    <area alt="Configure Azure" title="Configure Azure" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect" style="top: 38%; left: 29%; width: 42%; height: 7%;">
+    <area alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect" style="top:27%; left:31%; width:38%; height:6%;">
+    <area alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect" style=" top: 5%; left: 41%; width: 18%; height: 17%; ">
 </map>
+</div>

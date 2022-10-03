@@ -151,7 +151,7 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 | **Graph**             | **Description**                                              | **Alert Guidance**                                           | **Example**     |
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------- |
-| Async Replication Lag | The maximum lag (in milliseconds) across all tables in an xCluster replication deployment.<br>This time represents a delay from a Producer universe to a Consumer universe.<br>The value of this metric is only shown on the Producer universe, unless there is a bi-directional replication. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | Example pending |
+| Async replication Lag | The maximum lag (in milliseconds) across all tables in an xCluster replication deployment.<br>This time represents a delay from a Producer universe to a Consumer universe.<br>The value of this metric is only shown on the Producer universe, unless there is a bi-directional replication. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | Example pending |
 
 ### Command-line access to metrics
 

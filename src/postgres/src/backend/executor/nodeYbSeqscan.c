@@ -78,8 +78,8 @@ YbSeqNext(YbSeqScanState *node)
 	if (scandesc == NULL)
 	{
 		YbSeqScan *plan = (YbSeqScan *) node->ss.ps.plan;
-		PushdownExprs *remote = YbInstantiateRemoteParams(
-			&plan->remote, estate->es_param_list_info);
+		PushdownExprs *remote =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 		scandesc = ybc_remote_beginscan(node->ss.ss_currentRelation,
 										estate->es_snapshot,
 										(Scan *) plan,

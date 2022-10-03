@@ -51,6 +51,12 @@ public class MetricLabelsBuilder {
     return this;
   }
 
+  public MetricLabelsBuilder appendCustomer(Customer customer) {
+    labels.put(KnownAlertLabels.CUSTOMER_CODE.labelName(), customer.code);
+    labels.put(KnownAlertLabels.CUSTOMER_NAME.labelName(), customer.name);
+    return this;
+  }
+
   public MetricLabelsBuilder appendSource(Customer customer) {
     labels.put(KnownAlertLabels.SOURCE_UUID.labelName(), customer.getUuid().toString());
     labels.put(KnownAlertLabels.SOURCE_NAME.labelName(), customer.name);

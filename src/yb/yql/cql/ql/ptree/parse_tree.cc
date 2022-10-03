@@ -21,11 +21,20 @@
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_delete.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
+#include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_update.h"
+
+#include "yb/client/table.h"
 
 namespace yb {
 namespace ql {
 
 using std::string;
+using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 // Parse Tree
@@ -77,6 +86,58 @@ Status ParseTree::Analyze(SemContext *sem_context) {
     }
     default:
       return lnode->AnalyzeStatementBlock(sem_context);
+  }
+}
+
+shared_ptr<const client::YBTable> ParseTree::GetYBTableFromTreeNode(const TreeNode *tnode) {
+  while (tnode != nullptr) {
+    switch (tnode->opcode()) {
+      case TreeNodeOpcode::kPTAlterTable:
+        return static_cast<const PTAlterTable *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTSelectStmt:
+        return static_cast<const PTSelectStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTInsertStmt:
+        return static_cast<const PTInsertStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTDeleteStmt:
+        return static_cast<const PTDeleteStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTUpdateStmt:
+        return static_cast<const PTUpdateStmt *>(tnode)->table();
+
+      case TreeNodeOpcode::kPTExplainStmt:
+        tnode = static_cast<const PTExplainStmt *>(tnode)->stmt().get();
+        break;
+
+      default:
+        return nullptr;
+    }
+  }
+
+  return nullptr;
+}
+
+Result<SchemaVersion> ParseTree::GetYBTableSchemaVersion() const {
+  const shared_ptr<const client::YBTable> table = GetYBTableFromTreeNode(root_.get());
+  SCHECK(table, IllegalState, "Table missing");
+  return table->schema().version();
+}
+
+Result<bool> ParseTree::IsYBTableAltered(QLEnv *ql_env) const {
+  const shared_ptr<const client::YBTable> table = GetYBTableFromTreeNode(root_.get());
+  SCHECK(table, IllegalState, "Table missing");
+  const SchemaVersion current_schema_ver = table->schema().version();
+  const SchemaVersion updated_schema_ver = VERIFY_RESULT(
+      DCHECK_NOTNULL(ql_env)->GetUpToDateTableSchemaVersion(table->name()));
+
+  if (updated_schema_ver == current_schema_ver) {
+    return false;
+  } else {
+    // Clean-up the internal cache for the stale table.
+    ql_env->RemoveCachedTableDesc(table->name());
+    return true;
   }
 }
 

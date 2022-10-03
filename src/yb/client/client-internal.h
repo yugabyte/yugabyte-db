@@ -400,6 +400,10 @@ class YBClient::Data {
   Status ValidateReplicationInfo(
         const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline);
 
+  // Get disk size of table, calculated as WAL + SST file size.
+  // It does not take replication factor into account
+  Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id, CoarseTimePoint deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   template <class ProxyClass, class ReqClass, class RespClass>
@@ -531,19 +535,6 @@ class YBClient::Data {
 
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
-
-// Retry helper, takes a function like:
-//     Status funcName(const MonoTime& deadline, bool *retry, ...)
-// The function should set the retry flag (default true) if the function should
-// be retried again. On retry == false the return status of the function will be
-// returned to the caller, otherwise a Status::Timeout() will be returned.
-// If the deadline is already expired, no attempt will be made.
-Status RetryFunc(
-    CoarseTimePoint deadline,
-    const std::string& retry_msg,
-    const std::string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait = std::chrono::seconds(2));
 
 } // namespace client
 } // namespace yb

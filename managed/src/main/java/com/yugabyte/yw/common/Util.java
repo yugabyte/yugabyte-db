@@ -9,9 +9,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -84,6 +90,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String YBC_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
+
+  public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -621,5 +629,56 @@ public class Util {
     String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     return provider.getYbHome();
+  }
+
+  public static boolean isOnPremManualProvisioning(Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.providerType == Common.CloudType.onprem) {
+      boolean manualProvisioning = false;
+      try {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(
+                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
+        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+        manualProvisioning = keyInfo.skipProvisioning;
+      } catch (PlatformServiceException ex) {
+        // no access code
+      }
+      return manualProvisioning;
+    }
+    return false;
+  }
+
+  /**
+   * @param ybServerPackage
+   * @return pair of string containing osType and archType of ybc-server-package
+   */
+  public static Pair<String, String> getYbcPackageDetailsFromYbServerPackage(
+      String ybServerPackage) {
+    String archType = null;
+    if (ybServerPackage.contains(Architecture.x86_64.name().toLowerCase())) {
+      archType = Architecture.x86_64.name();
+    } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())
+        || ybServerPackage.contains(Architecture.arm64.name().toLowerCase())) {
+      archType = Architecture.aarch64.name();
+    } else {
+      throw new RuntimeException(
+          "Cannot install ybc on machines of arch types other than x86_64, aarch64");
+    }
+
+    // We are using standard open-source OS names in case of different arch.
+    String osType = OsType.LINUX.toString();
+    if (!archType.equals(Architecture.x86_64.name())) {
+      osType = OsType.EL8.toString();
+    }
+    return new Pair<>(osType.toLowerCase(), archType.toLowerCase());
+  }
+
+  /**
+   * Basic DNS address check which allows only alphanumeric characters and hyphen (-) in the name.
+   * Hyphen cannot be at the beginning or at the end of a DNS label.
+   */
+  public static boolean isValidDNSAddress(String dns) {
+    return dns.matches("^((?!-)[A-Za-z0-9-]+(?<!-)\\.)+[A-Za-z]+$");
   }
 }

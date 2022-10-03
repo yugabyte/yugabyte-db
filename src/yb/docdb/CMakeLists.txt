@@ -61,6 +61,7 @@ set(DOCDB_SRCS
         consensus_frontier.cc
         cql_operation.cc
         deadline_info.cc
+        deadlock_detector.cc
         doc_boundary_values_extractor.cc
         docdb.cc
         docdb_debug.cc
@@ -97,6 +98,7 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         value.cc
+        local_waiting_txn_registry.cc
         wait_queue.cc
         kv_debug.cc
         )

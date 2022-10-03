@@ -201,3 +201,26 @@ SELECT * FROM subtrans_test ORDER BY 1;
 ---+-----
  1 | dog
 (1 row)
+
+-- Test calling a stored function from DDL statement
+CREATE OR REPLACE FUNCTION inverse(float8) RETURNS float8 AS
+$$
+BEGIN
+	RETURN 1::float8 / $1;
+EXCEPTION WHEN others THEN
+	RAISE NOTICE 'caught exception % %', sqlstate, sqlerrm;
+        RETURN 'NaN';
+END$$ LANGUAGE plpgsql;
+CREATE TABLE ddl_subtrans_test (c1 float8);
+INSERT INTO ddl_subtrans_test VALUES (0);
+ALTER TABLE ddl_subtrans_test ADD CONSTRAINT c1_not_nan CHECK (inverse(c1) <> 'NaN');
+NOTICE:  caught exception 22012 division by zero
+ERROR:  check constraint "c1_not_nan" is violated by some row
+-- Verify that the check constraint has not been added
+\d ddl_subtrans_test
+              Table "public.ddl_subtrans_test"
+ Column |       Type       | Collation | Nullable | Default
+--------+------------------+-----------+----------+---------
+ c1     | double precision |           |          |
+
+DROP TABLE ddl_subtrans_test;

@@ -198,6 +198,8 @@ using yb::master::GetMasterClusterConfigRequestPB;
 using yb::master::GetMasterClusterConfigResponsePB;
 using yb::master::CreateTransactionStatusTableRequestPB;
 using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::AddTransactionStatusTabletRequestPB;
+using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::PlacementInfoPB;
@@ -590,6 +592,16 @@ Status YBClient::WaitForCreateTableToFinish(
     const string& table_id, const CoarseTimePoint& deadline) {
   const YBTableName empty_table_name;
   return data_->WaitForCreateTableToFinish(this, empty_table_name, table_id, deadline);
+}
+
+Status YBClient::WaitForDeleteTableToFinish(const string& table_id) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return WaitForDeleteTableToFinish(table_id, deadline);
+}
+
+Status YBClient::WaitForDeleteTableToFinish(
+    const string& table_id, const CoarseTimePoint& deadline) {
+  return data_->WaitForDeleteTableToFinish(this, table_id, deadline);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -1547,6 +1559,27 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
+Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
+    const string& producer_id,
+    const CDCStreamId& stream_id,
+    const tablet::ChangeMetadataRequestPB& meta_info) {
+  if (producer_id.empty()) {
+    return STATUS(InvalidArgument, "Producer id is required.");
+  }
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  master::UpdateConsumerOnProducerMetadataRequestPB req;
+  req.set_producer_id(producer_id);
+  req.set_stream_id(stream_id);
+  req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
+
+  master::UpdateConsumerOnProducerMetadataResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerMetadata);
+  return resp.should_wait();
+}
+
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
@@ -1714,6 +1747,14 @@ Status YBClient::CreateTransactionsStatusTable(
     *req.mutable_replication_info() = *replication_info;
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, CreateTransactionStatusTable);
+  return Status::OK();
+}
+
+Status YBClient::AddTransactionStatusTablet(const TableId& table_id) {
+  master::AddTransactionStatusTabletRequestPB req;
+  master::AddTransactionStatusTabletResponsePB resp;
+  req.set_table_id(table_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Admin, req, resp, AddTransactionStatusTablet);
   return Status::OK();
 }
 
@@ -1905,11 +1946,13 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
                                 master::IncludeInactive include_inactive,
+                                master::IncludeDeleted include_deleted,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
+      tablet_id, table, include_inactive, include_deleted, deadline, std::move(callback),
+      use_cache);
 }
 
 void YBClient::LookupAllTablets(const std::shared_ptr<YBTable>& table,
@@ -2005,6 +2048,11 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
 Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->ValidateReplicationInfo(replication_info, deadline);
+}
+
+Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->GetTableDiskSize(table_id, deadline);
 }
 
 Result<bool> YBClient::CheckIfPitrActive() {
