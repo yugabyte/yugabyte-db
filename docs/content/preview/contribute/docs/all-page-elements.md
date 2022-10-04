@@ -172,6 +172,17 @@ Some bullets:
 
 Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
+#### Details tag
+
+The details HTML tag is used to create an interactive widget that the user can open and close. By default, the widget is closed. When open, it expands, and displays the contents.
+
+<details>
+  <summary>Tiresomely long code block</summary>
+
+These contents might be a very long bit of code or somesuch.
+
+</details>
+
 ### Another tab widget style - in-page
 
 This tab widget doesn't use separate files to fill in the content and then link between. Here the content is placed inside shortcode.
