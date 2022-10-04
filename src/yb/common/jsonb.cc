@@ -28,6 +28,16 @@
 namespace yb {
 namespace common {
 
+string prepareSerializedJsonb(const string& body) {
+     common::Jsonb jsonb;
+     auto s = jsonb.FromString(body);
+     LOG_IF(DFATAL, !s.ok()) << "Unable to parse " << body;
+     return s.ok() ? jsonb.SerializedJsonb() : "";
+}
+
+string Jsonb::kSerializedJsonbNull = prepareSerializedJsonb("null");
+string Jsonb::kSerializedJsonbEmpty = prepareSerializedJsonb("{}");
+
 bool Jsonb::IsScalar(const JEntry& jentry) {
   uint32_t jentry_type = GetJEType(jentry);
   return ((jentry_type) != kJEIsArray && (jentry_type) != kJEIsObject);
