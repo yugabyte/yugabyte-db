@@ -16,7 +16,6 @@ import (
 
 var (
 	instance      Config
-	once          sync.Once
 	syncMap       *sync.Map
 	mutex         *sync.Mutex
 	currentConfig = DefaultConfig

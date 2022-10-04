@@ -181,7 +181,6 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-  xcluster_safe_time_map_ = make_shared<XClusterSafeTimeMap>();
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
@@ -442,7 +441,7 @@ Status TabletServer::RegisterServices() {
           std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
           &messenger()->scheduler(),
-          GetXClusterSafeTimeMap())));
+          &xcluster_safe_time_map_)));
 
   return Status::OK();
 }
@@ -789,17 +788,17 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
-shared_ptr<XClusterSafeTimeMap> TabletServer::GetXClusterSafeTimeMap() const {
+const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
   return xcluster_safe_time_map_;
 }
 
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
-  xcluster_safe_time_map_->Update(safe_time_map);
+  xcluster_safe_time_map_.Update(safe_time_map);
 }
 
 Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
-    const NamespaceId& namespace_id, HybridTime commit_ht) {
-  return VERIFY_RESULT(xcluster_safe_time_map_->GetSafeTime(namespace_id)) > commit_ht;
+    const NamespaceId& namespace_id, HybridTime commit_ht) const {
+  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
 }
 
 }  // namespace tserver

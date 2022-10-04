@@ -253,6 +253,16 @@ uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
   return reported_schema_version_[table_id];
 }
 
+void TabletInfo::SetInitiaLeaderElectionProtege(const std::string& protege_uuid) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  initial_leader_election_protege_ = protege_uuid;
+}
+
+std::string TabletInfo::InitiaLeaderElectionProtege() {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return initial_leader_election_protege_;
+}
+
 bool TabletInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }
