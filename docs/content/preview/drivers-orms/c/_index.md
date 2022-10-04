@@ -18,7 +18,7 @@ The following projects are recommended for implementing C applications using the
 
 | Project | Example apps |
 | :------ | :----------- |
-| libpq C Driver | [libpq example app](ysql/) |
+| libpq C Driver | [Hello World](ysql/) |
 
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 

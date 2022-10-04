@@ -19,7 +19,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li class="active">
-      <a href="../ysql/" class="nav-link">
+      <a href="../ysql-pg/" class="nav-link">
         YSQL
       </a>
     </li>

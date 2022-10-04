@@ -18,7 +18,7 @@ The following projects are recommended for implementing PHP applications using t
 
 | Project | Example apps |
 | :------ | :----------- |
-| php-pgsql Driver | [pgsql example app](ysql/) |
+| php-pgsql Driver | [Hello World](ysql/) |
 
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 

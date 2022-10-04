@@ -16,8 +16,8 @@ The following projects are recommended for implementing Rust applications using 
 
 | Project | Example apps |
 | :------ | :----------- |
-| libpqxx C++ Driver | [libpqxx example app](ysql/) |
-| YugabyteDB C++ driver for YCQL | [YCQL example app](ycql/) |
+| libpqxx C++ Driver | [Hello World](ysql/) |
+| YugabyteDB C++ driver for YCQL | [Hello World](ycql/) |
 
 For fully-runnable code snippets and explanations of common operations, see the **example apps**. Before running the example apps, make sure you have installed the prerequisites.
 
