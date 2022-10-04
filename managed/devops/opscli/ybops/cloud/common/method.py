@@ -606,7 +606,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
             # For clusters with secondary subnets, the start-up script is expected to fail.
             if not args.cloud_subnet_secondary:
-                self.cloud.verify_startup_script(args, host_info)
+                self.cloud.verify_startup_script(args, self.extra_vars)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
         if create_output is not None:
