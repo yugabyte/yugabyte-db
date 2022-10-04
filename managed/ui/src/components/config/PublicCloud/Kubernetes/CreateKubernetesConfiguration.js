@@ -20,6 +20,7 @@ import { specialChars } from '../../constants';
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
 const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+const podAddrFQDNTemplate = '{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}';
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -94,7 +95,8 @@ class CreateKubernetesConfiguration extends Component {
             ? providerTypeMetadata.code
             : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry,
+	  KUBE_POD_ADDRESS_TEMPLATE: vals.podAddressTemplate || podAddrFQDNTemplate
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
@@ -163,7 +165,8 @@ class CreateKubernetesConfiguration extends Component {
       storageClasses: '',
       kubeDomain: '',
       regionList: [],
-      zoneOverrides: ''
+      zoneOverrides: '',
+      podAddressTemplate: ''
     };
 
     Yup.addMethod(Yup.array, 'unique', function (message, mapper = (a) => a) {
@@ -327,6 +330,28 @@ class CreateKubernetesConfiguration extends Component {
                             component={YBFormDropZone}
                             className="upload-file-button"
                             title={'Upload Pull Secret file'}
+                          />
+                        </Col>
+                      </Row>
+                      <Row className="config-provider-row">
+                        <Col lg={3}>
+                          <div className="form-item-custom-label">Pod Address Template</div>
+                        </Col>
+                        <Col lg={7}>
+                          <Field
+                            name="podAddressTemplate"
+                            placeholder={podAddrFQDNTemplate}
+                            component={YBFormInput}
+                            className={'kube-provider-input-field'}
+                          />
+                        </Col>
+                        <Col lg={1} className="config-provider-tooltip">
+                          <YBInfoTip
+                            title="Pod Address Template (optional)"
+                            content={
+                              'Use this setting for multi-cluster setups like Istio or MCS to generate the correct pod addresses. ' +
+			      'Supported fields are {pod_name}, {service_name}, {namespace}, and {cluster_domain}.'
+                            }
                           />
                         </Col>
                       </Row>
