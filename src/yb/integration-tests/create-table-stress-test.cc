@@ -191,7 +191,7 @@ void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int nu
 }
 
 TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
-  FLAGS_max_create_tablets_per_ts = FLAGS_benchmark_num_tablets;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = FLAGS_benchmark_num_tablets;
   DontVerifyClusterBeforeNextTearDown();
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
@@ -409,8 +409,8 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
   // 100 ms wait / tablet >= 1.3 sec to receive a full report
-  FLAGS_TEST_inject_latency_during_tablet_report_ms = 100;
-  FLAGS_catalog_manager_report_batch_size = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_report_batch_size) = 1;
 
   // Restart Master #1.  Triggers Full Report from all TServers.
   ASSERT_OK(cluster_->mini_master()->Restart());
@@ -429,7 +429,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Speed up the test now...
-  FLAGS_TEST_inject_latency_during_tablet_report_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 0;
 
   // The TS should send a full report.  If they just sent the remainder from their original
   // Full Report, this test will fail.
@@ -445,10 +445,11 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   DontVerifyClusterBeforeNextTearDown();
 
   // 500ms deadline / 50 ms wait ~= 10 Tablets processed before Master hits deadline
-  FLAGS_catalog_manager_report_batch_size = 1;
-  FLAGS_TEST_inject_latency_during_tablet_report_ms = 50 * kTimeMultiplier;
-  FLAGS_heartbeat_rpc_timeout_ms = 500 * kTimeMultiplier;
-  FLAGS_num_test_tablets = 60;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_report_batch_size) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms)
+      = 50 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) = 500 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_test_tablets) = 60;
 
   // Create a Table with 60 tablets, so ~20 per TS.
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");

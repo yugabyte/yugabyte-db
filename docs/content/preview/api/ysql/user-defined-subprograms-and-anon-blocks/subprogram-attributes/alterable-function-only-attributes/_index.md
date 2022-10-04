@@ -16,7 +16,7 @@ showRightNav: true
 
 ## Volatility
 
-The _[volatility](../../../syntax_resources/grammar_diagrams/#volatility)_ attribute as these allowed values:
+The _[volatility](../../../syntax_resources/grammar_diagrams/#volatility)_ attribute has these allowed values:
 
 - _volatile_
 - _stable_
@@ -118,12 +118,13 @@ Further, if you want to create an expression-based index that references a user-
 ```
 
 Marking a function as _immutable_ expresses a promise that must hold good for the lifetime of the function's existence (in other words, from the moment it's created to the moment that it's dropped) thus:
+
 - The function has no side effects.
 - The function is mathematically deterministic—that is, the vector of actual arguments uniquely determines the function's return value.
 
 Nothing prevents you from lying. But doing so will, sooner or later, bring wrong results.
 
-See the section [Immutable function examples](../immutable-function-examples/).
+See the section [Immutable function examples](immutable-function-examples/).
 
 ## On_null_input
 

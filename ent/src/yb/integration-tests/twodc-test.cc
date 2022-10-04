@@ -125,6 +125,15 @@ namespace enterprise {
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
+struct TwoDCTestParams {
+  explicit TwoDCTestParams(bool transactional_table_, int batch_size_ = 0)
+      : transactional_table(transactional_table_)
+      , batch_size(batch_size_) {}
+
+  bool transactional_table; // For XCluster + CQL only. All YSQL tables are transactional.
+  bool batch_size;
+};
+
 class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
@@ -137,7 +146,6 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
     FLAGS_transaction_table_num_tablets = 1;
     TwoDCTestBase::SetUp();
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
-    FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
     FLAGS_yb_num_shards_per_tserver = 1;
     bool transactional_table = GetParam().transactional_table;
     num_tservers = std::max(num_tservers, replication_factor);
@@ -380,9 +388,8 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
 
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTest,
-    ::testing::Values(
-        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
-        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
+    ::testing::Values(TwoDCTestParams(true /* transactional_table */),
+                      TwoDCTestParams(false /* transactional_table */)));
 
 TEST_P(TwoDCTest, SetupUniverseReplication) {
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3));
@@ -1310,15 +1317,13 @@ TEST_P(TwoDCTest, ApplyOperations) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-class TwoDCTestWithTransactionalWrite : public TwoDCTest {};
+class TwoDCTestTransactionalOnly : public TwoDCTest {};
 
 INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTestWithTransactionalWrite,
-    ::testing::Values(
-        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, true),
-        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, true)));
+    TwoDCTestParams, TwoDCTestTransactionalOnly,
+    ::testing::Values(TwoDCTestParams(true /* transactional_table */)));
 
-TEST_P(TwoDCTestWithTransactionalWrite, ApplyOperationsWithTransactions) {
+TEST_P(TwoDCTestTransactionalOnly, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, replication_factor));
 
@@ -1347,14 +1352,7 @@ TEST_P(TwoDCTestWithTransactionalWrite, ApplyOperationsWithTransactions) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-class TwoDCTestWithEnableIntentsReplication : public TwoDCTest {
-};
-
-INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCTestWithEnableIntentsReplication,
-    ::testing::Values(TwoDCTestParams(0, true, true), TwoDCTestParams(1, true, true)));
-
-TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTable) {
+TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTable) {
   FLAGS_enable_replicate_transaction_status_table = true;
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -1392,7 +1390,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTable) {
 
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) {
+TEST_P(TwoDCTestTransactionalOnly, TransactionStatusTableWithWrites) {
   FLAGS_enable_replicate_transaction_status_table = true;
   FLAGS_TEST_disable_cleanup_applied_transactions = true;
   constexpr int kNumTablets = 1;
@@ -1414,7 +1412,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) 
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, OnlyApplyTransactionOnCaughtUpTablet) {
+TEST_P(TwoDCTestTransactionalOnly, OnlyApplyTransactionOnCaughtUpTablet) {
   FLAGS_enable_replicate_transaction_status_table = true;
   FLAGS_TEST_disable_apply_committed_transactions = true;
   constexpr int kNumTablets = 1;
@@ -1437,7 +1435,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, OnlyApplyTransactionOnCaughtUpTabl
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithoutApply) {
+TEST_P(TwoDCTestTransactionalOnly, TransactionsWithoutApply) {
   // This is a test that should only pass when we use the new intents format along with the txn
   // status table. We do this by disabling replication of APPLY records and ensuring that we can
   // still read records from the committed transaction.
@@ -1454,7 +1452,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithoutApply) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
+TEST_P(TwoDCTestTransactionalOnly, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({kNumTablets}, {kNumTablets}, replication_factor));
@@ -1491,7 +1489,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithRestart) {
+TEST_P(TwoDCTestTransactionalOnly, TransactionsWithRestart) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables = { tables[0] };
@@ -1525,7 +1523,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithRestart) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
+TEST_P(TwoDCTestTransactionalOnly, MultipleTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
 
@@ -1565,7 +1563,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, MultipleTransactions) {
   }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, CleanupAbortedTransactions) {
+TEST_P(TwoDCTestTransactionalOnly, CleanupAbortedTransactions) {
   static const int kNumRecordsPerBatch = 5;
   const uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1 /* num_consumer_tablets */},
@@ -1603,7 +1601,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, CleanupAbortedTransactions) {
 }
 
 // Make sure when we compact a tablet, we retain intents.
-TEST_P(TwoDCTestWithEnableIntentsReplication, NoCleanupOfFlushedFiles) {
+TEST_P(TwoDCTestTransactionalOnly, NoCleanupOfTransactionsInFlushedFiles) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -1634,7 +1632,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, NoCleanupOfFlushedFiles) {
 }
 
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, ManyToOneTabletMapping) {
+TEST_P(TwoDCTestTransactionalOnly, ManyToOneTabletMapping) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {5}, replication_factor));
 
@@ -1650,7 +1648,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, ManyToOneTabletMapping) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name(), 60 /* timeout_secs */));
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, OneToManyTabletMapping) {
+TEST_P(TwoDCTestTransactionalOnly, OneToManyTabletMapping) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({5}, {2}, replication_factor));
 
@@ -1699,7 +1697,7 @@ TEST_P(TwoDCTest, TestExternalWriteHybridTime) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(TwoDCTestWithEnableIntentsReplication, BiDirectionalWrites) {
+TEST_P(TwoDCTest, BiDirectionalWrites) {
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
 
   // Setup bi-directional replication.
@@ -2444,7 +2442,14 @@ TEST_P(TwoDCTest, ApplyOperationsRandomFailures) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId, producer_client(), producer_cluster()));
 }
 
-TEST_P(TwoDCTest, TestInsertDeleteWorkloadWithRestart) {
+class TwoDCTestToggleBatching : public TwoDCTest {};
+
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, TwoDCTestToggleBatching,
+    ::testing::Values(TwoDCTestParams(false /* transactional_table */, 0 /* batch_size */),
+                      TwoDCTestParams(false /* transactional_table */, 1 /* batch_size */)));
+
+TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
   // Good test for batching, make sure we can handle operations on the same key with different
   // hybrid times. Then, do a restart and make sure we can successfully bootstrap the batched data.
   // In additional, make sure we write exactly num_total_ops / batch_size batches to the cluster to
@@ -3227,9 +3232,8 @@ class TwoDCTestWaitForReplicationDrain : public TwoDCTest {
 
 INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTestWaitForReplicationDrain,
-    ::testing::Values(
-        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, true),
-        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, true)));
+    ::testing::Values(TwoDCTestParams(true /* transactional_table */),
+                      TwoDCTestParams(false /* transactional_table */)));
 
 TEST_P(TwoDCTestWaitForReplicationDrain, TestBlockGetChanges) {
   constexpr uint32_t kNumTables = 3;

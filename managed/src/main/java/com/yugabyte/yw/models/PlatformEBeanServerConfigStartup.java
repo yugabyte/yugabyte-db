@@ -10,9 +10,8 @@
 
 package com.yugabyte.yw.models;
 
-import com.yugabyte.yw.common.YbPgDbEncrypt;
 import com.yugabyte.yw.common.YbEncryptKeyManager;
-
+import com.yugabyte.yw.common.YbPgDbEncrypt;
 import io.ebean.config.ServerConfig;
 import io.ebean.event.ServerConfigStartup;
 import play.libs.Json;
@@ -29,6 +28,11 @@ public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
     // set to false by play.
     serverConfig.setObjectMapper(Json.mapper());
     serverConfig.setEncryptKeyManager(new YbEncryptKeyManager());
+
+    // See PLAT-5237 - Do not prefetch and cache audit id entries.
+    // this is like using the bigserial type with GenerationType.IDENTITY and leave
+    // it to database to do the right thing. We already use bigserial in customer and customer_task
+    serverConfig.setDatabaseSequenceBatch(1);
 
     // Do not overwrite the test server's encryption object
     if (serverConfig.getDbEncrypt() == null) serverConfig.setDbEncrypt(new YbPgDbEncrypt());

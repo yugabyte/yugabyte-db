@@ -5,6 +5,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
@@ -46,6 +47,8 @@ public class ReleaseManager {
   @Inject ConfigHelper configHelper;
 
   @Inject Configuration appConfig;
+
+  @Inject GFlagsValidation gFlagsValidation;
 
   public enum ReleaseState {
     ACTIVE,
@@ -96,7 +99,9 @@ public class ReleaseManager {
     public static class PackagePaths {
       @ApiModelProperty(value = "Path to x86_64 package")
       @Constraints.Pattern(
-          message = "Must be prefixed with s3://, gs://, or http(s)://",
+          message =
+              "File path must be prefixed with s3://, gs://, or http(s)://,"
+                  + " and must contain path to package file, instead of a directory",
           value = "\\b(?:(https|s3|gs):\\/\\/).+\\b")
       public String x86_64;
 
@@ -714,9 +719,42 @@ public class ReleaseManager {
                   "Could not match any available architectures to existing release {}", version);
             }
           }
+          // Add GFlags file if not present already for active and local releases.
+          if (rm.state.equals(ReleaseState.ACTIVE) && isLocalRelease(rm)) {
+            addGFlagsMetadataFiles(version, rm);
+          }
           updatedReleases.put(version, rm);
         });
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+  }
+
+  public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
+    List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
+    if (missingGFlagsFilesList.size() != 0) {
+      // fetch db tar package location.
+      String dbTarPackagePath = getDBTarPackagePath(releaseMetadata);
+      if (!StringUtils.isEmpty(dbTarPackagePath) && Files.exists(Paths.get(dbTarPackagePath))) {
+        gFlagsValidation.fetchGFlagsFromDBPackage(
+            dbTarPackagePath, version, missingGFlagsFilesList);
+      } else {
+        LOG.error(
+            "Could not add gFlags metadata as DB tar package is missing for the version: {}.",
+            version);
+      }
+    }
+  }
+
+  private String getDBTarPackagePath(ReleaseMetadata rm) {
+    if (rm.s3 != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else if (rm.gcs != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else if (rm.http != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else {
+      return rm.filePath;
+    }
+    return StringUtils.EMPTY;
   }
 
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
@@ -803,5 +841,9 @@ public class ReleaseManager {
 
   public boolean getInUse(String version) {
     return Universe.existsRelease(version);
+  }
+
+  private boolean isLocalRelease(ReleaseMetadata rm) {
+    return !(rm.s3 != null || rm.gcs != null || rm.http != null);
   }
 }

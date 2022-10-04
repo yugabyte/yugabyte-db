@@ -33,7 +33,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cdc_enable_replicate_intents);
 
 namespace yb {
 
@@ -45,17 +44,6 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
-
-struct TwoDCTestParams {
-  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
-      : batch_size(batch_size_),
-        enable_replicate_intents(enable_replicate_intents_),
-        transactional_table(transactional_table_) {}
-
-  int batch_size;
-  bool enable_replicate_intents;
-  bool transactional_table;
-};
 
 class TwoDCTestBase : public YBTest {
  public:
