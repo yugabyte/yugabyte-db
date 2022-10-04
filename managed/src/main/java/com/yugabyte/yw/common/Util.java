@@ -93,6 +93,8 @@ public class Util {
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
+  public static final String YB_RELEASES_PATH = "yb.releases.path";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
