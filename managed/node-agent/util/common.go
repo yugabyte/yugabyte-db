@@ -42,14 +42,16 @@ const (
 	NodePort = "9070"
 
 	// Platform config keys.
-	PlatformUrlKey           = "platform.url"
-	CustomerIdKey            = "platform.cuuid"
-	UserIdKey                = "platform.userId"
-	ProviderIdKey            = "platform.puuid"
-	PlatformCertsKey         = "platform.certs"
-	PlatformCertsUpgradeKey  = "platform.upgrade_certs"
-	PlatformVersionKey       = "platform.version"
-	PlatformVersionUpdateKey = "platform.update_version"
+	PlatformUrlKey            = "platform.url"
+	CustomerIdKey             = "platform.cuuid"
+	UserIdKey                 = "platform.userId"
+	ProviderIdKey             = "platform.puuid"
+	PlatformCertsKey          = "platform.certs"
+	PlatformCertsUpgradeKey   = "platform.upgrade_certs"
+	PlatformVersionKey        = "platform.version"
+	PlatformVersionUpdateKey  = "platform.update_version"
+	PlatformSkipVerifyCertKey = "platform.skip_verify_cert"
+	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
 	NodeIpKey           = "node.ip"

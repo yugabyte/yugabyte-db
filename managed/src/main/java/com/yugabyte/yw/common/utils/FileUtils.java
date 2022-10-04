@@ -1,5 +1,10 @@
 package com.yugabyte.yw.common.utils;
 
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -15,20 +20,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.yugabyte.yw.common.PlatformServiceException;
-
 import org.apache.commons.io.IOUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.Environment;
 import play.libs.Json;
-
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class FileUtils {
 

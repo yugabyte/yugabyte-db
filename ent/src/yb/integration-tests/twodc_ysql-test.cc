@@ -571,8 +571,8 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
       "IsDataReplicatedCorrectly"));
 
   // Enable packing
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_packed_row_size_limit = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
 
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
@@ -584,7 +584,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   }
 
   // 7. Disable packing and resume replication
-  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
   ASSERT_OK(WaitFor(
@@ -1606,7 +1606,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   }
 
   // 2. Setup replication.
-  FLAGS_check_bootstrap_required = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::GetUniverseReplicationResponsePB verify_resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_resp));
@@ -1749,7 +1749,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ASSERT_TRUE(should_bootstrap);
 
   // Setup replication should fail if this check is enabled.
-  FLAGS_check_bootstrap_required = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
@@ -1960,7 +1960,7 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 
-  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
   ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }

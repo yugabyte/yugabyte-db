@@ -245,13 +245,6 @@ namespace docdb {
 
 std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInstance();
 
-void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
-  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
-    return;
-  }
-  ROCKSDB_SEEK(iter, slice);
-}
-
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
   SeekForward(key_bytes.AsSlice(), iter);
 }
@@ -264,7 +257,8 @@ KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
 }
 
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
-  SeekForward(AppendDocHt(key, DocHybridTime::kMin), iter);
+  char ch = KeyEntryTypeAsChar::kHybridTime + 1;
+  SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
@@ -273,22 +267,28 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
-void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
-                           int* next_count, int* seek_count) {
+struct SeekStats {
+  int next = 0;
+  int seek = 0;
+};
+
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+  SeekStats result;
   for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
     if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
-      VTRACE(3, "Did $0 Next(s) instead of a Seek", nexts);
-      return;
+      VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
+      return result;
     }
     VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
 
     iter->Next();
-    ++*next_count;
+    ++result.next;
   }
 
   VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
   iter->Seek(seek_key);
-  ++*seek_count;
+  ++result.seek;
+  return result;
 }
 
 void PerformRocksDBSeek(
@@ -296,16 +296,15 @@ void PerformRocksDBSeek(
     const rocksdb::Slice &seek_key,
     const char* file_name,
     int line) {
-  int next_count = 0;
-  int seek_count = 0;
+  SeekStats stats;
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
-    ++seek_count;
+    ++stats.seek;
   } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
     iter->Seek(seek_key);
-    ++seek_count;
+    ++stats.seek;
   } else {
-    SeekPossiblyUsingNext(iter, seek_key, &next_count, &seek_count);
+    stats = SeekPossiblyUsingNext(iter, seek_key);
   }
   VLOG(4) << Substitute(
       "PerformRocksDBSeek at $0:$1:\n"
@@ -322,8 +321,8 @@ void PerformRocksDBSeek(
       iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
       iter->Valid() ? FormatSliceAsStr(iter->key()) : "N/A",
       iter->Valid() ? FormatSliceAsStr(iter->value()) : "N/A",
-      next_count,
-      seek_count);
+      stats.next,
+      stats.seek);
 }
 
 namespace {
@@ -1000,6 +999,15 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
       rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
   return nullptr;
+}
+
+void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
+  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
+    return;
+  }
+
+  iter->Next();
+  SeekPossiblyUsingNext(iter, slice);
 }
 
 } // namespace docdb
