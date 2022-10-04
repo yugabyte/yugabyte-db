@@ -25,5 +25,9 @@ public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
     // deserialization yields same results. Specifically FAIL_ON_UNKNOWN_PROPERTIES is
     // set to false by play.
     serverConfig.setObjectMapper(Json.mapper());
+    // See PLAT-5237 - Do not prefetch and cache audit id entries.
+    // this is like using the bigserial type with GenerationType.IDENTITY and leave
+    // it to database to do the right thing. We already use bigserial in customer and customer_task
+    serverConfig.setDatabaseSequenceBatch(1);
   }
 }
