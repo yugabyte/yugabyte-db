@@ -984,6 +984,13 @@ class CatalogManager :
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
 
+  Status GetXClusterEstimatedDataLoss(
+      const GetXClusterEstimatedDataLossRequestPB* req,
+      GetXClusterEstimatedDataLossResponsePB* resp);
+
+  Status GetXClusterSafeTime(
+      const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

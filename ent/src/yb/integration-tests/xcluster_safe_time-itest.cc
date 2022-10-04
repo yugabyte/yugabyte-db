@@ -24,6 +24,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -60,6 +62,7 @@ const int kTabletCount = 3;
 const string kTableName = "test_table";
 const string kTableName2 = "test_table2";
 const string kDatabaseName = "yugabyte";
+constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
@@ -473,7 +476,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
           }
           return last_row_count == row_count;
         },
-        5s * kTimeMultiplier,
+        MonoDelta::FromSeconds(kWaitForRowCountTimeout),
         Format(
             "Wait for consumer row_count $0 to reach $1 $2",
             last_row_count,
@@ -543,6 +546,28 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     return count;
   }
 
+  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId namespace_id) {
+    master::GetXClusterEstimatedDataLossRequestPB req;
+    master::GetXClusterEstimatedDataLossResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    RETURN_NOT_OK(master_proxy->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+
+    for (const auto& namespace_data_loss : resp.namespace_data_loss()) {
+      if (namespace_id == namespace_data_loss.namespace_id()) {
+        return namespace_data_loss.data_loss_ns();
+      }
+    }
+
+    return STATUS_FORMAT(
+        NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
+  }
+
  protected:
   MonoDelta safe_time_propagation_timeout_;
   std::vector<string> stream_ids_;
@@ -567,6 +592,10 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   ASSERT_OK(WaitForRowCount(consumer_table_->name(), num_records_written));
   ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), num_records_written));
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
+
+  // Get the initial regular rpo.
+  const auto initial_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "Initial RPO is " << initial_rpo;
 
   // Pause replication on only 1 tablet.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
@@ -596,6 +625,12 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   ASSERT_GT(latest_row_count, num_records_written);
   ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
 
+  // Check that safe time rpo has gone up.
+  const auto high_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "High RPO is " << high_rpo;
+  // RPO only gets updated every second, so only checking for at least one timeout.
+  ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToNanoseconds());
+
   // Resume replication and verify all data is written on the consumer.
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
   num_records_written += kNumRecordsPerBatch;
@@ -604,6 +639,11 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   ASSERT_OK(WaitForRowCount(consumer_table_2->name(), 1));
   ASSERT_OK(ValidateConsumerRows(consumer_table_2->name(), 1));
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
+
+  // Check that safe time rpo has dropped again.
+  const auto final_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "Final RPO is " << final_rpo;
+  ASSERT_LT(final_rpo, high_rpo);
 }
 
 TEST_F(XClusterSafeTimeYsqlTest, LagInTransactionsTable) {
