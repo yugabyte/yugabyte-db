@@ -330,6 +330,10 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define CURRENT_TEST_CASE_AND_TEST_NAME_STR() \
   (std::string(CURRENT_TEST_CASE_NAME()) + '.' + CURRENT_TEST_NAME())
 
+// Macros to disable tests in certain build types. Cannot be used in a parameterized test with
+// TEST_P or extended test fixtures with TEST_F_EX. For these, please use GTEST_SKIP or
+// YB_SKIP_TEST_IN_TSAN macros.
+
 #define YB_DISABLE_TEST(test_name) BOOST_PP_CAT(DISABLED_, test_name)
 
 #ifdef __APPLE__
@@ -356,11 +360,11 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
 
-// TODO: use GTEST_SKIP() here when we upgrade gtest.
-#define YB_SKIP_TEST_IN_TSAN() do { \
+// Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
+#define YB_SKIP_TEST_IN_TSAN() \
+  do { \
     if (::yb::IsTsan()) { \
-      LOG(INFO) << "This test is skipped in TSAN"; \
-      return; \
+      GTEST_SKIP() << "Skipping test in TSAN"; \
     } \
   } while (false)
 

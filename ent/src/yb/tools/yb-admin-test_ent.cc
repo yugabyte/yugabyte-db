@@ -1139,6 +1139,8 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
 class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {
  public:
   void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+
     // Use more masters so we can test set_master_addresses
     opts.num_masters = 3;
 
@@ -1147,7 +1149,6 @@ class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {
 };
 
 TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
-  YB_SKIP_TEST_IN_TSAN();
   client::TableHandle producer_table;
 
   // Create an identical table on the producer.
@@ -1198,7 +1199,6 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
 }
 
 TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootstrapId) {
-  YB_SKIP_TEST_IN_TSAN();
   const int kStreamUuidLength = 32;
   client::TableHandle producer_table;
 
@@ -1528,16 +1528,19 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
 
 class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
  public:
+  void SetUp() override {
+    // Skip this test in TSAN since the test will time out waiting
+    // for table creation to finish.
+    YB_SKIP_TEST_IN_TSAN();
+
+    XClusterAdminCliTest::SetUp();
+  }
   int num_tablet_servers() override {
     return 5;
   }
 };
 
 TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
-  // Skip this test in TSAN since the test will time out waiting
-  // for table creation to finish.
-  YB_SKIP_TEST_IN_TSAN();
-
   const int table_count = 10;
   const int tablet_count = 5;
   const int expected_runtime_seconds = 15 * kTimeMultiplier;
