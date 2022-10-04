@@ -35,7 +35,7 @@ In use cases with a low-cardinality of the primary keys or the secondary index, 
 
 ### Small tables that become very large
 
-Some tables start off small, with only a few shards. However, if these tables grow very large, the nodes are continuosly added to the cluster. Scenarios are possible where the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
+Some tables start off small, with only a few shards. However, if these tables grow very large, the nodes are continuously added to the cluster. Scenarios are possible where the number of nodes exceeds the number of tablets. To effectively rebalance the cluster, tablet splitting is required.
 
 ## Approaches to tablet splitting
 
@@ -235,14 +235,14 @@ In the event that performance suffers due to automatic tablet splitting, the fol
 
 [Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags)
 
-* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by defualt. Tablets that are performing post-split compactions count against this limit.
+* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by default. Tablets that are performing post-split compactions count against this limit.
 * `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
 
 [TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags)
 
 * `post_split_trigger_compaction_pool_max_threads` indicates the number of threads dedicated to post-split compaction tasks per node. By default, this is limited to 1. Increasing this may complete tablet splits faster, but will require more CPU and disk resources.
 * `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
-* `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
+* `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
 
 ### Example: YCSB workload with automatic tablet splitting
 
@@ -308,7 +308,6 @@ The following known limitations are planned to be resolved in upcoming releases:
 * In 2.14.0, when tablet splitting is used with Point In Time Recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This is fixed in 2.14.1.
 * Tablet splitting is currently disabled by default for tables with cross cluster replication. It can be enabled using the [`enable_tablet_split_of_xcluster_replicated_tables`](../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) flag on master on both the producer and consumer clusters (as they will perform splits independently of one another). If using this feature after upgrade, the producer and consumer clusters should both be upgraded to 2.14.0+ before enabling the feature.
 * Tablet splitting is currently disabled during bootstrap for tables with cross cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
-* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
-
