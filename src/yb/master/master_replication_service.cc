@@ -53,6 +53,9 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (SetupNSUniverseReplication)
     (GetReplicationStatus)
   )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+      CatalogManager, (GetXClusterEstimatedDataLoss)(GetXClusterSafeTime))
 };
 
 } // namespace

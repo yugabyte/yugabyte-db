@@ -893,11 +893,10 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         boost::split(producer_addresses, args[1], boost::is_any_of(","));
         TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
 
-        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
-                                                                 producer_addresses,
-                                                                 producer_namespace),
-                              Substitute("Unable to setup namespace replication from universe $0",
-                                         producer_uuid));
+        RETURN_NOT_OK_PREPEND(
+            client->SetupNSUniverseReplication(
+                producer_uuid, producer_addresses, producer_namespace),
+            Substitute("Unable to setup namespace replication from universe $0", producer_uuid));
         return Status::OK();
       });
 
@@ -912,6 +911,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                             "Unable to get replication status");
       return Status::OK();
     });
+
+  RegisterJson(
+      "get_xcluster_estimated_data_loss", "",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        return client->GetXClusterEstimatedDataLoss();
+      });
+
+  RegisterJson(
+      "get_xcluster_safe_time", "",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        return client->GetXClusterSafeTime();
+      });
 }  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
