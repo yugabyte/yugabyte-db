@@ -1715,7 +1715,10 @@ class YBBackup:
             backup_size_cmd = self.storage.backup_obj_size_cmd(filepath)
             try:
                 resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
-                backup_size += int(resp.strip().split()[0])
+                # if using IMDSv2, s3cmd can return WARNINGs so check each line and ignore
+                for line in resp.splitlines():
+                    if 'WARNING' not in line:
+                        backup_size += int(resp.strip().split()[0])
             except Exception as ex:
                 logging.error(
                     'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
