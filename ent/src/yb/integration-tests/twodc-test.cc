@@ -2931,7 +2931,6 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
 }
 
 TEST_P(TwoDCTest, DeleteTableChecksCQL) {
-  YB_SKIP_TEST_IN_TSAN();
   // Create 3 tables with 1 tablet each.
   constexpr int kNT = 1;
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT};
