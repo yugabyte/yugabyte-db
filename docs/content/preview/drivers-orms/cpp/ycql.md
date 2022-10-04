@@ -5,7 +5,7 @@ description: C++ drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    identifier: ycql-driver
+    identifier: cpp-ycql-driver
     parent: cpp-drivers
     weight: 420
 type: docs

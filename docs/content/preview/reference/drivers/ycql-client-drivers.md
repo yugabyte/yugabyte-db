@@ -136,4 +136,4 @@ To build a Scala application with the Yugabyte Java Driver for YCQL, you must ad
 libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 ```
 
-For a tutorial on building a sample Scala application with this driver, see [Build a Scala application](../../../develop/build-apps/scala/ycql/).
+For a tutorial on building a sample Scala application with this driver, see [Connect an application](../../../drivers-orms/scala/ycql/).

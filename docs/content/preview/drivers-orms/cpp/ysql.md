@@ -9,7 +9,7 @@ aliases:
   - /preview/quick-start/build-apps/cpp/
 menu:
   preview:
-    identifier: ysql-driver
+    identifier: cpp-ysql-driver
     parent: cpp-drivers
     weight: 410
 type: docs

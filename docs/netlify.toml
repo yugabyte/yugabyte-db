@@ -448,6 +448,13 @@
   from = "/preview/develop/build-apps/ruby/ycql/"
   to = "/preview//drivers-orms/ruby/ycql/"
 
+[[redirects]]
+  from = "/preview/develop/build-apps/php/ysql/"
+  to = "/preview//drivers-orms/php/ysql/"
+
+[[redirects]]
+  from = "/preview/develop/build-apps/scala/ycql/"
+  to = "/preview//drivers-orms/scala/ycql/"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
