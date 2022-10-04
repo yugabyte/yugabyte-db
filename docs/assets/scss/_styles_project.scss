@@ -4,6 +4,7 @@
 @import "./_header_menu.scss";
 @import "./_left_nav.scss";
 @import "./_right_nav.scss";
+@import "./_yb_headings.scss";
 @import "./_version_dropdown.scss";
 @import "./_contribute_list.scss";
 @import "./_admonition.scss";
@@ -20,8 +21,11 @@
 @import "./_yb_resources.scss";
 
 * body {
-  font-size: 15.5px;
   background: $YB_LIGHT_GRAY_BACK;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 24px;
+  color: $yb-font-darkgray;
 }
 
 /******* Variables for Color Theme Switcher **********/
@@ -42,15 +46,17 @@
 
 /******* Variables for Color Theme Switcher **********/
 ol.breadcrumb {
-  .breadcrumb-item {
-    font-size: 14px;
+  padding-bottom: 1rem;
 
-    &.active {
-      color: #21313c;
+  .breadcrumb-item {
+    font-size: 12px;
+
+    &.active a {
+      color: $yb-font-gray;
     }
 
     a {
-      color: #5d6c74;
+      color: $yb-font-blue;
 
       &:hover {
         color: #21313c;
@@ -70,46 +76,12 @@ ol.breadcrumb {
   }
 }
 
-h1 {
-  .tag-beta {
-    display: inline-block;
-    text-decoration: none;
-    border: none;
-    height: 30px;
-    width: 70px;
-    color: #f0f9ff;
-    background-color: #35a3ff;
-    border-radius: 4px;
-    font-weight: 500;
-    text-transform: uppercase;
-    font-size: 16px;
-    line-height: 30px;
-    text-align: center;
-    vertical-align: middle;
-    margin-left: 20px;
-    margin-top: -6px;
-
-    &:hover,
-    &:focus,
-    &:active {
-      color: #fff;
-      opacity: 0.8;
-      border: none;
-    }
-  }
-}
-
 body.td-homepage {
   p {
     color: #4e5f6d;
     font-size: 18px;
     line-height: normal;
   }
-}
-
-h4,
-.h4 {
-  font-size: 1.2rem;
 }
 
 @media (min-width: 768px) {
@@ -330,7 +302,7 @@ h4,
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 3; /* number of lines to show */
-        line-height: 23px;        /* fallback */
+        line-height: 23px; /* fallback */
         max-height: 59px;
         position: relative;
         font-weight: 300;
@@ -392,18 +364,20 @@ body:not(.td-home) .td-main main {
   }
 
   p {
-    margin-top: 1.5em;
-    margin-bottom: 0;
+    margin: 0 0 0 0;
+    line-height: 22px;
 
     + {
       ol {
         margin-top: 1rem;
       }
-
-      ul {
-        margin-top: 1rem;
-      }
     }
+  }
+
+  ul {
+    margin: 1.5rem 0;
+    list-style: none;
+    padding-left: 2.5rem;
   }
 }
 
@@ -441,22 +415,6 @@ body:not(.td-home) .td-main main {
 }
 
 .td-content {
-  h2:not(:first-child) {
-    margin-top: 3rem;
-  }
-
-  h3,
-  h4,
-  h5,
-  h6 {
-    margin-bottom: 1rem;
-    margin-top: 2rem;
-  }
-
-  h4 {
-    margin-bottom: 0.25rem;
-  }
-
   .admonition a,
   p a,
   li:not(.nav-item) a,
