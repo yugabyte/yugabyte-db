@@ -14,7 +14,7 @@ type: docs
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li class="active">
-      <a href="../postgres-npgsql/" class="nav-link">
+      <a href="../yb-pgx/" class="nav-link">
         YSQL
       </a>
     </li>
