@@ -1048,5 +1048,108 @@ TEST_F(AdminCliTest, AddTransactionStatusTablet) {
   }, kWaitNewTabletReadyTimeout, "Timeout waiting for new status tablet to be ready"));
 }
 
+class AdminCliListTabletsTest : public AdminCliTest {
+ public:
+  template <class... Args>
+  Status ListTabletsWithFailure(const std::string& expected_error_substr, Args&&... args) {
+    auto result = ListTablets(std::forward<Args>(args)...);
+    SCHECK(!result.ok(), IllegalState, "list_tablets command expected to fail");
+    auto error = result.status().ToUserMessage();
+    SCHECK(
+        error.find(expected_error_substr) != std::string::npos,
+        IllegalState,
+        Format("$0 substring was not found in $1", expected_error_substr, error));
+    return Status::OK();
+  }
+
+  template <class... Args>
+  Result<std::size_t> GetListTabletsCount(Args&&... args) {
+    JsonReader reader(VERIFY_RESULT(ListTablets(std::forward<Args>(args)..., "json")));
+    RETURN_NOT_OK(reader.Init());
+    vector<const rapidjson::Value*> tablets;
+    RETURN_NOT_OK(reader.ExtractObjectArray(reader.root(), "tablets", &tablets));
+    return tablets.size();
+  }
+
+ private:
+  template <class... Args>
+  Result<std::string> ListTablets(Args&&... args) {
+    return CallAdminVec(ToStringVector(
+        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(), "list_tablets",
+        std::forward<Args>(args)...));
+  }
+};
+
+TEST_F_EX(AdminCliTest, CheckTableNameAndNamespaceUsage, AdminCliListTabletsTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+
+  // Check table name is missing.
+  ASSERT_OK(ListTabletsWithFailure("Empty list of tables", kTableName.namespace_name()));
+
+  // Check namespace does not exist.
+  const auto kBadNamespaceName = kTableName.namespace_name() + "bad";
+  ASSERT_OK(ListTabletsWithFailure(
+      Format("Namespace '$0' of type 'ycql' not found", kBadNamespaceName), kBadNamespaceName,
+      kTableName.table_name()));
+
+  // Check wrong keyspace of a table when called with table name.
+  const auto client =
+      ASSERT_RESULT(YBClientBuilder().add_master_server_addr(GetMasterAddresses()).Build());
+  ASSERT_OK(client->CreateNamespace(kBadNamespaceName, YQL_DATABASE_CQL));
+  ASSERT_OK(ListTabletsWithFailure(
+      Format(
+          "Table with name '$0' not found in namespace 'ycql.$1'",
+          kTableName.table_name(),
+          kBadNamespaceName),
+      kBadNamespaceName, kTableName.table_name()));
+
+  // Check wrong keyspace of a table when called with table id.
+  const auto tables =
+      ASSERT_RESULT(client->ListTables(kTableName.table_name(), /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto& table_id = tables.front().table_id();
+  ASSERT_OK(ListTabletsWithFailure(
+      Format(
+          "Table with id '$0' belongs to different namespace 'ycql.$1'",
+          table_id,
+          kBadNamespaceName),
+      kBadNamespaceName,
+      Format("tableid.$0", table_id)));
+}
+
+TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+
+  ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
+
+  YBSchema schema;
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("k")->HashPrimaryKey()->Type(yb::BINARY)->NotNull();
+  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
+  ASSERT_OK(schemaBuilder.Build(&schema));
+
+  const auto client =
+      ASSERT_RESULT(YBClientBuilder().add_master_server_addr(GetMasterAddresses()).Build());
+  // Default table that gets created.
+  const auto& keyspace = kTableName.namespace_name();
+  // Create table with 20 tablets.
+  constexpr auto* kTestTableName = "t20";
+  ASSERT_OK(client->NewTableCreator()
+      ->table_name(YBTableName(YQL_DATABASE_CQL, keyspace, kTestTableName))
+      .table_type(YBTableType::YQL_TABLE_TYPE)
+      .schema(&schema)
+      .num_tablets(20)
+      .Create());
+
+  // Test 10 tablets should be listed by default
+  auto count = ASSERT_RESULT(GetListTabletsCount(keyspace, kTestTableName));
+  ASSERT_EQ(count, 10);
+
+  // Test all tablets should be listed when value is 0
+  count = ASSERT_RESULT(GetListTabletsCount(keyspace, kTestTableName, 0));
+  ASSERT_EQ(count, 20);
+}
+
 }  // namespace tools
 }  // namespace yb

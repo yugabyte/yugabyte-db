@@ -17,7 +17,7 @@ Before you start the upgrade, you might want to import a specific YugabyteDB rel
 
 - Click the user profile icon and select **Releases**.
 
-- Click **Import** to open the **Import Releases** dialog shown in the following illustration:<br><br>
+- Click **Import** to open the **Import Releases** dialog shown in the following illustration:<br>
 
   ![Import Releases](/images/yp/import-releases.png)<br><br>
 
@@ -41,11 +41,13 @@ You can perform a rolling upgrade on a live universe deployment as follows:
 
 1. Click **Actions > Upgrade Software**.
 
-1. In the **Upgrade Software** dialog, ensure that **Rolling Upgrade** is enabled, define the delay between servers or accept the default value, and then use the **Server Version** field to select the new YugabyteDB version, as per the following illustration:<br>
+1. In the **Upgrade Software** dialog, ensure that **Rolling Upgrade** is enabled, define the delay between servers or accept the default value, and then use the **Server Version** field to select the new YugabyteDB version, as per the following illustration:<br><br>
 
     ![Upgrade Universe Confirmation](/images/ee/upgrade-univ-2.png)<br><br>
 
-    To trigger an upgrade that involves downtime, deselect **Rolling Upgrade**.<br><br>
+    To trigger an upgrade that involves downtime, deselect **Rolling Upgrade**.
+
+For information on how rolling upgrades are performed in YugabyteDB, see [Upgrade a deployment](../../../manage/upgrade-deployment/). 
 
 {{< note title="Note" >}}
 
