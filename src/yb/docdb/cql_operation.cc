@@ -668,10 +668,8 @@ Status QLWriteOperation::ApplyForJsonOperators(
           return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
             column_value.ShortDebugString());
         }
-        common::Jsonb empty_jsonb;
-        RETURN_NOT_OK(empty_jsonb.FromString("{}"));
         QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
-        column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+        column.value.set_jsonb_value(common::Jsonb::kSerializedJsonbEmpty);
 
         Jsonb jsonb(column.value.jsonb_value());
         RETURN_NOT_OK(jsonb.ToRapidJson(&document));
