@@ -143,6 +143,10 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status GetReplicationInfo(const std::string& universe_uuid);
 
+  Result<rapidjson::Document> GetXClusterEstimatedDataLoss();
+
+  Result<rapidjson::Document> GetXClusterSafeTime();
+
  private:
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

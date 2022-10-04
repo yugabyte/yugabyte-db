@@ -313,6 +313,30 @@ message UpdateConsumerOnProducerMetadataResponsePB {
   optional bool should_wait = 2 [default = true];
 }
 
+message GetXClusterEstimatedDataLossRequestPB {}
+
+message GetXClusterEstimatedDataLossResponsePB {
+  message EstimatedDataLossPB {
+    optional string namespace_id = 1;
+    optional uint64 data_loss_ns = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated EstimatedDataLossPB namespace_data_loss = 2;
+}
+
+message GetXClusterSafeTimeRequestPB{}
+
+message GetXClusterSafeTimeResponsePB {
+  message NamespaceSafeTimePB{
+    optional string namespace_id = 1;
+    optional fixed64 safe_time_ht = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated NamespaceSafeTimePB namespace_safe_times = 2;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -355,4 +379,9 @@ service MasterReplication {
 
   rpc GetReplicationStatus(GetReplicationStatusRequestPB)
       returns (GetReplicationStatusResponsePB);
+
+  rpc GetXClusterEstimatedDataLoss(GetXClusterEstimatedDataLossRequestPB)
+      returns (GetXClusterEstimatedDataLossResponsePB);
+  rpc GetXClusterSafeTime(GetXClusterSafeTimeRequestPB)
+      returns (GetXClusterSafeTimeResponsePB);
 }
