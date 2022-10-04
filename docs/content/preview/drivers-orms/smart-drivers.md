@@ -64,6 +64,8 @@ Developers can use smart driver connection load balancing in two configurations:
 - Cluster-aware, using the **load balance** connection parameter
 - Topology-aware, using the **topology keys** connection parameter
 
+In both cases, the driver attempts to connect to the least loaded server from the available group of servers. For topology-aware load balancing, this group is determined by geo-locations specified using the topology keys connection parameter.
+
 ### Cluster-aware connection load balancing
 
 With cluster-aware connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
@@ -80,7 +82,12 @@ For example, using the Go smart driver, you would turn on load balancing as foll
 
 With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distributes the connections equally across them.
 
-This list is refreshed every 5 minutes, when a new connection request is received.
+A connection works as follows:
+
+- The driver makes an initial connection to the host specified in the URL/connection string and fetches information about the cluster nodes. This list is refreshed every 5 minutes, when a new connection request is received.
+- The driver then connects to the least-loaded node before returning the connection to the application.
+
+After the connection is established with a node, if that node fails, then the request is not retried.
 
 The application must use the same connection URL to create every connection it needs, so that the distribution happens equally.
 
