@@ -127,7 +127,7 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 - Tablegroups are not supported, as per [#11157](https://github.com/yugabyte/yugabyte-db/issues/11157).
 - Tablet splitting is disabled for tables involved in replication, as per [#10175](https://github.com/yugabyte/yugabyte-db/issues/10175).
-- [Savepoints](../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308). 
+- [Savepoints](../../../explore/ysql-language-features/advanced-features/savepoints/) are not supported, as per [#14308](https://github.com/yugabyte/yugabyte-db/issues/14308). 
 
 ## Transactional guarantees
 
