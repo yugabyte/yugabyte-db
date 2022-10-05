@@ -59,6 +59,7 @@ import os
 import pwd
 import random
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -290,11 +291,45 @@ def get_bash_path() -> str:
     return '/bin/bash'
 
 
+def copy_spark_stderr(test_descriptor_str: str, build_host: str) -> None:
+    """
+    If the initialization or the test fails, copy the Spark worker stderr log back to build host.
+    :param test_descriptor_str: Test descriptor to figure out the correct name for the log file.
+    :param build_host: Host to which the log will be copied.
+    :return: None
+    """
+    try:
+        from pyspark import SparkFiles  # type: ignore
+        spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
+
+        test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+        error_output_path = test_descriptor.error_output_path
+        spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
+
+        error_log_dir_path = os.path.dirname(spark_stderr_dest)
+        if not os.path.isdir(error_log_dir_path):
+            subprocess.check_call(['mkdir', '-p', error_log_dir_path])
+
+        logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
+        shutil.copyfile(spark_stderr_src, spark_stderr_dest)
+        copy_to_host([spark_stderr_dest], build_host)
+
+    except Exception as e:
+        logging.exception("Error copying spark stderr log}")
+
+
 def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
     """
     This is invoked in parallel to actually run tests.
     """
-    global_conf = initialize_remote_task()
+    try:
+        global_conf = initialize_remote_task()
+    except Exception as e:
+        build_host = os.environ.get('YB_BUILD_HOST', None)
+        if build_host:
+            copy_spark_stderr(test_descriptor_str, build_host)
+        raise e
+
     from yb import yb_dist_tests
 
     wait_for_path_to_exist(global_conf.build_root)
@@ -440,7 +475,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
 
             build_host = os.environ.get('YB_BUILD_HOST')
             assert build_host is not None
-            copy_to_host(artifact_paths, build_host)
+            num_errors_copying_artifacts = copy_to_host(artifact_paths, build_host)
+            if exit_code != 0:
+                copy_spark_stderr(test_descriptor_str, build_host)
 
             rel_artifact_paths = [
                     os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)
@@ -495,12 +532,13 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     # same filesystem as yb_src_root for efficient two-stage clean-up.
     remote_yb_src_removal = os.environ.get('YB_SPARK_CLEAN_DIR', '/tmp/SPARK_TO_REMOVE')
 
-    subprocess.check_call([
-        'mkdir',
-        '-p',
-        remote_yb_src_removal,
-        remote_yb_src_job_dir])
     try:
+        subprocess.check_call([
+            'mkdir',
+            '-p',
+            remote_yb_src_removal,
+            remote_yb_src_job_dir])
+
         untar_script_path = os.path.join(
                 worker_tmp_dir, 'untar_archive_once_%d.sh' % random.randint(0, 2**64))
         # We also copy the temporary script here for later reference.
@@ -567,7 +605,7 @@ set -euo pipefail
         fi
         chmod 0755 '{untar_script_path_for_reference}'
         yb_src_root_extract_tmp_dir='{remote_yb_src_root}'.$RANDOM.$RANDOM.$RANDOM.$RANDOM
-        mkdir "$yb_src_root_extract_tmp_dir"
+        mkdir -p "$yb_src_root_extract_tmp_dir"
         if [[ -x /bin/pigz ]]; then
             # Decompress faster with pigz
             /bin/pigz -dc '{archive_path}' | tar xf - -C "$yb_src_root_extract_tmp_dir"
@@ -582,6 +620,13 @@ set -euo pipefail
 """.format(**locals()))
         os.chmod(untar_script_path, 0o755)
         subprocess.check_call(untar_script_path)
+
+    except subprocess.CalledProcessError as e:
+        logging.exception(f"Error initializing the remote task:\n"
+                          f"STDOUT: {e.stdout}\n"
+                          f"STDERR: {e.stderr}")
+        raise e
+
     finally:
         if os.path.exists(untar_script_path):
             os.remove(untar_script_path)
@@ -689,15 +734,19 @@ def get_mac_shared_nfs(path: str) -> str:
     return "/Volumes/net/v1/" + yb_build_host + relpath
 
 
-def copy_to_host(artifact_paths: List[str], build_host: str) -> None:
+def copy_to_host(artifact_paths: List[str], build_host: str) -> int:
     """
     Provide compatibility to copy artifacts back to build host via NFS or SSH.
     """
+    num_errors_copying_artifacts = 0
+
     if is_macos() and socket.gethostname() == build_host:
         logging.info("Files already local to build host. Skipping artifact copy.")
+
     else:
         ssh_mode = True if os.getenv('YB_SPARK_COPY_MODE') == 'SSH' else False
         num_artifacts_copied = 0
+
         artifact_size_limit = int(os.getenv('YB_SPARK_MAX_ARTIFACT_SIZE_BYTES',
                                             MAX_ARTIFACT_SIZE_BYTES))
 
@@ -733,10 +782,12 @@ def copy_to_host(artifact_paths: List[str], build_host: str) -> None:
                     subprocess.check_call(['cp', '-f', artifact_path, dest_path])
             except subprocess.CalledProcessError as ex:
                 logging.error("Error copying %s to %s: %s", artifact_path, dest_dir, ex)
-                num_errors_copying_artifacts = 1
+                num_errors_copying_artifacts += 1
 
             num_artifacts_copied += 1
         logging.info("Number of build artifact files copied: %d", num_artifacts_copied)
+
+    return num_errors_copying_artifacts
 
 
 def get_jenkins_job_name() -> Optional[str]:
