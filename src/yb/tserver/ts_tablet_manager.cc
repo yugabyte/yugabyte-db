@@ -232,12 +232,7 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
-DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
-            "If true, use pessimistic locking behavior in conflict resolution.");
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
-
-DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -488,14 +483,8 @@ Status TSTabletManager::Init() {
                                                                       local_peer_pb_.cloud_info());
 
   if (FLAGS_enable_wait_queue_based_pessimistic_locking) {
-    if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
-      LOG(WARNING) << "Ignoring enable_wait_queue_based_pessimistic_locking=true since "
-                   << "auto_promote_nonlocal_transactions_to_global is enabled. These two features "
-                   << "are not yet supported together.";
-    } else {
-      waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
-          client_future(), scoped_refptr<server::Clock>(server_->clock()));
-    }
+    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+        client_future(), scoped_refptr<server::Clock>(server_->clock()));
   }
 
   deque<RaftGroupMetadataPtr> metas;
