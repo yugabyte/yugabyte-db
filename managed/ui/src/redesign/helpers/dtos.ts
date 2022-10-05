@@ -354,6 +354,44 @@ export const TABLE_TYPE_MAP: Record<TableType, string> = {
   REDIS_TABLE_TYPE: 'REDIS'
 };
 
+
+export interface MetricsData {
+  type: string;
+  metricsKey: string[];
+  nodePrefixes: string;
+  selectedUniverse: any;
+  title: string;
+  tableName?: string
+}
+
+export interface GraphFilter {
+  startMoment: any;
+  endMoment: any;
+  nodeName: string;
+  nodePrefix: string;
+  filterValue?: string;
+  filterType?: string;
+  currentSelectedRegion?: string;
+  metricMeasure?: string;
+  outlierType?: string;
+  outlierNumNodes?: number;
+  selectedRegionClusterUUID?: string | null;
+  selectedRegionCode?: string | null;
+  selectedZoneName?: string | null;
+}
+
+export interface MetricSettings {
+  metric: string;
+  splitTopNodes: number;
+}
+
+export interface MetricQueryParams {
+  metricsWithSettings: MetricSettings[];
+  start: string;
+  end: string;
+  nodePrefix: string;
+  nodeNames: string[];
+}
 export interface CpuMeasureQueryData {
   maxNodeName: string;
   maxNodeValue: number;
