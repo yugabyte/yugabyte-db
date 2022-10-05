@@ -34,6 +34,7 @@
 
 #include <boost/container/static_vector.hpp>
 
+#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -488,6 +489,10 @@ Tablet::Tablet(const TabletInitData& data)
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
   external_txn_intents_state_ = std::make_unique<docdb::ExternalTxnIntentsState>();
+
+  if (is_sys_catalog_) {
+    auto_flags_manager_ = data.auto_flags_manager;
+  }
 }
 
 Tablet::~Tablet() {
@@ -3931,6 +3936,19 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
   return result;
 }
 
+Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
+  if (!is_sys_catalog()) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags config change ignored on non-sys_catalog tablet";
+    return Status::OK();
+  }
+
+  if (!auto_flags_manager_) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags manager not found";
+    return STATUS(InternalError, "AutoFlags manager not found");
+  }
+
+  return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+}
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(
