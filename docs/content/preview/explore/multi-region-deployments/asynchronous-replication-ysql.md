@@ -19,7 +19,7 @@ type: docs
 
 By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions.
 
-This document simulates a geo-distributed two-data-center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and another representing "Data Center - West". Examples are based on the default database `yugabyte` and the default user `yugabyte`.
+This document simulates a geo-distributed two-data-center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and another representing "Data Center - West", and shows how you can verify replication using YSQL and YCQL. Examples are based on the default database `yugabyte` and the default user `yugabyte`.
 
 For more information, see the following:
 
@@ -62,13 +62,13 @@ For more information, see the following:
 
 1. Create and start your second local cluster that simulates "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
-     ```sh
+    ```sh
     ./bin/yugabyted start --base_dir=datacenter-west --listen=127.0.0.2
     ```
 
     The preceding command starts a one-node cluster using IP address of `127.0.0.2` and creates `datacenter-west` as the base directory. Expect to see an output similar to the following:
 
-     ```output
+    ```output
     Starting yugabyted...
     ✅ System checks
     
@@ -87,7 +87,7 @@ For more information, see the following:
     🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
     🎉 Join us on Slack at https://www.yugabyte.com/slack
     👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-      ```
+    ```
 
 ## Create tables
 
