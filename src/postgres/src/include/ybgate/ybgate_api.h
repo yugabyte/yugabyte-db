@@ -21,6 +21,7 @@
 #ifndef PG_YBGATE_YBGATE_API_H
 #define PG_YBGATE_YBGATE_API_H
 
+#include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -69,9 +70,11 @@ typedef struct YbgStatus YbgStatus;
 		YBCPgSetThreadLocalJumpBuffer(&buffer); \
 		int r = setjmp(buffer); \
 		if (r != 0) { \
-			return PG_STATUS(r, YBCPgGetThreadLocalErrMsg()); \
+			return PG_STATUS(r, (const char *) YBCPgGetThreadLocalErrMsg()); \
 		} \
 	} while(0) \
+
+YbgStatus YbgInit();
 
 //-----------------------------------------------------------------------------
 // Memory Context
