@@ -33,32 +33,32 @@ For more information, see the following:
 
 1. You can create and start your first local cluster that simulates "Data Center - East" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
-   ```sh
-   ./bin/yugabyted start --base_dir=datacenter-east --listen=127.0.0.1
-   ```
+    ```sh
+    ./bin/yugabyted start --base_dir=datacenter-east --listen=127.0.0.1
+    ```
 
-   The preceding command starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory. Expect to see an output similar to the following:
+    The preceding command starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory. Expect to see an output similar to the following:
 
-   ```output
-   Starting yugabyted...
-   ✅ System checks
-   
-   +--------------------------------------------------------------------------------------------------+
-   |                                            yugabyted                                             |
-   +--------------------------------------------------------------------------------------------------+
-   | Status              : Running. Leader Master is present                                          |
-   | Web console         : http://127.0.0.1:7000                                                      |
-   | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-   | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-   | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-   | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
-   | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
-   | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
-   +--------------------------------------------------------------------------------------------------+
-   🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
-   🎉 Join us on Slack at https://www.yugabyte.com/slack
-   👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-   ```
+    ```output
+    Starting yugabyted...
+    ✅ System checks
+
+    +--------------------------------------------------------------------------------------------------+
+    |                                            yugabyted                                             |
+    +--------------------------------------------------------------------------------------------------+
+    | Status              : Running. Leader Master is present                                          |
+    | Web console         : http://127.0.0.1:7000                                                      |
+    | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
+    | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
+    | YCQL                : bin/ycqlsh   -u cassandra                                                  |
+    | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
+    | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
+    | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
+    +--------------------------------------------------------------------------------------------------+
+    🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
+    🎉 Join us on Slack at https://www.yugabyte.com/slack
+    👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
+    ```
 
 1. Create and start your second local cluster that simulates "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
@@ -98,35 +98,35 @@ In the default `yugabyte` database, you can create the table `users` on the "Dat
 
 1. Open `ysqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
 
-   ```sh
-   ./bin/ysqlsh -h 127.0.0.1
-   ```
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.1
+    ```
 
 1. Create the table `users`, as follows:
 
-   ```sql
-   CREATE TABLE users (
-       email varchar PRIMARY KEY,
-       username varchar
-       );
-   ```
+    ```sql
+    CREATE TABLE users (
+        email varchar PRIMARY KEY,
+        username varchar
+        );
+    ```
 
 Create an identical table on your second cluster:
 
 1. Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
-   ```sh
-   ./bin/ysqlsh -h 127.0.0.2
-   ```
+    ```sh
+    ./bin/ysqlsh -h 127.0.0.2
+    ```
 
 1. Create the table `users`, as follows:
 
-   ```sql
-   CREATE TABLE users (
-       email varchar(35) PRIMARY KEY,
-       username varchar(20)
-       );
-   ```
+    ```sql
+    CREATE TABLE users (
+        email varchar(35) PRIMARY KEY,
+        username varchar(20)
+        );
+    ```
 
 {{% /tab %}}
 {{% tab header="YCQL" lang="ycql" %}}
@@ -135,53 +135,53 @@ Create the keyspace `customers` and table `users` on the "Data Center - East" cl
 
 1. Open `ycqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
 
-   ```sh
-   ./bin/ycqlsh 127.0.0.1
-   ```
+    ```sh
+    ./bin/ycqlsh 127.0.0.1
+    ```
 
 1. Create the `customers` keyspace by executing the following:
 
-   ```sql
-   CREATE KEYSPACE customers;
-   ```
+    ```sql
+    CREATE KEYSPACE customers;
+    ```
 
 1. Enter the keyspace by executing the following:
 
-   ```sql
-   USE customers;
-   ```
+    ```sql
+    USE customers;
+    ```
 
 1. Create the `users` table by executing the following:
 
-   ``` sql
-   CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
-   ```
+    ``` sql
+    CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
+    ```
 
 Create the identical database table on the second cluster:
 
 1. Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
-   ```sh
-   ./bin/ycqlsh 127.0.0.2
-   ```
+    ```sh
+    ./bin/ycqlsh 127.0.0.2
+    ```
 
 1. Create the `customers` keyspace by executing the following:
 
-   ```sql
-   CREATE KEYSPACE customers;
-   ```
+    ```sql
+    CREATE KEYSPACE customers;
+    ```
 
 1. Enter the keyspace by executing the following:
 
-   ```sql
-   USE customers;
-   ```
+    ```sql
+    USE customers;
+    ```
 
 1. Create the `users` table by executing the following:
 
-   ```sql
-   CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
-   ```
+    ```sql
+    CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
+    ```
 
 {{% /tab %}}
 {{< /tabpane >}}
