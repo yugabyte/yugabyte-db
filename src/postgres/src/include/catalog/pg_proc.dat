@@ -5182,7 +5182,7 @@
   proargmodes => '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn}',
   prosrc => 'pg_stat_get_activity' },
-{ oid => '8042',
+{ oid => '8041',
   descr => 'statistics: terminated queries for the given database',
   proname => 'yb_pg_stat_get_queries', prorows => '100', proisstrict => 'f',
   proretset => 't', provolatile => 's', proparallel => 'r',

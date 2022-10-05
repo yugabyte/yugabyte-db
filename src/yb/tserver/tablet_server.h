@@ -71,6 +71,10 @@ class AutoFlagsManager;
 
 namespace tserver {
 
+namespace enterprise {
+class CDCConsumer;
+}
+
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
@@ -232,12 +236,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
-  std::shared_ptr<XClusterSafeTimeMap> GetXClusterSafeTimeMap() const;
+  const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
-      const NamespaceId& namespace_id, HybridTime commit_ht);
+      const NamespaceId& namespace_id, HybridTime commit_ht) const;
 
  protected:
   virtual Status RegisterServices();
@@ -325,7 +329,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
 
-  std::shared_ptr<XClusterSafeTimeMap> xcluster_safe_time_map_;
+  XClusterSafeTimeMap xcluster_safe_time_map_;
 
   PgConfigReloader pg_config_reloader_;
 

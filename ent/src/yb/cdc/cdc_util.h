@@ -16,14 +16,21 @@
 
 #include <stdlib.h>
 #include <string>
+#include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/format.h"
 #include "yb/gutil/strings/stringpiece.h"
 
 namespace yb {
 namespace cdc {
+
+// Maps a tablet id -> stream id -> replication error -> error detail.
+typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
+typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
+typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
 
 struct ConsumerTabletInfo {
   std::string tablet_id;

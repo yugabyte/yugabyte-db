@@ -462,6 +462,10 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
 class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
  public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    YbAdminSnapshotScheduleTest::SetUp();
+  }
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
@@ -998,7 +1002,6 @@ INSTANTIATE_TEST_CASE_P(Colocation, YbAdminSnapshotScheduleTestWithYsqlParam,
                                           YsqlColocationConfig::kTablegroup));
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1016,7 +1019,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, Pgsql) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect());
 
@@ -1030,7 +1032,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDatabaseAndSchedule) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1082,7 +1083,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1116,7 +1116,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropTable) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1137,7 +1136,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, FailAfterMigration) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1193,7 +1191,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1248,7 +1245,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1299,7 +1295,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddColumn) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1349,7 +1344,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1392,7 +1386,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1432,7 +1425,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameColumn) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1471,7 +1463,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetDefault) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1613,7 +1604,6 @@ void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1648,7 +1638,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSetNotNull) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1682,7 +1671,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropNotNull) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1729,7 +1717,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddPK) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1776,7 +1763,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableAddFK) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1830,7 +1816,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1870,7 +1855,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddUniqueConstraint) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1926,7 +1910,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropUniqueConstraint) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1957,7 +1940,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAddCheckConstraint) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -1993,7 +1975,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropCheckConstraint) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2031,7 +2012,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDeletedData) {
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2077,7 +2057,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoInsertedData) 
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2123,7 +2102,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDropSequence) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2163,7 +2141,6 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoDropSequence) 
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceVerifyPartialRestore) {
-  YB_SKIP_TEST_IN_TSAN();
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   // Connection to yugabyte database.

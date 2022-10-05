@@ -18,6 +18,7 @@ popd
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
+mkdir -p $GOBIN
 
 readonly build_output_dir="${project_dir}/build"
 if [[ ! -d $build_output_dir ]]; then
@@ -48,7 +49,7 @@ setup_protoc() {
         local protoc_arch=$build_arch
         local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
         pushd $GOPATH
-        curl -LO ${release_url}/download/v${protoc_version}/${protoc_filename}
+        curl -fsSLO ${release_url}/download/v${protoc_version}/${protoc_filename}
         unzip -o $protoc_filename -d tmp
         cp -rf tmp/bin/protoc $GOBIN/protoc
         rm -rf tmp $protoc_filename
@@ -78,6 +79,10 @@ get_executable_name() {
         executable+='.exe'
     fi
     echo "$executable"
+}
+
+prepare() {
+    setup_protoc
 }
 
 build_for_platform() {
@@ -202,7 +207,7 @@ show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|build|clean|test|package <version>|update-dependencies>
+./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies>
 EOT
 exit 1
 }
@@ -215,6 +220,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     fmt)
       fmt=true
+      ;;
+    prepare)
+      prepare=true
       ;;
     build)
       build=true
@@ -249,7 +257,7 @@ done
 # Release build passes the platforms in the environment.
 if [ -z "${NODE_AGENT_PLATFORMS}" ]; then
     PLATFORMS=("${default_platforms[@]}")
-    echo "Using default platforms $PLATFORMS"
+    echo "Using default platforms ${PLATFORMS[@]}"
 else
     PLATFORMS=($echo ${NODE_AGENT_PLATFORMS})
     echo "Using environment platforms ${PLATFORMS[@]}"
@@ -274,6 +282,12 @@ if [ "$fmt" == "true" ]; then
     format
 fi
 
+if [ "$prepare" == "true" ]; then
+    help_needed=false
+    echo "Preparing..."
+    prepare
+fi
+
 if [ "$build" == "true" ]; then
     help_needed=false
     echo "Building..."
@@ -281,7 +295,7 @@ if [ "$build" == "true" ]; then
         go mod init node-agent
     fi
     format
-    setup_protoc
+    prepare
     generate_grpc_files
     build_for_platforms "${PLATFORMS[@]}"
 fi

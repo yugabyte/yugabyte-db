@@ -100,7 +100,10 @@ void TabletServerTestBase::SetUp() {
 }
 
 void TabletServerTestBase::TearDown() {
-  client_messenger_->Shutdown();
+  if (client_messenger_) {
+    client_messenger_->Shutdown();
+  }
+
   tablet_peer_.reset();
   if (mini_server_) {
     mini_server_->Shutdown();

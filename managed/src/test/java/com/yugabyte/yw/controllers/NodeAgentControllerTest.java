@@ -14,12 +14,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
 import com.google.common.collect.Lists;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -31,12 +28,12 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.helpers.NodeConfig;
 import java.util.Set;
 import java.util.UUID;
@@ -44,7 +41,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.internal.util.collections.Sets;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
@@ -52,12 +48,8 @@ import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class NodeAgentControllerTest extends FakeDBApplication {
-  @Mock private Config mockAppConfig;
-  @Mock private ConfigHelper mockConfigHelper;
-  @Mock private PlatformScheduler mockPlatformScheduler;
-
-  private SettableRuntimeConfigFactory runtimeConfigFactory;
   private NodeAgentHandler nodeAgentHandler;
+  private SettableRuntimeConfigFactory runtimeConfigFactory;
   private Customer customer;
   private Provider provider;
   private Region region;
@@ -68,7 +60,9 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   public void setup() {
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.onpremProvider(customer);
+    nodeAgentHandler = app.injector().instanceOf(NodeAgentHandler.class);
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    nodeAgentHandler.enableConnectionValidation(false);
     RuntimeConfig<Provider> providerConfig = runtimeConfigFactory.forProvider(provider);
     String nodeAgentConfig = "yb.node_agent.preflight_checks.";
     providerConfig.setValue(nodeAgentConfig + "internet_connection", "true");
@@ -86,7 +80,6 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     user = ModelFactory.testUser(customer);
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";

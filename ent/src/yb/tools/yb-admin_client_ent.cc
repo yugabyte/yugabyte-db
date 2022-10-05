@@ -66,6 +66,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
+#define NANOS_PER_SECOND 1000000000
+
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
 
@@ -1746,6 +1748,86 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::GetReplicationInfo(
+    const std::string& universe_uuid) {
+
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  if (!universe_uuid.empty()) {
+    req.set_universe_id(universe_uuid);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetReplicationStatus(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting replication status: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << resp.DebugString();
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
+  master::GetXClusterEstimatedDataLossRequestPB req;
+  master::GetXClusterEstimatedDataLossResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster estimated data loss values: " << resp.error().status().message()
+         << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& data_loss : resp.namespace_data_loss()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
+
+    // Use 1 second granularity.
+    auto data_loss_s = data_loss.data_loss_ns() / NANOS_PER_SECOND;
+    AddStringField(
+        "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
+  master::GetXClusterSafeTimeRequestPB req;
+  master::GetXClusterSafeTimeResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& safe_time : resp.namespace_safe_times()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    const auto& st = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField("safe_time", HybridTimeToString(st), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(st.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
 }
 
 }  // namespace enterprise

@@ -24,6 +24,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -60,11 +62,12 @@ const int kTabletCount = 3;
 const string kTableName = "test_table";
 const string kTableName2 = "test_table2";
 const string kDatabaseName = "yugabyte";
+constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
   void SetUp() override {
-    // Disable LB as we dont want tablets moving during the test
+    // Disable LB as we dont want tablets moving during the test.
     FLAGS_xcluster_consistent_reads = true;
     FLAGS_enable_load_balancing = false;
     FLAGS_enable_replicate_transaction_status_table = true;
@@ -127,7 +130,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     ASSERT_EQ(resp.entry().tables_size(), 1);
     ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
-    // Initial wait is higher as it may need to wait for the create the table to complete
+    // Initial wait is higher as it may need to wait for the create the table to complete.
     const client::YBTableName safe_time_table_name(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
     ASSERT_OK(consumer_client()->WaitForCreateTableToFinish(
@@ -172,7 +175,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status) {
             CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
 
@@ -189,7 +192,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
             return true;
           }
@@ -215,25 +218,25 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
   ASSERT_OK(WaitForSafeTime(ht_1));
 
-  // 2. Write some data
+  // 2. Write some data.
   LOG(INFO) << "Writing records for table " << producer_table_->name().ToString();
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
   auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
 
-  // 3. Make sure safe time has progressed
+  // 3. Make sure safe time has progressed.
   ASSERT_OK(WaitForSafeTime(ht_2));
   ASSERT_TRUE(VerifyWrittenRecords());
 
-  // 4. Make sure safe time is cleaned up when we pause replication
+  // 4. Make sure safe time is cleaned up when we pause replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
   ASSERT_OK(WaitForNotFoundSafeTime());
 
-  // 5.  Make sure safe time is reset when we resume replication
+  // 5.  Make sure safe time is reset when we resume replication.
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
   auto ht_4 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
   ASSERT_OK(WaitForSafeTime(ht_4));
 
-  // 6.  Make sure safe time is cleaned up when we delete replication
+  // 6.  Make sure safe time is cleaned up when we delete replication.
   ASSERT_OK(DeleteUniverseReplication());
   ASSERT_OK(VerifyUniverseReplicationDeleted(
       consumer_cluster(), consumer_client(), kUniverseId, FLAGS_cdc_read_rpc_timeout_ms * 2));
@@ -245,15 +248,15 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   auto ht_1 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
   ASSERT_OK(WaitForSafeTime(ht_1));
 
-  // 2. Simulate replication lag and make sure safe time does not move
+  // 2. Simulate replication lag and make sure safe time does not move.
   SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
   auto ht_2 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
 
-  // 3. Make sure safe time has not progressed beyond the write
+  // 3. Make sure safe time has not progressed beyond the write.
   ASSERT_NOK(WaitForSafeTime(ht_2));
 
-  // 4. Make sure safe time has progressed
+  // 4. Make sure safe time has progressed.
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
   ASSERT_OK(WaitForSafeTime(ht_2));
 }
@@ -269,8 +272,11 @@ string GetCompleteTableName(const YBTableName& table) {
 class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
  public:
   void SetUp() override {
+    // Skip in TSAN as InitDB times out.
+    YB_SKIP_TEST_IN_TSAN();
+
     FLAGS_xcluster_consistent_reads = true;
-    // Disable LB as we dont want tablets moving during the test
+    // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
     safe_time_propagation_timeout_ =
@@ -439,7 +445,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
             auto safe_time =
-                tserver->server()->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+                tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
             if (!safe_time) {
               return false;
             }
@@ -470,7 +476,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
           }
           return last_row_count == row_count;
         },
-        5s * kTimeMultiplier,
+        MonoDelta::FromSeconds(kWaitForRowCountTimeout),
         Format(
             "Wait for consumer row_count $0 to reach $1 $2",
             last_row_count,
@@ -540,6 +546,28 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     return count;
   }
 
+  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId namespace_id) {
+    master::GetXClusterEstimatedDataLossRequestPB req;
+    master::GetXClusterEstimatedDataLossResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    RETURN_NOT_OK(master_proxy->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+
+    for (const auto& namespace_data_loss : resp.namespace_data_loss()) {
+      if (namespace_id == namespace_data_loss.namespace_id()) {
+        return namespace_data_loss.data_loss_ns();
+      }
+    }
+
+    return STATUS_FORMAT(
+        NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
+  }
+
  protected:
   MonoDelta safe_time_propagation_timeout_;
   std::vector<string> stream_ids_;
@@ -552,8 +580,6 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 };
 
 TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
-  // Skip in TSAN as InitDB takes more than 600s
-  YB_SKIP_TEST_IN_TSAN();
   constexpr auto kNumRecordsPerBatch = 10;
   CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
   uint32_t num_records_written = 0;
@@ -562,40 +588,50 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   WriteWorkload(producer_table_->name(), 0, kNumRecordsPerBatch);
   num_records_written += kNumRecordsPerBatch;
 
-  // Verify data is written on the consumer
+  // Verify data is written on the consumer.
   ASSERT_OK(WaitForRowCount(consumer_table_->name(), num_records_written));
   ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), num_records_written));
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
 
-  // Pause replication on only 1 tablet
+  // Get the initial regular rpo.
+  const auto initial_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "Initial RPO is " << initial_rpo;
+
+  // Pause replication on only 1 tablet.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
       producer_tablet_ids_[0];
   SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
-  // Wait for in flight GetChanges
+  // Wait for in flight GetChanges.
   SleepFor(2s * kTimeMultiplier);
   StoreReadTimes();
 
   // Write a batch of 100 in one transaction in table1 and a single row without a transaction in
-  // table2
+  // table2.
   WriteWorkload(producer_table_->name(), kNumRecordsPerBatch, 2 * kNumRecordsPerBatch);
   WriteWorkload(producer_table_2->name(), 0, 1);
 
-  // Verify none of the new rows in either table are visible
+  // Verify none of the new rows in either table are visible.
   ASSERT_NOK(
       WaitForRowCount(consumer_table_->name(), num_records_written + 1, true /*allow_greater*/));
   ASSERT_NOK(WaitForRowCount(consumer_table_2->name(), 1, true /*allow_greater*/));
 
-  // 2 tablets of table 1 and 1 tablet from table2 should still contain the rows
+  // 2 tablets of table 1 and 1 tablet from table2 should still contain the rows.
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
   ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), num_records_written));
 
-  // Reading latest data should return a subset of the rows but not all rows
+  // Reading latest data should return a subset of the rows but not all rows.
   const auto latest_row_count =
       ASSERT_RESULT(GetRowCount(consumer_table_->name(), &consumer_cluster_, true /*read_latest*/));
   ASSERT_GT(latest_row_count, num_records_written);
   ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
 
-  // Resume replication and verify all data is written on the consumer
+  // Check that safe time rpo has gone up.
+  const auto high_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "High RPO is " << high_rpo;
+  // RPO only gets updated every second, so only checking for at least one timeout.
+  ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToNanoseconds());
+
+  // Resume replication and verify all data is written on the consumer.
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
   num_records_written += kNumRecordsPerBatch;
   ASSERT_OK(WaitForRowCount(consumer_table_->name(), num_records_written));
@@ -603,11 +639,14 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   ASSERT_OK(WaitForRowCount(consumer_table_2->name(), 1));
   ASSERT_OK(ValidateConsumerRows(consumer_table_2->name(), 1));
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
+
+  // Check that safe time rpo has dropped again.
+  const auto final_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  LOG(INFO) << "Final RPO is " << final_rpo;
+  ASSERT_LT(final_rpo, high_rpo);
 }
 
 TEST_F(XClusterSafeTimeYsqlTest, LagInTransactionsTable) {
-  // Skip in TSAN as InitDB takes more than 600s
-  YB_SKIP_TEST_IN_TSAN();
   constexpr auto kNumRecordsPerBatch = 10;
   CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
 
