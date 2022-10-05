@@ -588,7 +588,7 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
-AutoFlagsConfigPB Master::GetAutoFlagConfig() const { return auto_flags_manager_->GetConfig(); }
+AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
 
 } // namespace master
 } // namespace yb

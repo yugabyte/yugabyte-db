@@ -11,19 +11,25 @@
 // under the License.
 //
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/auto_flags.h"
+#include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(disable_auto_flags_management);
+DECLARE_int32(limit_auto_flag_promote_for_new_universe);
 
 // Required for tests with AutoFlags management disabled
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
@@ -35,11 +41,11 @@ const string kDisableAutoFlagsManagementFlagName = "disable_auto_flags_managemen
 const string kTESTAutoFlagsInitializedFlagName = "TEST_auto_flags_initialized";
 const string kTrue = "true";
 const string kFalse = "false";
-const MonoDelta kTimeout = 20s;
+const MonoDelta kTimeout = 20s * kTimeMultiplier;
 const int kNumMasterServers = 3;
 const int kNumTServers = 3;
 
-class AutoFlagsMiniCluster : public YBMiniClusterTestBase<MiniCluster> {
+class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   void SetUp() override {}
   void TestBody() override {}
@@ -57,7 +63,7 @@ class AutoFlagsMiniCluster : public YBMiniClusterTestBase<MiniCluster> {
   void ValidateConfig() {
     int count_flags = 0;
     auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-    const AutoFlagsConfigPB leader_config = leader_master->master()->GetAutoFlagConfig();
+    const AutoFlagsConfigPB leader_config = leader_master->master()->GetAutoFlagsConfig();
     for (const auto& per_process_flags : leader_config.promoted_flags()) {
       auto it = std::find(
           per_process_flags.flags().begin(), per_process_flags.flags().end(),
@@ -76,7 +82,7 @@ class AutoFlagsMiniCluster : public YBMiniClusterTestBase<MiniCluster> {
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
       auto master = cluster_->mini_master(i);
-      const AutoFlagsConfigPB follower_config = master->master()->GetAutoFlagConfig();
+      const AutoFlagsConfigPB follower_config = master->master()->GetAutoFlagsConfig();
       ASSERT_EQ(follower_config.DebugString(), leader_config.DebugString());
     }
 
@@ -89,22 +95,89 @@ class AutoFlagsMiniCluster : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_EQ(tserver_config.DebugString(), leader_config.DebugString());
     }
   }
+
+  Status WaitForAllLeaderOpsToApply() {
+    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    auto leader_peer = leader_master->catalog_manager()->tablet_peer();
+    const auto last_op_id = leader_peer->log()->GetLatestEntryOpId();
+
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto applied_op_id = leader_peer->raft_consensus()->GetAllAppliedOpId();
+          return applied_op_id >= last_op_id;
+        },
+        kTimeout,
+        Format("Wait OpId apply within $0 seconds failed", kTimeout.ToSeconds()));
+  }
+
+  void ValidateConfigOnMasters(uint32_t expected_config_version) {
+    ASSERT_OK(WaitForAllLeaderOpsToApply());
+
+    auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    const auto leader_config = leader_master->GetAutoFlagsConfig();
+    ASSERT_EQ(expected_config_version, leader_config.config_version());
+
+    for (size_t i = 0; i < cluster_->num_masters(); i++) {
+      auto master = cluster_->mini_master(i);
+      const auto follower_config = master->master()->GetAutoFlagsConfig();
+      ASSERT_EQ(follower_config.DebugString(), leader_config.DebugString());
+    }
+  }
 };
 
-TEST(AutoFlagsMiniClusterTest, NewCluster) {
-  AutoFlagsMiniCluster cluster;
-  cluster.RunSetUp();
-
-  cluster.ValidateConfig();
+TEST_F(AutoFlagsMiniClusterTest, NewCluster) {
+  RunSetUp();
+  ValidateConfig();
 }
 
-TEST(AutoFlagsDisabledMiniClusterTest, DisableAutoFlagManagement) {
+TEST_F(AutoFlagsMiniClusterTest, DisableAutoFlagManagement) {
   FLAGS_disable_auto_flags_management = true;
 
-  AutoFlagsMiniCluster cluster;
-  cluster.RunSetUp();
+  RunSetUp();
+  ValidateConfig();
+}
 
-  cluster.ValidateConfig();
+TEST_F(AutoFlagsMiniClusterTest, Promote) {
+  // Start with an empty config
+  FLAGS_limit_auto_flag_promote_for_new_universe = 0;
+  RunSetUp();
+
+  // Initial empty config
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+  auto previous_config = leader_master->GetAutoFlagsConfig();
+  ASSERT_EQ(0, previous_config.config_version());
+  ASSERT_EQ(0, previous_config.promoted_flags_size());
+
+  master::PromoteAutoFlagsRequestPB req;
+  master::PromoteAutoFlagsResponsePB resp;
+  req.set_max_flag_class(ToString(AutoFlagClass::kExternal));
+  req.set_promote_non_runtime_flags(true);
+  req.set_force(false);
+
+  // Promote all AutoFlags
+  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+  ASSERT_TRUE(resp.has_new_config_version());
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
+
+  ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
+  previous_config = leader_master->GetAutoFlagsConfig();
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
+  ASSERT_GE(previous_config.promoted_flags_size(), 1);
+
+  // Running again should be no op
+  resp.Clear();
+  const auto status = leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp);
+  ASSERT_TRUE(status.IsAlreadyPresent()) << status.ToString();
+  ASSERT_FALSE(resp.has_new_config_version()) << resp.new_config_version();
+
+  // Force to bump up version alone
+  req.set_force(true);
+  resp.Clear();
+  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+  ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
+  ASSERT_FALSE(resp.non_runtime_flags_promoted());
+
+  ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {

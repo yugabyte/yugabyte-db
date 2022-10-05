@@ -67,6 +67,7 @@
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
@@ -840,6 +841,9 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
     case OperationType::kSplit:
       return consensus::SPLIT_OP;
 
+    case OperationType::kChangeAutoFlagsConfig:
+      return consensus::CHANGE_AUTO_FLAGS_CONFIG_OP;
+
     case OperationType::kEmpty:
       LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
   }
@@ -1169,6 +1173,13 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
       return std::make_unique<SplitOperation>(tablet(), tablet_splitter_);
+
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+      DCHECK(replicate_msg->has_auto_flags_config())
+          << "CHANGE_AUTO_FLAGS_CONFIG_OP replica"
+             " operation must receive an AutoFlagsConfigPB";
+      return std::make_unique<ChangeAutoFlagsConfigOperation>(
+          tablet(), replicate_msg->mutable_auto_flags_config());
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
