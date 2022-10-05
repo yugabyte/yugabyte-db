@@ -46,7 +46,6 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_uint64(rpc_connection_timeout_ms);
-DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_uint64(force_single_shard_waiter_retry_ms);
 
 using namespace std::literals;
@@ -64,7 +63,6 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
     FLAGS_enable_wait_queue_based_pessimistic_locking = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_TEST_select_all_status_tablets = true;
-    FLAGS_auto_promote_nonlocal_transactions_to_global = false;
     FLAGS_force_single_shard_waiter_retry_ms = 10000;
     PgMiniTestBase::SetUp();
   }
@@ -717,7 +715,6 @@ class PgTabletSplittingPessimisticLockingTest : public PgTabletSplitTestBase,
     FLAGS_enable_wait_queue_based_pessimistic_locking = true;
     FLAGS_enable_deadlock_detection = true;
     FLAGS_enable_automatic_tablet_splitting = false;
-    FLAGS_auto_promote_nonlocal_transactions_to_global = false;
     PgTabletSplitTestBase::SetUp();
   }
 
