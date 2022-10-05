@@ -148,8 +148,6 @@ public class NodeManager extends DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject ConfigHelper configHelper;
-
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
     return getUserIntentFromParams(universe, nodeTaskParam);
@@ -376,13 +374,6 @@ public class NodeManager extends DevopsBase {
   /**
    * Creates certificates if not present. Called from various places like - when node is added to
    * universe
-   *
-   * @param config
-   * @param userIntent
-   * @param taskParam
-   * @param nodeIP
-   * @param ybHomeDir
-   * @return
    */
   private List<String> getCertificatePaths(
       Config config,
@@ -627,7 +618,7 @@ public class NodeManager extends DevopsBase {
         && !taskParam.getProvider().code.equals("onprem")) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < taskParam.deviceInfo.numVolumes; i++) {
-        mountPoints.add("/mnt/d" + Integer.toString(i));
+        mountPoints.add("/mnt/d" + i);
       }
       return String.join(",", mountPoints);
     }
@@ -732,8 +723,7 @@ public class NodeManager extends DevopsBase {
 
     if (useHostname) {
       gflags.put(
-          "server_broadcast_addresses",
-          String.format("%s:%s", private_ip, Integer.toString(node.masterRpcPort)));
+          "server_broadcast_addresses", String.format("%s:%s", private_ip, node.masterRpcPort));
     } else {
       gflags.put("server_broadcast_addresses", "");
     }
@@ -744,9 +734,7 @@ public class NodeManager extends DevopsBase {
       gflags.put("master_addresses", "");
     }
 
-    gflags.put(
-        "rpc_bind_addresses",
-        String.format("%s:%s", private_ip, Integer.toString(node.masterRpcPort)));
+    gflags.put("rpc_bind_addresses", String.format("%s:%s", private_ip, node.masterRpcPort));
 
     if (useSecondaryIp) {
       String bindAddressPrimary =
@@ -779,14 +767,11 @@ public class NodeManager extends DevopsBase {
 
     if (useHostname) {
       gflags.put(
-          "server_broadcast_addresses",
-          String.format("%s:%s", private_ip, Integer.toString(node.tserverRpcPort)));
+          "server_broadcast_addresses", String.format("%s:%s", private_ip, node.tserverRpcPort));
     } else {
       gflags.put("server_broadcast_addresses", "");
     }
-    gflags.put(
-        "rpc_bind_addresses",
-        String.format("%s:%s", private_ip, Integer.toString(node.tserverRpcPort)));
+    gflags.put("rpc_bind_addresses", String.format("%s:%s", private_ip, node.tserverRpcPort));
     gflags.put("tserver_master_addrs", masterAddresses);
 
     if (useSecondaryIp) {
@@ -806,8 +791,7 @@ public class NodeManager extends DevopsBase {
     gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
     gflags.put("webserver_interface", private_ip);
     gflags.put(
-        "redis_proxy_bind_address",
-        String.format("%s:%s", private_ip, Integer.toString(node.redisServerRpcPort)));
+        "redis_proxy_bind_address", String.format("%s:%s", private_ip, node.redisServerRpcPort));
     if (userIntent.enableYEDIS) {
       gflags.put(
           "redis_proxy_webserver_port",
@@ -1398,9 +1382,8 @@ public class NodeManager extends DevopsBase {
   }
 
   private Path addBootscript(
-      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
-    Path bootScriptFile = null;
-    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+      String bootScript, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile;
     commandArgs.add("--boot_script");
 
     // treat the contents as script body if it starts with a shebang line
@@ -1459,12 +1442,7 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  /**
-   * Remove tags that are restricted by provider.
-   *
-   * @param instanceTags
-   * @param providerType
-   */
+  /** Remove tags that are restricted by provider. */
   private void filterInstanceTags(Map<String, String> instanceTags, Common.CloudType providerType) {
     if (providerType.equals(Common.CloudType.aws)) {
       // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
@@ -1532,8 +1510,9 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+            String bootScript = config.getString(BOOT_SCRIPT_PATH);
+            if (!bootScript.isEmpty()) {
+              bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1661,8 +1640,9 @@ public class NodeManager extends DevopsBase {
           }
 
           Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
-          if (config.hasPath(BOOT_SCRIPT_PATH)) {
-            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+          String bootScript = config.getString(BOOT_SCRIPT_PATH);
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1731,7 +1711,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1751,7 +1731,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1764,7 +1744,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -2023,14 +2003,13 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
+  private void addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     if (!Strings.isNullOrEmpty(nodeIP)) {
       commandArgs.add("--node_ip");
       commandArgs.add(nodeIP);
     }
-    return commandArgs;
   }
 
   private boolean isLowMemInstanceType(String instanceType) {

@@ -97,6 +97,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
         ImmutableSet.of(
+            "yb.universe_boot_script",
             "yb.taskGC.gc_check_interval",
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
