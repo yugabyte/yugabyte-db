@@ -25,6 +25,8 @@
 
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/client_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
@@ -108,6 +110,14 @@ class CDCConsumer {
   client::TransactionManager* TransactionManager();
 
   Result<cdc::ConsumerTabletInfo> GetConsumerTableInfo(const TabletId& producer_tablet_id);
+
+  // Stores a replication error and detail. This overwrites a previously stored 'error'.
+  void StoreReplicationError(
+    const TabletId& tablet_id, const CDCStreamId& stream_id, ReplicationErrorPb error,
+    const std::string& detail);
+
+  // Returns the replication error map.
+  cdc::TabletReplicationErrorMap GetReplicationErrors() const;
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -202,6 +212,10 @@ class CDCConsumer {
   client::YBTablePtr global_transaction_status_table_;
 
   bool enable_replicate_transaction_status_table_;
+
+  mutable simple_spinlock tablet_replication_error_map_lock_;
+  cdc::TabletReplicationErrorMap tablet_replication_error_map_
+    GUARDED_BY(tablet_replication_error_map_lock_);
 };
 
 } // namespace enterprise

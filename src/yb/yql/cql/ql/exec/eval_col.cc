@@ -100,8 +100,6 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     }
   }
 
-  common::Jsonb jsonb_null;
-  RETURN_NOT_OK(jsonb_null.FromString("null"));
   const MCVector<JsonColumnArg>& jsoncol_args = tnode->json_col_args();
   for (const JsonColumnArg& col : jsoncol_args) {
     QLExpressionPB expr_pb;
@@ -113,7 +111,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
           update_tnode->update_properties()->ignore_null_jsonb_attributes()) {
         if (expr_pb.expr_case() == QLExpressionPB::kValue &&
             expr_pb.value().value_case() == QLValuePB::kJsonbValue &&
-            expr_pb.value().jsonb_value() == jsonb_null.SerializedJsonb()) {
+            expr_pb.value().jsonb_value() == common::Jsonb::kSerializedJsonbNull) {
           // TODO(Piyush): Log attribute json path as well.
           VLOG(1) << "Ignoring null for json attribute in UPDATE statement " \
             "for column " << col.desc()->MangledName();

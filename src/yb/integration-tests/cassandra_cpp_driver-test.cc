@@ -2873,7 +2873,7 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
 #ifndef NDEBUG
-  auto min_total_writes = RegularBuildVsSanitizers(750, 50);
+  auto min_total_writes = RegularBuildVsDebugVsSanitizers(750, 500, 50);
 #else
   auto min_total_writes = 1500;
 #endif

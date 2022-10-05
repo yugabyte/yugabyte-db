@@ -50,6 +50,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   public void setup() {
     customer = ModelFactory.testCustomer();
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
+    nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 

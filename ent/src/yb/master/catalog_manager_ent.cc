@@ -6472,8 +6472,17 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
         }
       } else {
         resp->set_should_wait(true);
-        LOG(WARNING) << Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
-            consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
+
+        std::string error_msg =
+          Format("XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}",
+                 consumer_table_id, consumer_schema.ToString(), producer_schema.ToString());
+        LOG(WARNING) << error_msg;
+
+        WARN_NOT_OK(
+          StoreReplicationErrors(
+            u_id, consumer_table_id, stream_id,
+            {std::make_pair(REPLICATION_SCHEMA_MISMATCH, std::move(error_msg))}),
+          "Failed to store schema mismatch replication error");
 
         // Incompatible schema: store, wait for all tablet reports, then make the DDL change.
         auto producer_schema = stream_entry->mutable_producer_schema();
@@ -6496,6 +6505,69 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       // Need producer_meta_pb.has_add_table(), add_multiple_tables(),
       //                       remove_table_id(), alter_table_id().
     }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::StoreReplicationErrors(
+  const std::string& universe_id,
+  const std::string& consumer_table_id,
+  const std::string& stream_id,
+  const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors) {
+
+  SharedLock lock(mutex_);
+  return StoreReplicationErrorsUnlocked(
+      universe_id, consumer_table_id, stream_id, replication_errors);
+}
+
+Status CatalogManager::StoreReplicationErrorsUnlocked(
+  const std::string& universe_id,
+  const std::string& consumer_table_id,
+  const std::string& stream_id,
+  const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors) {
+
+  const auto& universe = FindPtrOrNull(universe_replication_map_, universe_id);
+  if (universe == nullptr) {
+    return STATUS(NotFound, Format("Could not locate universe $0", universe_id),
+                  MasterError(MasterErrorPB::UNKNOWN_ERROR));
+  }
+
+  for (const auto& error_kv : replication_errors) {
+    const ReplicationErrorPb& replication_error = error_kv.first;
+    const std::string& replication_error_detail = error_kv.second;
+    universe->StoreReplicationError(
+      consumer_table_id, stream_id, replication_error, replication_error_detail);
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::ClearReplicationErrors(
+  const std::string& universe_id,
+  const std::string& consumer_table_id,
+  const std::string& stream_id,
+  const std::vector<ReplicationErrorPb>& replication_error_codes) {
+
+  SharedLock lock(mutex_);
+  return ClearReplicationErrorsUnlocked(
+      universe_id, consumer_table_id, stream_id, replication_error_codes);
+}
+
+Status CatalogManager::ClearReplicationErrorsUnlocked(
+  const std::string& universe_id,
+  const std::string& consumer_table_id,
+  const std::string& stream_id,
+  const std::vector<ReplicationErrorPb>& replication_error_codes) {
+
+  const auto& universe = FindPtrOrNull(universe_replication_map_, universe_id);
+  if (universe == nullptr) {
+    return STATUS(NotFound, Format("Could not locate universe $0", universe_id),
+                  MasterError(MasterErrorPB::UNKNOWN_ERROR));
+  }
+
+  for (const auto& replication_error_code : replication_error_codes) {
+    universe->ClearReplicationError(consumer_table_id, stream_id, replication_error_code);
   }
 
   return Status::OK();
@@ -6773,6 +6845,73 @@ Status CatalogManager::SetupNSUniverseReplication(const SetupNSUniverseReplicati
   return Status::OK();
 }
 
+Status CatalogManager::GetReplicationStatus(
+    const GetReplicationStatusRequestPB* req,
+    GetReplicationStatusResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "GetReplicationStatus from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+  // If the 'universe_id' is given, only populate the status for the streams in that universe.
+  // Otherwise, populate all the status for all streams.
+  if (!req->universe_id().empty()) {
+    SharedLock lock(mutex_);
+    auto universe = FindPtrOrNull(universe_replication_map_, req->universe_id());
+    SCHECK(universe, InvalidArgument, Substitute("Could not find universe $0", req->universe_id()));
+    PopulateUniverseReplicationStatus(*universe, resp);
+  } else {
+    SharedLock lock(mutex_);
+    for (const auto& kv : universe_replication_map_) {
+      PopulateUniverseReplicationStatus(*kv.second, resp);
+    }
+  }
+
+  return Status::OK();
+}
+
+void CatalogManager::PopulateUniverseReplicationStatus(
+  const UniverseReplicationInfo& universe,
+  GetReplicationStatusResponsePB* resp) const {
+
+  // Fetch the replication error map for this universe.
+  auto table_replication_error_map = universe.GetReplicationErrors();
+
+  // Populate an entry for each table/stream pair that belongs to 'universe'.
+  for (const auto& table_stream : xcluster_consumer_tables_to_stream_map_) {
+    const auto& table_id = table_stream.first;
+    const auto& stream_map = table_stream.second;
+
+    auto stream_map_iter = stream_map.find(universe.id());
+    if (stream_map_iter == stream_map.end()) {
+      continue;
+    }
+
+    const auto& stream_id = stream_map_iter->second;
+
+    auto resp_status = resp->add_statuses();
+    resp_status->set_table_id(table_id);
+    resp_status->set_stream_id(stream_id);
+
+    // Store any replication errors associated with this table/stream pair.
+    auto table_error_map_iter = table_replication_error_map.find(table_id);
+    if (table_error_map_iter != table_replication_error_map.end()) {
+      const auto& stream_replication_error_map = table_error_map_iter->second;
+      auto stream_error_map_iter = stream_replication_error_map.find(stream_id);
+      if (stream_error_map_iter != stream_replication_error_map.end()) {
+        const auto& error_map = stream_error_map_iter->second;
+        for (const auto& error_kv : error_map) {
+          const auto& error = error_kv.first;
+          const auto& detail = error_kv.second;
+
+          auto status_error = resp_status->add_errors();
+          status_error->set_error(error);
+          status_error->set_error_detail(detail);
+        }
+      }
+    }
+  }
+}
+
 bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
   auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
   if (it != xcluster_producer_tables_to_stream_map_.end()) {
@@ -6956,7 +7095,12 @@ Status CatalogManager::ResumeCdcAfterNewSchema(const TableInfo& table_info) {
         producer_schema_pb->clear_pending_schema();
         // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
         l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      }  else  {
+
+        WARN_NOT_OK(
+          ClearReplicationErrors(
+            u_id, table_info.id(), stream_id, {REPLICATION_SCHEMA_MISMATCH}),
+          "Failed to store schema mismatch replication error");
+      } else  {
         LOG(INFO) << "Consumer schema not compatible for data copy of next Producer schema.";
       }
     }
@@ -7558,6 +7702,62 @@ Status CatalogManager::WaitForSetupUniverseReplicationToFinish(const string& pro
 
 Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& table_id) const {
   return FindTableById(table_id);
+}
+
+Status CatalogManager::ProcessTabletReplicationStatus(
+    const TabletReplicationStatusPB& tablet_replication_state) {
+
+  // Lookup the tablet info for the given tablet id.
+  const string& tablet_id = tablet_replication_state.tablet_id();
+  scoped_refptr<TabletInfo> tablet;
+  {
+    SharedLock lock(mutex_);
+    tablet = FindPtrOrNull(*tablet_map_, tablet_id);
+    SCHECK(tablet, NotFound, Format("Could not locate tablet info for tablet id $0", tablet_id));
+
+    // Lookup the streams that this tablet belongs to.
+    const std::string& consumer_table_id = tablet->table()->id();
+    auto stream_map_iter = xcluster_consumer_tables_to_stream_map_.find(consumer_table_id);
+    SCHECK(stream_map_iter != xcluster_consumer_tables_to_stream_map_.end(), NotFound,
+           Substitute("Could not locate stream map for table id $0", consumer_table_id));
+
+    for (const auto& kv : stream_map_iter->second) {
+      const auto& producer_id = kv.first;
+
+      for (const auto& tablet_stream_kv : tablet_replication_state.stream_replication_statuses()) {
+        const auto& tablet_stream_id = tablet_stream_kv.first;
+        const auto& tablet_stream_replication_status = tablet_stream_kv.second;
+
+        // Build a list of replication errors to store for this stream.
+        std::vector<std::pair<ReplicationErrorPb, std::string>> replication_errors;
+        replication_errors.reserve(tablet_stream_replication_status.replication_errors_size());
+        for (const auto& kv : tablet_stream_replication_status.replication_errors()) {
+          const auto& error_code = kv.first;
+          const auto& error_detail = kv.second;
+
+          // The protobuf spec does not allow enums to be used as keys in maps. To work around this,
+          // the keys in 'replication_errors' are of type int32_t that correspond to values in the
+          // 'ReplicationErrorPb' enum.
+          if (ReplicationErrorPb_IsValid(error_code)) {
+            replication_errors.emplace_back(
+              static_cast<ReplicationErrorPb>(error_code), error_detail);
+          } else {
+            LOG(WARNING) << Format("Received replication status error code ($0) that does not "
+                                  "correspond to an enum value in ReplicationErrorPb.");
+            replication_errors.emplace_back(REPLICATION_UNKNOWN_ERROR, error_detail);
+          }
+        }
+
+        WARN_NOT_OK(
+          StoreReplicationErrorsUnlocked(
+            producer_id, consumer_table_id, tablet_stream_id, replication_errors),
+          Format("Failed to store replication error for universe=$0 table=$1 stream=$2",
+                 producer_id, consumer_table_id, tablet_stream_id));
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace enterprise
