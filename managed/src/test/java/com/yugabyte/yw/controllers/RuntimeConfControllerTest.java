@@ -97,6 +97,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
         ImmutableSet.of(
+            "yb.universe_boot_script",
             "yb.taskGC.gc_check_interval",
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
@@ -269,7 +270,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   // Same test as above except the config is set as external Script object with retention  key
-  // embeded
+  // embedded
   @Test
   @Parameters(method = "scopeAndPresetParamsObj")
   public void getConfig_universe_inherited_obj(

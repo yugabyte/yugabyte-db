@@ -38,7 +38,6 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -133,8 +132,6 @@ public class NodeManagerTest extends FakeDBApplication {
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
   private final String instanceTypeCode = "fake_instance_type";
-  private final String SERVER_CERT_PATH = "/tmp/cert.crt";
-  private final String SERVER_KEY_PATH = "/tmp/key.crt";
 
   private static final List<String> PRECHECK_CERT_PATHS =
       Arrays.asList(
@@ -254,15 +251,6 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.throughput = 250;
       }
     }
-  }
-
-  private NodeTaskParams createInvalidParams(TestData testData) {
-    Universe u = createUniverse();
-    NodeTaskParams params = new NodeTaskParams();
-    params.azUuid = testData.zone.uuid;
-    params.nodeName = testData.node.getNodeName();
-    params.universeUUID = u.universeUUID;
-    return params;
   }
 
   private AccessKey getOrCreate(UUID providerUUID, String keyCode, AccessKey.KeyInfo keyInfo) {
@@ -469,7 +457,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
-    testData = new ArrayList<TestData>();
+    testData = new ArrayList<>();
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
@@ -477,7 +465,7 @@ public class NodeManagerTest extends FakeDBApplication {
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
 
-    when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
+    when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
     when(mockAppConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
@@ -493,7 +481,7 @@ public class NodeManagerTest extends FakeDBApplication {
         && !taskParam.getProvider().code.equals("onprem")) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < taskParam.deviceInfo.numVolumes; i++) {
-        mountPoints.add("/mnt/d" + Integer.toString(i));
+        mountPoints.add("/mnt/d" + i);
       }
       return String.join(",", mountPoints);
     }
@@ -526,7 +514,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     if (processType == null) {
       gflags.put("master_addresses", "");
-    } else if (processType == ServerType.TSERVER.name()) {
+    } else if (processType.equals(TSERVER.name())) {
       if (useHostname) {
         gflags.put("server_broadcast_addresses", String.format("%s:%s", private_ip, "9100"));
       } else {
@@ -624,7 +612,7 @@ public class NodeManagerTest extends FakeDBApplication {
     if (configureParams.callhomeLevel != null) {
       gflags.put(
           "callhome_collection_level", configureParams.callhomeLevel.toString().toLowerCase());
-      if (configureParams.callhomeLevel.toString() == "NONE") {
+      if (configureParams.callhomeLevel.toString().equals("NONE")) {
         gflags.put("callhome_enabled", "false");
       }
     }
@@ -633,7 +621,6 @@ public class NodeManagerTest extends FakeDBApplication {
     String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
     String allowInsecureString = String.valueOf(configureParams.allowInsecure);
     String ybHomeDir = configureParams.getProvider().getYbHome();
-    ;
     String certsDir = ybHomeDir + "/yugabyte-tls-config";
     String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
@@ -654,7 +641,7 @@ public class NodeManagerTest extends FakeDBApplication {
     if (CertificateHelper.isClientRootCARequired(configureParams)) {
       gflags.put("certs_for_client_dir", certsForClientDir);
     }
-    if (processType == ServerType.TSERVER.name()
+    if (Objects.equals(processType, TSERVER.name())
         && runtimeConfigFactory
                 .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
                 .getInt(NodeManager.POSTGRES_MAX_MEM_MB)
@@ -715,7 +702,7 @@ public class NodeManagerTest extends FakeDBApplication {
         break;
       case Replace_Root_Volume:
         expectedCommand.add("--replacement_disk");
-        expectedCommand.add(String.valueOf(testData.replacementVolume));
+        expectedCommand.add(testData.replacementVolume);
         break;
       case Create_Root_Volumes:
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
@@ -1301,7 +1288,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
