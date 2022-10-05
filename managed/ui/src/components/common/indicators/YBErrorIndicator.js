@@ -7,7 +7,7 @@ import { Link } from 'react-router';
 
 export default class YBErrorIndicator extends Component {
   render() {
-    const { type, uuid } = this.props;
+    const { type, uuid, customErrorMessage } = this.props;
     let errorDisplayMessage = <span />;
     let errorRecoveryMessage = <span />;
 
@@ -28,6 +28,7 @@ export default class YBErrorIndicator extends Component {
         </div>
         <div>{errorDisplayMessage}</div>
         <div>{errorRecoveryMessage}</div>
+        {customErrorMessage && (<div>{customErrorMessage}</div>)}
       </div>
     );
   }

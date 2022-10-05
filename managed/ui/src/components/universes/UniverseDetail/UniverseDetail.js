@@ -390,6 +390,7 @@ class UniverseDetail extends Component {
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse}
                 visibleModal={visibleModal}
+                featureFlags={featureFlags}
               />
             </div>
           </Tab.Pane>
