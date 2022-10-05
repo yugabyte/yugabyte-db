@@ -61,7 +61,14 @@ func (handler *stateHandlerTask) handleRegisteringState(ctx context.Context, con
 }
 
 func (handler *stateHandlerTask) handleLiveState(ctx context.Context, config *util.Config) {
-	//NOOP
+	// Heartbeat with the same Live state.
+	_, err := NewPutAgentStateHandler(
+		model.Live,
+		config.String(util.PlatformVersionKey),
+	).Handle(ctx)
+	if err != nil {
+		util.FileLogger().Errorf("Error while heartbeating to the platform - %s", err.Error())
+	}
 }
 
 func (handler *stateHandlerTask) handleUpgradeState(ctx context.Context, config *util.Config) {
@@ -75,7 +82,7 @@ func (handler *stateHandlerTask) handleUpgradeState(ctx context.Context, config 
 
 	out, err := HandleDownloadPackageScript(config, ctx)
 	if err != nil {
-		util.ConsoleLogger().Errorf(
+		util.FileLogger().Errorf(
 			"Error while trying to the run the download updated version script - %s",
 			err.Error(),
 		)
@@ -83,40 +90,32 @@ func (handler *stateHandlerTask) handleUpgradeState(ctx context.Context, config 
 	}
 	out = strings.TrimSuffix(out, "\n")
 	out = strings.TrimPrefix(out, "\n")
-	util.ConsoleLogger().Infof("Updating to new version - %s", out)
 	util.FileLogger().Infof("Updating to new version - %s", out)
-	// Set the update_version in the config
+	// Set the update_version in the config.
 	config.Update(util.PlatformVersionUpdateKey, out)
 
 	// Set the state to upgrading.
-	result, err := NewPutAgentStateHandler(
+	_, err = NewPutAgentStateHandler(
 		model.Upgrading,
 		config.String(util.PlatformVersionKey),
 	).Handle(ctx)
 	if err != nil {
-		data, _ := result.(*string)
-		util.FileLogger().Errorf("Error while updating agent state to Upgrading - %s", *data)
+		util.FileLogger().Errorf("Error while updating agent state to Upgrading - %s", err.Error())
 	}
 	util.FileLogger().Info("Changed the node agent state to UPGRADING")
 }
 
 func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, config *util.Config) {
 	util.FileLogger().Info("Starting the node agent Upgrading process")
-	result, err := NewPutAgentHandler().Handle(ctx)
+	putHandler := NewPutAgentHandler()
+	_, err := putHandler.Handle(ctx)
 	if err != nil {
-		errStr := "Error while posting upgrading state to the platform -"
-		util.ConsoleLogger().Errorf("%s %s", errStr, err)
-		util.FileLogger().Errorf("%s %s", errStr, err)
+		util.FileLogger().
+			Errorf("Error while posting upgrading state to the platform - %s", err.Error())
 		return
 	}
 	// Get the latest version certs
-	data, ok := result.(*model.NodeAgent)
-	if !ok {
-		util.ConsoleLogger().
-			Errorf("Error while inferencing type Node Agent to get upgrade certs")
-		util.FileLogger().Errorf("Error while inferencing type Node Agent to get upgrade certs")
-		return
-	}
+	data := putHandler.Result()
 	newCert, newKey := data.Config.ServerCert, data.Config.ServerKey
 	uuid := util.NewUUID().String()
 
@@ -152,13 +151,13 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	}
 
 	// Put Upgraded state along with the update version
-	util.ConsoleLogger().Infof(
+	util.FileLogger().Infof(
 		"Sending the updated version to the platform - %s",
 		config.String(util.PlatformVersionUpdateKey),
 	)
-	if result, err := NewPutAgentStateHandler(model.Upgraded, config.String(util.PlatformVersionUpdateKey)).Handle(ctx); err != nil {
-		data, _ := result.(*string)
-		util.FileLogger().Errorf("Error while updating agent state to Upgraded - %s", *data)
+	if _, err := NewPutAgentStateHandler(
+		model.Upgraded, config.String(util.PlatformVersionUpdateKey)).Handle(ctx); err != nil {
+		util.FileLogger().Errorf("Error while updating agent state to Upgraded - %s", err.Error())
 		return
 	}
 
@@ -179,14 +178,15 @@ func (handler *stateHandlerTask) handleUpgradedState(ctx context.Context, config
 }
 
 func HandleUpgradedStateAfterRestart(ctx context.Context, config *util.Config) error {
-	util.ConsoleLogger().Info("Checking the node-agent state before starting the server.")
-	result, err := NewGetAgentStateHandler().Handle(ctx)
+	util.FileLogger().Info("Checking the node-agent state before starting the server.")
+	getHandler := NewGetAgentStateHandler()
+	_, err := getHandler.Handle(ctx)
 	if err != nil {
 		util.FileLogger().Errorf("Error in getting node agent state. Error: %s", err)
 		return err
 	}
-	ptr := result.(*string)
-	if *ptr != model.Upgraded.Name() {
+	result := getHandler.Result()
+	if *result != model.Upgraded.Name() {
 		util.FileLogger().
 			Infof("Node Agent is not in Upgraded State, thus continuing the restart")
 		return nil
@@ -206,14 +206,9 @@ func HandleUpgradedStateAfterRestart(ctx context.Context, config *util.Config) e
 	}
 
 	// Send Live status to the Platform
-	if result, err := NewPutAgentStateHandler(model.Live, config.String(util.PlatformVersionKey)).Handle(ctx); err != nil {
-		if data, ok := result.(*string); ok {
-			util.ConsoleLogger().Errorf("Error while updating agent state to Live - %s", *data)
-			util.FileLogger().Errorf("Error while updating agent state to Live - %s", *data)
-		} else {
-			util.ConsoleLogger().Errorf("Error while updating agent state to Live - %s", err.Error())
-			util.FileLogger().Errorf("Error while updating agent state to Live - %s", err.Error())
-		}
+	_, err = NewPutAgentStateHandler(model.Live, config.String(util.PlatformVersionKey)).Handle(ctx)
+	if err != nil {
+		util.FileLogger().Errorf("Error while updating agent state to Live - %s", err.Error())
 		return err
 	}
 	return nil
@@ -253,8 +248,6 @@ func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
 		// Remove the current certs
 		if err := util.DeleteCerts(config.String(util.PlatformCertsKey)); err != nil &&
 			!os.IsNotExist(err) {
-			util.ConsoleLogger().
-				Errorf("Error while deleting the certs during cleanup - %s", err.Error())
 			util.FileLogger().Errorf(
 				"Error while deleting the certs during cleanup - %s",
 				err.Error(),
