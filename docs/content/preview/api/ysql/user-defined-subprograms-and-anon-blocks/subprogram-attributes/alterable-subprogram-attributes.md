@@ -14,9 +14,9 @@ type: docs
 
 ## Configuration parameter
 
-This term denotes parameters like _timezone_ that you can set, within the scope of a single session, and for no longer than the session's duration, with the [`set`](../../the-sql-language/statements/cmd_set/) statement. You observe the current value with the [`show`](../../the-sql-language/statements/cmd_show/) statement or the _[current_setting()](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-ADMIN-SET)_ built-in function.
+This term denotes parameters like _timezone_ that you can set, within the scope of a single session, and for no longer than the session's duration, with the [`set`](../../../the-sql-language/statements/cmd_set/) statement. You observe the current value with the [`show`](../../../the-sql-language/statements/cmd_show/) statement or the _[current_setting()](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-ADMIN-SET)_ built-in function.
 
-You can execute a `set` statement in the source text of a subprogram's _[implementation_definition](../../syntax_resources/grammar_diagrams/#implementation-definition)_. But you might prefer to make such a setting a property of the subprogram like this:
+You can execute a `set` statement in the source text of a subprogram's _[implementation_definition](../../../syntax_resources/grammar_diagrams/#implementation-definition)_. But you might prefer to make such a setting a property of the subprogram like this:
 
 ```plpgsql
 drop function if exists f() cascade;
@@ -45,7 +45,7 @@ The _security_ attribute determines the identity of the effective _role_ (as is 
 
 - A _security definer_ subprogram executes with the privileges of the subprogram's owner. And a _security invoker_ subprogram executes with the privileges of the _[session_user](https://www.postgresql.org/docs/11/functions-info.html#FUNCTIONS-INFO-SESSION-TABLE)_.
 
-It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the section [ Writing safe "security definer" subprograms](../writing-safe-security-definer-subprograms/).
+It's important to understand how unqualified names in SQL statements in a subprogram's implementation are resolved. This is explained in the [Writing SECURITY DEFINER Functions Safely](https://www.postgresql.org/docs/11/sql-createfunction.html#id-1.9.3.67.10.2) section of the PostgreSQL documentation.
 
 Try the following demonstration. It connects to the database _demo_ and relies on two roles, _u1_ (which owns the schema called _u1_) and _u2_ (which doesn't need to own a schema).
 

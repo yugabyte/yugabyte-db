@@ -6,11 +6,14 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -74,7 +77,7 @@ public class CertsRotate extends UpgradeTaskBase {
             // Reset the old rootCA content in platform
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             // Update universe details with new cert values
-            createUniverseSetTlsParamsTask(getTaskSubGroupType());
+            createUniverseSetTlsParamsTask();
             // Do a rolling restart
             createRestartTasks(nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().ybcInstalled);
           } else {
@@ -82,12 +85,14 @@ public class CertsRotate extends UpgradeTaskBase {
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
             }
-            createCertUpdateTasks(
-                nodes.getLeft(),
-                nodes.getRight(),
-                getTaskSubGroupType(),
-                taskParams().rootCARotationType,
-                taskParams().clientRootCARotationType);
+            // Copy new server certs to all nodes
+            createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
+            // Update gflags of cert directories
+            createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
+            createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
+            if (taskParams().ybcInstalled) {
+              createYbcUpdateCertDirsTask(nodes.getRight());
+            }
 
             // Do a rolling/non-rolling restart
             createRestartTasks(nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
@@ -96,19 +101,64 @@ public class CertsRotate extends UpgradeTaskBase {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             }
             // Update universe details with new cert values
-            createUniverseSetTlsParamsTask(getTaskSubGroupType());
+            createUniverseSetTlsParamsTask();
           }
         });
   }
 
   private void createCertUpdateTasks(
       Collection<NodeDetails> nodes, CertRotateAction certRotateAction) {
-    createCertUpdateTasks(
-        nodes,
-        certRotateAction,
-        getTaskSubGroupType(),
-        taskParams().rootCARotationType,
-        taskParams().clientRootCARotationType);
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootCA = taskParams().rootCA;
+      params.clientRootCA = taskParams().clientRootCA;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.rootCARotationType = taskParams().rootCARotationType;
+      params.clientRootCARotationType = taskParams().clientRootCARotationType;
+      params.certRotateAction = certRotateAction;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createYbcUpdateCertDirsTask(List<NodeDetails> nodes) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              ServerType.CONTROLLER,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
@@ -126,6 +176,46 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   private void createUpdateCertDirsTask(Collection<NodeDetails> nodes, ServerType serverType) {
-    createUpdateCertDirsTask(nodes, serverType, getTaskSubGroupType());
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", getTaskSubGroupType(), taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              node,
+              serverType,
+              UpgradeTaskParams.UpgradeTaskType.Certs,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+      params.certRotateAction = CertRotateAction.UPDATE_CERT_DIRS;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createUniverseSetTlsParamsTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+    params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

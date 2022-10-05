@@ -60,18 +60,6 @@ type: docs
       YSQL - Ebean
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
-    <a href="../ycql-4.6/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6)
-    </a>
-  </li>
 </ul>
 
 [Vert.x PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
@@ -84,9 +72,9 @@ This tutorial assumes that:
 
 - YugabyteDB up and running. Download and install the latest version of YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
 {{< note title="Note" >}}
-The `executeBatch()` API of the Vert.x PG Client is supported in the YugabyteDB version - `2.15.2.0-b0` onwards. 
+The `executeBatch()` API of the Vert.x PG Client is supported in the YugabyteDB version - `2.15.2.0-b0` onwards.
 {{< /note >}}
-- Java Development Kit (JDK) 1.8, or later, is installed. 
+- Java Development Kit (JDK) 1.8, or later, is installed.
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ## Create and configure the Java project

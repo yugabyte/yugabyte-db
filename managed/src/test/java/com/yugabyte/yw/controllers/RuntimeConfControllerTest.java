@@ -13,6 +13,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -39,6 +41,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -98,6 +101,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
         ImmutableSet.of(
+            "yb.universe_boot_script",
             "yb.taskGC.gc_check_interval",
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
@@ -185,6 +189,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Duration duration =
         runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(EXT_SCRIPT_SCHEDULE_KEY);
     assertEquals(24 * 60 * 2, duration.toMinutes());
+    String content =
+        runtimeConfigFactory.forUniverse(defaultUniverse).getString(EXT_SCRIPT_CONTENT_CONF_PATH);
+    assertEquals("the script", content);
+    String params =
+        runtimeConfigFactory.forUniverse(defaultUniverse).getString(EXT_SCRIPT_PARAMS_CONF_PATH);
+    assertEquals(newRetention, params);
 
     // Fetching internal key through API should not work
     assertEquals(

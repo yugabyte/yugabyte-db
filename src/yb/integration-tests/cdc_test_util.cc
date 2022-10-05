@@ -27,9 +27,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace cdc {

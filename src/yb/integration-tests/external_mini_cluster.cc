@@ -79,6 +79,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
@@ -166,10 +167,14 @@ DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 
+DEFINE_string(external_daemon_exe_suffix, "",
+              "Suffix to append to external daemon executable names, such as yb-master and "
+              "yb-tserver.");
+
 namespace yb {
 
-static const char* const kMasterBinaryName = "yb-master";
-static const char* const kTabletServerBinaryName = "yb-tserver";
+static const char* const kMasterBinaryNamePrefix = "yb-master";
+static const char* const kTabletServerBinaryNamePrefix = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
 static MonoDelta kTabletServerRegistrationTimeout = 60s;
 
@@ -220,6 +225,14 @@ std::vector<std::string> FsDataDirs(const std::string& data_dir,
                           JoinPathSegments(data_dir, Format("d-$0", drive)), server_type));
   }
   return data_dirs;
+}
+
+std::string GetMasterBinaryName() {
+  return kMasterBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
+}
+
+std::string GetTServerBinaryName() {
+  return kTabletServerBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
 }
 
 }  // anonymous namespace
@@ -482,7 +495,7 @@ Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string&
             << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
 
   string addr = MasterAddressForPort(rpc_port);
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   ExternalMaster* master =
       new ExternalMaster(add_new_master_at_, messenger_, proxy_cache_.get(), exe,
@@ -507,7 +520,7 @@ void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
 
   string addr = MasterAddressForPort(rpc_port);
 
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   ExternalMaster* master = new ExternalMaster(
       add_new_master_at_,
@@ -1208,7 +1221,7 @@ Status ExternalMiniCluster::StartMasters() {
   } else {
     flags.push_back("--enable_ysql=false");
   }
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   // Start the masters.
   for (size_t i = 0; i < num_masters; i++) {
@@ -1363,7 +1376,7 @@ Status ExternalMiniCluster::AddTabletServer(
 
   size_t idx = tablet_servers_.size();
 
-  string exe = GetBinaryPath(kTabletServerBinaryName);
+  string exe = GetBinaryPath(GetTServerBinaryName());
   vector<HostPort> master_hostports;
   for (size_t i = 0; i < num_masters(); i++) {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());

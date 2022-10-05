@@ -34,7 +34,9 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
       const std::string& snapshot_id,
       tserver::TabletSnapshotOpRequestPB::Operation op);
 
-  Type type() const override { return ASYNC_SNAPSHOT_OP; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kSnapshotOp;
+  }
 
   std::string type_name() const override { return "Tablet Snapshot Operation"; }
 

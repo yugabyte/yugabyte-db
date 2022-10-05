@@ -34,6 +34,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 
 #include "yb/util/pb_util.h"
@@ -73,12 +74,17 @@ class PgPessimisticLockingTest : public PgMiniTestBase {
   }
 };
 
+auto GetBlockerIdx(auto idx, auto cycle_length) {
+  return (idx / cycle_length) * cycle_length + (idx + 1) % cycle_length;
+}
+
 TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
   auto setup_conn = ASSERT_RESULT(Connect());
   // This test generates deadlocks of cycle-length 3, involving client 0-1-2 in a group, 3-4-5 in a
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
   // not deadlock.
   constexpr int kClients = 11;
+  constexpr int kCycleSize = 3;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 11), 0"));
   TestThreadHolder thread_holder;
@@ -103,9 +109,11 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
 
       ASSERT_TRUE(first_select.WaitFor(5s * kTimeMultiplier));
 
-      if (conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", (i + 1) % 3).ok()) {
+      auto blocker_idx = GetBlockerIdx(i, kCycleSize);
+
+      if (conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", blocker_idx).ok()) {
         succeeded_second_select++;
-        LOG(INFO) << "Second select succeeded " << i;
+        LOG(INFO) << "Second select succeeded " << i << " on blocker " << blocker_idx;
 
         if (conn.CommitTransaction().ok()) {
           LOG(INFO) << "Commit succeeded " << i;
@@ -114,7 +122,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
           LOG(INFO) << "Commit failed " << i;
         }
       } else {
-        LOG(INFO) << "Second select failed " << i;
+        LOG(INFO) << "Second select failed " << i << " on blocker " << blocker_idx;
       }
 
       done.CountDown();
@@ -141,6 +149,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)
   // group, etc. Setting this to 11 creates 3 deadlocks, and one pair of txn's which block but do
   // not deadlock.
   constexpr int kClients = 11;
+  constexpr int kCycleSize = 3;
   ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(setup_conn.Execute("insert into foo select generate_series(0, 11), 0"));
   TestThreadHolder thread_holder;
@@ -165,9 +174,11 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)
 
       ASSERT_TRUE(first_update.WaitFor(5s * kTimeMultiplier));
 
-      if (conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$1", i, (i + 1) % 3).ok()) {
+      auto blocker_idx = GetBlockerIdx(i, kCycleSize);
+
+      if (conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$1", i, blocker_idx).ok()) {
         succeeded_second_update++;
-        LOG(INFO) << "Second update succeeded " << i;
+        LOG(INFO) << "Second update succeeded " << i << " on blocker " << blocker_idx;
 
         if (conn.CommitTransaction().ok()) {
           LOG(INFO) << "Commit succeeded " << i;
@@ -176,7 +187,7 @@ TEST_F(PgPessimisticLockingTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)
           LOG(INFO) << "Commit failed " << i;
         }
       } else {
-        LOG(INFO) << "Second update failed " << i;
+        LOG(INFO) << "Second update failed " << i << " on blocker " << blocker_idx;
       }
 
       done.CountDown();

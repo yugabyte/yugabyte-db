@@ -69,13 +69,13 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -698,7 +698,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   {
     const auto tasks = master_leader->catalog_manager().GetRecentTasks();
     for (const auto& task : tasks) {
-      ASSERT_NE(task->type(), server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) << task;
+      ASSERT_NE(task->type(), server::MonitoredTaskType::kTruncateTablet) << task;
     }
   }
 
@@ -748,7 +748,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
         // a second truncate task appears later, but that is less easy to check for and less likely
         // to happen, so don't bother.
         for (const auto& task : tasks) {
-          if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET) {
+          if (task->type() == server::MonitoredTaskType::kTruncateTablet) {
             // Check whether truncate_task is already loaded.  All truncate tasks should have
             // refcount at least one because tasks tracker holds a reference even after the task is
             // complete.  The task could lose all refcounts when master leadership changes, but that
@@ -770,8 +770,8 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
       },
       RegularBuildVsSanitizers(3s, 5s),
       "wait for truncate task to show up in catalog manager tasks",
-      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-      test_util::kDefaultWaitDelayMultiplier,
+      MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+      kDefaultWaitDelayMultiplier,
       kWaitForMaxDelay));
 
   if (VLOG_IS_ON(1)) {
@@ -791,8 +791,8 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
       },
       RegularBuildVsSanitizers(10s, 20s),
       "wait for truncate task terminal state",
-      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-      test_util::kDefaultWaitDelayMultiplier,
+      MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+      kDefaultWaitDelayMultiplier,
       kWaitForMaxDelay));
   ASSERT_EQ(truncate_task.lock()->state(), server::MonitoredTaskState::kComplete)
       << truncate_task.lock()->state();
@@ -819,8 +819,8 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
       },
       RegularBuildVsSanitizers(1s, 2s),
       "wait for truncate task to have exactly one ref",
-      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-      test_util::kDefaultWaitDelayMultiplier,
+      MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+      kDefaultWaitDelayMultiplier,
       kWaitForMaxDelay));
 
   LOG(INFO) << "Check references on truncate task shared ptr (before leader failover)";
@@ -828,7 +828,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   bool found = false;
   auto tasks = master_leader->catalog_manager().GetRecentTasks();
   for (const auto& task : tasks) {
-    if (task->type() == server::MonitoredTask::Type::ASYNC_TRUNCATE_TABLET &&
+    if (task->type() == server::MonitoredTaskType::kTruncateTablet &&
         task == truncate_task.lock()) {
       found = true;
     }
@@ -861,8 +861,8 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
       },
       RegularBuildVsSanitizers(2s, 5s),
       "lose leadership",
-      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-      test_util::kDefaultWaitDelayMultiplier,
+      MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+      kDefaultWaitDelayMultiplier,
       kWaitForMaxDelay));
 
   // Add some extra margin for the bg task to do its work.
@@ -888,8 +888,8 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
       },
       wait_time,
       "wait for truncate task to have no refs",
-      MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-      test_util::kDefaultWaitDelayMultiplier,
+      MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+      kDefaultWaitDelayMultiplier,
       kWaitForMaxDelay));
 
   // By default, DoBeforeTearDown checks cluster consistency using ysck.  Since we recently stepped

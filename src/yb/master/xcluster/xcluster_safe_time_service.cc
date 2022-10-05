@@ -37,6 +37,8 @@ TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
+DECLARE_bool(xcluster_consistent_reads);
+
 namespace yb {
 using OK = Status::OK;
 
@@ -111,8 +113,14 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
     return;
   }
 
+  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_consistent_reads flag";
+    return;
+  }
+
   auto wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0) {
+    // Can only happen in tests
     VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_safe_time_update_interval_secs flag";
     return;
   }
@@ -196,21 +204,45 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
 }
 
 namespace {
+HybridTime GetNewSafeTime(
+    const XClusterNamespaceToSafeTimeMap& previous_safe_time_map, const NamespaceId& namespace_id,
+    const HybridTime& safe_time) {
+  auto previous_safe_time =
+      HybridTime(FindWithDefault(previous_safe_time_map, namespace_id, HybridTime::kInvalid));
+
+  if (!safe_time.is_special() &&
+      (!previous_safe_time.is_valid() || safe_time > previous_safe_time)) {
+    return safe_time;
+  }
+
+  return previous_safe_time;
+}
+
 XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
     const XClusterNamespaceToSafeTimeMap& previous_safe_time_map,
-    const std::map<NamespaceId, HybridTime>& namespace_min_safe_time) {
+    const std::map<NamespaceId, HybridTime>& namespace_safe_time) {
   XClusterNamespaceToSafeTimeMap new_safe_time_map;
 
-  for (const auto& new_safe_time : namespace_min_safe_time) {
-    auto previous_safe_time = HybridTime(FindWithDefault(
-        previous_safe_time_map, new_safe_time.first, HybridTime::kInvalid));
+  // System tables like 'transactions' table affect the safe time of every user namespace. Compute
+  // that first and use it as min in every other namespace.
+  HybridTime sys_safe_time = HybridTime::kInvalid;
+  auto sys_namespace_it = FindOrNull(namespace_safe_time, kSystemNamespaceId);
+  if (sys_namespace_it) {
+    sys_safe_time = new_safe_time_map[kSystemNamespaceId] =
+        GetNewSafeTime(previous_safe_time_map, kSystemNamespaceId, *sys_namespace_it);
+  }
 
-    if (!new_safe_time.second.is_special() &&
-        (!previous_safe_time.is_valid() || new_safe_time.second > previous_safe_time)) {
-      new_safe_time_map[new_safe_time.first] = new_safe_time.second;
-    } else {
-      new_safe_time_map[new_safe_time.first] = previous_safe_time;
+  for (auto [namespace_id, safe_time] : namespace_safe_time) {
+    if (namespace_id == kSystemNamespaceId) {
+      continue;
     }
+
+    if (sys_namespace_it && (sys_safe_time.is_special() || sys_safe_time < safe_time)) {
+      safe_time = sys_safe_time;
+    }
+
+    new_safe_time_map[namespace_id] =
+        GetNewSafeTime(previous_safe_time_map, namespace_id, safe_time);
   }
 
   return new_safe_time_map;
@@ -225,38 +257,38 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(const int64_t leader_term)
   // changed and tservers may have already started populating new entires in it
   RETURN_NOT_OK(RefreshProducerTabletToNamespaceMap());
 
-  std::map<NamespaceId, HybridTime> namespace_min_safe_time;
+  std::map<NamespaceId, HybridTime> namespace_safe_time_map;
   std::vector<ProducerTabletInfo> table_entries_to_delete;
 
-  for (const auto& entry : producer_tablet_namespace_map_) {
-    namespace_min_safe_time[entry.second] = HybridTime::kMax;
+  for (const auto& [tablet_info, namespace_id] : producer_tablet_namespace_map_) {
+    namespace_safe_time_map[namespace_id] = HybridTime::kMax;
     // Add Invalid values for missing tablets
-    InsertIfNotPresent(&tablet_to_safe_time_map, entry.first, HybridTime::kInvalid);
+    InsertIfNotPresent(&tablet_to_safe_time_map, tablet_info, HybridTime::kInvalid);
   }
 
-  for (const auto& entry : tablet_to_safe_time_map) {
-    auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, entry.first);
+  for (const auto& [tablet_info, tablet_safe_time] : tablet_to_safe_time_map) {
+    auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, tablet_info);
     if (!namespace_id) {
       // Mark dropped tablets for cleanup
-      table_entries_to_delete.emplace_back(entry.first);
+      table_entries_to_delete.emplace_back(tablet_info);
       continue;
     }
 
     // Ignore values like Invalid, Min, Max and only consider a valid clock time.
-    if (entry.second.is_special()) {
-      namespace_min_safe_time[*namespace_id] = HybridTime::kInvalid;
+    if (tablet_safe_time.is_special()) {
+      namespace_safe_time_map[*namespace_id] = HybridTime::kInvalid;
       continue;
     }
 
-    auto& safe_time = FindOrDie(namespace_min_safe_time, *namespace_id);
+    auto& namespace_safe_time = FindOrDie(namespace_safe_time_map, *namespace_id);
 
-    if (safe_time.is_valid()) {
-      safe_time = min(safe_time, entry.second);
+    if (namespace_safe_time.is_valid()) {
+      namespace_safe_time = min(namespace_safe_time, tablet_safe_time);
     }
   }
 
   const auto previous_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
-  auto new_safe_time_map = ComputeSafeTimeMap(previous_safe_time_map, namespace_min_safe_time);
+  auto new_safe_time_map = ComputeSafeTimeMap(previous_safe_time_map, namespace_safe_time_map);
 
   // Use the leader term to ensure leader has not changed between the time we did our computation
   // and setting the new config. Its important to make sure that the config we persist is accurate
@@ -387,9 +419,9 @@ XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
 Status XClusterSafeTimeService::SetXClusterSafeTime(
     const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map) {
   if (VLOG_IS_ON(2)) {
-    for (auto& entry : new_safe_time_map) {
-      VLOG_WITH_FUNC(2) << "NamespaceId: " << entry.first
-                        << ", SafeTime: " << HybridTime(entry.second).ToDebugString();
+    for (auto& [namespace_id, safe_time] : new_safe_time_map) {
+      VLOG_WITH_FUNC(2) << "NamespaceId: " << namespace_id
+                        << ", SafeTime: " << HybridTime(safe_time).ToDebugString();
     }
   }
 
@@ -415,6 +447,9 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   std::shared_ptr<client::YBSession> session = ybclient->NewSession();
   session->SetTimeout(ybclient->default_rpc_timeout());
 
+  std::vector<client::YBOperationPtr> ops;
+  ops.reserve(entries_to_delete.size());
+
   for (auto& tablet : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
@@ -425,15 +460,11 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
                       << ". cluster_uuid: " << tablet.cluster_uuid
                       << ", tablet_id: " << tablet.tablet_id;
 
-    session->Apply(op);
+    ops.push_back(std::move(op));
   }
 
-  auto future = session->FlushFuture();
-  auto future_status = future.wait_for(ybclient->default_rpc_timeout().ToChronoMilliseconds());
-  SCHECK(
-      future_status == std::future_status::ready, IOError,
-      "Timed out waiting for flush to XClusterSafeTime table");
-  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to cleanup to XClusterSafeTime table");
+  RETURN_NOT_OK_PREPEND(
+      session->ApplyAndFlushSync(ops), "Failed to cleanup to XClusterSafeTime table");
 
   return OK();
 }

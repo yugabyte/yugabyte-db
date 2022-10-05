@@ -17,27 +17,21 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.DELETE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.QuerySettings;
-import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
-import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
-import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Universe;
@@ -57,7 +51,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -72,7 +65,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -510,7 +502,10 @@ public class AlertConfigurationService {
             definition.setQuery(configuration.getTemplate().buildTemplate(customer));
             if (!configuration.getTemplate().isSkipTargetLabels()) {
               definition.setLabels(
-                  MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+                  MetricLabelsBuilder.create()
+                      .appendCustomer(customer)
+                      .appendSource(customer)
+                      .getDefinitionLabels());
             }
             if (!configuration.getMaintenanceWindowUuidsSet().isEmpty()) {
               definition.setLabel(
@@ -588,7 +583,10 @@ public class AlertConfigurationService {
                     configuration.getTemplate().buildTemplate(customer, universe));
                 if (!configuration.getTemplate().isSkipTargetLabels()) {
                   universeDefinition.setLabels(
-                      MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+                      MetricLabelsBuilder.create()
+                          .appendCustomer(customer)
+                          .appendSource(universe)
+                          .getDefinitionLabels());
                 }
                 Set<UUID> appliedMaintenanceWindows = new HashSet<>();
                 if (!configuration.getMaintenanceWindowUuidsSet().isEmpty()) {
@@ -700,84 +698,6 @@ public class AlertConfigurationService {
             .map(AlertConfigurationTemplate::getDefaultConfiguration)
             .collect(Collectors.toList());
     save(alertConfigurations);
-  }
-
-  public Alert createTestAlert(AlertConfiguration configuration) {
-    AlertDefinition definition =
-        alertDefinitionService
-            .list(
-                AlertDefinitionFilter.builder().configurationUuid(configuration.getUuid()).build())
-            .stream()
-            .findFirst()
-            .orElse(null);
-    if (definition == null) {
-      if (configuration.getTargetType() == TargetType.UNIVERSE) {
-        definition = new AlertDefinition();
-        definition.setLabels(
-            MetricLabelsBuilder.create()
-                .appendSource(buildUniverseForTestAlert())
-                .getDefinitionLabels());
-      } else {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Missing definition for Platform alert configuration");
-      }
-    }
-
-    Severity severity =
-        configuration.getThresholds().containsKey(Severity.SEVERE)
-            ? Severity.SEVERE
-            : Severity.WARNING;
-    List<AlertLabel> labels =
-        definition
-            .getEffectiveLabels(configuration, severity)
-            .stream()
-            .map(label -> new AlertLabel(label.getName(), label.getValue()))
-            .collect(Collectors.toList());
-    labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
-    labels.addAll(configuration.getTemplate().getTestAlertSettings().getAdditionalLabels());
-    Map<String, String> alertLabels =
-        labels.stream().collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
-    Alert alert =
-        new Alert()
-            .generateUUID()
-            .setCreateTime(new Date())
-            .setCustomerUUID(configuration.getCustomerUUID())
-            .setDefinitionUuid(definition.getUuid())
-            .setConfigurationUuid(configuration.getUuid())
-            .setName(configuration.getName())
-            .setSourceName(alertLabels.get(KnownAlertLabels.SOURCE_NAME.labelName()))
-            .setSeverity(severity)
-            .setConfigurationType(configuration.getTargetType())
-            .setLabels(labels);
-    String sourceUuid = alertLabels.get(KnownAlertLabels.SOURCE_UUID.labelName());
-    if (StringUtils.isNotEmpty(sourceUuid)) {
-      alert.setSourceUUID(UUID.fromString(sourceUuid));
-    }
-    alert.setMessage(buildTestAlertMessage(configuration, alert));
-    return alert;
-  }
-
-  private String buildTestAlertMessage(AlertConfiguration configuration, Alert alert) {
-    AlertTemplate template = configuration.getTemplate();
-    TestAlertSettings settings = template.getTestAlertSettings();
-    if (settings.getCustomMessage() != null) {
-      return settings.getCustomMessage();
-    }
-    String messageTemplate = template.getSummaryTemplate();
-    AlertTemplateSubstitutor<Alert> alertTemplateSubstitutor =
-        new AlertTemplateSubstitutor<>(alert);
-    String message = alertTemplateSubstitutor.replace(messageTemplate);
-    TestAlertTemplateSubstitutor testAlertTemplateSubstitutor =
-        new TestAlertTemplateSubstitutor(alert, configuration);
-    message = testAlertTemplateSubstitutor.replace(message);
-    return "[TEST ALERT!!!] " + message;
-  }
-
-  private Universe buildUniverseForTestAlert() {
-    Universe universe = new Universe();
-    universe.name = "some-universe";
-    universe.universeUUID = UUID.randomUUID();
-    return universe;
   }
 
   private AlertDefinition createEmptyDefinition(AlertConfiguration configuration) {

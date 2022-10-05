@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -312,7 +313,10 @@ public class SwamperHelper {
     writeFile(rulesFile, fileContent);
   }
 
-  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
+  public void writeAlertDefinition(
+      AlertConfiguration configuration,
+      AlertDefinition definition,
+      AlertTemplateSettings templateSettings) {
     String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
@@ -342,7 +346,8 @@ public class SwamperHelper {
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
-                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
+                      new AlertRuleTemplateSubstitutor(
+                          configuration, definition, severity, templateSettings);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());

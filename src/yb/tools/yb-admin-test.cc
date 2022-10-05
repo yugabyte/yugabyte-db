@@ -58,6 +58,7 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
@@ -66,7 +67,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

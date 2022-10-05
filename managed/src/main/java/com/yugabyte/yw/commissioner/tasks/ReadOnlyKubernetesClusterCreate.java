@@ -37,7 +37,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
     try {
-      verifyParams(UniverseOpType.CREATE); // Is this EDIT?
+      verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       preTaskActions(universe);
 
@@ -84,7 +84,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               taskParams().nodePrefix,
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
-              taskParams().useNewHelmNamingStyle);
+              taskParams().useNewHelmNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       createPodsTask(placement, masterAddresses, true);

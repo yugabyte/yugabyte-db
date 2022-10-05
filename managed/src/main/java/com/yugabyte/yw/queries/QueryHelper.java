@@ -10,10 +10,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -33,6 +35,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import play.Configuration;
 import play.libs.Json;
+import play.libs.ws.WSClient;
 
 @Slf4j
 @Singleton
@@ -52,6 +55,7 @@ public class QueryHelper {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
+  private final WSClient wsClient;
 
   public enum QueryApi {
     YSQL,
@@ -66,13 +70,21 @@ public class QueryHelper {
 
   @Inject
   public QueryHelper(
-      RuntimeConfigFactory runtimeConfigFactory, PlatformExecutorFactory platformExecutorFactory) {
-    this(runtimeConfigFactory, createExecutor(platformExecutorFactory));
+      RuntimeConfigFactory runtimeConfigFactory,
+      PlatformExecutorFactory platformExecutorFactory,
+      CustomWsClientFactory customWsClientFactory) {
+
+    this(
+        runtimeConfigFactory,
+        createExecutor(platformExecutorFactory),
+        createWsClient(customWsClientFactory, runtimeConfigFactory));
   }
 
-  QueryHelper(RuntimeConfigFactory runtimeConfigFactory, ExecutorService threadPool) {
+  public QueryHelper(
+      RuntimeConfigFactory runtimeConfigFactory, ExecutorService threadPool, WSClient wsClient) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.threadPool = threadPool;
+    this.wsClient = wsClient;
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -143,13 +155,15 @@ public class QueryHelper {
           case FETCH_LIVE_QUERIES:
             {
               callable =
-                  new LiveQueryExecutor(node.nodeName, ip, node.ysqlServerHttpPort, QueryApi.YSQL);
+                  new LiveQueryExecutor(
+                      node.nodeName, ip, node.ysqlServerHttpPort, QueryApi.YSQL, this.wsClient);
 
               Future<JsonNode> future = threadPool.submit(callable);
               futures.add(future);
 
               callable =
-                  new LiveQueryExecutor(node.nodeName, ip, node.yqlServerHttpPort, QueryApi.YCQL);
+                  new LiveQueryExecutor(
+                      node.nodeName, ip, node.yqlServerHttpPort, QueryApi.YCQL, this.wsClient);
               future = threadPool.submit(callable);
               futures.add(future);
               break;
@@ -294,6 +308,12 @@ public class QueryHelper {
 
   private static ExecutorService createExecutor(PlatformExecutorFactory platformExecutorFactory) {
     return platformExecutorFactory.createExecutor("query_stats", Executors.defaultThreadFactory());
+  }
+
+  private static WSClient createWsClient(
+      CustomWsClientFactory customWsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
+    return customWsClientFactory.forCustomConfig(
+        runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
   }
 
   /** Check if running a query per node will exceed the remaining task queue room */

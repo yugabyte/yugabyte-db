@@ -25,8 +25,8 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 

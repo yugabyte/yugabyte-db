@@ -33,7 +33,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cdc_enable_replicate_intents);
 
 namespace yb {
 
@@ -45,17 +44,6 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
-
-struct TwoDCTestParams {
-  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
-      : batch_size(batch_size_),
-        enable_replicate_intents(enable_replicate_intents_),
-        transactional_table(transactional_table_) {}
-
-  int batch_size;
-  bool enable_replicate_intents;
-  bool transactional_table;
-};
 
 class TwoDCTestBase : public YBTest {
  public:
@@ -71,12 +59,13 @@ class TwoDCTestBase : public YBTest {
       return ConnectToDB(std::string() /* dbname */);
     }
 
-    Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, bool simple_query_protocol = false) {
       return pgwrapper::PGConnBuilder({
         .host = pg_host_port_.host(),
         .port = pg_host_port_.port(),
         .dbname = dbname
-      }).Connect();
+      }).Connect(simple_query_protocol);
     }
   };
 
@@ -90,16 +79,14 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  Status InitClusters(const MiniClusterOptions& opts);
-
-  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
-  // is not safe to run in parallel.
-  Status InitPostgres(Cluster* cluster);
+  Status InitClusters(const MiniClusterOptions& opts, bool init_postgres = false);
 
   void TearDown() override;
 
   Status RunOnBothClusters(std::function<Status(MiniCluster*)> run_on_cluster);
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
+
+  Status WaitForLoadBalancersToStabilize();
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
@@ -222,6 +209,11 @@ class TwoDCTestBase : public YBTest {
  protected:
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
+
+ private:
+  // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
+  // is not safe to run in parallel.
+  Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
 };
 
 } // namespace enterprise

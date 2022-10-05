@@ -85,9 +85,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             defaultProvider.uuid,
             "demo-universe",
             "demo-namespace",
-            "/tmp/override.yml",
-            new HashMap<String, Object>(),
-            new HashMap<String, Object>());
+            "/tmp/override.yml");
         break;
       case HELM_UPGRADE:
         kubernetesManager.helmUpgrade(
@@ -95,9 +93,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             configProvider,
             "demo-universe",
             "demo-namespace",
-            "/tmp/override.yml",
-            new HashMap<String, Object>(),
-            new HashMap<String, Object>());
+            "/tmp/override.yml");
         break;
       case POD_INFO:
         kubernetesManager.getPodInfos(configProvider, "demo-universe", "demo-namespace");

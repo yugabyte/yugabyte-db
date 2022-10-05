@@ -35,11 +35,11 @@
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"

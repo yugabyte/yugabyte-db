@@ -1112,11 +1112,9 @@ SyncType Log::FindSyncType() {
 Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
 
-  if (PREDICT_FALSE(FLAGS_TEST_pause_before_wal_sync)) {
-    TEST_PAUSE_IF_FLAG(TEST_pause_before_wal_sync);
-    if (FLAGS_TEST_set_pause_before_wal_sync) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
-    }
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_wal_sync);
+  if (PREDICT_FALSE(FLAGS_TEST_set_pause_before_wal_sync)) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
   }
 
   if (sync_disabled_) {

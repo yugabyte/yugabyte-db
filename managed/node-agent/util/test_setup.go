@@ -48,7 +48,7 @@ func setUp() {
 	config.Update(NodeLoggerKey, "node_agent_test.log")
 }
 
-//Sets up a mock server to test http client calls.
+// Sets up a mock server to test http client calls.
 func MockServer() *httptest.Server {
 	r := mux.NewRouter()
 
@@ -66,7 +66,7 @@ func MockServer() *httptest.Server {
 	return httptest.NewServer(r)
 }
 
-//Todo: Create a mock request handler for state updates requests.
+// Todo: Create a mock request handler for state updates requests.
 func nodeAgentStateHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPut {
 		//Todo
@@ -114,7 +114,7 @@ func nodeTestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodDelete {
-		res := model.RegisterResponseEmpty{}
+		res := model.ResponseMessage{}
 		res.SuccessStatus = true
 		res.Message = "Deleted node"
 		data, err := json.Marshal(res)
@@ -159,22 +159,35 @@ func GetTestRegisterResponse() model.RegisterResponseSuccess {
 	return response
 }
 
+func GetTestProviderData() model.Provider {
+	dummyProvider := model.Provider{
+		BasicInfo: model.BasicInfo{Uuid: "12345"},
+		SshPort:   54422,
+	}
+	return dummyProvider
+}
+
 func GetTestInstanceTypeData() model.NodeInstanceType {
 	volumeDetails := model.VolumeDetails{VolumeSize: 100, MountPath: "/home"}
 	nodeInstanceDetails := model.NodeInstanceTypeDetails{
 		VolumeDetailsList: []model.VolumeDetails{volumeDetails},
 	}
-	dummyProvider := model.Provider{
-		SshPort: 54422,
-	}
-	dummyProvider.BasicInfo.Uuid = "p1234"
 	result := model.NodeInstanceType{
 		Active:           false,
 		NumCores:         10,
 		MemSizeGB:        10,
 		Details:          nodeInstanceDetails,
 		InstanceTypeCode: "instance_type_0",
-		Provider:         dummyProvider,
+		ProviderUuid:     GetTestProviderData().Uuid,
+	}
+	return result
+}
+
+func GetTestAccessKeyData() model.AccessKey {
+	result := model.AccessKey{
+		KeyInfo: model.AccessKeyInfo{
+			InstallNodeExporter: true,
+		},
 	}
 	return result
 }

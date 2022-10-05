@@ -19,15 +19,11 @@ The following projects can be used to implement C# applications using the Yugaby
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
 | PostgreSQL Npgsql Driver | [Documentation](postgres-npgsql) <br /> [Hello World App](../../develop/build-apps/csharp/ysql)<br /> [Reference Page](../../reference/drivers/csharp/postgres-npgsql-reference/) | [6.0.3](https://www.nuget.org/packages/Npgsql/) | 2.6 and above
+| YugabyteDB C# Driver for YCQL | [Documentation](ycql) |
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
 | Entity Framework ORM | [Documentation](entityframework) | [Hello World App](../../develop/build-apps/csharp/ysql-entity-framework/) |
-
-<!-- | Project | Type | Support | Examples |
-| :------ | :--- | :-------| :------- |
-| [PostgreSQL Npgsql](postgres-npgsql) | C# Driver | Full | [Hello World](../../develop/build-apps/csharp/ysql)<br />[CRUD](postgres-npgsql) |
-| [EntityFramework](entityframework) | ORM |  Full | [Hello World](../../develop/build-apps/csharp/ysql-entity-framework/)<br />[CRUD](entityframework) | -->
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 

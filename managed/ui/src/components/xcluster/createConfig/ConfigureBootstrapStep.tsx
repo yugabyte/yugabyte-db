@@ -68,7 +68,7 @@ export const ConfigureBootstrapStep = ({
 
   return (
     <>
-      <div className={styles.formInstruction}>2. Select the tables you want to replicate</div>
+      <div className={styles.formInstruction}>3. Configure bootstrap</div>
       <p>
         Bootstrapping
         <b> brings your target universe to the same checkpoint as your source universe </b>

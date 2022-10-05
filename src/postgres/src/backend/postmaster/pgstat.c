@@ -136,6 +136,8 @@ int			pgstat_track_activity_query_size = 1024;
 char	   *pgstat_stat_directory = NULL;
 char	   *pgstat_stat_filename = NULL;
 char	   *pgstat_stat_tmpname = NULL;
+char	   *pgstat_ybstat_filename = NULL;
+char	   *pgstat_ybstat_tmpname = NULL;
 
 /*
  * BgWriter global statistics counters (unused in other processes).
@@ -258,6 +260,8 @@ static int	localNumBackends = 0;
  */
 static PgStat_ArchiverStats archiverStats;
 static PgStat_GlobalStats globalStats;
+static PgStat_YBStatQueryEntry queryEntries[TERMINATED_QUERIES_SIZE];
+static size_t total_terminated_queries = 0;
 
 /*
  * List of OIDs of databases we need to write out.  If an entry is InvalidOid,
@@ -296,6 +300,12 @@ static PgStat_StatTabEntry *pgstat_get_tab_entry(PgStat_StatDBEntry *dbentry,
 					 Oid tableoid, bool create);
 static void pgstat_write_statsfiles(bool permanent, bool allDbs);
 static void pgstat_write_db_statsfile(PgStat_StatDBEntry *dbentry, bool permanent);
+
+static void pgstat_write_ybstatsfile(bool permanent);
+static PgStat_YBStatQueryEntry *pgstat_get_query_entry(Oid queryoid, bool create);
+static void pgstat_read_ybstatsfile(bool permanent);
+static void reset_query_stats(PgStat_YBStatQueryEntry *query);
+
 static HTAB *pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep);
 static void pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash, bool permanent);
 static void backend_read_statsfile(void);
@@ -338,6 +348,8 @@ static void pgstat_recv_funcpurge(PgStat_MsgFuncpurge *msg, int len);
 static void pgstat_recv_recoveryconflict(PgStat_MsgRecoveryConflict *msg, int len);
 static void pgstat_recv_deadlock(PgStat_MsgDeadlock *msg, int len);
 static void pgstat_recv_tempfile(PgStat_MsgTempFile *msg, int len);
+static void pgstat_recv_querytermination(PgStat_MsgQueryTermination *msg, int len);
+
 
 /* ------------------------------------------------------------
  * Public functions called from postmaster follow
@@ -1537,7 +1549,6 @@ pgstat_report_tempfile(size_t filesize)
 	pgstat_send(&msg, sizeof(msg));
 }
 
-
 /* ----------
  * pgstat_ping() -
  *
@@ -2402,6 +2413,42 @@ pgstat_fetch_stat_dbentry(Oid dbid)
 											  HASH_FIND, NULL);
 }
 
+/* ----------
+ * pgstat_fetch_ybstat_queries() -
+ *
+ *	Support function for the SQL-callable pgstat* functions. Returns
+ *	the query statistics for one query or NULL. NULL indicates the query
+ *  does not exist for this OID.
+ * ----------
+ */
+PgStat_YBStatQueryEntry *
+pgstat_fetch_ybstat_queries(Oid db_oid, size_t *num_queries)
+{
+	backend_read_statsfile();
+	size_t queries_size = Min(total_terminated_queries, TERMINATED_QUERIES_SIZE);
+	if (db_oid == -1)
+	{
+		*num_queries = queries_size;
+		return queryEntries;
+	}
+
+	size_t db_terminated_queries = 0;
+	for (size_t idx = 0; idx < queries_size; idx++)
+		db_terminated_queries += queryEntries[idx].database_oid == db_oid ? 1 : 0;
+
+	size_t total_expected_size = db_terminated_queries * sizeof(PgStat_YBStatQueryEntry);
+	PgStat_YBStatQueryEntry *queries = (PgStat_YBStatQueryEntry *) palloc0(total_expected_size);
+
+	size_t counter = 0;
+	for (size_t idx = 0; idx < queries_size; idx++)
+	{
+		if (queryEntries[idx].database_oid == db_oid)
+			queries[counter++] = queryEntries[idx];
+	}
+	*num_queries = db_terminated_queries;
+	return queries;
+}
+
 
 /* ----------
  * pgstat_fetch_stat_tabentry() -
@@ -2792,6 +2839,32 @@ pgstat_initialize(void)
 
 	/* Set up a process-exit hook to clean up */
 	on_shmem_exit(pgstat_beshutdown_hook, 0);
+}
+
+/* --------
+ * pgstat_report_query_termination() -
+ *
+ *	Reports the query termination to pg_stat with termination reason specified by caller.
+ * --------
+ */
+void
+pgstat_report_query_termination(const char *termination_reason, Oid db_oid, int32 backend_pid, int backend_id)
+{
+	PgStat_MsgQueryTermination msg;
+
+	if (pgStatSock == PGINVALID_SOCKET)
+		return;
+
+	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
+	msg.m_databaseoid = db_oid;
+	msg.backend_pid = backend_pid;
+
+	msg.activity_start_timestamp = MyBEEntry->st_activity_start_timestamp;
+	msg.m_st_userid = MyBEEntry->st_userid;
+	msg.activity_end_timestamp = GetCurrentTimestamp();
+	StrNCpy(msg.query_string, MyBEEntry->st_activity_raw, sizeof(msg.query_string));
+	StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
+	pgstat_send(&msg, sizeof(msg));
 }
 
 /* ----------
@@ -4569,6 +4642,10 @@ PgstatCollectorMain(int argc, char *argv[])
 					pgstat_recv_tempfile((PgStat_MsgTempFile *) &msg, len);
 					break;
 
+				case PGSTAT_MTYPE_QUERYTERMINATION:
+					pgstat_recv_querytermination((PgStat_MsgQueryTermination *) &msg, len);
+					break;
+
 				default:
 					break;
 			}
@@ -4720,6 +4797,51 @@ pgstat_get_db_entry(Oid databaseid, bool create)
 	return result;
 }
 
+/*
+ * Reset the query stats for query located at this memory address.
+ * It will do nothing if address is null.
+ */
+static void
+reset_query_stats(PgStat_YBStatQueryEntry *query)
+{
+	if (!query)
+		return;
+	query->query_oid = 0;
+	query->st_userid = 0;
+	query->database_oid = 0;
+	query->backend_pid = 0;
+	query->activity_start_timestamp = 0;
+	query->activity_end_timestamp = 0;
+	query->query_string_size = 0;
+	memset(&query->query_string[0], 0, sizeof(query->query_string));
+	query->termination_reason_size = 0;
+	memset(&query->termination_reason[0], 0, sizeof(query->termination_reason));
+}
+
+/*
+ * Get query entry for the specified query Oid and DBEntry. Create if false indicates do not create entry if not found.
+ * Otherwise, entry will be created and overwrites the slot which was occupied in the array.
+ */
+static PgStat_YBStatQueryEntry *
+pgstat_get_query_entry(Oid queryoid, bool create)
+{
+	PgStat_YBStatQueryEntry *result;
+	bool found;
+
+	if (queryoid > total_terminated_queries)
+		return NULL;
+
+	/* Lookup or create the query entry for this database */
+	found = (result = &queryEntries[(queryoid - 1) % TERMINATED_QUERIES_SIZE])->query_oid == queryoid;
+
+	if (!create && !found)
+		return NULL;
+
+	if (!found)
+		reset_query_stats(result);
+
+	return result;
+}
 
 /*
  * Lookup the hash table entry for the specified table. If no hash
@@ -4769,7 +4891,6 @@ pgstat_get_tab_entry(PgStat_StatDBEntry *dbentry, Oid tableoid, bool create)
 	return result;
 }
 
-
 /* ----------
  * pgstat_write_statsfiles() -
  *		Write the global statistics file, as well as requested DB files.
@@ -4796,6 +4917,8 @@ pgstat_write_statsfiles(bool permanent, bool allDbs)
 	int			rc;
 
 	elog(DEBUG2, "writing stats file \"%s\"", statfile);
+
+	pgstat_write_ybstatsfile(permanent);
 
 	/*
 	 * Open the statistics temp file to write out the current values.
@@ -4926,6 +5049,102 @@ get_dbstat_filename(bool permanent, bool tempname, Oid databaseid,
 }
 
 /* ----------
+ * pgstat_write_ybstatsfile() -
+ *		Write the stat file for the terminated queries YB collects.
+ *
+ *	If writing to the permanent file (happens when the collector is
+ *	shutting down only), remove the temporary file so that backends
+ *	starting up under a new postmaster can't read the old data before
+ *	the new collector is ready.
+ * ----------
+ */
+static void
+pgstat_write_ybstatsfile(bool permanent)
+{
+	FILE	   *fpout;
+	int32		format_id;
+	const char *tmpfile = permanent ? PGSTAT_YBSTAT_PERMANENT_TMPFILE : pgstat_ybstat_tmpname;
+	const char *statfile = permanent ? PGSTAT_YBSTAT_PERMANENT_FILENAME : pgstat_ybstat_filename;
+	int			rc;
+
+	elog(DEBUG2, "writing yb stats file \"%s\"", statfile);
+
+	/*
+	 * Open the statistics temp file to write out the current values.
+	 */
+	fpout = AllocateFile(tmpfile, PG_BINARY_W);
+	if (fpout == NULL)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not open temporary statistics file \"%s\": %m",
+						tmpfile)));
+		return;
+	}
+
+	/*
+	 * Write the file header --- currently just a format ID.
+	 */
+	format_id = PGSTAT_FILE_FORMAT_ID;
+	rc = fwrite(&format_id, sizeof(format_id), 1, fpout);
+	(void) rc;					/* we'll check for error with ferror */
+
+	PgStat_YBStatQueryEntry *queryentry;
+	size_t index = 0;
+	while (index < total_terminated_queries && index < TERMINATED_QUERIES_SIZE)
+	{
+		queryentry = &queryEntries[index++];
+		fputc('Q', fpout);
+		rc = fwrite(queryentry,
+					offsetof(PgStat_YBStatQueryEntry, query_string) + (queryentry->query_string_size + 1) * sizeof(char),
+					1,
+					fpout);
+		(void) rc;				/* we'll check for error with ferror */
+		rc = fwrite(&queryentry->termination_reason_size,
+					sizeof(queryentry->termination_reason_size) + (queryentry->termination_reason_size + 1) * sizeof(char),
+					1,
+					fpout);
+		(void) rc;
+	}
+
+	/*
+	 * No more output to be done. Close the temp file and replace the old
+	 * pgstat.stat with it.  The ferror() check replaces testing for error
+	 * after each individual fputc or fwrite above.
+	 */
+	fputc('E', fpout);
+
+	if (ferror(fpout))
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not write temporary statistics file \"%s\": %m",
+						tmpfile)));
+		FreeFile(fpout);
+		unlink(tmpfile);
+	}
+	else if (FreeFile(fpout) < 0)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not close temporary statistics file \"%s\": %m",
+						tmpfile)));
+		unlink(tmpfile);
+	}
+	else if (rename(tmpfile, statfile) < 0)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not rename temporary statistics file \"%s\" to \"%s\": %m",
+						tmpfile, statfile)));
+		unlink(tmpfile);
+	}
+
+	if (permanent)
+		unlink(pgstat_stat_filename);
+}
+
+/* ----------
  * pgstat_write_db_statsfile() -
  *		Write the stat file for a single database.
  *
@@ -5039,6 +5258,152 @@ pgstat_write_db_statsfile(PgStat_StatDBEntry *dbentry, bool permanent)
 }
 
 /* ----------
+ * pgstat_read_ybstatsfile() -
+ * 		Reads from the yb stats file to load statistics from file into memory.
+ *
+ * Reads the file which contained yb aggregrated statistics and loads them into memory.
+ * It is important to note that this is called every 500 milliseconds or so as we need to refresh the
+ * state of the statistics in backend. If the file we are reading from is temporary, it is used as
+ * a means to communicate in between pg stat and the backend. Permanent files are read only during startup
+ * in the pg stat daemon.
+ *
+ * 'permanent' - indicates if the file we are writing to will be a permanent file which we will not remove.
+ * ----------
+ */
+static void
+pgstat_read_ybstatsfile(bool permanent)
+{
+	PgStat_YBStatQueryEntry *queryentry;
+	PgStat_YBStatQueryEntry querybuf;
+	FILE	   *fpin;
+	int32		format_id;
+	bool		found;
+
+	const char *statfile = permanent ? PGSTAT_YBSTAT_PERMANENT_FILENAME : pgstat_ybstat_filename;
+
+	elog(DEBUG2, "reading yb stats file %s", statfile);
+
+	total_terminated_queries = 0;
+	memset(queryEntries, 0, sizeof(queryEntries));
+
+	/*
+	 * Try to open the stats file. If it doesn't exist, the backends simply
+	 * return zero for anything and the collector simply starts from scratch
+	 * with empty counters.
+	 *
+	 * ENOENT is a possibility if the stats collector is not running or has
+	 * not yet written the stats file the first time.  Any other failure
+	 * condition is suspicious.
+	 */
+	if ((fpin = AllocateFile(statfile, PG_BINARY_R)) == NULL)
+	{
+		if (errno != ENOENT)
+			ereport(pgStatRunningInCollector ? LOG : WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not open statistics file \"%s\": %m",
+							statfile)));
+		return;
+	}
+
+	/*
+	 * Verify it's of the expected format.
+	 */
+	if (fread(&format_id, 1, sizeof(format_id), fpin) != sizeof(format_id) ||
+		format_id != PGSTAT_FILE_FORMAT_ID)
+	{
+		ereport(pgStatRunningInCollector ? LOG : WARNING,
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("format_id was not in expected format")));
+		goto done;
+	}
+
+	for (;;)
+	{
+		switch (fgetc(fpin))
+		{
+				/*
+				 * 'Q'	A PgStat_StatQueryEntry follows.
+				 */
+			case 'Q': {
+				total_terminated_queries++;
+				size_t query_offset_read_size = offsetof(PgStat_YBStatQueryEntry, query_string);
+				if (fread(&querybuf, 1, query_offset_read_size, fpin) != query_offset_read_size)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile),
+							 errdetail("query_offset was not in expected format")));
+					goto done;
+				}
+				size_t query_string_size = (querybuf.query_string_size + 1) * sizeof(char);
+				if (fread(&querybuf.query_string, 1, query_string_size, fpin) != query_string_size)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile),
+							 errdetail("query_string was not in expected format")));
+					goto done;
+				}
+				size_t reason_length_block = sizeof(querybuf.termination_reason_size);
+				if (fread(&querybuf.termination_reason_size, 1, reason_length_block, fpin) != reason_length_block)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile),
+							 errdetail("termination_reason_size was not in expected format")));
+					goto done;
+				}
+				size_t termination_reason_size = (querybuf.termination_reason_size + 1) * sizeof(char);
+				if (fread(&querybuf.termination_reason, 1, termination_reason_size, fpin) != termination_reason_size)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile),
+							 errdetail("termination_reason was not in expected format")));
+					goto done;
+				}
+
+				found = (queryentry = &queryEntries[(querybuf.query_oid - 1) % TERMINATED_QUERIES_SIZE])->query_oid == querybuf.query_oid;
+
+				if (found)
+				{
+					ereport(pgStatRunningInCollector ? LOG : WARNING,
+							(errmsg("corrupted statistics file \"%s\"",
+									statfile),
+							 errdetail("duplicate query entry")));
+					goto done;
+				}
+
+				reset_query_stats(queryentry);
+				memcpy(queryentry, &querybuf, sizeof(querybuf));
+				break;
+
+				/*
+				 * 'E'	The EOF marker of a complete stats file.
+				 */
+			}
+			case 'E':
+				goto done;
+
+			default:
+				ereport(pgStatRunningInCollector ? LOG : WARNING,
+						(errmsg("corrupted statistics file \"%s\"",
+								statfile),
+						 errdetail("expected only StatQueryEntry or EOF")));
+				goto done;
+		}
+	}
+done:
+	FreeFile(fpin);
+
+	if (permanent)
+	{
+		elog(DEBUG2, "removing permanent stats file \"%s\"", statfile);
+		unlink(statfile);
+	}
+}
+
+/* ----------
  * pgstat_read_statsfiles() -
  *
  *	Reads in some existing statistics collector files and returns the
@@ -5075,6 +5440,7 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	 */
 	pgstat_setup_memcxt();
 
+	pgstat_read_ybstatsfile(permanent);
 	/*
 	 * Create the DB hashtable
 	 */
@@ -5125,7 +5491,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 		format_id != PGSTAT_FILE_FORMAT_ID)
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("format_id was not in expected format")));
 		goto done;
 	}
 
@@ -5135,7 +5502,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	if (fread(&globalStats, 1, sizeof(globalStats), fpin) != sizeof(globalStats))
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("globalStats was not in expected format")));
 		memset(&globalStats, 0, sizeof(globalStats));
 		goto done;
 	}
@@ -5156,7 +5524,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	if (fread(&archiverStats, 1, sizeof(archiverStats), fpin) != sizeof(archiverStats))
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("archiverStats was not in expected format")));
 		memset(&archiverStats, 0, sizeof(archiverStats));
 		goto done;
 	}
@@ -5179,7 +5548,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatDBEntry was not in expected format")));
 					goto done;
 				}
 
@@ -5194,7 +5564,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("DBEntry already exists in hash")));
 					goto done;
 				}
 
@@ -5257,7 +5628,8 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 			default:
 				ereport(pgStatRunningInCollector ? LOG : WARNING,
 						(errmsg("corrupted statistics file \"%s\"",
-								statfile)));
+								statfile),
+						errdetail("expected only StatDBEntry or EOF")));
 				goto done;
 		}
 	}
@@ -5331,7 +5703,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 		format_id != PGSTAT_FILE_FORMAT_ID)
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("format_id was not in expected format")));
 		goto done;
 	}
 
@@ -5352,7 +5725,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatTabEntry was not in expected format")));
 					goto done;
 				}
 
@@ -5370,7 +5744,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatTabEntry already exists in hash")));
 					goto done;
 				}
 
@@ -5386,7 +5761,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatFuncEntry was not in expected format")));
 					goto done;
 				}
 
@@ -5404,7 +5780,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatFuncEntry already exists in hash")));
 					goto done;
 				}
 
@@ -5420,7 +5797,8 @@ pgstat_read_db_statsfile(Oid databaseid, HTAB *tabhash, HTAB *funchash,
 			default:
 				ereport(pgStatRunningInCollector ? LOG : WARNING,
 						(errmsg("corrupted statistics file \"%s\"",
-								statfile)));
+								statfile),
+						 errdetail("expected only StatTabEntry, StatFuncEntry, or EOF")));
 				goto done;
 		}
 	}
@@ -5484,7 +5862,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 		format_id != PGSTAT_FILE_FORMAT_ID)
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("format_id was not in expected format")));
 		FreeFile(fpin);
 		return false;
 	}
@@ -5496,7 +5875,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 			  fpin) != sizeof(myGlobalStats))
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("myGlobalStats was not in expected format")));
 		FreeFile(fpin);
 		return false;
 	}
@@ -5508,7 +5888,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 			  fpin) != sizeof(myArchiverStats))
 	{
 		ereport(pgStatRunningInCollector ? LOG : WARNING,
-				(errmsg("corrupted statistics file \"%s\"", statfile)));
+				(errmsg("corrupted statistics file \"%s\"", statfile),
+				 errdetail("myArchiverStats was not in expected format")));
 		FreeFile(fpin);
 		return false;
 	}
@@ -5534,7 +5915,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted statistics file \"%s\"",
-									statfile)));
+									statfile),
+							 errdetail("StatDbEntry was not in expected format")));
 					goto done;
 				}
 
@@ -5556,7 +5938,8 @@ pgstat_read_db_statsfile_timestamp(Oid databaseid, bool permanent,
 			default:
 				ereport(pgStatRunningInCollector ? LOG : WARNING,
 						(errmsg("corrupted statistics file \"%s\"",
-								statfile)));
+								statfile),
+						 errdetail("expected only StatDbEntry or EOF")));
 				goto done;
 		}
 	}
@@ -6325,6 +6708,29 @@ pgstat_recv_tempfile(PgStat_MsgTempFile *msg, int len)
 
 	dbentry->n_temp_bytes += msg->m_filesize;
 	dbentry->n_temp_files += 1;
+}
+
+/* ----------
+ * pgstat_recv_querytermination() -
+ *
+ *	Process a QUERYTERMINATION message.
+ * ----------
+ */
+static void
+pgstat_recv_querytermination(PgStat_MsgQueryTermination *msg, int len)
+{
+	PgStat_YBStatQueryEntry* queryentry = pgstat_get_query_entry(++total_terminated_queries, true);
+
+	queryentry->query_oid = total_terminated_queries;
+	queryentry->st_userid = msg->m_st_userid;
+	queryentry->backend_pid = msg->backend_pid;
+	queryentry->database_oid = msg->m_databaseoid;
+	queryentry->activity_start_timestamp = msg->activity_start_timestamp;
+	queryentry->activity_end_timestamp = msg->activity_end_timestamp;
+	queryentry->query_string_size = strlen(msg->query_string);
+	StrNCpy(queryentry->query_string, msg->query_string, sizeof(queryentry->query_string));
+	queryentry->termination_reason_size = strlen(msg->termination_reason);
+	StrNCpy(queryentry->termination_reason, msg->termination_reason, sizeof(queryentry->termination_reason));
 }
 
 /* ----------

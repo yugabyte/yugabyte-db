@@ -11,6 +11,21 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yb-pgx/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yb-pgx/" class="nav-link">
@@ -35,7 +50,7 @@ type: docs
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. Use the driver to connect to YugabyteDB database to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
+The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. Use the driver to connect to YugabyteDB database to execute DML and DDL statements using the PGX APIs. It also supports the standard `database/sql` package.
 
 ## CRUD operations
 
@@ -57,7 +72,7 @@ import (
 
 Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
-Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
+Use the `pgx.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDL and DML operations against the database.
 
 The PGX connection URL is in the following format:
 
@@ -74,12 +89,12 @@ conn, err := pgx.Connect(context.Background(), url)
 ```
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
+| :-------- | :---------- | :------ |
+| user | user for connecting to the database | yugabyte |
+| password | password for connecting to the database | yugabyte |
+| host | hostname of the YugabyteDB instance | localhost |
+| port | Listen port for YSQL | 5433 |
+| dbname | database name | yugabyte |
 
 #### Use SSL
 
@@ -90,9 +105,9 @@ $ export PGSSLMODE=verify-ca
 $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
-| Environment Variable | Description |
-| :---------- | :---------- |
-| PGSSLMODE |  SSL mode used for the connection |
+| Environment variable | Description |
+| :------------------- | :---------- |
+| PGSSLMODE | SSL mode used for the connection |
 | PGSSLROOTCERT | Path to the root certificate on your computer |
 
 ### Step 3: Create tables
@@ -143,7 +158,7 @@ if err != nil {
 }
 ```
 
-The pgx driver automatically prepares and caches statements by default, so you don't have to.
+The PGX driver automatically prepares and caches statements by default, so you don't have to.
 
 #### Query data
 

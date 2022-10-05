@@ -40,6 +40,7 @@
 #include <glog/logging.h>
 
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/common/ql_rowblock.h"
@@ -85,6 +86,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -1075,6 +1077,28 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
+  if (req->is_external() && req->state().status() == TransactionStatus::APPLYING) {
+    auto namespace_name = tablet.peer->tablet_metadata()->namespace_name();
+    auto namespace_id_result = tablet.peer->GetNamespaceId();
+    if (!namespace_id_result.ok()) {
+      state->CompleteWithStatus(namespace_id_result.status());
+      return;
+    }
+    auto commit_ht = HybridTime(req->state().commit_hybrid_time());
+    auto tablet_caught_up_result =
+        server_->tablet_manager()->server()->XClusterSafeTimeCaughtUpToCommitHt(
+            *namespace_id_result, commit_ht);
+    if (!tablet_caught_up_result.ok()) {
+      state->CompleteWithStatus(tablet_caught_up_result.status());
+      return;
+    }
+    if (!*tablet_caught_up_result) {
+      state->CompleteWithStatus(STATUS(TryAgain, Format("Commit time greater than safe "
+                                                        "time for xcluster replication.")));
+      return;
+    }
+  }
+
   if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
@@ -1393,6 +1417,28 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   return Status::OK();
 }
 
+void TabletServiceAdminImpl::PrepareDeleteTransactionTablet(
+    const PrepareDeleteTransactionTabletRequestPB* req,
+    PrepareDeleteTransactionTabletResponsePB* resp,
+    rpc::RpcContext context) {
+  auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+  if (!tablet) {
+    return;
+  }
+  auto coordinator = tablet.tablet->transaction_coordinator();
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  if (coordinator) {
+    VLOG(1) << "Preparing transaction status tablet " << req->tablet_id() << " for deletion.";
+    auto status = coordinator->PrepareForDeletion(deadline);
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                           DeleteTabletResponsePB* resp,
                                           rpc::RpcContext context) {
@@ -1416,6 +1462,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
             << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
             << (req->hide_only() ? " (Hide only)" : "")
+            << (req->keep_data() ? " (Not deleting data)" : "")
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
 
@@ -1430,6 +1477,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
       cas_config_opid_index_less_or_equal,
       req->hide_only(),
+      req->keep_data(),
       &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
@@ -1650,7 +1698,8 @@ void TabletServiceAdminImpl::UpgradeYsql(
 
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
-                                              FLAGS_heartbeat_interval_ms);
+                                              FLAGS_heartbeat_interval_ms,
+                                              req->use_single_connection());
   const auto status = upgrade_helper.Upgrade();
   if (!status.ok()) {
     LOG(INFO) << "YSQL upgrade failed: " << status;
@@ -1660,6 +1709,25 @@ void TabletServiceAdminImpl::UpgradeYsql(
 
   LOG(INFO) << "YSQL upgrade done successfully";
   context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::UpdateTransactionTablesVersion(
+    const UpdateTransactionTablesVersionRequestPB* req,
+    UpdateTransactionTablesVersionResponsePB* resp,
+    rpc::RpcContext context) {
+  LOG(INFO) << "Received update in transaction tables version to version " << req->version();
+
+  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+  auto callback = [resp, context_ptr](const Status& status) {
+    if (!status.ok()) {
+      LOG(WARNING) << status;
+      SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+    } else {
+      context_ptr->RespondSuccess();
+    }
+  };
+
+  server_->TransactionManager().UpdateTransactionTablesVersion(req->version(), callback);
 }
 
 

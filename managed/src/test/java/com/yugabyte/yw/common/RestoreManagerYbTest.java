@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,6 +124,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
   }
 
   @Test
@@ -323,12 +325,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   private List<String> getExpectedRestoreBackupCommand(
       RestoreBackupParams restoreParams, ActionType actionType, String storageType) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
-      podFQDNToConfig =
+      podAddrToConfig =
           PlacementInfoUtil.getKubernetesConfigPerPod(
               pi, testUniverse.getUniverseDetails().nodeDetailsSet);
     }
@@ -365,7 +367,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
-      cmd.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());
@@ -393,7 +395,9 @@ public class RestoreManagerYbTest extends FakeDBApplication {
       cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_DIR);
     }
     cmd.add(actionType.name().toLowerCase());
-    if (restoreParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (restoreParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     return cmd;

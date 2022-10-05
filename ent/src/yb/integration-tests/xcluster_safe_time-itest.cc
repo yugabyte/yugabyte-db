@@ -24,11 +24,11 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/integration-tests/twodc_test_base.h"
@@ -39,14 +39,13 @@ using namespace std::chrono_literals;
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(enable_load_balancing);
-DECLARE_bool(enable_ysql);
-DECLARE_bool(xcluster_consistent_reads);
-DECLARE_bool(master_auto_run_initdb);
-DECLARE_bool(hide_pg_catalog_table_creation_logs);
-DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_int32(cdc_max_apply_batch_num_records);
+DECLARE_bool(xcluster_consistent_reads);
+DECLARE_bool(enable_replicate_transaction_status_table);
+DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb {
 using client::YBSchema;
@@ -66,8 +65,11 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test
+    FLAGS_xcluster_consistent_reads = true;
     FLAGS_enable_load_balancing = false;
-    SetAtomicFlag(1, &FLAGS_xcluster_safe_time_update_interval_secs);
+    FLAGS_enable_replicate_transaction_status_table = true;
+
+    FLAGS_xcluster_safe_time_update_interval_secs = 1;
     safe_time_propagation_timeout_ =
         FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
 
@@ -101,13 +103,20 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
 
     std::vector<TabletId> producer_tablet_ids;
     ASSERT_OK(producer_cluster_.client_->GetTablets(
-        producer_table_->name(), static_cast<int32_t>(kTabletCount), &producer_tablet_ids, NULL));
+        producer_table_->name(), 0 /* max_tablets */, &producer_tablet_ids, NULL));
     ASSERT_EQ(producer_tablet_ids.size(), kTabletCount);
 
     auto producer_leader_tserver =
         GetLeaderForTablet(producer_cluster(), producer_tablet_ids[0])->server();
     producer_tablet_peer_ = ASSERT_RESULT(
         producer_leader_tserver->tablet_manager()->GetServingTablet(producer_tablet_ids[0]));
+
+    YBTableName global_tran_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    std::shared_ptr<YBTable> global_tran_table;
+    ASSERT_OK(producer_client()->OpenTable(global_tran_table_name, &global_tran_table));
+    ASSERT_OK(producer_cluster_.client_->GetTablets(
+        global_tran_table_name, 0 /* max_tablets */, &global_tran_tablet_ids_, NULL));
 
     ASSERT_OK(SetupUniverseReplication({producer_table_}));
 
@@ -157,12 +166,13 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
   }
 
   Status WaitForSafeTime(HybridTime min_safe_time) {
-    RETURN_NOT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+    RETURN_NOT_OK(CorrectlyPollingAllTablets(
+        consumer_cluster(), kTabletCount + static_cast<uint32_t>(global_tran_tablet_ids_.size())));
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status) {
             CHECK(safe_time_status.status().IsNotFound() || safe_time_status.status().IsTryAgain());
 
@@ -179,7 +189,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
         [&]() -> Result<bool> {
-          auto safe_time_status = tserver->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+          auto safe_time_status = tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
           if (!safe_time_status.ok() && safe_time_status.status().IsNotFound()) {
             return true;
           }
@@ -195,6 +205,7 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
   YBTableName consumer_table_name_;
   std::shared_ptr<YBTable> producer_table_;
   std::shared_ptr<YBTable> consumer_table_;
+  std::vector<TabletId> global_tran_tablet_ids_;
   string namespace_id_;
   std::shared_ptr<tablet::TabletPeer> producer_tablet_peer_;
 };
@@ -258,27 +269,21 @@ string GetCompleteTableName(const YBTableName& table) {
 class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
  public:
   void SetUp() override {
-    FLAGS_enable_ysql = true;
-    FLAGS_master_auto_run_initdb = true;
-    FLAGS_hide_pg_catalog_table_creation_logs = true;
-    FLAGS_pggate_rpc_timeout_secs = 120;
-
+    FLAGS_xcluster_consistent_reads = true;
     // Disable LB as we dont want tablets moving during the test
     FLAGS_enable_load_balancing = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
     safe_time_propagation_timeout_ =
         FLAGS_xcluster_safe_time_update_interval_secs * 5s * kTimeMultiplier;
-    FLAGS_xcluster_consistent_reads = true;
+    FLAGS_ysql_yb_xcluster_consistency_level = "database";
+    FLAGS_transaction_table_num_tablets = 1;
+    FLAGS_enable_replicate_transaction_status_table = true;
 
-    master::SetDefaultInitialSysCatalogSnapshotFlags();
     TwoDCTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
     opts.num_tablet_servers = kTServerCount;
-    ASSERT_OK(InitClusters(opts));
-
-    ASSERT_OK(InitPostgres(&producer_cluster_));
-    ASSERT_OK(InitPostgres(&consumer_cluster_));
+    ASSERT_OK(InitClusters(opts, true /* init_postgres */));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
@@ -326,14 +331,21 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     ASSERT_OK(GetNamespaceId());
 
     ASSERT_OK(producer_cluster_.client_->GetTablets(
-        producer_table_->name(), static_cast<int32_t>(kTabletCount), &producer_tablet_ids_, NULL));
+        producer_table_->name(), 0 /* max_tablets */, &producer_tablet_ids_, NULL));
     ASSERT_EQ(producer_tablet_ids_.size(), kTabletCount);
 
     std::vector<TabletId> producer_table2_tablet_ids;
     ASSERT_OK(producer_cluster_.client_->GetTablets(
-        producer_table_2->name(), 1, &producer_table2_tablet_ids, NULL));
+        producer_table_2->name(), 0 /* max_tablets */, &producer_table2_tablet_ids, NULL));
     ASSERT_EQ(producer_table2_tablet_ids.size(), 1);
     producer_tablet_ids_.push_back(producer_table2_tablet_ids[0]);
+
+    YBTableName global_tran_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    std::shared_ptr<YBTable> global_tran_table;
+    ASSERT_OK(producer_client()->OpenTable(global_tran_table_name, &global_tran_table));
+    ASSERT_OK(producer_cluster_.client_->GetTablets(
+        global_tran_table_name, 0 /* max_tablets */, &global_tran_tablet_ids_, NULL));
 
     ASSERT_OK(SetupUniverseReplication({producer_table_, producer_table_2}));
 
@@ -342,7 +354,6 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
     ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
     ASSERT_EQ(resp.entry().tables_size(), 2);
-    ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
 
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));
@@ -355,7 +366,14 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table_2->id());
     stream_ids_.push_back(stream_resp.streams(0).stream_id());
 
-    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount + 1));
+    ASSERT_OK(GetCDCStreamForTable(global_tran_table->id(), &stream_resp));
+    ASSERT_EQ(stream_resp.streams_size(), 1);
+    ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), global_tran_table->id());
+    stream_ids_.push_back(stream_resp.streams(0).stream_id());
+
+    ASSERT_OK(CorrectlyPollingAllTablets(
+        consumer_cluster(),
+        kTabletCount + 1 + static_cast<uint32_t>(global_tran_tablet_ids_.size())));
     ASSERT_OK(WaitForValidSafeTimeOnAllTServers());
   }
 
@@ -393,10 +411,27 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 
   Result<pgwrapper::PGResultPtr> ScanToStrings(const YBTableName& table_name, Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(table_name.namespace_name()));
-    std::string table_name_str = GetCompleteTableName(table_name);
+    const std::string table_name_str = GetCompleteTableName(table_name);
     auto result = VERIFY_RESULT(
         conn.FetchFormat("SELECT * FROM $0 ORDER BY $1", table_name_str, kKeyColumnName));
     return result;
+  }
+
+  Result<int> GetRowCount(
+      const YBTableName& table_name, Cluster* cluster, bool read_latest = false) {
+    auto conn = VERIFY_RESULT(
+        cluster->ConnectToDB(table_name.namespace_name(), true /*simple_query_protocol*/));
+    if (read_latest) {
+      auto setting_res = VERIFY_RESULT(
+          conn.FetchRowAsString("UPDATE pg_settings SET setting = 'tablet' WHERE name = "
+                                "'yb_xcluster_consistency_level'"));
+      SCHECK_EQ(
+          setting_res, "tablet", IllegalState,
+          "Failed to set yb_xcluster_consistency_level to tablet.");
+    }
+    std::string table_name_str = GetCompleteTableName(table_name);
+    auto results = VERIFY_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name_str));
+    return PQntuples(results.get());
   }
 
   Status WaitForValidSafeTimeOnAllTServers() {
@@ -404,7 +439,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
             auto safe_time =
-                tserver->server()->GetXClusterSafeTimeMap()->GetSafeTime(namespace_id_);
+                tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id_);
             if (!safe_time) {
               return false;
             }
@@ -424,12 +459,12 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 
     return WaitFor(
         [&]() -> Result<bool> {
-          auto results = ScanToStrings(table_name, &consumer_cluster_);
-          if (!results) {
-            LOG(INFO) << results.status().ToString();
+          auto result = GetRowCount(table_name, &consumer_cluster_);
+          if (!result) {
+            LOG(INFO) << result.status().ToString();
             return false;
           }
-          last_row_count = PQntuples(results->get());
+          last_row_count = result.get();
           if (allow_greater) {
             return last_row_count >= row_count;
           }
@@ -446,9 +481,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
   Status ValidateConsumerRows(const YBTableName& table_name, int row_count) {
     auto results = VERIFY_RESULT(ScanToStrings(table_name, &consumer_cluster_));
     auto actual_row_count = PQntuples(results.get());
-    SCHECK(
-        row_count == actual_row_count,
-        Corruption,
+    SCHECK_EQ(
+        row_count, actual_row_count, Corruption,
         Format("Expected $0 rows but got $1 rows", row_count, actual_row_count));
 
     int result;
@@ -512,11 +546,12 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
   std::shared_ptr<client::YBTable> producer_table_, producer_table_2;
   std::shared_ptr<client::YBTable> consumer_table_, consumer_table_2;
   std::vector<TabletId> producer_tablet_ids_;
+  std::vector<TabletId> global_tran_tablet_ids_;
   string namespace_id_;
   std::map<string, uint64_t> producer_tablet_read_time_;
 };
 
-TEST_F(XClusterSafeTimeYsqlTest, TestConsistentReads) {
+TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   // Skip in TSAN as InitDB takes more than 600s
   YB_SKIP_TEST_IN_TSAN();
   constexpr auto kNumRecordsPerBatch = 10;
@@ -554,6 +589,12 @@ TEST_F(XClusterSafeTimeYsqlTest, TestConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
   ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), num_records_written));
 
+  // Reading latest data should return a subset of the rows but not all rows
+  const auto latest_row_count =
+      ASSERT_RESULT(GetRowCount(consumer_table_->name(), &consumer_cluster_, true /*read_latest*/));
+  ASSERT_GT(latest_row_count, num_records_written);
+  ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
+
   // Resume replication and verify all data is written on the consumer
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
   num_records_written += kNumRecordsPerBatch;
@@ -564,5 +605,38 @@ TEST_F(XClusterSafeTimeYsqlTest, TestConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
 }
 
+TEST_F(XClusterSafeTimeYsqlTest, LagInTransactionsTable) {
+  // Skip in TSAN as InitDB takes more than 600s
+  YB_SKIP_TEST_IN_TSAN();
+  constexpr auto kNumRecordsPerBatch = 10;
+  CHECK_GE(FLAGS_cdc_max_apply_batch_num_records, kNumRecordsPerBatch);
+
+  // Pause replication on global transactions table
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+      JoinStrings(global_tran_tablet_ids_, ",");
+  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  // Wait for in flight GetChanges
+  SleepFor(2s * kTimeMultiplier);
+  StoreReadTimes();
+
+  // Write a batch of 100 in one transaction in table1 and a single row without a transaction in
+  // table2
+  WriteWorkload(producer_table_->name(), 0, kNumRecordsPerBatch);
+  WriteWorkload(producer_table_2->name(), 0, 1);
+
+  // Verify none of the new rows in either table are visible
+  ASSERT_NOK(WaitForRowCount(consumer_table_->name(), 1, true /*allow_greater*/));
+  ASSERT_NOK(WaitForRowCount(consumer_table_2->name(), 1, true /*allow_greater*/));
+
+  // 3 tablets of table 1 and 1 tablet from table2 should still contain the rows
+  ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
+
+  // Resume replication and verify all data is written on the consumer
+  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ASSERT_OK(WaitForRowCount(consumer_table_->name(), kNumRecordsPerBatch));
+  ASSERT_OK(ValidateConsumerRows(consumer_table_->name(), kNumRecordsPerBatch));
+  ASSERT_OK(WaitForRowCount(consumer_table_2->name(), 1));
+  ASSERT_OK(ValidateConsumerRows(consumer_table_2->name(), 1));
+}
 }  // namespace enterprise
 }  // namespace yb

@@ -15,8 +15,10 @@ import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfigurationTarget;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
@@ -30,11 +32,18 @@ public class AlertConfigurationFilter {
   Boolean active;
   AlertConfiguration.TargetType targetType;
   AlertConfigurationTarget target;
-  AlertTemplate template;
+  Set<AlertTemplate> templates;
   Severity severity;
   DestinationType destinationType;
   UUID destinationUuid;
   Boolean suspended;
+
+  public List<String> getTemplatesStr() {
+    if (templates == null) {
+      return null;
+    }
+    return templates.stream().map(AlertTemplate::name).collect(Collectors.toList());
+  }
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -58,8 +67,8 @@ public class AlertConfigurationFilter {
     if (target != null) {
       result.target(target);
     }
-    if (template != null) {
-      result.template(template);
+    if (templates != null) {
+      result.templates(templates);
     }
     if (severity != null) {
       result.severity(severity);
@@ -78,6 +87,7 @@ public class AlertConfigurationFilter {
 
   public static class AlertConfigurationFilterBuilder {
     Set<UUID> uuids = new HashSet<>();
+    Set<AlertTemplate> templates = new HashSet<>();
 
     public AlertConfigurationFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -116,7 +126,12 @@ public class AlertConfigurationFilter {
     }
 
     public AlertConfigurationFilterBuilder template(@NonNull AlertTemplate template) {
-      this.template = template;
+      this.templates.add(template);
+      return this;
+    }
+
+    public AlertConfigurationFilterBuilder templates(@NonNull Collection<AlertTemplate> templates) {
+      this.templates.addAll(templates);
       return this;
     }
 

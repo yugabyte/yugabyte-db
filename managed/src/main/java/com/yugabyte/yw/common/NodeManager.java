@@ -109,8 +109,15 @@ public class NodeManager extends DevopsBase {
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
   public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
+  public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
   public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+
+  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
+
+  @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject ReleaseManager releaseManager;
 
@@ -154,14 +161,6 @@ public class NodeManager extends DevopsBase {
     ROTATE_CERTS,
     UPDATE_CERT_DIRS
   }
-
-  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject ConfigHelper configHelper;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -417,13 +416,6 @@ public class NodeManager extends DevopsBase {
   /**
    * Creates certificates if not present. Called from various places like - when node is added to
    * universe
-   *
-   * @param config
-   * @param userIntent
-   * @param taskParam
-   * @param nodeIP
-   * @param ybHomeDir
-   * @return
    */
   private List<String> getCertificatePaths(
       Config config,
@@ -724,6 +716,11 @@ public class NodeManager extends DevopsBase {
       }
       ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      boolean enableVerbose =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(YBC_ENABLE_VERBOSE);
+      if (enableVerbose) {
+        ybcFlags.put("v", "1");
+      }
       String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
       ybcFlags.put("nfs_dirs", nfsDirs);
     }
@@ -954,7 +951,6 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1267,9 +1263,8 @@ public class NodeManager extends DevopsBase {
   }
 
   private Path addBootscript(
-      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
-    Path bootScriptFile = null;
-    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+      String bootScript, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile;
     commandArgs.add("--boot_script");
 
     // treat the contents as script body if it starts with a shebang line
@@ -1328,12 +1323,7 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  /**
-   * Remove tags that are restricted by provider.
-   *
-   * @param instanceTags
-   * @param providerType
-   */
+  /** Remove tags that are restricted by provider. */
   private void filterInstanceTags(Map<String, String> instanceTags, Common.CloudType providerType) {
     if (providerType.equals(Common.CloudType.aws)) {
       // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
@@ -1401,8 +1391,9 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+            String bootScript = config.getString(BOOT_SCRIPT_PATH);
+            if (!bootScript.isEmpty()) {
+              bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1533,8 +1524,9 @@ public class NodeManager extends DevopsBase {
           }
 
           Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
-          if (config.hasPath(BOOT_SCRIPT_PATH)) {
-            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+          String bootScript = config.getString(BOOT_SCRIPT_PATH);
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1613,7 +1605,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1633,7 +1625,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1646,7 +1638,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -2014,14 +2006,13 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
+  private void addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     if (!Strings.isNullOrEmpty(nodeIP)) {
       commandArgs.add("--node_ip");
       commandArgs.add(nodeIP);
     }
-    return commandArgs;
   }
 
   private boolean isLowMemInstanceType(String instanceType) {

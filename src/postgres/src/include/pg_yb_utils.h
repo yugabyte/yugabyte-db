@@ -33,6 +33,7 @@
 #include "common/pg_yb_common.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 
@@ -657,5 +658,10 @@ bool YBCIsRegionLocal(Relation rel);
  * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
+
+extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
+												GucSource source);
+extern void assign_yb_xcluster_consistency_level(const char *newval,
+												 void		*extra);
 
 #endif /* PG_YB_UTILS_H */

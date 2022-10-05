@@ -78,6 +78,9 @@ struct TableInfo {
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
+  // namespace_id is currently used on the xcluster path to determine safe time on the apply
+  // transaction path.
+  NamespaceId namespace_id;
   std::string table_name;
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
@@ -260,6 +263,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the name, type, schema, index map, schema, etc of the table.
   std::string namespace_name(const TableId& table_id = "") const;
 
+  NamespaceId namespace_id() const;
+
   std::string table_name(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
@@ -301,6 +306,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
   const std::string& wal_dir() const { return wal_dir_; }
+
+  Status set_namespace_id(const NamespaceId& namespace_id);
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);

@@ -47,7 +47,6 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -2225,8 +2224,6 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB
                          "Bad preceding_opid: $0, last received: $1",
                          deduped_req.preceding_op_id,
                          state_->GetLastReceivedOpIdUnlocked());
-  } else if (state_->GetLastReceivedOpIdCurLeaderUnlocked().empty()) {
-    state_->UpdateLastReceivedOpIdFromCurrentLeaderUnlocked(deduped_req.preceding_op_id);
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;

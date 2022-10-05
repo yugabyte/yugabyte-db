@@ -77,8 +77,7 @@ public class TestBooleanDataType extends BaseCQLTest {
                     " with transactions = { 'enabled' : true };");
     session.execute("create index bool_test_idx on bool_test (v2, v1);");
 
-    // Wait for the table alterations to complete.
-    Thread.sleep(5000);
+    waitForReadPermsOnAllIndexes("bool_test");
 
     // Populate rows with alternating true/false.
     final int KEY_COUNT = 10;

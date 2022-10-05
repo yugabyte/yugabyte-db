@@ -419,6 +419,9 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
+  // Schedule post split compaction after compaction enabled on the tablet.
+  tablet().TriggerPostSplitCompactionIfNeeded();
+
   // Ensure that op_pauses stays in scope throughout this function.
   for (auto* op_pause : op_pauses.AsArray()) {
     DFATAL_OR_RETURN_NOT_OK(op_pause->status());

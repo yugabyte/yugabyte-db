@@ -42,15 +42,9 @@ type: docs
       YSQL - GORM
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pgx driver](https://pkg.go.dev/github.com/jackc/pgx), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a basic Go application that connects to a YugabyteDB cluster using the [pgx driver](https://pkg.go.dev/github.com/jackc/pgx), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
 ## Prerequisites
 

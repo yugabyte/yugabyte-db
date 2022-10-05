@@ -68,8 +68,6 @@ ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 # These were incorrectly used without the "clang" prefix to indicate various versions of Clang.
 NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
 
-SKIPPED_TAGS = ['v20220615172857-62ed7bc00f-macos-arm64']
-
 
 def get_arch_regex(index: int) -> str:
     """
@@ -182,10 +180,8 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         sha_prefix = tag_match.group('sha_prefix')
         if not self.sha.startswith(sha_prefix):
             msg = (f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
-                   f"SHA corresponding to the release/tag: {self.sha}.")
-            if tag in SKIPPED_TAGS:
-                raise SkipThirdPartyReleaseException(msg)
-            raise ValueError(msg)
+                   f"SHA corresponding to the release/tag: {self.sha}. Skipping.")
+            raise SkipThirdPartyReleaseException(msg)
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
@@ -232,7 +228,7 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
             return False
 
         non_checksum_urls = [url for url in asset_urls if not url.endswith('.sha256')]
-        assert(len(non_checksum_urls) == 1)
+        assert len(non_checksum_urls) == 1
         self.url = non_checksum_urls[0]
         if not self.url.startswith(DOWNLOAD_URL_PREFIX):
             logging.warning(
@@ -242,7 +238,7 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
 
         url_suffix = self.url[len(DOWNLOAD_URL_PREFIX):]
         url_suffix_components = url_suffix.split('/')
-        assert(len(url_suffix_components) == 2)
+        assert len(url_suffix_components) == 2
 
         archive_basename = url_suffix_components[1]
         expected_basename = get_archive_name_from_tag(self.tag)
@@ -443,7 +439,7 @@ class MetadataUpdater:
 
         for release in releases:
             sha: str = release.target_commitish
-            assert(isinstance(sha, str))
+            assert isinstance(sha, str)
 
             if SHA_HASH.match(sha) is None:
                 sha = repo.get_commit(sha).sha

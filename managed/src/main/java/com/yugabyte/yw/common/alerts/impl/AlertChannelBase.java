@@ -13,7 +13,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import org.apache.commons.lang3.StringUtils;
 
@@ -22,13 +21,13 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE =
       "YugabyteDB Anywhere {{ $labels.severity }} alert {{ $labels.definition_name }} "
-          + "fired for {{ $labels.source_name }}";
+          + "{{ $labels.alert_state }} for {{ $labels.source_name }}";
 
   @VisibleForTesting
   static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
       "{{ $labels.definition_name }} alert with severity level '{{ $labels.severity }}' "
           + "for {{ $labels.source_type }} '{{ $labels.source_name }}' "
-          + "is {{ $labels.alert_state }}.";
+          + "is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}";
 
   /**
    * Returns the alert notification title according to the template stored in the alert channel or
@@ -60,15 +59,12 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
     String template = channel.getParams().getTextTemplate();
     if (StringUtils.isEmpty(template)) {
       template = DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
-      if (alert.getState() == State.ACTIVE) {
-        template = template + "\n\n" + StringUtils.abbreviate(alert.getMessage(), 1000);
-      }
     }
     return alertSubstitutions(alert, template);
   }
 
   private static String alertSubstitutions(Alert alert, String template) {
     AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
-    return substitutor.replace(template);
+    return substitutor.replace(template).trim();
   }
 }

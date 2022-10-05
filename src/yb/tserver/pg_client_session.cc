@@ -39,6 +39,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -51,9 +52,6 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DEFINE_bool(xcluster_consistent_reads, false, "Atomic reads for xcluster");
-TAG_FLAG(xcluster_consistent_reads, experimental);
-TAG_FLAG(xcluster_consistent_reads, runtime);
 
 namespace yb {
 namespace tserver {
@@ -363,15 +361,14 @@ client::YBSessionPtr CreateSession(
 } // namespace
 
 PgClientSession::PgClientSession(
-    client::YBClient* client, const scoped_refptr<ClockBase>& clock,
+    uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, uint64_t id,
-    const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map)
-    : client_(*client),
+    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map)
+    : id_(id),
+      client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
       table_cache_(*table_cache),
-      id_(id),
       xcluster_safe_time_map_(xcluster_safe_time_map) {}
 
 uint64_t PgClientSession::id() const {
@@ -675,8 +672,8 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
 Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
     const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
   // Early exit if namespace not provided or atomic reads not enabled
-  if (options.namespace_id().empty() || !xcluster_safe_time_map_ ||
-      !GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
+  if (options.namespace_id().empty() || xcluster_safe_time_map_ == nullptr ||
+      !options.use_xcluster_database_consistency()) {
     return Status::OK();
   }
 

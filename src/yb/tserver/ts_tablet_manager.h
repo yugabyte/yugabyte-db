@@ -190,12 +190,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // value. If not, 'error_code' is set to CAS_FAILED and a non-OK Status is
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
+  // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
       const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
       bool hide_only,
+      bool keep_data,
       boost::optional<TabletServerErrorPB::Code>* error_code);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
@@ -593,6 +595,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<ThreadPool> read_pool_;
 
   // Thread pool for manually triggering compactions for tablets created from a split.
+  // This is used by a tablet method to schedule compactions on the child tablets after
+  // a split so each tablet has a reference to this pool.
   std::unique_ptr<ThreadPool> post_split_trigger_compaction_pool_;
 
   // Thread pool for admin triggered compactions for tablets.
@@ -627,7 +631,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
 
   // Gauge to monitor post-split compactions that have been started.
-  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>

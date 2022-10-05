@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -183,8 +184,9 @@ public class SwamperHelperTest extends FakeDBApplication {
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
     AlertConfiguration configuration = createAlertConfiguration(defaultCustomer, universe);
     AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, configuration);
+    AlertTemplateSettings templateSettings = ModelFactory.createTemplateSettings(defaultCustomer);
 
-    swamperHelper.writeAlertDefinition(configuration, definition);
+    swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
     BufferedReader br =
         new BufferedReader(new FileReader(generateRulesFileName(definition.getUuid().toString())));
 
