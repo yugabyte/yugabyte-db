@@ -50,7 +50,7 @@ Conceptually, Azure KMS consists of a key vault containing one or more keys, wit
 Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 
 - Set the vault permission model as Vault access policy.
-- Add the application to the key vault access policies with the minimum key management operations permissions of Get, List, Create, and cryptographic operations permissions of Unwrap Key, Wrap Key. 
+- Add the application to the key vault access policies with the minimum key management operations permissions of Get, Create, and cryptographic operations permissions of Unwrap Key, Wrap Key. 
 
 If you are planning to use an existing cryptographic key with the same name, it must meet the following criteria:
 
@@ -78,13 +78,14 @@ You can create a KMS configuration that uses Azure KMS, as follows:
     - **Key Algorithm** — The algorithm for the master key. Currently, only the RSA algorithm is supported.
     - **Key Size** — Select the size of the master key, in bits. Supported values are 2048 (default), 3072, and 4096.
     
-![img](/images/yp/security/azurekms-config.png)
+    ![img](/images/yp/security/azurekms-config.png)
+        
     
-3. Click **Save**.<br>
+4. Click **Save**.<br>
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-4. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+5. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
 
 
