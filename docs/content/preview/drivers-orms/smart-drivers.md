@@ -77,7 +77,7 @@ To enable cluster-aware load balancing, you set the load balance connection para
 For example, using the Go smart driver, you would turn on load balancing as follows:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true"
+"postgres://username:password@host:5433/database_name?load_balance=true"
 ```
 
 With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distributes the connections equally across them.
@@ -97,13 +97,14 @@ With topology-aware connection load balancing, you can target nodes in specified
 
 You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
 
-You still need to specify load balance as true to enable the topology-aware connection load balancing.
-
 For example, using the Go driver, you would set the parameters as follows:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
+"postgres://username:password@localhost:5433/database_name?load_balance=true& \
+    topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
+
+You still need to specify load balance as true to enable the topology-aware connection load balancing.
 
 ## Using smart drivers with YugabyteDB Managed
 
