@@ -1168,17 +1168,20 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateIndex) {
         "SELECT value FROM $0", table_name)));
     ASSERT_EQ(res, "before");
 
-    // Scans should not use index.
-    bool is_index_scan = ASSERT_RESULT(
-        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
-    LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
-    ASSERT_FALSE(is_index_scan);
+    // Scans should not use index. Waiting for upto 5
+    // HBs for this to take effect.
+    ASSERT_OK(WaitFor([&conn, &table_name]() -> Result<bool> {
+      bool is_index_scan = VERIFY_RESULT(
+          conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+      LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
+      return !is_index_scan;
+    }, 5s * kTimeMultiplier, "Wait for scans to not use the index"));
 
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
     ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET value = 'after'", table_name));
 
     // Scans should use index.
-    is_index_scan = ASSERT_RESULT(
+    bool is_index_scan = ASSERT_RESULT(
         conn.HasIndexScan(Format("SELECT value FROM $0 where value='after'", table_name)));
     LOG(INFO) << "Scans uses index scan " << is_index_scan;
     ASSERT_TRUE(is_index_scan);
@@ -1221,11 +1224,14 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
     std::string table_name = prefix + "_table";
     std::string table_idx_name = prefix + "_table_idx";
 
-    // Reads should use the index scan now.
-    bool is_index_scan = ASSERT_RESULT(
-        conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
-    LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
-    ASSERT_TRUE(is_index_scan);
+    // Reads should use the index scan now. Waiting for upto 5
+    // HBs for this to take effect.
+    ASSERT_OK(WaitFor([&conn, &table_name]() -> Result<bool> {
+      bool is_index_scan = VERIFY_RESULT(
+          conn.HasIndexScan(Format("SELECT value FROM $0 where value='before'", table_name)));
+      LOG(INFO) << "Post restore scans uses index scan " << is_index_scan;
+      return is_index_scan;
+    }, 5s * kTimeMultiplier, "Wait for scans to use the index"));
 
     auto res = ASSERT_RESULT(conn.FetchValue<std::string>(Format(
         "SELECT value FROM $0", table_name)));
@@ -1236,7 +1242,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropIndex) {
         "SELECT value FROM $0 WHERE key = 2", table_name)));
     ASSERT_EQ(res, "after");
 
-    is_index_scan = ASSERT_RESULT(
+    bool is_index_scan = ASSERT_RESULT(
         conn.HasIndexScan(Format("SELECT value FROM $0 where value='after'", table_name)));
     ASSERT_TRUE(is_index_scan);
   };
