@@ -787,6 +787,10 @@ For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org
 
 Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
 
+Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+
+You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
+
 You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tsl12 as follows:
 
 ```sh
@@ -804,7 +808,6 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 ```sh
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
-
 
 ## Change data capture (CDC) flags
 
