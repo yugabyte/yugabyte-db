@@ -340,12 +340,12 @@ aside.td-sidebar {
     > ul {
       padding-left: 0;
 
-      >li:not(.bottom-link):not(.arrow-menu):not(:last-child),
-      >li.unlink-list:not(:last-child) {
+      > li:not(.bottom-link):not(.arrow-menu):not(:last-child),
+      > li.unlink-list:not(:last-child) {
         border-bottom: 1px solid rgba(209, 214, 223, 0.3);
       }
 
-      >li.unlink-list:not(:last-child) {
+      > li.unlink-list:not(:last-child) {
         border-bottom: 0 !important;
       }
 
@@ -514,10 +514,14 @@ aside.td-sidebar {
                 background: none !important;
                 transform: none;
                 color: #fff;
-                line-height: normal;
-                top: -2px;
+                line-height: 9px;
+                top: 1px;
                 font-weight: 3000;
-                left: 3px;
+                left: -1px;
+                font-style: normal;
+                right: 0;
+                text-align: center;
+                margin: 0 auto;
               }
 
               &::after {
@@ -528,8 +532,8 @@ aside.td-sidebar {
             &.open > i::before {
               content: "-";
               font-size: 16px;
-              line-height: 12px;
-              padding-left: 1px;
+              line-height: 9px;
+              padding-left: 0;
             }
 
             > ul {
@@ -1114,7 +1118,7 @@ aside.td-sidebar nav > ul > li.view-all-products {
         }
       }
 
-      >li:hover > i::before {
+      > li:hover > i::before {
         content: "+";
         font-size: 12px;
         line-height: normal;
@@ -1174,7 +1178,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
     }
   }
 
-  >ul {
+  > ul {
     padding-left: 0;
 
     a {

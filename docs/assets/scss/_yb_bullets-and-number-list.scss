@@ -1,0 +1,110 @@
+.td-content {
+  li p {
+    margin: 0 0 0 0;
+    line-height: 22px;
+  }
+
+  > {
+    ul:not(.navbar-nav):not(.tabs-name):not(.nav),
+    ol:not(.navbar-nav) {
+      li {
+        margin: 0 0 12px 0 !important;
+        position: relative;
+
+        &::before {
+          position: absolute;
+          content: '';
+          left: -40px;
+          top: 0;
+          display: inline-block;
+          border-radius: 50%;
+        }
+      }
+    }
+
+    ul:not(.navbar-nav):not(.tabs-name):not(.nav) {
+      margin: 1.5rem 0;
+      list-style: none;
+      padding-left: 2.5rem;
+
+      li::before {
+        width: 8px;
+        height: 8px;
+        margin: 8px;
+        background: #b7c3cb;
+      }
+    }
+
+    ol:not(.navbar-nav) {
+      margin: 1.5rem 0;
+      list-style: none;
+      padding-left: 2.5rem;
+      counter-reset: orderlist;
+
+      li::before {
+        counter-increment: orderlist;
+        content: counter(orderlist);
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        background: #f0f4f7;
+        line-height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+
+    :not(.resources) {
+      ul:not(.navbar-nav):not(.tabs-name):not(.nav),
+      ol:not(.navbar-nav) {
+        li {
+          margin: 0 0 12px 0 !important;
+          position: relative;
+
+          &::before {
+            position: absolute;
+            content: '';
+            left: -40px;
+            top: 0;
+            display: inline-block;
+            border-radius: 50%;
+          }
+        }
+      }
+
+      ul:not(.navbar-nav):not(.tabs-name):not(.nav) {
+        margin: 1.5rem 0;
+        list-style: none;
+        padding-left: 2.5rem;
+
+        li::before {
+          width: 8px;
+          height: 8px;
+          margin: 8px;
+          background: #b7c3cb;
+        }
+      }
+
+      ol:not(.navbar-nav) {
+        margin: 1.5rem 0;
+        list-style: none;
+        padding-left: 2.5rem;
+        counter-reset: orderlist;
+
+        li::before {
+          counter-increment: orderlist;
+          content: counter(orderlist);
+          width: 24px;
+          height: 24px;
+          font-size: 12px;
+          background: #f0f4f7;
+          line-height: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@
 @import "./_left_nav.scss";
 @import "./_right_nav.scss";
 @import "./_yb_headings.scss";
+@import "./_yb_bullets-and-number-list.scss";
 @import "./_version_dropdown.scss";
 @import "./_contribute_list.scss";
 @import "./_admonition.scss";
@@ -21,7 +22,7 @@
 @import "./_yb_resources.scss";
 
 * body {
-  background: $YB_LIGHT_GRAY_BACK;
+  background: #fff;
   font-size: 15px;
   font-weight: 400;
   line-height: 24px;
@@ -362,23 +363,6 @@ body:not(.td-home) .td-main main {
       margin-bottom: 2em !important;
     }
   }
-
-  p {
-    margin: 0 0 0 0;
-    line-height: 22px;
-
-    + {
-      ol {
-        margin-top: 1rem;
-      }
-    }
-  }
-
-  ul {
-    margin: 1.5rem 0;
-    list-style: none;
-    padding-left: 2.5rem;
-  }
 }
 
 @media (min-width: 992px) {
@@ -470,3 +454,83 @@ svg.rrdiagram {
 }
 
 /******* For Inline SVG **********/
+
+/******* Container Styling **********/
+.td-main {
+  border-top: 1px solid #e9eef2;
+  background: #fff;
+
+  .td-sidebar:not(.close-bar) {
+    padding: 0 0 0 11px !important;
+    //flex: none;
+    background: rgba(247, 250, 252, 0.5);
+    border-right: 1px solid #e9eef2;
+  }
+
+  .td-sidebar-toc {
+    background: transparent;
+    border: 0;
+  }
+}
+
+@media (min-width: 1500px) {
+  .td-main {
+    max-width: calc(1490px);
+    border-top: 1px solid #e9eef2;
+    //padding:0 30px;
+    margin: 0 auto;
+    background: #fff;
+
+    .row {
+      margin: 0;
+    }
+
+    .td-sidebar:not(.close-bar) {
+      width: 300px;
+      margin-right: 110px;
+      padding: 0 0 0 11px !important;
+      flex: none;
+      max-width: none !important;
+      background: rgba(247, 250, 252, 0.5);
+      border-right: 1px solid #e9eef2;
+      transition: none;
+
+      + {
+        main {
+          flex: none;
+          max-width: calc(100% - calc(300px + 110px)) !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+      }
+    }
+
+    .td-sidebar-toc {
+      max-width: 100%;
+      width: 252px !important;
+      padding: 0;
+      padding-left: 40px;
+      padding-top: 80px;
+      background: transparent;
+      border: 0;
+
+      + {
+        main {
+          flex: none;
+          max-width: calc(100% - calc(300px + 110px + 252px)) !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+      }
+    }
+
+    .no-right-sidebar {
+      main {
+        flex: none;
+        max-width: calc(100% - calc(300px + 110px)) !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+    }
+  }
+}
