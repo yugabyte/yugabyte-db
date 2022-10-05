@@ -98,13 +98,13 @@ In the default `yugabyte` database, you can create the table `users` on the "Dat
 
 1. Open `ysqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
 
-     ```sh
+   ```sh
    ./bin/ysqlsh -h 127.0.0.1
    ```
 
 1. Create the table `users`, as follows:
 
-     ```sql
+   ```sql
    CREATE TABLE users (
        email varchar PRIMARY KEY,
        username varchar
@@ -115,13 +115,13 @@ Create an identical table on your second cluster:
 
 1. Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
-     ```sh
+   ```sh
    ./bin/ysqlsh -h 127.0.0.2
    ```
 
-1. Create the table `users`, as follows
+1. Create the table `users`, as follows:
 
-     ```sql
+   ```sql
    CREATE TABLE users (
        email varchar(35) PRIMARY KEY,
        username varchar(20)
@@ -228,7 +228,7 @@ To check replication, you can add data to the `users` table on one cluster and s
 
 1. Use the following commands to add data to the "Data Center - East" cluster, making sure you are pointing to the new source host:
 
-     ```sh
+    ```sh
     ./bin/ysqlsh -h 127.0.0.1
     ```
 
@@ -249,10 +249,10 @@ To check replication, you can add data to the `users` table on one cluster and s
     Expect the following output:
 
     ```output
-          email         | username
+           email         | username
     ---------------------+----------
-    hector@example.com  | hector
-    steve@example.com   | steve
+     hector@example.com  | hector
+     steve@example.com   | steve
     (2 rows)
     ```
 
@@ -283,10 +283,10 @@ To check replication, you can add data to the `users` table on one cluster and s
     Expect the following output:
 
     ```output
-          email         | username
+           email         | username
     ---------------------+----------
-    hector@example.com  | hector
-    steve@example.com   | steve
+     hector@example.com  | hector
+     steve@example.com   | steve
     (2 rows)
     ```
 
@@ -345,12 +345,12 @@ When the bidirectional replication has been configured, you can add data to the 
     You should see the following output:
 
     ```output
-          email         | username
+           email         | username
     ---------------------+----------
-    hector@example.com  | hector
-    steve@example.com   | steve
-    neha@example.com    | neha
-    mikhail@example.com | mikhail
+     hector@example.com  | hector
+     steve@example.com   | steve
+     neha@example.com    | neha
+     mikhail@example.com | mikhail
     (4 rows)
     ```
 
@@ -381,12 +381,12 @@ When the bidirectional replication has been configured, you can add data to the 
     You should see the following output:
 
     ```output
-          email         | username
+           email         | username
     ---------------------+----------
-    hector@example.com  | hector
-    steve@example.com   | steve
-    neha@example.com    | neha
-    mikhail@example.com | mikhail
+     hector@example.com  | hector
+     steve@example.com   | steve
+     neha@example.com    | neha
+     mikhail@example.com | mikhail
     (4 rows)
     ```
 
