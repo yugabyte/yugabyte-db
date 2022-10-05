@@ -8,7 +8,7 @@ import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBErrorIndicator } from '../../common/indicators';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
@@ -72,7 +72,6 @@ export const TableLagGraph: FC<Props> = ({
   const tableMetricsQuery = useQuery(
     ['xClusterMetric', replicationUUID, nodePrefix, tableUUID, selectedTimeRangeOption],
     () => {
-      console.log('useQuery', selectedTimeRangeOption);
       if (selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM) {
         return queryLagMetricsForTable(
           tableUUID,
@@ -196,7 +195,7 @@ export const TableLagGraph: FC<Props> = ({
         </Dropdown>
       </div>
 
-      <MetricsPanel
+      <MetricsPanelOld
         className={styles.graphContainer}
         currentUser={currentUser}
         metricKey={`${MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
