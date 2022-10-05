@@ -8,7 +8,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -40,8 +43,10 @@ public class CertificateInfoTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    Config spyConf = spy(app.config());
+    doReturn(TMP_CERTS_PATH).when(spyConf).getString("yb.storage.path");
     for (String cert : certList) {
-      certIdList.add(CertificateHelper.createRootCA(cert, customer.uuid, TMP_CERTS_PATH));
+      certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.uuid));
     }
   }
 

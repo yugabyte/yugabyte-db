@@ -18,7 +18,6 @@ A wrapper script for a C++ program that generates the initial sys catalog snapsh
 
 import sys
 import os
-import argparse
 import subprocess
 import logging
 import shutil
@@ -54,9 +53,9 @@ def main():
     start_time_sec = time.time()
     logging.info("Starting creating initial system catalog snapshot data")
     logging.info("Logging to: %s", os.path.join(build_root, tool_name + '.err'))
-    os.environ['YB_EXTRA_GTEST_FLAGS'] = (
-        '--initial_sys_catalog_snapshot_dest_path=' + snapshot_dest_path
-    )
+    os.environ['YB_EXTRA_GTEST_FLAGS'] = ' '.join(
+        ['--initial_sys_catalog_snapshot_dest_path=' + snapshot_dest_path] +
+        sys.argv[1:])
     os.environ['YB_CTEST_VERBOSE'] = '1'
     with WorkDirContext(build_root):
         initdb_result = run_program(

@@ -56,9 +56,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     public UUID providerUUID;
     public CommandType commandType;
     public UUID universeUUID;
-    // We use the nodePrefix as Helm Chart's release name,
-    // so we would need that for any sort helm operations.
-    public String nodePrefix;
+    public String helmReleaseName;
     public String namespace;
     public int podNum = 0;
     public Map<String, String> config = null;
@@ -99,7 +97,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
     List<Pod> pods =
         kubernetesManagerFactory
             .getManager()
-            .getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);
+            .getPodInfos(config, taskParams().helmReleaseName, taskParams().namespace);
     if (pods.size() == taskParams().podNum) {
       return true;
     } else {

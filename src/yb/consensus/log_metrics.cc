@@ -43,8 +43,8 @@ METRIC_DEFINE_counter(tablet, log_wal_size, "Size of WAL Files",
                       "Size of wal files");
 
 METRIC_DEFINE_coarse_histogram(table, log_sync_latency, "Log Sync Latency",
-                        yb::MetricUnit::kMicroseconds,
-                        "Microseconds spent on synchronizing the log segment file");
+                               yb::MetricUnit::kMicroseconds,
+                               "Microseconds spent on synchronizing the log segment file");
 
 METRIC_DEFINE_coarse_histogram(table, log_append_latency, "Log Append Latency",
                         yb::MetricUnit::kMicroseconds,

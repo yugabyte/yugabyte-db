@@ -36,6 +36,9 @@ import {
   FETCH_UNIVERSE_METADATA,
   GET_UNIVERSE_PER_NODE_STATUS,
   GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
+  GET_NODE_DETAILS,
+  GET_NODE_DETAILS_RESPONSE,
+  RESET_NODE_DETAILS,
   GET_UNIVERSE_PER_NODE_METRICS,
   GET_UNIVERSE_PER_NODE_METRICS_RESPONSE,
   GET_MASTER_LEADER,
@@ -104,6 +107,7 @@ const INITIAL_STATE = {
   universePerNodeStatus: getInitialState({}),
   universePerNodeMetrics: getInitialState({}),
   universeMasterLeader: getInitialState({}),
+  universeNodeDetails: getInitialState({}),
   rollingUpgrade: getInitialState({}),
   universeNodeAction: getInitialState({}),
   createUniverseBackup: getInitialState({}),
@@ -146,7 +150,6 @@ export default function (state = INITIAL_STATE, action) {
         universeConfigTemplate: getInitialState({}),
         universeResourceTemplate: getInitialState({})
       };
-
     // Read Replica Operations
     case ADD_READ_REPLICA:
       return setLoadingState(state, 'addReadReplica', {});
@@ -188,6 +191,12 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'universePerNodeStatus', {});
     case GET_UNIVERSE_PER_NODE_STATUS_RESPONSE:
       return setPromiseResponse(state, 'universePerNodeStatus', action);
+    case GET_NODE_DETAILS:
+      return setLoadingState(state, 'universeNodeDetails', {});
+    case GET_NODE_DETAILS_RESPONSE:
+      return setPromiseResponse(state, 'universeNodeDetails', action);
+    case RESET_NODE_DETAILS:
+      return setInitialState(state, 'universeNodeDetails', {});
     case GET_UNIVERSE_PER_NODE_METRICS:
       return setLoadingState(state, 'universePerNodeMetrics', {});
     case GET_UNIVERSE_PER_NODE_METRICS_RESPONSE:

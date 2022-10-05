@@ -448,7 +448,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
       offset = entry.offset_in_segment + kEntryHeaderSize + 1;
       break;
   }
-  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentForTests()->path(), type, offset));
+  ASSERT_OK(CorruptLogFile(env_.get(), log_->TEST_ActiveSegment()->path(), type, offset));
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
@@ -578,7 +578,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   ASSERT_EQ(segments.size(), 1);
   scoped_refptr<ReadableLogSegment> readable_segment = ASSERT_RESULT(segments.front());
 
-  auto header_size = log_->active_segment_->written_offset();
+  auto header_size = log_->TEST_ActiveSegment()->written_offset();
   ASSERT_GT(header_size, 0);
   readable_segment->UpdateReadableToOffset(header_size);
 
@@ -605,7 +605,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
 
   ssize_t written_entries_size = header_size;
   ASSERT_OK(AppendNoOps(&op_id, kNumEntries, &written_entries_size));
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
   ASSERT_EQ(single_entry_size * kNumEntries, written_entries_size - header_size);
 
   // Updating the readable segment with the offset of the first entry should
@@ -627,11 +627,11 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Offset should get updated for an additional entry.
   ASSERT_EQ(single_entry_size * (kNumEntries + 1) + header_size,
             written_entries_size);
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
 
   // When we roll it should go back to the header size.
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
-  ASSERT_EQ(header_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(header_size, log_->TEST_ActiveSegment()->written_offset());
   written_entries_size = header_size;
 
   // Now that we closed the original segment. If we get a segment from the reader
@@ -646,7 +646,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   // Offset should get updated for an additional entry, again.
   ASSERT_OK(AppendNoOp(&op_id, &written_entries_size));
   ASSERT_EQ(single_entry_size  + header_size, written_entries_size);
-  ASSERT_EQ(written_entries_size, log_->active_segment_->written_offset());
+  ASSERT_EQ(written_entries_size, log_->TEST_ActiveSegment()->written_offset());
 }
 
 // Tests that segments can be GC'd while the log is running.

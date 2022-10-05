@@ -2033,6 +2033,7 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_SeqScan:
+		case T_YbSeqScan:
 			context.paramids = bms_add_members(context.paramids, scan_params);
 			break;
 
@@ -2347,6 +2348,7 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 			{
 				ListCell   *l;
 
@@ -2357,8 +2359,13 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 				{
 					NestLoopParam *nlp = (NestLoopParam *) lfirst(l);
 
-					nestloop_params = bms_add_member(nestloop_params,
-													 nlp->paramno);
+					int batch_size = nlp->yb_batch_size;
+					for (size_t i = 0; i < batch_size; i++)
+					{
+						nestloop_params =
+							bms_add_member(nestloop_params,
+										   nlp->paramno + i);
+					}
 				}
 			}
 			break;

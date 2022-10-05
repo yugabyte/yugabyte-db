@@ -2,7 +2,7 @@
 title: YugabyteDB Managed FAQ
 linkTitle: YugabyteDB Managed FAQ
 description: YugabyteDB Managed frequently asked questions.
-headcontent:
+headcontent: Frequently asked questions about YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/yugabyte-cloud/cloud-faq/
@@ -12,6 +12,8 @@ menu:
     parent: faq
     weight: 2775
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 ## YugabyteDB Managed
@@ -24,7 +26,7 @@ You access your YugabyteDB Managed clusters via [YSQL](../../api/ysql/) and [YCQ
 
 See also [YugabyteDB Managed](https://www.yugabyte.com/cloud/) at yugabyte.com.
 
-YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/overview/).
+YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
 ### How is YugabyteDB Managed priced?
 
@@ -76,7 +78,7 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 
 To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{% support-cloud %}} for trial credits.
 
-### Can I migrate my Sandbox cluster to a Dedicated cluster?
+### Can I migrate my Sandbox to a Dedicated cluster?
 
 Currently self-service migration is not supported. Contact {{% support-cloud %}} for help with migration.
 
@@ -102,9 +104,9 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Sandbox clusters are provisioned with a **preview** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
+Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series.
 
-By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the preview track when you create the cluster.-->
+By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. You can choose the preview track when you create the cluster.
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
@@ -122,9 +124,9 @@ Enterprise Support is included in the base price for Dedicated clusters. Refer t
 
 Sandbox and Dedicated cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
-### Where can I find the support policy and Service Level Agreement (SLA) for YugabyteDB Managed?
+### Where can I find the support policy and SLA?
 
-The YugabyteDB Managed SLA, terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
+The YugabyteDB Managed Service Level Agreement (SLA), terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
 
 ### How do I check the status of YugabyteDB Managed?
 
@@ -144,7 +146,7 @@ YugabyteDB Managed uses both encryption in transit and encryption at rest to pro
 
 YugabyteDB Managed uses a shared responsibility model for security. For more information on YugabyteDB Managed security, refer to [Security architecture](../../yugabyte-cloud/cloud-security/).
 
-## Cluster configuration and management
+## Cluster management
 
 ### What cluster configurations can I create?
 
@@ -166,7 +168,7 @@ You can connect to clusters in the following ways:
 
 #### Cloud Shell
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../quick-start-yugabytedb-managed/), with a series of pre-built queries for you to run.
 
 #### Client Shell
 
@@ -201,7 +203,7 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 #### Applications
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/).
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
 
 Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
 

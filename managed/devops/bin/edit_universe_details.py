@@ -31,26 +31,48 @@ def get_running_pod(kubectl_cmd_prefix):
     return pod_name
 
 
+def remote_copy_psql_query(pod_name, psql_query):
+    (_, sql_update_filepath) = tempfile.mkstemp(prefix="sql_update")
+    sql_update_filepath = "{}.sql".format(sql_update_filepath)
+    with open(sql_update_filepath, "w") as sql_update_file:
+        sql_update_file.write(str(psql_query))
+    kubectl_cmd_prefix = get_kubectl_cmd_prefix()
+    sql_filename = os.path.basename(sql_update_filepath)
+    remote_sql_filepath = "/tmp/{}".format(sql_filename)
+    copy_cmd = kubectl_cmd_prefix
+    copy_cmd.extend(['cp', sql_update_filepath, "{}:{}"
+                    .format(pod_name, remote_sql_filepath), '-c', 'postgres'])
+    print("Running {}".format(" ".join(copy_cmd)))
+    subprocess.check_output(copy_cmd)
+    return remote_sql_filepath
+
+
 def run_psql(psql_query):
     psql_cmd = None
+    psql_common_args = ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t']
     if args.install_type == "standalone":
         psql_cmd = ["psql"]
+        psql_cmd.extend(psql_common_args)
+        psql_cmd.extend(["-c", psql_query])
     elif args.install_type == "docker":
         if os.system("sudo docker ps -a | grep postgres > /dev/null") != 0:
             msg_exit("postgres docker container is not running.")
         psql_cmd = "sudo docker exec postgres psql".split(" ")
+        psql_cmd.extend(psql_common_args)
+        psql_cmd.extend(["-c", psql_query])
     elif args.install_type == "kubernetes":
         kubectl_cmd_prefix = get_kubectl_cmd_prefix()
         pod_name = args.pod
         if not pod_name:
             pod_name = get_running_pod(kubectl_cmd_prefix)
-        psql_cmd = kubectl_cmd_prefix + ['exec', pod_name, '-t', '-c', 'postgres', '--', "psql"]
+        remote_sql_filepath = remote_copy_psql_query(pod_name, psql_query)
+        psql_cmd = kubectl_cmd_prefix
+        psql_cmd.extend(['exec', pod_name, '-t', '-c', 'postgres', '--', "psql"])
+        psql_cmd.extend(psql_common_args)
+        psql_cmd.extend(["-f", remote_sql_filepath])
     else:
         msg_exit("Unknown install type: {}.".format(args.install_type))
-    return str(subprocess.check_output(
-        psql_cmd +
-        ['-U', 'postgres', '-d', 'yugaware', '-h', 'localhost', '-t', '-c', psql_query])
-            .decode('utf-8')).strip()
+    return str(subprocess.check_output(psql_cmd).decode('utf-8')).strip()
 
 
 if os.path.exists("/.dockerenv"):
@@ -97,7 +119,11 @@ if confirm != 'yes':
     msg_exit("No changes made to database.")
 
 with open(edit_file_path, "r") as edit_file:
-    new_json_parsed = json.loads(edit_file.read())
+    # Escape single quote with two single quotes.
+    # There are comments - ## Sets the Service's externalTrafficPolicy
+    # in OVERRIDES of kuberbernetes universe details.
+    new_json_parsed = json.loads(edit_file.read().replace("'", "''"))
+
 
 print("Updating universe json")
 print(run_psql(("update universe set universe_details_json='{}' " +

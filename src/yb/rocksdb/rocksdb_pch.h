@@ -54,6 +54,7 @@
 #include <stack>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <type_traits>
@@ -62,6 +63,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/atomic.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
@@ -123,6 +125,7 @@
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/atomic.h"
+#include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cache_metrics.h"
 #include "yb/util/cast.h"
@@ -140,6 +143,7 @@
 #include "yb/util/file_system_mem.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -182,6 +186,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_kill.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"

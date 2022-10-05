@@ -27,8 +27,7 @@ import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
   isKubernetesUniverse,
-  isPausableUniverse,
-  isUniverseType
+  isPausableUniverse
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
@@ -48,6 +47,7 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
 
 import './UniverseDetail.scss';
 
@@ -248,10 +248,6 @@ class UniverseDetail extends Component {
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
 
-    const isProviderK8S =
-      getPromiseState(currentUniverse).isSuccess() &&
-      isUniverseType(currentUniverse.data, 'kubernetes');
-
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
 
@@ -358,7 +354,9 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tables')}
           >
-            <ListTablesContainer />
+            <ListTablesContainer
+             fetchUniverseTables={this.props.fetchUniverseTables}
+            />
           </Tab.Pane>
         ),
 
@@ -394,6 +392,19 @@ class UniverseDetail extends Component {
                 visibleModal={visibleModal}
               />
             </div>
+          </Tab.Pane>
+        ),
+
+        isNotHidden(currentCustomer.data.features, 'universes.details.perfadvisor', 'hidden') && (
+          <Tab.Pane
+            eventKey={'perfadvisor'}
+            tabtitle="Performance Advisor"
+            key="perfadvisor-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfadvisor')}
+          >
+            <PerfAdvisor />
           </Tab.Pane>
         ),
 
@@ -692,7 +703,7 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
 
-                      {!isReadOnlyUniverse && !universePaused && !isProviderK8S && (
+                      {!isReadOnlyUniverse && !universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           to={`/universes/${uuid}/edit/async`}

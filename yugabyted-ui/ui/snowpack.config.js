@@ -2,6 +2,9 @@ const packageJson = require('./package.json');
 const proxy = require('http2-proxy');
 
 module.exports = {
+  buildOptions: {
+    out: "ui"
+  },
   mount: {
     public: { url: '/', static: true },
     src: { url: '/dist' }
@@ -22,7 +25,7 @@ module.exports = {
       dest: (req, res) => {
         return proxy.web(req, res, {
           hostname: 'localhost',
-          port: 7002,
+          port: 15433,
         })
       }
     },

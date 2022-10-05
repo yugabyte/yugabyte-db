@@ -226,7 +226,7 @@ if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
 endif()
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
-target_link_libraries(rocksdb_test_util gmock rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil)
 
 add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
 target_link_libraries(db_bench rocksdb)

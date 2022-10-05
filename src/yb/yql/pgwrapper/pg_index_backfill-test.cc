@@ -33,7 +33,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -103,7 +102,7 @@ Result<int> TotalBackfillRpcMetric(ExternalMiniCluster* cluster, const char* typ
   int total_rpc_calls = 0;
   constexpr auto metric_name = "handler_latency_yb_tserver_TabletServerAdminService_BackfillIndex";
   for (auto ts : cluster->tserver_daemons()) {
-    auto val = VERIFY_RESULT(ts->GetInt64Metric("server", "yb.tabletserver", metric_name, type));
+    auto val = VERIFY_RESULT(ts->GetMetric<int64>("server", "yb.tabletserver", metric_name, type));
     total_rpc_calls += val;
     VLOG(1) << ts->bind_host() << " for " << type << " returned " << val;
   }
@@ -632,7 +631,7 @@ class PgIndexBackfillTestSimultaneously : public PgIndexBackfillTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=yb_index_state_flags_update_delay=$0",
+        Format("--ysql_yb_index_state_flags_update_delay=$0",
                kIndexStateFlagsUpdateDelay.ToMilliseconds()));
   }
  protected:
@@ -927,7 +926,7 @@ class PgIndexBackfillSnapshotTooOld : public PgIndexBackfillTest {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=10000");
     options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_index_state_flags_update_delay=0");
+        "--ysql_yb_index_state_flags_update_delay=0");
     options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3");
   }
 };
@@ -1003,7 +1002,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         "--TEST_slowdown_backfill_alter_table_rpcs_ms=$0",
         kBackfillAlterTableDelay.ToMilliseconds()));
     options->extra_tserver_flags.push_back(Format(
-        "--ysql_pg_conf_csv=yb_index_state_flags_update_delay=$0",
+        "--ysql_yb_index_state_flags_update_delay=$0",
         kIndexStateFlagsUpdateDelay.ToMilliseconds()));
     options->extra_tserver_flags.push_back(Format(
         "--TEST_slowdown_backfill_by_ms=$0",
@@ -1048,8 +1047,8 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         },
         kCreateIndexStartupGracePeriod,
         "Wait for pg_index indislive=true",
-        MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-        test_util::kDefaultWaitDelayMultiplier,
+        MonoDelta::FromMilliseconds(kDefaultInitialWaitMs),
+        kDefaultWaitDelayMultiplier,
         kMaxDelay));
 
     LOG(INFO) << "Waiting for pg_index indisready to be true";
@@ -1061,7 +1060,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
         kIndexStateFlagsUpdateDelay + kIndexStateFlagsUpdateGracePeriod,
         "Wait for pg_index indisready=true",
         kIndexStateFlagsUpdateDelay - kMaxDelay /* initial_delay */,
-        test_util::kDefaultWaitDelayMultiplier,
+        kDefaultWaitDelayMultiplier,
         kMaxDelay));
 
     LOG(INFO) << "Waiting till (approx) the end of the delay after committing indisready true";

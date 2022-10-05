@@ -59,7 +59,7 @@ public class AuditTest extends FakeDBApplication {
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user, "/test/api/call", "PUT", null, null, null, null, taskUUID);
+    return Audit.create(user, "/test/api/call", "PUT", null, null, null, null, taskUUID, null);
   }
 
   @Test
@@ -204,8 +204,9 @@ public class AuditTest extends FakeDBApplication {
     Audit.TargetType target = Audit.TargetType.Universe;
     String targetID = "Test TargetID";
     Audit.ActionType action = Audit.ActionType.Create;
+    ObjectNode testAdditionalDetails = Json.newObject().put("fizz", "buzz").put("123", "321");
     auditService.createAuditEntry(
-        context, request, target, targetID, action, testPayload, taskUUID);
+        context, request, target, targetID, action, testPayload, taskUUID, testAdditionalDetails);
     List<Audit> entries = Audit.getAll(customer.uuid);
     assertEquals(entries.size(), 1);
     assertEquals(entries.get(0).getUserUUID(), user.uuid);
@@ -217,6 +218,7 @@ public class AuditTest extends FakeDBApplication {
     assertEquals(entries.get(0).getAction(), action);
     assertEquals(entries.get(0).getTaskUUID(), taskUUID);
     assertEquals(entries.get(0).getPayload(), testPayload);
+    assertEquals(entries.get(0).getAdditionalDetails(), testAdditionalDetails);
     assertNotNull(entries.get(0).getTimestamp());
   }
 

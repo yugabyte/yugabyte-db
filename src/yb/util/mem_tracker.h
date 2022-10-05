@@ -81,6 +81,13 @@ typedef std::function<void()> UpdateMaxMemoryFunctor;
 typedef std::function<void()> PollChildrenConsumptionFunctors;
 
 struct SoftLimitExceededResult {
+  static SoftLimitExceededResult NotExceeded() {
+    return SoftLimitExceededResult {
+      .tracker_path = "", .exceeded = false, .current_capacity_pct = 0
+    };
+  }
+
+  std::string tracker_path;
   bool exceeded;
   double current_capacity_pct;
 };
@@ -89,7 +96,7 @@ struct SoftLimitExceededResult {
 // arranged into a tree structure such that the consumption tracked by a
 // MemTracker is also tracked by its ancestors.
 //
-// The MemTracker hierarchy is rooted in a single static MemTracker whose limi
+// The MemTracker hierarchy is rooted in a single static MemTracker whose limit
 // is set via gflag. The root MemTracker always exists, and it is the common
 // ancestor to all MemTrackers. All operations that discover MemTrackers begin
 // at the root and work their way down the tree, while operations that deal
@@ -387,11 +394,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     poll_children_consumption_functors_ = std::move(poll_children_consumption_functors);
   }
 
-  // Assign the functor to update PG's global memory consumption.
-  void AssignUpdateMaxMemFunctor(void (*func)()) {
-      update_max_mem_functor_ = func;
-  }
-
  private:
   bool CheckLimitExceeded() const {
     return limit_ >= 0 && limit_ < consumption();
@@ -434,7 +436,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const int64_t soft_limit_;
   const std::string id_;
   const ConsumptionFunctor consumption_functor_;
-  UpdateMaxMemoryFunctor update_max_mem_functor_;
 
   PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;

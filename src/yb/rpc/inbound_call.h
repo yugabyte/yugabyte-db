@@ -53,6 +53,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/locks.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
@@ -251,6 +252,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   scoped_refptr<Counter> rpc_method_response_bytes_;
   scoped_refptr<Histogram> rpc_method_handler_latency_;
+
+  bool cleared_ = false;
+  mutable simple_spinlock mutex_;
 
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.

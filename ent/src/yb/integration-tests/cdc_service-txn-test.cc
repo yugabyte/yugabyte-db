@@ -35,6 +35,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 
 #include "yb/util/metrics.h"
@@ -50,13 +51,11 @@ using client::TransactionTestBase;
 using client::WriteOpType;
 using rpc::RpcController;
 
-class CDCServiceTxnTest : public TransactionTestBase<MiniCluster>,
-                          public testing::WithParamInterface<bool /* enable_intents */> {
+class CDCServiceTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     mini_cluster_opt_.num_masters = 1;
     mini_cluster_opt_.num_tablet_servers = 1;
-    SetAtomicFlag(GetParam(), &FLAGS_cdc_enable_replicate_intents);
     create_table_ = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     SetNumTablets(1);
@@ -68,10 +67,32 @@ class CDCServiceTxnTest : public TransactionTestBase<MiniCluster>,
         &client_->proxy_cache(), HostPort::FromBoundEndpoint(mini_server->bound_rpc_addr()));
   }
 
+  Status GetChangesInitialSchema(GetChangesRequestPB const& change_req,
+                                 CDCCheckpointPB* mutable_checkpoint);
+
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
 };
 
-INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTest, ::testing::Bool());
+Status CDCServiceTxnTest::GetChangesInitialSchema(GetChangesRequestPB const& req_in,
+                                                  CDCCheckpointPB* mutable_checkpoint) {
+  GetChangesRequestPB change_req(req_in);
+  GetChangesResponsePB change_resp;
+  change_req.set_max_records(1);
+
+  // Consume the META_OP that has the original Schema.
+  {
+    RpcController rpc;
+    SCOPED_TRACE(change_req.DebugString());
+    RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+    SCHECK(!change_resp.has_error(), IllegalState,
+           Format("Response Error: $0", change_resp.error().DebugString()));
+    SCHECK_EQ(change_resp.records_size(), 1, IllegalState, "Expected only 1 record");
+    SCHECK_EQ(change_resp.records(0).operation(), CDCRecordPB::CHANGE_METADATA,
+              IllegalState, "Expected the CHANGE_METADATA related to the initial schema");
+    mutable_checkpoint->CopyFrom(change_resp.checkpoint());
+  }
+  return Status::OK();
+}
 
 void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_t expected_value) {
   ASSERT_EQ(changes.size(), 1);
@@ -110,7 +131,7 @@ void CheckRegularRecord(const CDCRecordPB& record, int expected_value) {
   ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
 }
 
-TEST_P(CDCServiceTxnTest, TestGetChanges) {
+TEST_F(CDCServiceTxnTest, TestGetChanges) {
   // Consider the following writes:
   // TO: WRITE K0
   // T1: WRITE K1 (TXN1)
@@ -119,7 +140,7 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
   // T4: APPLYING TXN2
   // T5: APPLYING TXN1
   // T6: WRITE K4
-  bool replicate_intents = GetParam();
+  bool replicate_intents = true;
   auto session = CreateSession();
   ASSERT_RESULT(WriteRow(session, 10000 /* key */, 10000 /* value */, WriteOpType::INSERT,
                          Flush::kTrue));
@@ -169,8 +190,8 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    // Expect total 7 records: 5 WRITE_OP records and 2 UPDATE_TRANSACTION_OP records.
-    ASSERT_EQ(change_resp.records_size(), 7);
+    // Expect total 8 records: 1 META OP, 5 WRITE_OP, and 2 UPDATE_TRANSACTION_OP records.
+    ASSERT_EQ(change_resp.records_size(), 8);
 
     struct Record {
       int32_t value; // 0 if apply record.
@@ -204,7 +225,7 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
   }
 }
 
-TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
+TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // If GetChanges is called in the middle of a transaction, ensure that transaction is not
   // incorrectly considered as aborted if we can't find the transaction commit record.
   // A subsequent call to GetChanges after the transaction is committed should get the
@@ -213,7 +234,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   static const int32_t kNumIntentsToWrite = 3;
   static const int32_t kStartKey = 10000;
   // Get tablet ID.
-  bool replicate_intents = GetParam();
+  bool replicate_intents = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
@@ -223,6 +244,14 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   CDCStreamId stream_id;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
 
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+  change_req.set_stream_id(stream_id);
+  change_req.set_tablet_id(tablets.Get(0).tablet_id());
+
+  // Consume the META_OP that has the initial table Schema.
+  ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
+
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
   ASSERT_RESULT(WriteRow(session, kStartKey /* key */, kStartKey /* value */, WriteOpType::INSERT,
@@ -231,14 +260,6 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
                          WriteOpType::INSERT, Flush::kTrue));
   ASSERT_RESULT(WriteRow(session, kStartKey + 2 /* key */, kStartKey + 2 /* value */,
                          WriteOpType::INSERT, Flush::kTrue));
-
-  GetChangesRequestPB change_req;
-  GetChangesResponsePB change_resp;
-
-  change_req.set_stream_id(stream_id);
-  change_req.set_tablet_id(tablets.Get(0).tablet_id());
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   // Get CDC changes.
   {
@@ -286,14 +307,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   }
 }
 
-// Only test 'enable_replicate_intents = true'.
-class CDCServiceTxnTestEnableReplicateIntents : public CDCServiceTxnTest {
-};
-
-INSTANTIATE_TEST_CASE_P(EnableIntentReplication, CDCServiceTxnTestEnableReplicateIntents,
-                        ::testing::Values(true /* enable_replicate_intents */));
-
-TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
+TEST_F(CDCServiceTxnTest, MetricsTest) {
   static const int32_t entry_to_add = 100;
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);
@@ -329,7 +343,8 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    ASSERT_EQ(change_resp.records_size(), 2);
+    // 1 META_OP, 1 TXN, 1 WRITE
+    ASSERT_EQ(change_resp.records_size(), 3);
   }
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -341,7 +356,7 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
     // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be
     // greater than 0.
-    return lag == 0;
+    return lag <= 0;
   }, MonoDelta::FromSeconds(10), "Wait for Sent Lag == 0"));
 
 

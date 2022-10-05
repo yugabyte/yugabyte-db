@@ -10,6 +10,188 @@ RESET client_min_messages;
 CREATE USER regress_alter_table_user1;
 
 --
+-- add attribute
+--
+
+CREATE TABLE attmp (initial int4);
+
+COMMENT ON TABLE attmp_wrong IS 'table comment';
+COMMENT ON TABLE attmp IS 'table comment';
+COMMENT ON TABLE attmp IS NULL;
+
+ALTER TABLE attmp ADD COLUMN xmin integer; -- fails
+
+ALTER TABLE attmp ADD COLUMN a int4 default 3;
+
+ALTER TABLE attmp ADD COLUMN b name;
+
+ALTER TABLE attmp ADD COLUMN c text;
+
+ALTER TABLE attmp ADD COLUMN d float8;
+
+ALTER TABLE attmp ADD COLUMN e float4;
+
+ALTER TABLE attmp ADD COLUMN f int2;
+
+ALTER TABLE attmp ADD COLUMN g polygon;
+
+ALTER TABLE attmp ADD COLUMN h abstime;
+
+ALTER TABLE attmp ADD COLUMN i char;
+
+ALTER TABLE attmp ADD COLUMN j abstime[];
+
+ALTER TABLE attmp ADD COLUMN k int4;
+
+ALTER TABLE attmp ADD COLUMN l tid;
+
+ALTER TABLE attmp ADD COLUMN m xid;
+
+ALTER TABLE attmp ADD COLUMN n oidvector;
+
+--ALTER TABLE attmp ADD COLUMN o lock;
+ALTER TABLE attmp ADD COLUMN p smgr;
+
+ALTER TABLE attmp ADD COLUMN q point;
+
+ALTER TABLE attmp ADD COLUMN r lseg;
+
+ALTER TABLE attmp ADD COLUMN s path;
+
+ALTER TABLE attmp ADD COLUMN t box;
+
+ALTER TABLE attmp ADD COLUMN u tinterval;
+
+ALTER TABLE attmp ADD COLUMN v timestamp;
+
+ALTER TABLE attmp ADD COLUMN w interval;
+
+ALTER TABLE attmp ADD COLUMN x float8[];
+
+ALTER TABLE attmp ADD COLUMN y float4[];
+
+ALTER TABLE attmp ADD COLUMN z int2[];
+
+-- This is the original query. This should be uncommented after we support abstime type (col h) and
+-- tinterval type (col u)
+-- INSERT INTO attmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
+-- 	v, w, x, y, z)
+--    VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+--         'Mon May  1 00:30:30 1995', 'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+-- 	314159, '(1,1)', '512',
+-- 	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+-- 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
+-- 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+
+INSERT INTO attmp (a, b, c, d, e, f, g, i, j, k, l, m, n, p, q, r, s, t,
+	v, w, x, y, z)
+   VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+        'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+	314159, '(1,1)', '512',
+	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)',
+	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+SELECT * FROM attmp;
+
+DROP TABLE attmp;
+
+-- the wolf bug - schema mods caused inconsistent row descriptors
+CREATE TABLE attmp (
+	initial 	int4
+);
+
+ALTER TABLE attmp ADD COLUMN a int4;
+
+ALTER TABLE attmp ADD COLUMN b name;
+
+ALTER TABLE attmp ADD COLUMN c text;
+
+ALTER TABLE attmp ADD COLUMN d float8;
+
+ALTER TABLE attmp ADD COLUMN e float4;
+
+ALTER TABLE attmp ADD COLUMN f int2;
+
+ALTER TABLE attmp ADD COLUMN g polygon;
+
+ALTER TABLE attmp ADD COLUMN h abstime;
+
+ALTER TABLE attmp ADD COLUMN i char;
+
+ALTER TABLE attmp ADD COLUMN j abstime[];
+
+ALTER TABLE attmp ADD COLUMN k int4;
+
+ALTER TABLE attmp ADD COLUMN l tid;
+
+ALTER TABLE attmp ADD COLUMN m xid;
+
+ALTER TABLE attmp ADD COLUMN n oidvector;
+
+--ALTER TABLE attmp ADD COLUMN o lock;
+ALTER TABLE attmp ADD COLUMN p smgr;
+
+ALTER TABLE attmp ADD COLUMN q point;
+
+ALTER TABLE attmp ADD COLUMN r lseg;
+
+ALTER TABLE attmp ADD COLUMN s path;
+
+ALTER TABLE attmp ADD COLUMN t box;
+
+ALTER TABLE attmp ADD COLUMN u tinterval;
+
+ALTER TABLE attmp ADD COLUMN v timestamp;
+
+ALTER TABLE attmp ADD COLUMN w interval;
+
+ALTER TABLE attmp ADD COLUMN x float8[];
+
+ALTER TABLE attmp ADD COLUMN y float4[];
+
+ALTER TABLE attmp ADD COLUMN z int2[];
+
+-- This is the original query. This should be uncommented after we support abstime type (col h) and
+-- tinterval type (col u)
+-- INSERT INTO attmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
+-- 	v, w, x, y, z)
+--    VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+--         'Mon May  1 00:30:30 1995', 'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+-- 	314159, '(1,1)', '512',
+-- 	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+-- 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
+-- 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+
+INSERT INTO attmp (a, b, c, d, e, f, g, i, j, k, l, m, n, p, q, r, s, t,
+	v, w, x, y, z)
+   VALUES (4, 'name', 'text', 4.1, 4.1, 2, '(4.1,4.1,3.1,3.1)',
+        'c', '{Mon May  1 00:30:30 1995, Monday Aug 24 14:43:07 1992, epoch}',
+	314159, '(1,1)', '512',
+	'1 2 3 4 5 6 7 8', 'magnetic disk', '(1.1,1.1)', '(4.1,4.1,3.1,3.1)',
+	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)',
+	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
+
+SELECT * FROM attmp;
+
+CREATE INDEX attmp_idx ON attmp (a, (d + e), b);
+
+ALTER INDEX attmp_idx ALTER COLUMN 0 SET STATISTICS 1000;
+
+ALTER INDEX attmp_idx ALTER COLUMN 1 SET STATISTICS 1000;
+
+ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS 1000;
+
+\d+ attmp_idx
+
+ALTER INDEX attmp_idx ALTER COLUMN 3 SET STATISTICS 1000;
+
+ALTER INDEX attmp_idx ALTER COLUMN 4 SET STATISTICS 1000;
+
+ALTER INDEX attmp_idx ALTER COLUMN 2 SET STATISTICS -1;
+
+DROP TABLE attmp;
+
+--
 -- rename - check on both non-temp and temp tables
 --
 CREATE TABLE attmp (regtable int);
@@ -83,8 +265,7 @@ select case when c.relname like 'pg_toast%' then 'pg_toast' else c.relname end, 
 from pg_locks l join pg_class c on l.relation = c.oid
 where virtualtransaction = (
         select virtualtransaction
-        from pg_locks
-        where transactionid = txid_current()::integer)
+        from pg_locks)
 and locktype = 'relation'
 and relnamespace != (select oid from pg_namespace where nspname = 'pg_catalog')
 and c.relname != 'my_locks'
@@ -142,6 +323,22 @@ rollback;
 -- rollback;
 
 --
+-- alter object set schema
+--
+
+create schema alter1;
+create schema alter2;
+
+create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+create text search configuration alter1.cfg(parser = alter1.prs);
+
+alter text search parser alter1.prs set schema alter2;
+alter text search configuration alter1.cfg set schema alter2;
+
+-- clean up
+drop schema alter2 cascade;
+
+--
 -- typed tables: OF / NOT OF
 --
 
@@ -170,4 +367,3 @@ CREATE TYPE tt_t1 AS (x int, y numeric(8,2));
 ALTER TABLE tt7 OF tt_t1;			-- reassign an already-typed table
 ALTER TABLE tt7 NOT OF;
 \d tt7
-

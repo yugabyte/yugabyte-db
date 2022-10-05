@@ -17,16 +17,16 @@ type: docs
 
 * First, clone [the YugabyteDB GitHub repo](https://github.com/yugabyte/yugabyte-db).
 
-```bash
-git clone https://github.com/yugabyte/yugabyte-db.git
-```
+    ```bash
+    git clone https://github.com/yugabyte/yugabyte-db.git
+    ```
 
 * Next, [build the source code](../build-from-src).
 * Optionally, you may want to [run the unit tests](../run-unit-tests).
 
 ## Step 2. Start a local cluster
 
-Having built the source, you can [start a local cluster](../../../quick-start/create-local-cluster).
+Having built the source, you can [start a local cluster](../../../quick-start/).
 
 ## Step 3. Make the change
 

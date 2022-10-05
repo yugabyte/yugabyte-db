@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX common)
-set(YB_PCH_DEP_LIBS gmock gutil opid_proto yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil opid_proto yb_test_util yb_util)
 
 YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
@@ -68,6 +68,7 @@ ADD_YB_LIBRARY(yb_common_base
 set(COMMON_SRCS
   clock.cc
   common_flags.cc
+  common_types_util.cc
   column_id.cc
   consistent_read_point.cc
   entity_ids.cc

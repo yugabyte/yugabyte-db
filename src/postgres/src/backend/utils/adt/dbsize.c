@@ -31,6 +31,10 @@
 #include "utils/relmapper.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
+
 /* Divide by two and round away from zero */
 #define half_rounded(x)   (((x) + ((x) < 0 ? -1 : 1)) / 2)
 
@@ -391,6 +395,33 @@ calculate_table_size(Relation rel)
 	int64		size = 0;
 	ForkNumber	forkNum;
 
+	if (IsYBRelation(rel))
+	{
+		/* Primary index relation doesn't have dedicated table in DocDB */
+		if (rel->rd_index && rel->rd_index->indisprimary)
+			return -1;
+
+		Oid relOid = YbGetStorageRelid(rel);
+
+		/* Colcoated tables do not have size info */
+		if (YbGetTableProperties(rel)->is_colocated)
+			return -1;
+
+		int32 num_missing_tablets = 0;
+
+		HandleYBStatus(YBCPgGetTableDiskSize(relOid, MyDatabaseId,
+						(int64_t *)&size, &num_missing_tablets));
+		if (num_missing_tablets > 0)
+		{
+			elog(NOTICE, "%d tablets of relation %s did not provide disk size "
+					"estimates, and were not added to the displayed totals.",
+					num_missing_tablets,
+					RelationGetRelationName(rel));
+		}
+
+		return size;
+	}
+
 	/*
 	 * heap size, including FSM and VM
 	 */
@@ -461,7 +492,13 @@ pg_table_size(PG_FUNCTION_ARGS)
 
 	size = calculate_table_size(rel);
 
+	bool is_yb_relation = IsYBRelation(rel);
+
 	relation_close(rel, AccessShareLock);
+
+	/* Return an empty line for relations without size info */
+	if (is_yb_relation && size < 0)
+		PG_RETURN_NULL();
 
 	PG_RETURN_INT64(size);
 }
@@ -500,6 +537,10 @@ calculate_total_relation_size(Relation rel)
 	 */
 	size = calculate_table_size(rel);
 
+	/* Return -1 size for tables without size info and handle in caller */
+	if (IsYBRelation(rel) && size < 0)
+		return -1;
+
 	/*
 	 * Add size of all attached indexes as well
 	 */
@@ -522,7 +563,13 @@ pg_total_relation_size(PG_FUNCTION_ARGS)
 
 	size = calculate_total_relation_size(rel);
 
+	bool is_yb_relation = IsYBRelation(rel);
+
 	relation_close(rel, AccessShareLock);
+
+	if (is_yb_relation && size < 0) {
+		PG_RETURN_NULL();
+	}
 
 	PG_RETURN_INT64(size);
 }

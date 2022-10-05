@@ -9,7 +9,7 @@
 {{ end }}
 
 {{ if eq $versionDir "" }}
-  {{ $versionDir = "preview" }}
+  {{ $versionDir = .Site.Params.yb.preview_version_slug }}
 {{ end }}
 
 {{ $leftNavName := $versionDir }}
@@ -43,7 +43,7 @@
       <ul class="navbar-nav mt-2 mt-lg-0">
         {{ range .Site.Menus.top_nav }}
           <li class="nav-item mr-4 mb-2 mb-lg-0">
-            <a class="nav-link" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
+            <a class="nav-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}" href="{{ .URL }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}><span>{{ .Name }}</span>{{ .Post }}</a>
           </li>
         {{ end }}
       </ul>
@@ -78,7 +78,7 @@
         {{ end }}
 
         <li class="header-link{{- if eq $activeMenu .URL }} active{{- end }}{{ if .HasChildren }} dropdown{{- end }}">
-          <a class="hover-label" {{- if ne $anchorLink "" }}href="{{ $anchorLink }}"{{- end }} title="{{ .Name }}">
+          <a class="hover-label"{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
             {{ if .Pre }}
               {{ $menuIcon := printf "icons/nav-bar/%s.svg" .Pre }}
               {{ with resources.Get $menuIcon }}
@@ -108,25 +108,23 @@
   <ul class="header-submenu">
     {{ range $childNav }}
       {{ $anchorLink := "" }}
-        {{ if eq .URL "/" }}
-          {{ $anchorLink = "/" }}
+      {{ if eq .URL "/" }}
+        {{ $anchorLink = "/" }}
+      {{ else }}
+        {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+          {{ $anchorLink = .URL }}
         {{ else }}
-          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
-            {{ $anchorLink = .URL }}
-          {{ else }}
-            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
-          {{ end }}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
         {{ end }}
-
-      {{ if ne $anchorLink "" }}
-        <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
-          <a href="{{ $anchorLink }}" title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
-
-          {{ if .HasChildren }}
-            {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir ) }}
-          {{ end }}
-        </li>
       {{ end }}
+
+      <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
+        <a{{ if ne $anchorLink "" }} href="{{ $anchorLink }}"{{ else }} role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
+
+        {{ if .HasChildren }}
+          {{ template "child-nav-section" (dict "childNav" .Children "versionDir" $versionDir ) }}
+        {{ end }}
+      </li>
     {{ end }}
   </ul>
 {{ end }}

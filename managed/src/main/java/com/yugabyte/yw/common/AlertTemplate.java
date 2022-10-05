@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ import lombok.Getter;
 import lombok.Value;
 
 @Getter
+@ApiModel
 public enum AlertTemplate {
 
   // @formatter:off
@@ -117,6 +119,19 @@ public enum AlertTemplate {
       "Failed to perform health check notification for universe '{{ $labels.source_name }}'"
           + " - check Health notification settings and YB Platform logs for details"
           + " or contact YB support team",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  UNIVERSE_METRIC_COLLECTION_FAILURE(
+      "Metric Collection Failure",
+      "Metric Collection failed for universe",
+      "last_over_time(ybp_universe_metric_collection_status"
+          + "{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Failed to collect metric for universe '{{ $labels.source_name }}'"
+          + " - check YB Platform logs for details or contact YB support team",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
@@ -276,9 +291,11 @@ public enum AlertTemplate {
       "DB node disk usage",
       "Node Disk usage percentage is above threshold",
       "count by (node_prefix) (100 - (sum without (saved_name) "
-          + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/d[0-9]+\","
+          + " node_prefix=\"__nodePrefix__\"}) "
           + "/ sum without (saved_name) "
-          + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/d[0-9]+\","
+          + " node_prefix=\"__nodePrefix__\"}) "
           + "* 100) {{ query_condition }} {{ query_threshold }})",
       "Node disk usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",

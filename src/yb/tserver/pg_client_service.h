@@ -24,6 +24,9 @@
 #include "yb/tserver/pg_client.service.h"
 
 namespace yb {
+
+class XClusterSafeTimeMap;
+
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
@@ -42,6 +45,7 @@ namespace tserver {
     (FinishTransaction) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
+    (GetTableDiskSize) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
@@ -65,7 +69,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       const scoped_refptr<MetricEntity>& entity,
-      rpc::Scheduler* scheduler);
+      rpc::Scheduler* scheduler,
+      const XClusterSafeTimeMap* xcluster_safe_time_map);
 
   ~PgClientServiceImpl();
 

@@ -27,7 +27,7 @@ The relevant savepoint commands are:
 
 * [`RELEASE SAVEPOINT <name>`](../../../../api/ysql/the-sql-language/statements/savepoint_release/) forgets about a savepoint. Note that you can use the same savepoint name more than once, so if there was an earlier savepoint with the same name, the name will now refer to that earlier savepoint. (In other words, the new savepoint gets popped off the stack of savepoints for that name.)
 
-* [`ROLLBACK TO SAVEPOINT <name>`](../../../../api/ysql/the-sql-language/statements//savepoint_rollback) rolls back to the database state as of the given savepoint, discarding all changes created after that savepoint, including the creation of new savepoints. Preserves the referenced savepoint, so that after one rollback it can be rolled back to again.
+* [`ROLLBACK TO SAVEPOINT <name>`](../../../../api/ysql/the-sql-language/statements/savepoint_rollback) rolls back to the database state as of the given savepoint, discarding all changes created after that savepoint, including the creation of new savepoints. Preserves the referenced savepoint, so that after one rollback it can be rolled back to again.
 
 ## Example
 

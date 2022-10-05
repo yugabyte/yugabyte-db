@@ -25,6 +25,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
@@ -164,12 +165,14 @@ class PgClientServiceImpl::Impl {
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
-      rpc::Scheduler* scheduler)
+      rpc::Scheduler* scheduler,
+      const XClusterSafeTimeMap* xcluster_safe_time_map)
       : client_future_(client_future),
         clock_(clock),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         table_cache_(client_future),
-        check_expired_sessions_(scheduler) {
+        check_expired_sessions_(scheduler),
+        xcluster_safe_time_map_(xcluster_safe_time_map) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
 
@@ -185,7 +188,8 @@ class PgClientServiceImpl::Impl {
 
     auto session_id = ++session_serial_no_;
     auto session = std::make_shared<LockablePgClientSession>(
-            &client(), clock_, transaction_pool_provider_, &table_cache_, session_id);
+        session_id, &client(), clock_, transaction_pool_provider_, &table_cache_,
+        xcluster_safe_time_map_);
     resp->set_session_id(session_id);
 
     std::lock_guard<rw_spinlock> lock(mutex_);
@@ -331,6 +335,20 @@ class PgClientServiceImpl::Impl {
     return client().ValidateReplicationInfo(replication_info);
   }
 
+  Status GetTableDiskSize(
+      const PgGetTableDiskSizeRequestPB& req, PgGetTableDiskSizeResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto result =
+        client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    if (!result.ok()) {
+      StatusToPB(result.status(), resp->mutable_status());
+    } else {
+      resp->set_size(result->table_size);
+      resp->set_num_missing_tablets(result->num_missing_tablets);
+    }
+    return Status::OK();
+  }
+
   Status CheckIfPitrActive(
       const PgCheckIfPitrActiveRequestPB& req, PgCheckIfPitrActiveResponsePB* resp,
       rpc::RpcContext* context) {
@@ -459,6 +477,8 @@ class PgClientServiceImpl::Impl {
   std::atomic<int64_t> session_serial_no_{0};
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
+
+  const XClusterSafeTimeMap* xcluster_safe_time_map_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -466,9 +486,12 @@ PgClientServiceImpl::PgClientServiceImpl(
     const scoped_refptr<ClockBase>& clock,
     TransactionPoolProvider transaction_pool_provider,
     const scoped_refptr<MetricEntity>& entity,
-    rpc::Scheduler* scheduler)
+    rpc::Scheduler* scheduler,
+    const XClusterSafeTimeMap* xcluster_safe_time_map)
     : PgClientServiceIf(entity),
-      impl_(new Impl(client_future, clock, std::move(transaction_pool_provider), scheduler)) {}
+      impl_(new Impl(
+          client_future, clock, std::move(transaction_pool_provider), scheduler,
+          xcluster_safe_time_map)) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() {}
 

@@ -51,6 +51,18 @@ class CQLStatement : public ql::Statement {
   CQLStatementListPos pos() const { return pos_; }
   void set_pos(CQLStatementListPos pos) const { pos_ = pos; }
 
+  // Get schema version this statement used for preparation.
+  Result<SchemaVersion> GetYBTableSchemaVersion() const {
+    const ql::ParseTree& parser_tree = VERIFY_RESULT(GetParseTree());
+    return parser_tree.GetYBTableSchemaVersion();
+  }
+
+  // Check if the used schema version is up to date with the Master.
+  Result<bool> IsYBTableAltered(ql::QLEnv* ql_env) const {
+    const ql::ParseTree& parser_tree = VERIFY_RESULT(GetParseTree());
+    return parser_tree.IsYBTableAltered(ql_env);
+  }
+
   // Return the query id of a statement.
   static ql::CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& query);
 

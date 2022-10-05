@@ -14,19 +14,17 @@ menu:
     weight: 1135
 type: indexpage
 ---
-{{< note title="Note" >}}
-
-* YugabyteDB's synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
-* YugabyteDB asynchronous replication architecture is inspired by RDBMS databases such as Oracle, MySQL and PostgreSQL.
-
-{{</note >}}
 
 This section describes how replication works in DocDB. The data in a DocDB table is split into tablets. By default, each tablet is synchronously replicated using the Raft algorithm across various nodes or fault domains (such as availability zones/racks/regions/cloud providers).
 
-There are other advanced replication features in YugabyteDB. These include two forms of asynchronous replication of data:
-* **xCluster replication** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
+YugabyteDB also provides other advanced replication features. These include two forms of asynchronous replication of data:
+
+* **xCluster** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
 * **Read replicas** The in-cluster asynchronous replicas are called read replicas.
 
+The YugabyteDB synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
+
+The YugabyteDB xCluster replication architecture is inspired by RDBMS databases such as Oracle, MySQL, and PostgreSQL.
 
 <div class="row">
 
@@ -34,7 +32,7 @@ There are other advanced replication features in YugabyteDB. These include two f
     <a class="section-link icon-offset" href="replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
-        <div class="title">Default replication</div>
+        <div class="title">Default synchronous replication</div>
       </div>
       <div class="body">
         In-cluster synchronous replication with Raft consensus.
@@ -46,7 +44,7 @@ There are other advanced replication features in YugabyteDB. These include two f
     <a class="section-link icon-offset" href="async-replication/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
-        <div class="title">xCluster replication</div>
+        <div class="title">xCluster</div>
       </div>
       <div class="body">
         Cross-cluster asynchronous replication of data.

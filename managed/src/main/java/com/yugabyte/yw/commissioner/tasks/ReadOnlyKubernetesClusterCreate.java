@@ -37,6 +37,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
     try {
+      verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       preTaskActions(universe);
 
@@ -70,7 +71,11 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       KubernetesPlacement primaryPlacement =
           new KubernetesPlacement(primaryPI, /*isReadOnlyCluster */ false);
 
-      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       String masterAddresses =
           PlacementInfoUtil.computeMasterAddresses(
@@ -79,7 +84,8 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               taskParams().nodePrefix,
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
-              newNamingStyle);
+              taskParams().useNewHelmNamingStyle,
+              provider.getK8sPodAddrTemplate());
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       createPodsTask(placement, masterAddresses, true);

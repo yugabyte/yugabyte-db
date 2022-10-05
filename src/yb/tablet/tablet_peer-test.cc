@@ -66,6 +66,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -81,6 +82,7 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_group_replicate_batch_size);
 DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_bool(quick_leader_election_on_create);
 
@@ -182,7 +184,7 @@ class TabletPeerTest : public YBTabletTest {
                         tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
                         *tablet()->schema(), tablet()->metadata()->schema_version(),
                         table_metric_entity_.get(), tablet_metric_entity_.get(),
-                        log_thread_pool_.get(), log_thread_pool_.get(),
+                        log_thread_pool_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         tablet()->metadata()->cdc_min_replicated_index(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
@@ -465,12 +467,14 @@ class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
  public:
   TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_protobuf_message_total_bytes_limit) = kProtobufSizeLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = kMaxRpcMsgSize;
     // Avoid unnecessary log segments rolling.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = kProtobufSizeLimit * 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = kProtobufSizeLimit * 2;
   }
 
   static constexpr auto kProtobufSizeLimit = 10_MB;
+  static constexpr auto kMaxRpcMsgSize = kProtobufSizeLimit / 2;
 };
 
 TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimitTest) {
@@ -546,6 +550,41 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
       ASSERT_LE(current_batch_size, kProtobufSizeLimit);
     }
   }
+}
+
+TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLimitTest) {
+  // Make sure batch of kNumOps operations is larger than kMaxRpcMsgSize to test limit overflow.
+  constexpr auto kValueSize = kMaxRpcMsgSize * 11 / 10;
+
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  std::string value(kValueSize, 'X');
+
+  WriteRequestPB req;
+  WriteResponsePB resp;
+  std::vector<std::unique_ptr<WriteQuery>> queries;
+  queries.reserve(1);
+  CountDownLatch latch(1);
+
+  auto* const tablet_peer = tablet_peer_.get();
+
+  req.set_tablet_id(tablet()->tablet_id());
+  AddTestRowInsert(1, 1, value, &req);
+  auto query = std::make_unique<WriteQuery>(
+      /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
+      query->set_client_request(req);
+      query->set_callback([&latch, &resp](const Status& status) {
+        if (!status.ok()) {
+        StatusToPB(status, resp.mutable_error()->mutable_status());
+      }
+      latch.CountDown();
+  });
+
+  tablet_peer->WriteAsync(std::move(query));
+  latch.Wait();
+
+  ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.DebugString();
 }
 
 } // namespace tablet

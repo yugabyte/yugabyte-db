@@ -67,7 +67,7 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
         super(AzureCreateInstancesMethod, self).callback(args)
 
     def run_ansible_create(self, args):
-        self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
+        return self.cloud.create_or_update_instance(args, self.extra_vars["ssh_user"])
 
 
 class AzureProvisionInstancesMethod(ProvisionInstancesMethod):

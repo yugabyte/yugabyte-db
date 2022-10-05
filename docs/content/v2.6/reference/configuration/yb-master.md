@@ -176,7 +176,7 @@ Default: `""`
 
 ##### --enable_ysql
 
-Enables the YSQL API when value is `true`. Replaces the deprecated `--start_pgsql_proxy` flag.
+Enables the YSQL API when value is `true`.
 
 Default: `true`
 

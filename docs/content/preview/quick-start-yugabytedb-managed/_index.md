@@ -2,9 +2,11 @@
 title: YugabyteDB Managed quick start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
+body_class: yb-page-style
 aliases:
   - /preview/yugabyte-cloud/cloud-quickstart/
 menu:
@@ -30,25 +32,56 @@ menu:
   </ul>
 </div>
 
-The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free Sandbox cluster.
+The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
-After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed.
+1. [Sign up](http://cloud.yugabyte.com).
+1. [Log in](https://cloud.yugabyte.com/login).
+1. Click **Create a Free cluster**.
 
-The first time you sign in, YugabyteDB Managed provides a welcome experience with a 15 minute **Get Started** tutorial. Follow the steps to learn how to do the following:
+The first time you log in, YugabyteDB Managed provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
-- Create your Sandbox cluster
-- Use YugabyteDB to create a database, load sample data, and run queries
-- Explore a sample application that matches your use case
+- Connect to the database
+- Load sample data and run queries
+- Explore a sample application
 
-If you aren't using the **Get Started** tutorial, use the following instructions to create your first cluster and connect to your database.
+After you complete the tutorial, learn more about managing clusters and your account features using the YugabyteDB Managed documentation.
 
-## Create your Sandbox cluster
+<div class="row cloud-laptop">
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
+        </div>
+        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
+        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
+        </div>
+        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
+        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+## Quick start
+
+If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
+
+### Create your Sandbox cluster
 
 The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
@@ -74,7 +107,7 @@ YugabyteDB Managed bootstraps and provisions the cluster, and configures Yugabyt
 
 When the cluster is ready, the cluster [Overview](../yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
-## Connect to the cluster
+### Connect to the cluster
 
 Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
 
@@ -114,13 +147,13 @@ To connect to your cluster, do the following:
 >
 > For information on other ways to connect to your cluster, refer to [Connect to clusters](../yugabyte-cloud/cloud-connect).
 
-## Explore distributed SQL
+### Explore distributed SQL
 
 When you connect to your cluster using Cloud Shell with the [YSQL API](../api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
 ![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
 
-## Build an application
+### Build an application
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
 
@@ -130,15 +163,15 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/).
+Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
-### Choose your language
+#### Choose your language
 
 {{< tabpane code=false >}}
 
   {{% tab header="Java" lang="java" %}}
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [Yugabyte JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [YugabyteDB JDBC driver](../drivers-orms/java/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Java.
 
 This tutorial requires the following:
 
@@ -200,7 +233,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Java application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/java/cloud-ysql-yb-jdbc/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -271,7 +304,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Go application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -297,16 +330,16 @@ To build and run the application, do the following:
 
     1. Open the `sample-app.py` file.
 
-    2. Set the following configuration parameter constants:
+    1. Set the following configuration parameter constants:
 
         - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number that will be used by the driver (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default database is named `yugabyte`).
         - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
-        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
+        - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql); use `verify-full`.
         - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 
-    3. Save the file.
+    1. Save the file.
 
 1. Install psycopg2 PostgreSQL database adapter.
 
@@ -336,7 +369,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Python application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/python/cloud-ysql-python/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -406,7 +439,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Node.js application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/nodejs/cloud-ysql-node/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -476,7 +509,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/c/cloud-ysql-c/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -549,7 +582,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C++ application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/cpp/cloud-ysql-cpp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -614,7 +647,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic C# application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/csharp/cloud-ysql-csharp/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -688,7 +721,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Ruby application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/ruby/cloud-ysql-ruby/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -749,7 +782,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic Rust application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/rust/cloud-ysql-rust/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -812,7 +845,7 @@ name = John, age = 28, country = Canada, balance = 9800
 
 You have successfully executed a basic PHP application that works with YugabyteDB Managed.
 
-[Explore the application logic](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/#explore-the-application-logic)
+[Explore the application logic](../develop/build-apps/php/cloud-ysql-php/#explore-the-application-logic)
 
   {{% /tab %}}
 
@@ -820,10 +853,12 @@ You have successfully executed a basic PHP application that works with YugabyteD
 
 ## Learn more
 
-[Explore more applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/)
-
-[Drivers and ORMS](../drivers-orms/)
+[YugabyteDB Managed Documentation](../yugabyte-cloud/)
 
 [Deploy clusters in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/)
 
 [Connect to applications in YugabyteDB Managed](../yugabyte-cloud/cloud-connect/connect-applications/)
+
+[Explore more applications](../develop/build-apps/)
+
+[Drivers and ORMS](../drivers-orms/)

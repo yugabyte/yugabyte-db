@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -17,6 +20,8 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -38,6 +43,7 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
 @Entity
+@ApiModel(description = "Alert notification channel")
 public class AlertChannel extends Model {
 
   /** These are the possible types of channels. */
@@ -57,16 +63,19 @@ public class AlertChannel extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Channel UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
   @Size(min = 1, max = 63)
   @Column(columnDefinition = "Text", nullable = false)
+  @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
   @NotNull
   @Column(nullable = false)
   @JsonProperty("customer_uuid")
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
@@ -80,6 +89,7 @@ public class AlertChannel extends Model {
     @JsonSubTypes.Type(value = AlertChannelPagerDutyParams.class, name = "PagerDuty"),
     @JsonSubTypes.Type(value = AlertChannelWebHookParams.class, name = "WebHook")
   })
+  @ApiModelProperty(value = "Channel params", accessMode = READ_WRITE)
   private AlertChannelParams params;
 
   @JsonIgnore

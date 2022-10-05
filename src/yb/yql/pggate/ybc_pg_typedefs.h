@@ -37,9 +37,6 @@
 extern "C" {
 #endif  // __cplusplus
 
-// TODO(neil) Handle to Env. Each Postgres process might need just one ENV, maybe more.
-YB_DEFINE_HANDLE_TYPE(PgEnv)
-
 // Handle to a session. Postgres should create one YBCPgSession per client connection.
 YB_DEFINE_HANDLE_TYPE(PgSession)
 
@@ -373,6 +370,7 @@ typedef struct PgServerDescriptor {
   const char *public_ip;
   bool is_primary;
   uint16_t pg_port;
+  const char *uuid;
 } YBCServerDescriptor;
 
 typedef struct PgColumnInfo {
@@ -385,6 +383,12 @@ typedef struct PgRangeSplitDatum {
   uint64_t datum;
   YBCPgDatumKind datum_kind;
 } YBCPgSplitDatum;
+
+typedef enum PgBoundType {
+  YB_YQL_BOUND_INVALID = 0,
+  YB_YQL_BOUND_VALID,
+  YB_YQL_BOUND_VALID_INCLUSIVE
+} YBCPgBoundType;
 
 #ifdef __cplusplus
 }  // extern "C"

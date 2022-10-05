@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -73,9 +74,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       PlacementInfo activeZones,
       boolean isReadOnlyCluster) {
     String ybSoftwareVersion;
+    Cluster primaryCluster;
     if (isReadOnlyCluster) {
       ybSoftwareVersion = taskParams().getReadOnlyClusters().get(0).userIntent.ybSoftwareVersion;
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      primaryCluster = taskParams().getPrimaryCluster();
       if (primaryCluster == null) {
         primaryCluster =
             Universe.getOrBadRequest(taskParams().universeUUID)
@@ -89,11 +91,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 "Read cluster software version %s is not matching with"
                     + " primary cluster software version %s",
                 ybSoftwareVersion, primaryClusterVersion);
-        log.error(msg);
         throw new IllegalArgumentException(msg);
       }
     } else {
-      ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      primaryCluster = taskParams().getPrimaryCluster();
+      ybSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion;
     }
 
     boolean edit = currPlacement != null;
@@ -132,6 +134,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             .createSubTaskGroup(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+    Map<String, Object> universeOverrides =
+        HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
+    Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
+    if (azsOverrides == null) {
+      azsOverrides = new HashMap<>();
+    }
 
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -172,6 +181,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
+      String azOverridesStr =
+          azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+      Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+
       // This will always be false in the case of a new universe.
       if (activeDeploymentConfigs.containsKey(azUUID)) {
         // Helm Upgrade
@@ -198,6 +211,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 config,
                 masterPartition,
                 tserverPartition,
+                universeOverrides,
+                azOverrides,
                 isReadOnlyCluster));
 
         // When adding masters, the number of tservers will be still the same as before.
@@ -244,6 +259,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 masterAddresses,
                 ybSoftwareVersion,
                 config,
+                universeOverrides,
+                azOverrides,
                 isReadOnlyCluster));
 
         // Add zone to active configs.
@@ -257,6 +274,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(podsWait);
   }
 
+  /*
+  Performs the updates to the helm charts to modify the master addresses as well as
+  update the instance type.
+  */
   public void upgradePodsTask(
       KubernetesPlacement newPlacement,
       String masterAddresses,
@@ -264,10 +285,42 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       ServerType serverType,
       String softwareVersion,
       int waitTime,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
       boolean masterChanged,
       boolean tserverChanged,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
+    upgradePodsTask(
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        waitTime,
+        universeOverridesStr,
+        azsOverrides,
+        masterChanged,
+        tserverChanged,
+        newNamingStyle,
+        isReadOnlyCluster,
+        CommandType.HELM_UPGRADE);
+  }
+
+  public void upgradePodsTask(
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      int waitTime,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean masterChanged,
+      boolean tserverChanged,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -314,6 +367,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
+    Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -343,7 +397,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
 
       Map<String, String> config = newPlacement.configs.get(azUUID);
-
+      String azOverridesStr =
+          azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+      Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
       // Upgrade the master pods individually for each deployment.
       for (int partition = numPods - 1; partition >= 0; partition--) {
         // Possible scenarios:
@@ -378,8 +434,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
+        String podName =
+            getPodName(
+                partition,
+                azCode,
+                serverType,
+                nodePrefix,
+                isMultiAz,
+                newNamingStyle,
+                isReadOnlyCluster);
         createSingleKubernetesExecutorTaskForServerType(
-            CommandType.HELM_UPGRADE,
+            commandType,
             tempPI,
             azCode,
             masterAddresses,
@@ -388,9 +453,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             config,
             masterPartition,
             tserverPartition,
-            isReadOnlyCluster);
-        String podName =
-            getPodName(partition, azCode, serverType, nodePrefix, isMultiAz, newNamingStyle);
+            universeOverrides,
+            azOverrides,
+            isReadOnlyCluster,
+            podName);
+
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
             podName,
@@ -419,9 +486,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       String masterAddresses,
       KubernetesPlacement newPlacement,
-      boolean userIntentChange,
+      boolean instanceTypeChanged,
       boolean isMultiAz,
-      boolean isReadOnlyCluster) {
+      Provider provider,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -460,6 +529,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName(), executor);
     podsWait.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
+    Map<String, Object> universeOverrides =
+        HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
+    Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
+    if (azsOverrides == null) {
+      azsOverrides = new HashMap<>();
+    }
+
     for (Entry<UUID, Map<String, String>> entry : currPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -468,10 +544,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // If the new placement also has the AZ, we need to scale down. But if there
       // was a change in the instance type, the updateRemainingPod itself would have taken care
       // of the deployments' scale down.
-
       boolean keepDeployment = false;
       if (edit) {
-        keepDeployment = newPlacement.configs.containsKey(azUUID) && !userIntentChange;
+        keepDeployment = newPlacement.configs.containsKey(azUUID);
+        if (keepDeployment && instanceTypeChanged) {
+          continue;
+        }
       }
       if (keepDeployment) {
         PlacementInfo tempPI = new PlacementInfo();
@@ -480,6 +558,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             newPlacement.tservers.get(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
             newPlacement.masters.getOrDefault(azUUID, 0);
+
+        String azOverridesStr =
+            azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+        Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+
         helmDeletes.addSubTask(
             createKubernetesExecutorTask(
                 CommandType.HELM_UPGRADE,
@@ -488,6 +571,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 masterAddresses,
                 ybSoftwareVersion,
                 config,
+                universeOverrides,
+                azOverrides,
                 isReadOnlyCluster));
         podsWait.addSubTask(
             createKubernetesCheckPodNumTask(
@@ -515,7 +600,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         // If the namespace is configured at the AZ, we don't delete
         // it, as it is not created by us.
-        if (config.get("KUBENAMESPACE") == null) {
+        // In case of new naming style other AZs also run in the same namespace so skip deleting
+        // namespace.
+        if (config.get("KUBENAMESPACE") == null && !newNamingStyle) {
           // Delete the namespaces of the deployments.
           namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(
@@ -560,10 +647,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       ServerType serverType,
       String nodePrefix,
       boolean isMultiAz,
-      boolean newNamingStyle) {
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
     String helmFullName =
-        PlacementInfoUtil.getHelmFullNameWithSuffix(isMultiAz, nodePrefix, azCode, newNamingStyle);
+        PlacementInfoUtil.getHelmFullNameWithSuffix(
+            isMultiAz, nodePrefix, azCode, newNamingStyle, isReadOnlyCluster);
     return String.format("%s%s-%d", helmFullName, sType, partition);
   }
 
@@ -625,7 +714,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTask(
-        commandType, null, az, null, null, config, isReadOnlyCluster);
+        commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
   // Create the Kubernetes Executor task for the helm deployments. (USED)
@@ -636,6 +725,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String masterAddresses,
       String ybSoftwareVersion,
       Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTaskForServerType(
         commandType,
@@ -647,6 +738,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         config,
         0 /* master partition */,
         0 /* tserver partition */,
+        universeOverrides,
+        azOverrides,
         isReadOnlyCluster);
   }
 
@@ -661,6 +754,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       int masterPartition,
       int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
       boolean isReadOnlyCluster) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -675,12 +770,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+    params.universeOverrides = universeOverrides;
+    params.azOverrides = azOverrides;
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }
@@ -733,7 +828,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null,
         0 /* master partition */,
         0 /* tserver partition */,
-        isReadOnlyCluster);
+        null, /* universeOverrides */
+        null, /* azOverrides */
+        isReadOnlyCluster,
+        null);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
@@ -747,7 +845,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       int masterPartition,
       int tserverPartition,
-      boolean isReadOnlyCluster) {
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
@@ -763,12 +864,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
             : UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
     params.universeUUID = taskParams().universeUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+    params.universeOverrides = universeOverrides;
+    params.azOverrides = azOverrides;
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }
@@ -796,6 +897,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
+    params.podName = podName;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -821,11 +923,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
 
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.
@@ -863,10 +963,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     params.commandType = commandType;
-    params.nodePrefix = taskParams().nodePrefix;
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", params.nodePrefix, az);
-    }
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, az, isReadOnlyCluster);
+
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config.

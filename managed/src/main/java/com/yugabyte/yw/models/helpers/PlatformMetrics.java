@@ -52,6 +52,7 @@ public enum PlatformMetrics {
   HEALTH_CHECK_C2N_CERT("TServer expired Client to Node certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CA_CERT("TServer expired Client CA certificate nodes count", Unit.COUNT),
   HEALTH_CHECK_CLIENT_CERT("TServer expired Client certificate nodes count", Unit.COUNT),
+  HEALTH_CHECK_YB_CONTROLLER_DOWN("YB-Controller process down nodes count", Unit.COUNT),
 
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
@@ -80,6 +81,7 @@ public enum PlatformMetrics {
   ALERT_MANAGER_STATUS("Common alert manager status for customer", Unit.STATUS),
   ALERT_MANAGER_CHANNEL_STATUS("Alert manager channel status", Unit.STATUS),
   METRIC_PROCESSOR_STATUS("Platform metrics processor status", Unit.STATUS),
+  SWAMPER_FILE_UPDATER_STATUS("Swamper target updater status", Unit.STATUS),
 
   UNIVERSE_EXISTS("Flag, indicating that universe exists", Unit.STATUS, false),
   UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS, false),
@@ -92,7 +94,8 @@ public enum PlatformMetrics {
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
   UNIVERSE_SSH_KEY_EXPIRY_DAY(
-      "Remaining days to expiry for SSH key of the universe", Unit.DAY, false);
+      "Remaining days to expiry for SSH key of the universe", Unit.DAY, false),
+  UNIVERSE_METRIC_COLLECTION_STATUS("Metric Collection status for the universe", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

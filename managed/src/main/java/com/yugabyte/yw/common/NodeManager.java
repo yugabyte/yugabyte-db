@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
@@ -44,6 +45,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -60,7 +62,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -82,6 +83,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -103,9 +106,18 @@ public class NodeManager extends DevopsBase {
   public static final String CERT_LOCATION_PLATFORM = "platform";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
-  static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
   public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
+  public static final String YBC_NFS_DIRS = "yb.ybc_flags.nfs_dirs";
+  public static final String YBC_ENABLE_VERBOSE = "yb.ybc_flags.enable_verbose";
+  public static final String YBC_PACKAGE_REGEX = ".+ybc(.*).tar.gz";
+  public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
+
+  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
+
+  @Inject play.Configuration appConfig;
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject ReleaseManager releaseManager;
 
@@ -139,7 +151,8 @@ public class NodeManager extends DevopsBase {
     Add_Authorized_Key,
     Remove_Authorized_Key,
     Reboot,
-    RunHooks
+    RunHooks,
+    Wait_For_SSH
   }
 
   public enum CertRotateAction {
@@ -148,14 +161,6 @@ public class NodeManager extends DevopsBase {
     ROTATE_CERTS,
     UPDATE_CERT_DIRS
   }
-
-  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
-
-  @Inject play.Configuration appConfig;
-
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject ConfigHelper configHelper;
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
@@ -206,6 +211,8 @@ public class NodeManager extends DevopsBase {
     if (params.universeUUID == null) {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
+    Universe universe = Universe.getOrBadRequest(params.universeUUID);
+    NodeDetails node = universe.getNode(params.nodeName);
     UserIntent userIntent = getUserIntentFromParams(params);
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
@@ -216,7 +223,12 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
+              params,
+              type,
+              keyInfo,
+              userIntent.providerType,
+              userIntent.accessKeyCode,
+              node.nodeExporterPort));
     }
 
     return subCommand;
@@ -227,7 +239,8 @@ public class NodeManager extends DevopsBase {
       NodeCommandType type,
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
-      String accessKeyCode) {
+      String accessKeyCode,
+      int nodeExporterPort) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -243,7 +256,8 @@ public class NodeManager extends DevopsBase {
       // We only need to include keyPair name for create instance method and if this is aws.
       if ((params instanceof AnsibleCreateServer.Params
               || params instanceof AnsibleSetupServer.Params)
-          && providerType.equals(Common.CloudType.aws)) {
+          && providerType.equals(Common.CloudType.aws)
+          && type != NodeCommandType.Wait_For_SSH) {
         subCommand.add("--key_pair_name");
         subCommand.add(accessKeyCode);
         // Also we will add the security group information for create
@@ -258,7 +272,9 @@ public class NodeManager extends DevopsBase {
       }
     }
     // security group is only used during Azure create instance method
-    if (params instanceof AnsibleCreateServer.Params && providerType.equals(Common.CloudType.azu)) {
+    if (params instanceof AnsibleCreateServer.Params
+        && providerType.equals(Common.CloudType.azu)
+        && type != NodeCommandType.Wait_For_SSH) {
       Region r = params.getRegion();
       String customSecurityGroupId = r.getSecurityGroupId();
       if (customSecurityGroupId != null) {
@@ -275,14 +291,16 @@ public class NodeManager extends DevopsBase {
     subCommand.add("--custom_ssh_port");
     subCommand.add(keyInfo.sshPort.toString());
 
+    // TODO make this global and remove this conditional check
+    // to avoid bugs.
     if ((type == NodeCommandType.Provision
             || type == NodeCommandType.Destroy
             || type == NodeCommandType.Create
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
-            || type == NodeCommandType.Transfer_XCluster_Certs
             || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type)
+            || type == NodeCommandType.Change_Instance_Type
+            || type == NodeCommandType.Wait_For_SSH)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
       subCommand.add(keyInfo.sshUser);
@@ -328,7 +346,7 @@ public class NodeManager extends DevopsBase {
       if (keyInfo.installNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
+        subCommand.add(Integer.toString(nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(keyInfo.nodeExporterUser);
       }
@@ -398,13 +416,6 @@ public class NodeManager extends DevopsBase {
   /**
    * Creates certificates if not present. Called from various places like - when node is added to
    * universe
-   *
-   * @param config
-   * @param userIntent
-   * @param taskParam
-   * @param nodeIP
-   * @param ybHomeDir
-   * @return
    */
   private List<String> getCertificatePaths(
       Config config,
@@ -467,6 +478,7 @@ public class NodeManager extends DevopsBase {
                         .toAbsolutePath();
               }
               CertificateHelper.createServerCertificate(
+                  config,
                   taskParam.rootCA,
                   tempStorageDirectory.toString(),
                   commonName,
@@ -570,6 +582,7 @@ public class NodeManager extends DevopsBase {
                         .toAbsolutePath();
               }
               CertificateHelper.createServerCertificate(
+                  config,
                   taskParam.clientRootCA,
                   tempStorageDirectory.toString(),
                   commonName,
@@ -653,7 +666,7 @@ public class NodeManager extends DevopsBase {
     }
 
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    String ybServerPackage = null, ybcPackage = null;
+    String ybServerPackage = null, ybcPackage = null, ybcDir = null;
     Map<String, String> ybcFlags = new HashMap<>();
     if (taskParam.ybSoftwareVersion != null) {
       ReleaseManager.ReleaseMetadata releaseMetadata =
@@ -676,10 +689,40 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    boolean canConfigureYbc = CommonUtils.canConfigureYbc(universe);
-    if (canConfigureYbc) {
-      ybcPackage = userIntent.ybcPackagePath;
+    if (taskParam.enableYbc) {
+      if (ybServerPackage == null) {
+        throw new RuntimeException(
+            "ybServerPackage cannot be null as we require it to fetch"
+                + " the osType, archType of ybcServerPackage");
+      }
+      Pair<String, String> ybcPackageDetails =
+          Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+      ReleaseManager.ReleaseMetadata releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(
+              taskParam.ybcSoftwareVersion,
+              ybcPackageDetails.getFirst(),
+              ybcPackageDetails.getSecond());
+      ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      if (StringUtils.isBlank(ybcPackage)) {
+        throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
+      }
+      Matcher matcher = YBC_PACKAGE_PATTERN.matcher(ybcPackage);
+      boolean matches = matcher.matches();
+      if (!matches) {
+        throw new RuntimeException(
+            String.format(
+                "Ybc package: %s does not follow the format required: %s",
+                ybcPackage, YBC_PACKAGE_REGEX));
+      }
+      ybcDir = "ybc" + matcher.group(1);
       ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      boolean enableVerbose =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(YBC_ENABLE_VERBOSE);
+      if (enableVerbose) {
+        ybcFlags.put("v", "1");
+      }
+      String nfsDirs = runtimeConfigFactory.forUniverse(universe).getString(YBC_NFS_DIRS);
+      ybcFlags.put("nfs_dirs", nfsDirs);
     }
 
     if (!taskParam.itestS3PackagePath.isEmpty()
@@ -734,6 +777,15 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
+        if (taskParam.enableYbc) {
+          subcommand.add("--ybc_flags");
+          subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+          subcommand.add("--configure_ybc");
+          subcommand.add("--ybc_package");
+          subcommand.add(ybcPackage);
+          subcommand.add("--ybc_dir");
+          subcommand.add(ybcDir);
+        }
         subcommand.add("--num_releases_to_keep");
         if (config.getBoolean("yb.cloud.enabled")) {
           subcommand.add(
@@ -745,10 +797,6 @@ public class NodeManager extends DevopsBase {
               runtimeConfigFactory
                   .forUniverse(universe)
                   .getString("yb.releases.num_releases_to_keep_default"));
-        }
-        if (canConfigureYbc) {
-          subcommand.add("--ybc_package");
-          subcommand.add(ybcPackage);
         }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
@@ -769,12 +817,21 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-          if (canConfigureYbc) {
-            subcommand.add("--ybc_package");
-            subcommand.add(ybcPackage);
-          }
+
           String processType = taskParam.getProperty("processType");
-          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          if (processType == null) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+            if (taskParam.enableYbc) {
+              subcommand.add("--ybc_flags");
+              subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+              subcommand.add("--configure_ybc");
+              subcommand.add("--ybc_package");
+              subcommand.add(ybcPackage);
+              subcommand.add("--ybc_dir");
+              subcommand.add(ybcDir);
+            }
+          } else if (!VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
           } else {
             subcommand.add("--yb_process_type");
@@ -789,6 +846,10 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+          } else if (taskSubType.equals(
+              UpgradeTaskParams.UpgradeTaskSubType.YbcInstall.toString())) {
+            subcommand.add("--tags");
+            subcommand.add("ybc-install");
           }
           subcommand.add("--num_releases_to_keep");
           if (config.getBoolean("yb.cloud.enabled")) {
@@ -807,7 +868,19 @@ public class NodeManager extends DevopsBase {
       case GFlags:
         {
           String processType = taskParam.getProperty("processType");
-          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          if (processType == null) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+            if (taskParam.enableYbc) {
+              subcommand.add("--ybc_flags");
+              subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+              subcommand.add("--configure_ybc");
+              subcommand.add("--ybc_package");
+              subcommand.add(ybcPackage);
+              subcommand.add("--ybc_dir");
+              subcommand.add(ybcDir);
+            }
+          } else if (!VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
           } else {
             subcommand.add("--yb_process_type");
@@ -826,7 +899,16 @@ public class NodeManager extends DevopsBase {
                     alternateNames));
           }
 
-          Map<String, String> gflags = new HashMap<>(taskParam.gflags);
+          Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+          if (!config.getBoolean("yb.cloud.enabled")) {
+            Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
+            GFlagsUtil.processUserGFlags(
+                node,
+                gflags,
+                GFlagsUtil.getAllDefaultGFlags(
+                    taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
+                runtimeConfig.getBoolean("yb.gflags.allow_user_override"));
+          }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
 
@@ -841,7 +923,22 @@ public class NodeManager extends DevopsBase {
           }
 
           String processType = taskParam.getProperty("processType");
-          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          if (processType == null) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+            if (taskParam.enableYbc) {
+              subcommand.add("--ybc_flags");
+              subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+              subcommand.add("--configure_ybc");
+              subcommand.add("--ybc_package");
+              subcommand.add(ybcPackage);
+              subcommand.add("--ybc_dir");
+              subcommand.add(ybcDir);
+              subcommand.add("--tags");
+              subcommand.add("override_ybc_gflags");
+              break;
+            }
+          } else if (!VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
           } else {
             subcommand.add("--yb_process_type");
@@ -854,7 +951,6 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -918,13 +1014,12 @@ public class NodeManager extends DevopsBase {
               break;
             case UPDATE_CERT_DIRS:
               {
-                Map<String, String> gflags = new HashMap<>(taskParam.gflags);
-                if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-                  gflags.put("certs_dir", certsNodeDir);
-                }
-                if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
-                  gflags.put("certs_for_client_dir", certsForClientDir);
-                }
+                Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+                gflags.putAll(
+                    filterCertsAndTlsGFlags(
+                        taskParam,
+                        universe,
+                        Arrays.asList(GFlagsUtil.CERTS_DIR, GFlagsUtil.CERTS_FOR_CLIENT_DIR)));
                 subcommand.add("--gflags");
                 subcommand.add(Json.stringify(Json.toJson(gflags)));
                 subcommand.add("--tags");
@@ -939,23 +1034,40 @@ public class NodeManager extends DevopsBase {
           String processType = taskParam.getProperty("processType");
           String subType = taskParam.getProperty("taskSubType");
 
-          if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
+          if (processType == null) {
+            throw new RuntimeException("Invalid processType: " + processType);
+          } else if (processType.equals(ServerType.CONTROLLER.toString())) {
+            if (taskParam.enableYbc) {
+              subcommand.add("--ybc_flags");
+              subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
+              subcommand.add("--configure_ybc");
+              subcommand.add("--ybc_package");
+              subcommand.add(ybcPackage);
+              subcommand.add("--ybc_dir");
+              subcommand.add(ybcDir);
+              subcommand.add("--tags");
+              subcommand.add("override_ybc_gflags");
+              break;
+            }
+          } else if (!VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
           } else {
             subcommand.add("--yb_process_type");
             subcommand.add(processType.toLowerCase());
           }
 
-          String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
-          String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
-          String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+          final List<String> tlsGflagsToReplace =
+              Arrays.asList(
+                  GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION,
+                  GFlagsUtil.USE_CLIENT_TO_SERVER_ENCRYPTION,
+                  GFlagsUtil.ALLOW_INSECURE_CONNECTIONS,
+                  GFlagsUtil.CERTS_DIR,
+                  GFlagsUtil.CERTS_FOR_CLIENT_DIR);
           String ybHomeDir =
               Provider.getOrBadRequest(
                       UUID.fromString(
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
-          String certsDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -968,29 +1080,14 @@ public class NodeManager extends DevopsBase {
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
-            Map<String, String> gflags = new HashMap<>(taskParam.gflags);
+            Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             if (taskParam.nodeToNodeChange > 0) {
-              gflags.put("use_node_to_node_encryption", nodeToNodeString);
-              gflags.put("use_client_to_server_encryption", clientToNodeString);
-              gflags.put("allow_insecure_connections", "true");
-              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-                gflags.put("certs_dir", certsDir);
-              }
-              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
-                gflags.put("certs_for_client_dir", certsForClientDir);
-              }
+              gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
+              gflags.put(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS, "true");
             } else if (taskParam.nodeToNodeChange < 0) {
-              gflags.put("allow_insecure_connections", "true");
+              gflags.put(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS, "true");
             } else {
-              gflags.put("use_node_to_node_encryption", nodeToNodeString);
-              gflags.put("use_client_to_server_encryption", clientToNodeString);
-              gflags.put("allow_insecure_connections", allowInsecureString);
-              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-                gflags.put("certs_dir", certsDir);
-              }
-              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
-                gflags.put("certs_for_client_dir", certsForClientDir);
-              }
+              gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             }
 
             subcommand.add("--gflags");
@@ -1001,19 +1098,15 @@ public class NodeManager extends DevopsBase {
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round2GFlagsUpdate.name()
               .equals(subType)) {
-            Map<String, String> gflags = new HashMap<>(taskParam.gflags);
+            Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             if (taskParam.nodeToNodeChange > 0) {
-              gflags.put("allow_insecure_connections", allowInsecureString);
+              gflags.putAll(
+                  filterCertsAndTlsGFlags(
+                      taskParam,
+                      universe,
+                      Collections.singletonList(GFlagsUtil.ALLOW_INSECURE_CONNECTIONS)));
             } else if (taskParam.nodeToNodeChange < 0) {
-              gflags.put("use_node_to_node_encryption", nodeToNodeString);
-              gflags.put("use_client_to_server_encryption", clientToNodeString);
-              gflags.put("allow_insecure_connections", allowInsecureString);
-              if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-                gflags.put("certs_dir", certsDir);
-              }
-              if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
-                gflags.put("certs_for_client_dir", certsForClientDir);
-              }
+              gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             } else {
               LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
@@ -1029,11 +1122,6 @@ public class NodeManager extends DevopsBase {
         break;
     }
 
-    if (canConfigureYbc) {
-      subcommand.add("--ybc_flags");
-      subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-      subcommand.add("--configure_ybc");
-    }
     // extra_gflags is the base set of gflags that is common to all tasks.
     // These can be overriden by  gflags which contain task-specific overrides.
     // User set flags are added to gflags, so if user specifies any of the gflags set here, they
@@ -1051,7 +1139,15 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
-  static boolean isIpAddress(String maybeIp) {
+  private static Map<String, String> filterCertsAndTlsGFlags(
+      AnsibleConfigureServers.Params taskParam, Universe universe, List<String> flags) {
+    Map<String, String> result =
+        new HashMap<>(GFlagsUtil.getCertsAndTlsGFlags(taskParam, universe));
+    result.keySet().retainAll(flags);
+    return result;
+  }
+
+  public static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
@@ -1082,23 +1178,19 @@ public class NodeManager extends DevopsBase {
         log.error("Incorrect config value {} for {} ", configValue, SKIP_CERT_VALIDATION);
       }
     }
-    if (gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+    if (gflagsToRemove.contains(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG)) {
       return SkipCertValidationType.NONE;
     }
 
     boolean skipHostValidation;
-    if (gflagsToAdd.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      skipHostValidation = shouldSkipServerEndpointVerification(gflagsToAdd);
+    if (gflagsToAdd.containsKey(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      skipHostValidation = GFlagsUtil.shouldSkipServerEndpointVerification(gflagsToAdd);
     } else {
       skipHostValidation =
-          shouldSkipServerEndpointVerification(userIntent.masterGFlags)
-              || shouldSkipServerEndpointVerification(userIntent.tserverGFlags);
+          GFlagsUtil.shouldSkipServerEndpointVerification(userIntent.masterGFlags)
+              || GFlagsUtil.shouldSkipServerEndpointVerification(userIntent.tserverGFlags);
     }
     return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
-  }
-
-  private static boolean shouldSkipServerEndpointVerification(Map<String, String> gflags) {
-    return gflags.getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true").equalsIgnoreCase("false");
   }
 
   private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
@@ -1138,7 +1230,12 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+            nodeTaskParam,
+            type,
+            keyInfo,
+            Common.CloudType.onprem,
+            accessKey.getKeyCode(),
+            keyInfo.nodeExporterPort));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
@@ -1166,9 +1263,8 @@ public class NodeManager extends DevopsBase {
   }
 
   private Path addBootscript(
-      Config config, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
-    Path bootScriptFile = null;
-    String bootScript = config.getString(BOOT_SCRIPT_PATH);
+      String bootScript, List<String> commandArgs, NodeTaskParams nodeTaskParam) {
+    Path bootScriptFile;
     commandArgs.add("--boot_script");
 
     // treat the contents as script body if it starts with a shebang line
@@ -1206,16 +1302,32 @@ public class NodeManager extends DevopsBase {
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs) {
     if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
-      // Create an ordered shallow copy of the tags.
-      Map<String, String> useTags =
-          MapUtils.isEmpty(userIntent.instanceTags)
-              ? new TreeMap<>()
-              : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
-      addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
-      if (!useTags.isEmpty()) {
-        commandArgs.add("--instance_tags");
-        commandArgs.add(Json.stringify(Json.toJson(useTags)));
-      }
+      addInstanceTags(
+          universe, userIntent.instanceTags, userIntent.providerType, nodeTaskParam, commandArgs);
+    }
+  }
+
+  private void addInstanceTags(
+      Universe universe,
+      Map<String, String> instanceTags,
+      Common.CloudType providerType,
+      NodeTaskParams nodeTaskParam,
+      List<String> commandArgs) {
+    // Create an ordered shallow copy of the tags.
+    Map<String, String> useTags = new TreeMap<>(instanceTags);
+    filterInstanceTags(useTags, providerType);
+    addAdditionalInstanceTags(universe, nodeTaskParam, useTags);
+    if (!useTags.isEmpty()) {
+      commandArgs.add("--instance_tags");
+      commandArgs.add(Json.stringify(Json.toJson(useTags)));
+    }
+  }
+
+  /** Remove tags that are restricted by provider. */
+  private void filterInstanceTags(Map<String, String> instanceTags, Common.CloudType providerType) {
+    if (providerType.equals(Common.CloudType.aws)) {
+      // Do not allow users to overwrite the node name. Only AWS uses tags to set it.
+      instanceTags.remove(UniverseDefinitionTaskBase.NODE_NAME_KEY);
     }
   }
 
@@ -1279,8 +1391,9 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            if (config.hasPath(BOOT_SCRIPT_PATH)) {
-              bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+            String bootScript = config.getString(BOOT_SCRIPT_PATH);
+            if (!bootScript.isEmpty()) {
+              bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
 
             // For now we wouldn't add machine image for aws and fallback on the default
@@ -1349,6 +1462,9 @@ public class NodeManager extends DevopsBase {
               }
             }
           }
+          if (type == NodeCommandType.Create) {
+            commandArgs.add("--as_json");
+          }
           break;
         }
       case Provision:
@@ -1408,8 +1524,9 @@ public class NodeManager extends DevopsBase {
           }
 
           Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
-          if (config.hasPath(BOOT_SCRIPT_PATH)) {
-            bootScriptFile = addBootscript(config, commandArgs, nodeTaskParam);
+          String bootScript = config.getString(BOOT_SCRIPT_PATH);
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1433,6 +1550,14 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
+          if (cloudType.equals(Common.CloudType.azu)) {
+            NodeDetails node = universe.getNode(taskParam.nodeName);
+            if (node != null && node.cloudInfo.lun_indexes.length > 0) {
+              commandArgs.add("--lun_indexes");
+              commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
+            }
+          }
           break;
         }
       case Configure:
@@ -1480,7 +1605,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1500,7 +1625,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1513,7 +1638,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          commandArgs = addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1528,6 +1653,7 @@ public class NodeManager extends DevopsBase {
           AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params) nodeTaskParam;
           commandArgs.add(taskParam.process);
           commandArgs.add(taskParam.command);
+
           // Systemd vs Cron Option
           if (taskParam.useSystemd) {
             commandArgs.add("--systemd_services");
@@ -1535,11 +1661,14 @@ public class NodeManager extends DevopsBase {
           if (taskParam.checkVolumesAttached) {
             UniverseDefinitionTaskParams.Cluster cluster =
                 universe.getCluster(taskParam.placementUuid);
-            if (cluster != null
-                && cluster.userIntent.deviceInfo != null
+            NodeDetails node = universe.getNode(taskParam.nodeName);
+            if (node != null
+                && cluster != null
+                && cluster.userIntent.getDeviceInfoForNode(node) != null
                 && cluster.userIntent.providerType != Common.CloudType.onprem) {
               commandArgs.add("--num_volumes");
-              commandArgs.add(String.valueOf(cluster.userIntent.deviceInfo.numVolumes));
+              commandArgs.add(
+                  String.valueOf(cluster.userIntent.getDeviceInfoForNode(node).numVolumes));
             }
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1552,10 +1681,12 @@ public class NodeManager extends DevopsBase {
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
           if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
-            if (MapUtils.isEmpty(userIntent.instanceTags)) {
-              throw new RuntimeException("Invalid instance tags");
+            Map<String, String> tags =
+                taskParam.tags != null ? taskParam.tags : userIntent.instanceTags;
+            if (MapUtils.isEmpty(tags) && taskParam.deleteTags.isEmpty()) {
+              throw new RuntimeException("Invalid params: no tags to add or remove");
             }
-            addInstanceTags(universe, userIntent, nodeTaskParam, commandArgs);
+            addInstanceTags(universe, tags, userIntent.providerType, nodeTaskParam, commandArgs);
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
@@ -1564,6 +1695,9 @@ public class NodeManager extends DevopsBase {
               commandArgs.addAll(getDeviceArgs(taskParam));
               commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
             }
+          } else {
+            throw new IllegalArgumentException(
+                "Tags are unsupported for " + userIntent.providerType);
           }
           break;
         }
@@ -1747,6 +1881,11 @@ public class NodeManager extends DevopsBase {
           }
           RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+
+          if (taskParam.useSSH) {
+            commandArgs.add("--use_ssh");
+          }
+
           break;
         }
       case RunHooks:
@@ -1769,6 +1908,12 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--runtime_args");
             commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
           }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          break;
+        }
+      case Wait_For_SSH:
+        {
+          log.info("Connecting to node {}", nodeTaskParam.nodeName);
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
@@ -1861,14 +2006,13 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
+  private void addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");
     commandArgs.add(instanceType);
     if (!Strings.isNullOrEmpty(nodeIP)) {
       commandArgs.add("--node_ip");
       commandArgs.add(nodeIP);
     }
-    return commandArgs;
   }
 
   private boolean isLowMemInstanceType(String instanceType) {
@@ -1970,5 +2114,23 @@ public class NodeManager extends DevopsBase {
       throw new RuntimeException("No key found at the private key file path!");
     }
     return commandArgs;
+  }
+
+  public String getYbServerPackageName(String ybSoftwareVersion, Region region) {
+    String ybServerPackage = null;
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (releaseMetadata != null) {
+      if (releaseMetadata.s3 != null) {
+        ybServerPackage = releaseMetadata.s3.paths.x86_64;
+      } else if (releaseMetadata.gcs != null) {
+        ybServerPackage = releaseMetadata.gcs.paths.x86_64;
+      } else if (releaseMetadata.http != null) {
+        ybServerPackage = releaseMetadata.http.paths.x86_64;
+      } else {
+        ybServerPackage = releaseMetadata.getFilePath(region);
+      }
+    }
+    return ybServerPackage;
   }
 }

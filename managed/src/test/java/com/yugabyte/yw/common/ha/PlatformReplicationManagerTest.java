@@ -92,6 +92,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       expectedCommandArgs.add("restore");
       expectedCommandArgs.add("--input");
       expectedCommandArgs.add(inputPath);
+      expectedCommandArgs.add("--disable_version_check");
     }
 
     expectedCommandArgs.add("--db_username");

@@ -12,9 +12,11 @@ import org.apache.commons.lang3.StringUtils;
 public class ShellResponse {
   // Some known error codes for shell process.
   private static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
+  private static final String ERROR_OUTPUT_PREFIX = "ERROR:";
   public static final int ERROR_CODE_SUCCESS = 0;
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
   public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
+  public static final int ERROR_CODE_RECOVERABLE_ERROR = 3;
 
   public int code = ERROR_CODE_SUCCESS;
   public String message = null;
@@ -50,15 +52,22 @@ public class ShellResponse {
           case ERROR_CODE_EXECUTION_CANCELLED:
             formatted = String.format("%s. Command is cancelled.", formatted);
             throw new CancellationException(formatted);
+          case ERROR_CODE_RECOVERABLE_ERROR:
+            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            throw new RecoverableException(formatted);
           default:
             formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
             throw new RuntimeException(formatted);
         }
       } finally {
-        log.error("{}, {}", formatted, toString());
+        log.error(formatted);
       }
     }
     return this;
+  }
+
+  public static String cleanedUpErrorMessage(String message) {
+    return message.substring(Math.max(message.indexOf(ERROR_OUTPUT_PREFIX), 0));
   }
 
   public String extractRunCommandOutput() {

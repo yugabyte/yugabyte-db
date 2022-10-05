@@ -4,12 +4,14 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static play.inject.Bindings.bind;
 
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
@@ -17,6 +19,7 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -32,7 +35,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -46,8 +48,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
   public AccessManager mockAccessManager = mock(AccessManager.class);
+  public CustomerLicenseManager mockCustomerLicenseManager = mock(CustomerLicenseManager.class);
   public TemplateManager mockTemplateManager = mock(TemplateManager.class);
-  public MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+  public MetricQueryHelper mockMetricQueryHelper = spy(MetricQueryHelper.class);
   public CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
   public CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
   public ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
@@ -68,6 +71,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AZUtil mockAZUtil = mock(AZUtil.class);
   public JsonFieldsValidator mockJsonFieldValidator = mock(JsonFieldsValidator.class);
   public NFSUtil mockNfsUtil = mock(NFSUtil.class);
+  public YbcClientService mockYbcClientService = mock(YbcClientService.class);
+  public YbcUpgrade mockYbcUpgrade = mock(YbcUpgrade.class);
+  public YbcManager mockYbcManager = mock(YbcManager.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -81,12 +87,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   }
 
   public Application provideApplication(Map<String, Object> additionalConfiguration) {
-
     GuiceApplicationBuilder guiceApplicationBuilder =
         new GuiceApplicationBuilder().disable(GuiceModule.class);
-    if (!isSwaggerEnabled()) {
-      guiceApplicationBuilder = guiceApplicationBuilder.disable(SwaggerModule.class);
-    }
     return configureApplication(
             guiceApplicationBuilder
                 .configure(additionalConfiguration)
@@ -102,6 +104,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+                .overrides(
+                    bind(CustomerLicenseManager.class).toInstance(mockCustomerLicenseManager))
                 .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
                 .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
@@ -122,7 +126,10 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(AZUtil.class).toInstance(mockAZUtil))
                 .overrides(bind(NFSUtil.class).toInstance(mockNfsUtil))
                 .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
-                .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator)))
+                .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator))
+                .overrides(bind(YbcClientService.class).toInstance(mockYbcClientService))
+                .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
+                .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade)))
         .build();
   }
 

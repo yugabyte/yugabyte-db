@@ -20,8 +20,8 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/partition.h"
-
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -37,8 +37,8 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
@@ -229,6 +229,30 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
         table);
     return cluster;
   }
+
+  Status GetChangesWithRetries(
+      cdc::CDCServiceProxy* cdc_proxy, const cdc::GetChangesRequestPB& change_req,
+      cdc::GetChangesResponsePB* change_resp) {
+    // Retry on LeaderNotReadyToServe errors.
+    return WaitFor(
+        [&]() -> Result<bool> {
+          rpc::RpcController rpc;
+          auto status = cdc_proxy->GetChanges(change_req, change_resp, &rpc);
+
+          if (status.ok() && change_resp->has_error()) {
+            status = StatusFromPB(change_resp->error().status());
+          }
+
+          if (status.IsLeaderNotReadyToServe()) {
+            return false;
+          }
+
+          RETURN_NOT_OK(status);
+          return true;
+        },
+        60s * kTimeMultiplier,
+        "GetChanges timed out waiting for Leader to get ready");
+  }
 };
 
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
@@ -259,18 +283,15 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
-  rpc::RpcController rpc;
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
-  ASSERT_FALSE(change_resp.has_error());
+  // Might need to retry since we are performing stepdowns and thus could get LeaderNotReadyToServe.
+  ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
   // Test that if the tablet leadership of the parent tablet changes we can still call GetChanges.
   StepDownAllTablets(cluster_.get());
 
-  rpc.Reset();
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
-  ASSERT_FALSE(change_resp.has_error()) << change_resp.ShortDebugString();
+  ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
-  // Now let the table get deleted by the background task.
+  // Now let the parent tablet get deleted by the background task.
   // To do so, we need to issue a GetChanges to both children tablets.
   for (const auto& child_tablet_id : ListActiveTabletIdsForTable(cluster_.get(), table_->id())) {
     cdc::GetChangesRequestPB child_change_req;
@@ -281,17 +302,16 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
-    rpc::RpcController rpc;
-    ASSERT_OK(cdc_proxy->GetChanges(child_change_req, &child_change_resp, &rpc));
-    ASSERT_FALSE(child_change_resp.has_error());
+    ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), child_change_req, &child_change_resp));
   }
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));
 
-  // Try to do a GetChanges again, it should fail.
-  rpc.Reset();
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
+  // Try to do a GetChanges again, it should fail due to not finding the deleted parent tablet.
+  rpc::RpcController rpc;
+  ASSERT_NOK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
   ASSERT_TRUE(change_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(change_resp.error().status()).IsNotFound());
 }
 
 // For testing xCluster setups. Since most test utility functions expect there to be only one
@@ -346,10 +366,22 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     CdcTabletSplitITest::DoBeforeTearDown();
   }
 
+  Status WaitForOngoingSplitsToComplete(bool wait_for_parent_deletion) {
+    auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
+        proxy_cache_.get(), client_->GetMasterLeaderAddress());
+    RETURN_NOT_OK(WaitFor(
+        std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
+                  wait_for_parent_deletion),
+        30s, "Wait for ongoing tablet splits to complete."));
+    return Status::OK();
+  }
+
   Status SplitAllTablets(
       int cur_num_tablets, bool parent_tablet_protected_from_deletion = false) {
     // Splits all tablets for cluster_.
     auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
+    // Wait for parents to be hidden before trying to split children.
+    RETURN_NOT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ true));
     auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
     EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
     for (const auto& tablet_id : tablet_ids) {
@@ -720,9 +752,6 @@ class XClusterExternalTabletSplitITest :
     TabletSplitExternalMiniClusterITest::SetFlags();
     mini_cluster_opt_.extra_master_flags.push_back(
         "--enable_tablet_split_of_xcluster_replicated_tables=true");
-    // Enable automatic tablet splitting so that the tablet split manager will still process
-    // in progress splits during a failover.
-    mini_cluster_opt_.extra_master_flags.push_back("--enable_automatic_tablet_splitting=true");
   }
 
   void DoBeforeTearDown() override {
@@ -737,18 +766,21 @@ class XClusterExternalTabletSplitITest :
   }
 
   Status WaitForMasterFailover(size_t original_master_leader_idx) {
-    return WaitFor([&]() -> Result<bool> {
-      auto s = cluster_->GetLeaderMasterIndex();
-      if (s.ok()) {
-        return original_master_leader_idx != s.get();
-      }
-      LOG(WARNING) << "Encountered error while waiting for master failover: " << s;
-      return false;
-    }, MonoDelta::FromSeconds(30), "Wait for master failover.");
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto s = cluster_->GetLeaderMasterIndex();
+          if (s.ok()) {
+            return original_master_leader_idx != s.get();
+          }
+          LOG(WARNING) << "Encountered error while waiting for master failover: " << s;
+          return false;
+        },
+        MonoDelta::FromSeconds(60), "Wait for master failover.");
   }
 };
 
 TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringProducerPostSplitOps) {
+  auto parent_tablet = ASSERT_RESULT(GetOnlyTestTabletId());
   // Set crash flag on producer master leader so that we force master failover.
   auto original_master_leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
   ASSERT_OK(cluster_->SetFlag(
@@ -758,32 +790,37 @@ TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringProducerPostSplitOp
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
   ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
-  auto tablet_id = CHECK_RESULT(GetOnlyTestTabletId());
-  Status s = SplitTablet(tablet_id);
-  if (!s.ok()) {
-    LOG(WARNING) << "Ignoring SplitTablet error due to induced fatal : " << s;
-  }
+  // Enable automatic tablet splitting to trigger a split, and retry it after the failover.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
 
   ASSERT_OK(WaitForMasterFailover(original_master_leader_idx));
   ASSERT_OK(WaitForTablets(3));
 
-  // Verify that all the tablets are present in cdc_state.
+  // Verify that all the children tablets are present in cdc_state, parent may get deleted.
   auto tablet_ids = ASSERT_RESULT(GetTestTableTabletIds(0));
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    std::unordered_set<TabletId> tablet_ids_map(tablet_ids.begin(), tablet_ids.end());
-    const auto rows = VERIFY_RESULT(GetRowsFromCdcStateTable());
-    for (const auto& row : rows) {
-      const auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-      if (tablet_ids_map.count(tablet_id)) {
-        tablet_ids_map.erase(tablet_id);
-      }
-    }
-    if (!tablet_ids_map.empty()) {
-      LOG(WARNING) << "Did not find tablet_ids in system.cdc_state: " << ToString(tablet_ids_map);
-      return false;
-    }
-    return true;
-  }, MonoDelta(30s), "Wait for chilren entries in cdc_state."));
+  tablet_ids.erase(parent_tablet);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_set<TabletId> tablet_ids_map(tablet_ids.begin(), tablet_ids.end());
+        const auto rows = GetRowsFromCdcStateTable();
+        if (!rows.ok()) {
+          LOG(WARNING) << "Encountered error during GetRowsFromCdcStateTable: " << rows.status();
+          return false;
+        }
+        for (const auto& row : *rows) {
+          const auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+          if (tablet_ids_map.count(tablet_id)) {
+            tablet_ids_map.erase(tablet_id);
+          }
+        }
+        if (!tablet_ids_map.empty()) {
+          LOG(WARNING) << "Did not find tablet_ids in system.cdc_state: "
+                       << ToString(tablet_ids_map);
+          return false;
+        }
+        return true;
+      },
+      MonoDelta(30s), "Wait for children entries in cdc_state."));
 
   // Verify that writes to children tablets are properly polled for.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows, kDefaultNumRows + 1));
@@ -801,12 +838,16 @@ TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringConsumerPostSplitOp
   ASSERT_OK(cluster_->SetFlag(
       cluster_->GetLeaderMaster(), "TEST_fault_crash_after_registering_split_children", "1.0"));
 
+  ASSERT_OK(WaitForTestTableIntentsApplied());
   ASSERT_OK(FlushTestTable());
-  auto tablet_id = CHECK_RESULT(GetOnlyTestTabletId());
-  CHECK_OK(SplitTablet(tablet_id));
+
+  // Enable automatic tablet splitting to trigger a split, and retry it after the failover.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
 
   ASSERT_OK(WaitForMasterFailover(original_master_leader_idx));
-  ASSERT_OK(WaitForTablets(3));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(GetTestTableTabletIds()).size() >= 3; },
+      20s * kTimeMultiplier, Format("Waiting for tablet count to be at least 3.")));
 
   // Verify that writes flow to the children tablets properly.
   SwitchToProducer();
@@ -884,12 +925,7 @@ TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTable
   // Disable splitting before shutting down, to prevent more splits from occurring.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   // Wait for splitting to complete before validating overlaps.
-  auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
-      proxy_cache_.get(), client_->GetMasterLeaderAddress());
-  ASSERT_OK(WaitFor(
-      std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
-                false /* wait_for_parent_deletion */),
-      30s, "Wait for tablet splitting to complete."));
+  ASSERT_OK(WaitForOngoingSplitsToComplete(/* wait_for_parent_deletion */ false));
 }
 
 class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {

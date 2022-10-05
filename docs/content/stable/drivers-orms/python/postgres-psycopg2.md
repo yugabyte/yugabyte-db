@@ -14,14 +14,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/python/yugabyte-psycopg2" class="nav-link">
+    <a href="../yugabyte-psycopg2/" class="nav-link">
       <i class="icon-java-bold" aria-hidden="true"></i>
       YugabyteDB Psycopg2
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/python/postgres-psycopg2" class="nav-link active">
+    <a href="../postgres-psycopg2/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Psycopg2
     </a>
@@ -33,7 +33,7 @@ Psycopg is the most popular PostgreSQL database adapter for Python. Its main fea
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Python application development using the PostgreSQL Psycopg2 driver.
 
@@ -111,7 +111,7 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 | sslmode | SSL mode  | prefer
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
 
 ### Step 3: Query the YugabyteDB cluster from your application
 

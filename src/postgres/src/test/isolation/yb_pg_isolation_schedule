@@ -32,3 +32,9 @@ test: nowait-2
 test: nowait-3
 test: aborted-keyrevoke
 test: delete-abort-savept-2
+test: ignore-intent-of-rolled-back-savepoint-cross-txn
+test: ensure-lock-only-conflict-always-ignored
+
+# Below test is just for checking the uuid masking functionality in test output. Remove it when some
+# tests actually start using it.
+test: check-uuid-masking

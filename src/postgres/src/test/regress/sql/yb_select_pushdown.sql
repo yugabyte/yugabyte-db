@@ -129,6 +129,70 @@ INSERT INTO pushdown_collation VALUES (1, 'foo');
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_collation WHERE v = 'foo';
 SELECT * FROM pushdown_collation WHERE v = 'foo';
 
+CREATE TABLE pushdown_index(k1 int, k2 int, v1 int, v2 int, v3 int, v4 int, v5 text, primary key (k1, k2));
+CREATE INDEX pushdown_index_v1_v2_v3v4_idx ON pushdown_index(v1, v2, (v3 + v4) ASC);
+INSERT INTO pushdown_index VALUES (1, 1, 1, 1, 1, 0, 'row 1');
+INSERT INTO pushdown_index VALUES (1, 2, 3, 4, 5, 6, 'row 2');
+INSERT INTO pushdown_index VALUES (1, 20, 20, 20, 20, 20, 'row 3');
+INSERT INTO pushdown_index VALUES (2, 1, 1, 2, 3, 4, 'row 4');
+INSERT INTO pushdown_index VALUES (2, 2, 1, 3, 2, 1, 'row 5');
+INSERT INTO pushdown_index VALUES (2, 20, 1, 20, 40, 50, 'row 6');
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1;
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+EXPLAIN (COSTS FALSE) SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+EXPLAIN (COSTS FALSE) SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = 2;
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2/10 = 0;
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1;
+SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 AND CASE v2 % 2 WHEN 0 THEN v3 < 0 WHEN 1 THEN v3 > 0 END;
+SELECT v2 FROM pushdown_index WHERE v1 = 1;
+SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+SELECT v2, v3, v4 FROM pushdown_index WHERE v1 = 1 AND v2 > v1;
+SELECT v2 FROM pushdown_index WHERE v1 = 1 AND v2 = v3 + v4;
+SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2;
+SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 AND v3 > v2 AND CASE v3 % 2 WHEN 0 THEN v4 < 0 WHEN 1 THEN v4 > 0 END;
+
+PREPARE pk_param AS SELECT * FROM pushdown_index WHERE k1 = 1 AND k2 = v1 + $1;
+EXPLAIN (COSTS FALSE) EXECUTE pk_param(0);
+EXECUTE pk_param(0);
+DEALLOCATE pk_param;
+
+PREPARE si_param AS SELECT * FROM pushdown_index WHERE v1 = 1 AND v2 > v1 + $1 AND v3 > v2 + $2;
+EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
+EXECUTE si_param(0, 0);
+DEALLOCATE si_param;
+
+-- Index scan with remote filter on a system table
+EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
+
+-- Index scan with remote filter on a range table
+CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
+INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+SELECT * FROM pushdown_range WHERE v1 > 5 AND v2 < 33 ORDER BY k1;
+
+-- Plan for the lateral join leverages PARAM_EXEC params
+CREATE TABLE tlateral1 (a int, b int, c varchar);
+INSERT INTO tlateral1 SELECT i, i % 25, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 2) i;
+CREATE TABLE tlateral2 (a int, b int, c varchar);
+INSERT INTO tlateral2 SELECT i % 25, i, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 3) i;
+ANALYZE tlateral1, tlateral2;
+EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+
+DROP TABLE tlateral1;
+DROP TABLE tlateral2;
+DROP TABLE pushdown_range;
+DROP TABLE pushdown_index;
 DROP TABLE pushdown_test;
 DROP TABLE pushdown_lookup;
 DROP TABLE pushdown_composite;

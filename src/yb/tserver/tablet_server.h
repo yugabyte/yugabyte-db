@@ -35,6 +35,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
@@ -51,6 +52,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -65,8 +67,13 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
+class AutoFlagsManager;
 
 namespace tserver {
+
+namespace enterprise {
+class CDCConsumer;
+}
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -88,6 +95,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
+  virtual Status InitAutoFlags() override;
+
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
@@ -98,6 +107,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void Shutdown() override;
 
   std::string ToString() const override;
+
+  uint32_t GetAutoFlagConfigVersion() const override;
+  AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
@@ -173,7 +185,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version);
+  void SetYsqlDBCatalogVersions(const master::DBCatalogVersionDataPB& db_catalog_version_data);
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
@@ -185,6 +198,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       *last_breaking_version = ysql_last_breaking_catalog_version_;
     }
   }
+
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -220,6 +236,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
+  const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
+
+  void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
+      const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
  protected:
   virtual Status RegisterServices();
 
@@ -239,6 +262,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // The options passed at construction time, and will be updated if master config changes.
   TabletServerOptions opts_;
+
+  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
 
   // Manager for tablets which are available on this server.
   std::unique_ptr<TSTabletManager> tablet_manager_;
@@ -280,6 +305,16 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
+  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+
+  // If shared memory array db_catalog_versions_ slot is used by a database OID, the
+  // corresponding slot in this boolean array is set to true.
+  std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
+    ysql_db_catalog_version_index_used_;
+
+  // When searching for a free slot in the shared memory array db_catalog_versions_, we start
+  // from this index.
+  int search_starting_index_ = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
@@ -293,6 +328,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
+
+  XClusterSafeTimeMap xcluster_safe_time_map_;
+
+  PgConfigReloader pg_config_reloader_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

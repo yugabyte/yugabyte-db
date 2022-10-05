@@ -1,7 +1,7 @@
 ---
 title: Explore YCQL, the Yugabyte Cloud QL API
-headerTitle: 3. Explore Yugabyte Cloud QL
-linkTitle: 3. Explore distributed SQL APIs
+headerTitle: Explore Yugabyte Cloud QL
+linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
 aliases:
@@ -12,7 +12,7 @@ aliases:
 menu:
   preview:
     parent: quick-start
-    name: 3. Explore distributed SQL
+    name: Explore distributed SQL
     identifier: explore-dsql-2-ycql
     weight: 130
 type: docs
@@ -36,11 +36,11 @@ type: docs
 
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
+After [creating a local cluster](../../../quick-start/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
 
 [**ycqlsh**](../../../admin/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 
-## 1. Connect with ycqlsh
+## Connect with ycqlsh
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -84,7 +84,7 @@ After [creating a local cluster](../../create-local-cluster/macos/), follow the 
   </div>
 </div>
 
-## 2. Create a table
+## Create a table
 
 Create a keyspace called 'myapp'.
 
@@ -103,7 +103,7 @@ ycqlsh> CREATE TABLE myapp.stock_market (
 );
 ```
 
-## 3. Insert data
+## Insert data
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your ycqlsh shell.
 
@@ -122,7 +122,7 @@ ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
 
-## 4. Query the table
+## Query the table
 
 Query all the values you have inserted into the database for the stock symbol 'AAPL' as follows.
 
@@ -155,7 +155,3 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 (4 rows)
 ```
-
-## Next step
-
-[Build an application](../../build-apps/)

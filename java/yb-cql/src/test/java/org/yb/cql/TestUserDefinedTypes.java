@@ -563,6 +563,8 @@ public class TestUserDefinedTypes extends BaseCQLTest {
 
       session.execute("CREATE INDEX " + tableName2 + "_idx ON " + tableName2 + "(r,v)");
 
+      waitForReadPermsOnAllIndexes(tableName2);
+
       insert_stmt = "INSERT INTO %s (h, r, v) values (1, %s, %d)";
 
       // Format for r-values (udt4), order/equality will be defined by the values of the primitive

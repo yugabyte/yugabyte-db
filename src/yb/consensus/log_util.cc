@@ -631,7 +631,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
         return result;
       }
 
-      result.status = MakeCorruptionStatus(
+      auto corrupt_status = MakeCorruptionStatus(
           batches_read, this_batch_offset, &recent_offsets, result.entries, s);
 
       // If we have a valid footer in the segment, then the segment was correctly
@@ -639,6 +639,9 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
       // batch).
       if (HasFooter() && !footer_was_rebuilt_) {
         LOG(WARNING) << "Found a corruption in a closed log segment: " << result.status;
+
+        result.status = corrupt_status.CloneAndPrepend("Log file corruption detected.");
+
         return result;
       }
 
@@ -648,21 +651,22 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
       // entries after this one in the file. If there are, it's really a corruption.
       // if not, we just WARN it, since it's OK for the last entry to be partially
       // written.
-      bool has_valid_entries;
-      auto status = ScanForValidEntryHeaders(offset, &has_valid_entries);
-      if (!status.ok()) {
-        result.status = s.CloneAndPrepend("Scanning forward for valid entries");
-      }
-
-      if (has_valid_entries) {
+      auto has_valid_entries = ScanForValidEntryHeaders(offset);
+      if (!has_valid_entries.ok() || *has_valid_entries) {
+        string err = "Log file corruption detected.";
+        if(!has_valid_entries.ok()) {
+          SubstituteAndAppend(&err, " Scanning forward for valid entries failed with $0",
+              has_valid_entries.ToString());
+        }
+        result.status = corrupt_status.CloneAndPrepend(err);
         return result;
       }
 
-      LOG(INFO) << "Ignoring log segment corruption in " << path_ << " because "
-                << "there are no log entries following the corrupted one. "
+      LOG(INFO) << "Ignoring partially flushed segment in write ahead log " << path_
+                << " because there are no log entries following this one. "
                 << "The server probably crashed in the middle of writing an entry "
                 << "to the write-ahead log or downloaded an active log via remote bootstrap. "
-                << "Error detail: " << result.status.ToString();
+                << "Error detail: " << corrupt_status.ToString();
       break;
     }
 
@@ -762,12 +766,11 @@ Result<OpId> ReadableLogSegment::ReadFirstReplicateEntryOpId() {
   return OpId::FromPB(first_entry.replicate().id());
 }
 
-Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries) {
+Result<bool> ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset) {
   TRACE_EVENT1("log", "ReadableLogSegment::ScanForValidEntryHeaders",
                "path", path_);
   LOG(INFO) << "Scanning " << path_ << " for valid entry headers "
             << "following offset " << offset << "...";
-  *has_valid_entries = false;
 
   const int kChunkSize = 1024 * 1024;
   std::unique_ptr<uint8_t[]> buf(new uint8_t[kChunkSize]);
@@ -805,14 +808,13 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
       EntryHeader header;
       if (DecodeEntryHeader(potential_header, &header).ok()) {
         LOG(INFO) << "Found a valid entry header at offset " << (offset + off_in_chunk);
-        *has_valid_entries = true;
-        return Status::OK();
+        return true;
       }
     }
   }
 
   LOG(INFO) << "Found no log entry headers";
-  return Status::OK();
+  return false;
 }
 
 Status ReadableLogSegment::MakeCorruptionStatus(
@@ -822,9 +824,8 @@ Status ReadableLogSegment::MakeCorruptionStatus(
     const std::vector<std::unique_ptr<LogEntryPB>>& entries,
     const Status& status) const {
 
-  string err = "Log file corruption detected. ";
-  SubstituteAndAppend(&err, "Failed trying to read batch #$0 at offset $1 for log segment $2: ",
-                      batch_number, batch_offset, path_);
+  string err = Substitute("Failed trying to read batch #$0 at offset $1 for "
+                      "log segment $2: ", batch_number, batch_offset, path_);
   err.append("Prior batch offsets:");
   std::sort(recent_offsets->begin(), recent_offsets->end());
   for (int64_t offset : *recent_offsets) {

@@ -2,7 +2,8 @@
 title: Create a VPC Network
 headerTitle:
 linkTitle: Create a VPC Network
-description: Create and manage your cloud VPCs.
+description: Peer a VPC in AWS.
+headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
@@ -136,7 +137,7 @@ To set DNS settings:
 
 To accept the peering request, do the following:
 
-1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is Pending request.
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is Pending acceptance.
 1. Click **Actions** and choose **Accept request** to display the **Accept VPC peering connection request** window.
     ![Accept peering in AWS](/images/yb-cloud/cloud-peer-aws-accept.png)
 1. Click **Accept request**.

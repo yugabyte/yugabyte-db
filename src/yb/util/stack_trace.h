@@ -32,7 +32,11 @@ enum class StackTraceLineFormat {
   SHORT,
   CLION_CLICKABLE,
   SYMBOL_ONLY,
+#if !defined(NDEBUG)
+  DEFAULT = CLION_CLICKABLE
+#else
   DEFAULT = SHORT
+#endif
 };
 
 // Active - thread is performing execution.

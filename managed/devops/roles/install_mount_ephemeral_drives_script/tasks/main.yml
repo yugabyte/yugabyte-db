@@ -12,6 +12,7 @@
         - cloud_type is defined
         - device_names is defined
         - mount_points is defined
+        - lun_indexes is defined
 
   - name: Install the script for discovering, updating fstab for & mounting ephemeral drives.
     become: yes
@@ -20,6 +21,7 @@
       # Ansible variable rules are weird..
       device_paths: "{{ device_names | list | join(' ') }}"
       mount_paths: "{{ mount_points.split(',') | join(' ') }}"
+      disk_lun_indexes: "{{ lun_indexes.split(',') | join(' ') }}"
     template:
       src: mount_ephemeral_drives.sh.j2
       dest: /usr/local/bin/mount_ephemeral_drives.sh

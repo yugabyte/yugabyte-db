@@ -4,7 +4,7 @@ headerTitle: Administration and billing
 linkTitle: Administration and billing
 description: Administration and billing.
 image: /images/section_icons/explore/administer.png
-headcontent: Manage users and billing and payment methods.
+headcontent: Manage account users and billing and payment methods
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed

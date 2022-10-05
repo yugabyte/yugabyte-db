@@ -95,7 +95,7 @@ extern Status BuildTable(
     bool paranoid_file_checks,
     InternalStats* internal_stats,
     BoundaryValuesExtractor* boundary_values_extractor,
-    const Env::IOPriority io_priority = Env::IO_HIGH,
+    const yb::IOPriority io_priority = yb::IOPriority::kHigh,
     TableProperties* table_properties = nullptr);
 
 }  // namespace rocksdb

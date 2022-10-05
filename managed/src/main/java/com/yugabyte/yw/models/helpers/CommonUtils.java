@@ -4,12 +4,39 @@ package com.yugabyte.yw.models.helpers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.collect.ImmutableMultiset;
+import com.google.common.collect.Iterables;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedResponse;
+import io.ebean.ExpressionList;
+import io.ebean.Junction;
+import io.ebean.PagedList;
+import io.ebean.Query;
+import io.ebean.common.BeanList;
 import java.lang.annotation.Annotation;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -29,42 +56,12 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
-import com.google.common.collect.ImmutableMultiset;
-import com.google.common.collect.Iterables;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.paging.PagedQuery;
-import com.yugabyte.yw.models.paging.PagedResponse;
-
-import io.ebean.ExpressionList;
-import io.ebean.Junction;
-import io.ebean.PagedList;
-import io.ebean.Query;
-import io.ebean.common.BeanList;
-import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
 
@@ -90,6 +87,21 @@ public class CommonUtils {
           .mappingProvider(new JacksonMappingProvider())
           .build();
 
+  // Sensisitve field substrings
+  private static final List<String> sensitiveFieldSubstrings =
+      Arrays.asList(
+          "KEY", "SECRET", "CREDENTIALS", "API", "POLICY", "HC_VAULT_TOKEN", "vaultToken");
+  // Exclude following strings from being sensitive fields
+  private static final List<String> excludedFieldNames =
+      Arrays.asList(
+          // GCP KMS fields
+          "KEY_RING_ID",
+          "CRYPTO_KEY_ID",
+          // Azure KMS fields
+          "AZU_KEY_NAME",
+          "AZU_KEY_ALGORITHM",
+          "AZU_KEY_SIZE");
+
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
    *
@@ -98,14 +110,18 @@ public class CommonUtils {
    */
   public static boolean isSensitiveField(String fieldname) {
     String ucFieldname = fieldname.toUpperCase();
-    return isStrictlySensitiveField(ucFieldname)
-        || ucFieldname.contains("KEY")
-        || ucFieldname.contains("SECRET")
-        || ucFieldname.contains("CREDENTIALS")
-        || ucFieldname.contains("API")
-        || ucFieldname.contains("POLICY")
-        || ucFieldname.contains("HC_VAULT_TOKEN")
-        || ucFieldname.contains("vaultToken");
+    if (isStrictlySensitiveField(ucFieldname)) {
+      return true;
+    }
+
+    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Can add more exclusions if required
+    if (excludedFieldNames.contains(ucFieldname)) {
+      return false;
+    }
+
+    // Check if any of sensitiveFieldSubstrings are substrings in ucFieldname and mark as sensitive
+    return sensitiveFieldSubstrings.stream().anyMatch(sfs -> ucFieldname.contains(sfs));
   }
 
   /**
@@ -268,7 +284,7 @@ public class CommonUtils {
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
       if (entry.getValue().isObject()) {
-        result.put(
+        result.set(
             entry.getKey(),
             processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
       }
@@ -662,6 +678,16 @@ public class CommonUtils {
     return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
   }
 
+  public static NodeDetails getServerToRunYsqlQuery(Universe universe) {
+    // Prefer the master leader since that will result in a faster query.
+    // If the leader does not have a tserver process though, select any random tserver.
+    NodeDetails nodeToUse = universe.getMasterLeaderNode();
+    if (nodeToUse == null || !nodeToUse.isTserver) {
+      nodeToUse = getARandomLiveTServer(universe);
+    }
+    return nodeToUse;
+  }
+
   /**
    * This method extracts the json from shell response where the shell executes a SQL Query that
    * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json
@@ -711,15 +737,6 @@ public class CommonUtils {
             universe.getUniverseDetails().updateInProgress,
             universe.getUniverseDetails().universePaused);
     return stateLogMsg;
-  }
-
-  public static boolean canConfigureYbc(Universe universe) {
-    if (universe == null) {
-      return false;
-    }
-    String ybcPackagePath =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcPackagePath;
-    return StringUtils.isNotEmpty(ybcPackagePath);
   }
 
   /** Get the user sending the API request from the HTTP context. */

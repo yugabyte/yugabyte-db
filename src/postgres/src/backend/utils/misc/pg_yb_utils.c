@@ -52,6 +52,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_inherits.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
@@ -60,6 +61,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
@@ -387,8 +389,11 @@ YBIsDBCatalogVersionMode()
 		cached_value = YBCIsEnvVarTrueWithDefault(
 			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
+	/*
+	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * for catalog version type.
+	 */
 	return IsYugaByteEnabled() &&
-		   YBTransactionsEnabled() &&
 		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
 		   cached_value;
 }
@@ -540,7 +545,7 @@ YBInitPostgresBackend(
 		 *
 		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(/* pg_env */ NULL, db_name ? db_name : user_name));
+		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name));
 	}
 }
 
@@ -605,15 +610,18 @@ YBIsPgLockingEnabled()
 	return !YBTransactionsEnabled();
 }
 
-static bool yb_preparing_templates = false;
+static bool yb_connected_to_template_db = false;
+
 void
-YBSetPreparingTemplates() {
-	yb_preparing_templates = true;
+YbSetConnectedToTemplateDb()
+{
+	yb_connected_to_template_db = true;
 }
 
 bool
-YBIsPreparingTemplates() {
-	return yb_preparing_templates;
+YbIsConnectedToTemplateDb()
+{
+	return yb_connected_to_template_db;
 }
 
 Oid
@@ -910,8 +918,8 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue_no)));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue_no)));
 	}
 	else
 	{
@@ -951,6 +959,7 @@ int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = false;
 bool yb_enable_optimizer_statistics = false;
 bool yb_make_next_ddl_statement_nonbreaking = false;
+bool yb_plpgsql_disable_prefetch_in_for_query = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1371,12 +1380,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_AlterTableStmt:
 		{
-			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
-			ListCell *lcmd = stmt->cmds->head;
-			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
-				*is_breaking_catalog_change = false;
-			}
+			*is_breaking_catalog_change = false;
 			break;
 		}
 
@@ -1570,69 +1574,118 @@ void YBTestFailDdlIfRequested() {
 	elog(ERROR, "DDL failed as requested");
 }
 
+static int YbGetNumberOfFunctionOutputColumns(Oid func_oid)
+{
+	int ncols = 0; /* Equals to the number of OUT arguments. */
+
+	HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func_oid));
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", func_oid);
+
+	bool is_null = false;
+	Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
+										Anum_pg_proc_proargmodes,
+										&is_null);
+	Assert(!is_null);
+	ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
+
+	ncols = 0;
+	for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
+		if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
+			++ncols;
+
+	ReleaseSysCache(proctup);
+
+	return ncols;
+}
+
+/*
+ * For backward compatibility, this function dynamically adapts to the number
+ * of output columns defined in pg_proc.
+ */
 Datum
 yb_servers(PG_FUNCTION_ARGS)
 {
-  FuncCallContext *funcctx;
-  if (SRF_IS_FIRSTCALL())
-  {
-    MemoryContext oldcontext;
-    TupleDesc tupdesc;
+	FuncCallContext *funcctx;
 
-    funcctx = SRF_FIRSTCALL_INIT();
-    oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	int expected_ncols = 9;
 
-    tupdesc = CreateTemplateTupleDesc(8, false);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-                       "host", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-                       "port", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-                       "num_connections", INT8OID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-                       "node_type", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-                       "cloud", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-                       "region", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 7,
-                       "zone", TEXTOID, -1, 0);
-    TupleDescInitEntry(tupdesc, (AttrNumber) 8,
-                       "public_ip", TEXTOID, -1, 0);
-    funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+	static int ncols = 0;
 
-    YBCServerDescriptor *servers = NULL;
-    size_t numservers = 0;
-    HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
-    funcctx->max_calls = numservers;
-    funcctx->user_fctx = servers;
-    MemoryContextSwitchTo(oldcontext);
-  }
-  funcctx = SRF_PERCALL_SETUP();
-  if (funcctx->call_cntr < funcctx->max_calls)
-  {
-    Datum		values[8];
-    bool		nulls[8];
-    HeapTuple	tuple;
-    int cntr = funcctx->call_cntr;
-    YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
-    bool is_primary = server->is_primary;
-    const char *node_type = is_primary ? "primary" : "read_replica";
-    // TODO: Remove hard coding of port and num_connections
-    values[0] = CStringGetTextDatum(server->host);
-    values[1] = Int64GetDatum(server->pg_port);
-    values[2] = Int64GetDatum(0);
-    values[3] = CStringGetTextDatum(node_type);
-    values[4] = CStringGetTextDatum(server->cloud);
-    values[5] = CStringGetTextDatum(server->region);
-    values[6] = CStringGetTextDatum(server->zone);
-    values[7] = CStringGetTextDatum(server->public_ip);
-    memset(nulls, 0, sizeof(nulls));
-    tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
-  }
-  else
-    SRF_RETURN_DONE(funcctx);
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8019 /* yb_servers function
+												   oid hardcoded in pg_proc.dat */);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		tupdesc = CreateTemplateTupleDesc(ncols, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+						   "host", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+						   "port", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+						   "num_connections", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "node_type", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "cloud", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+						   "region", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+						   "zone", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+						   "public_ip", TEXTOID, -1, 0);
+		if (ncols >= expected_ncols)
+		{
+			TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+							   "uuid", TEXTOID, -1, 0);
+		}
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		YBCServerDescriptor *servers = NULL;
+		size_t numservers = 0;
+		HandleYBStatus(YBCGetTabletServerHosts(&servers, &numservers));
+		funcctx->max_calls = numservers;
+		funcctx->user_fctx = servers;
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[ncols];
+		bool		nulls[ncols];
+		HeapTuple	tuple;
+
+		int cntr = funcctx->call_cntr;
+		YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
+		bool is_primary = server->is_primary;
+		const char *node_type = is_primary ? "primary" : "read_replica";
+
+		// TODO: Remove hard coding of port and num_connections
+		values[0] = CStringGetTextDatum(server->host);
+		values[1] = Int64GetDatum(server->pg_port);
+		values[2] = Int64GetDatum(0);
+		values[3] = CStringGetTextDatum(node_type);
+		values[4] = CStringGetTextDatum(server->cloud);
+		values[5] = CStringGetTextDatum(server->region);
+		values[6] = CStringGetTextDatum(server->zone);
+		values[7] = CStringGetTextDatum(server->public_ip);
+		if (ncols >= expected_ncols)
+		{
+			values[8] = CStringGetTextDatum(server->uuid);
+		}
+		memset(nulls, 0, sizeof(nulls));
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
 }
 
 bool YBIsSupportedLibcLocale(const char *localebuf) {
@@ -1678,6 +1731,15 @@ YbGetTableProperties(Relation rel)
 {
 	HandleYBStatus(YbGetTablePropertiesCommon(rel));
 	return rel->yb_table_properties;
+}
+
+YbTableProperties
+YbGetTablePropertiesById(Oid relid)
+{
+	Relation relation     = RelationIdGetRelation(relid);
+	HandleYBStatus(YbGetTablePropertiesCommon(relation));
+	RelationClose(relation);
+	return relation->yb_table_properties;
 }
 
 YbTableProperties
@@ -1768,30 +1830,13 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	TupleDesc	tupdesc;
 
-	static int ncols = 0; /* Equals to the number of OUT arguments. */
+	int expected_ncols = 5;
 
-	if (ncols < 5) {
-		/* yb_table_properties function oid hardcoded in pg_proc.dat */
-		Oid funcid = 8033;
+	static int ncols = 0;
 
-		HeapTuple proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-		if (!HeapTupleIsValid(proctup))
-			elog(ERROR, "cache lookup failed for function %u", funcid);
-
-		bool is_null = false;
-		Datum proargmodes = SysCacheGetAttr(PROCOID, proctup,
-											Anum_pg_proc_proargmodes,
-											&is_null);
-		Assert(!is_null);
-		ArrayType* proargmodes_arr = DatumGetArrayTypeP(proargmodes);
-
-		ncols = 0;
-		for (int i = 0; i < ARR_DIMS(proargmodes_arr)[0]; ++i)
-			if (ARR_DATA_PTR(proargmodes_arr)[i] == PROARGMODE_OUT)
-				++ncols;
-
-		ReleaseSysCache(proctup);
-	}
+	if (ncols < expected_ncols)
+		ncols = YbGetNumberOfFunctionOutputColumns(8033 /* yb_table_properties function
+												   oid hardcoded in pg_proc.dat */);
 
 	Datum		values[ncols];
 	bool		nulls[ncols];
@@ -1807,7 +1852,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 					   "num_hash_key_columns", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
 					   "is_colocated", BOOLOID, -1, 0);
-	if (ncols >= 5)
+	if (ncols >= expected_ncols)
 	{
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
 						   "tablegroup_oid", OIDOID, -1, 0);
@@ -1821,7 +1866,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		values[0] = Int64GetDatum(yb_props->num_tablets);
 		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_props->is_colocated);
-		if (ncols >= 5)
+		if (ncols >= expected_ncols)
 		{
 			values[3] =
 				OidIsValid(yb_props->tablegroup_oid)
@@ -1834,7 +1879,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		}
 
 		memset(nulls, 0, sizeof(nulls));
-		if (ncols >= 5)
+		if (ncols >= expected_ncols)
 		{
 			nulls[3] = !OidIsValid(yb_props->tablegroup_oid);
 			nulls[4] = !OidIsValid(yb_props->colocation_id);
@@ -2646,8 +2691,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case ConstraintRelationId:                        // pg_constraint
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
 			break;
+		case IndexRelationId:                             // pg_index
+			sys_table_index_id = IndexIndrelidIndexId;
+			break;
 		case InheritsRelationId:                          // pg_inherits
 			sys_table_index_id = InheritsParentIndexId;
+			break;
+		case NamespaceRelationId:                         // pg_namespace
+			sys_table_index_id = NamespaceNameIndexId;
 			break;
 		case OperatorClassRelationId:                     // pg_opclass
 			sys_table_index_id = OpclassAmNameNspIndexId;
@@ -2672,19 +2723,28 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			break;
 
 		case CastRelationId:        switch_fallthrough(); // pg_cast
-		case IndexRelationId:       switch_fallthrough(); // pg_index
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
+
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			db_id = YbMasterCatalogVersionTableDBOid();
+			break;
 
 		default:
 		{
 			ereport(FATAL,
-                    (errcode(ERRCODE_INTERNAL_ERROR),
-                    errmsg("Sys table '%d' are not yet inteded for preloading", sys_table_id)));
+			        (errcode(ERRCODE_INTERNAL_ERROR),
+			         errmsg("Sys table '%d' is not yet inteded for preloading", sys_table_id)));
 
 		}
 	}
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
+}
+
+void YbTryRegisterCatalogVersionTableForPrefetching()
+{
+	if (YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
+		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
 }
 
 bool YBCIsRegionLocal(Relation rel) {
@@ -2693,4 +2753,25 @@ bool YBCIsRegionLocal(Relation rel) {
 			!IsSystemRelation(rel) &&
 			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
 			cost <= yb_interzone_cost;
+}
+
+bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource source) {
+  int newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  if (strcmp(*newval, "tablet") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  } else if (strcmp(*newval, "database") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_DATABASE;
+  } else {
+    return false;
+  }
+
+  *extra = malloc(sizeof(int));
+  if (!*extra) return false;
+  *((int*)*extra) = newConsistency;
+
+  return true;
+}
+
+void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
+  yb_xcluster_consistency_level = *((int*)extra);
 }

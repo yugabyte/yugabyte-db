@@ -95,6 +95,11 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
   }
 
+  private Result listAccessKeyForAllProviders() {
+    String uri = "/api/customers/" + defaultCustomer.uuid + "/access_keys";
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultUser.createAuthToken());
+  }
+
   private AccessKeyFormData createFormData(
       String keyCode,
       UUID regionUUID,
@@ -310,6 +315,28 @@ public class AccessKeyControllerTest extends FakeDBApplication {
               key.get("idKey").get("providerUUID").asText(),
               allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
         });
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testListForAllProvidersAccessKeyWithEmptyData() {
+    Result result = listAccessKeyForAllProviders();
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertEquals(json.size(), 0);
+    assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testListForAllProvidersAccessKeyWithValidData() {
+    Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
+    AccessKey.create(defaultProvider.uuid, "key-1", new AccessKey.KeyInfo());
+    AccessKey.create(defaultProvider.uuid, "key-2", new AccessKey.KeyInfo());
+    AccessKey.create(newProvider.uuid, "key-3", new AccessKey.KeyInfo());
+    Result result = listAccessKeyForAllProviders();
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertEquals(json.size(), 3);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 

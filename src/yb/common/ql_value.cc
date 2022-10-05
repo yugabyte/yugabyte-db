@@ -525,6 +525,19 @@ Status QLValue::Deserialize(
       break;
     }
 
+    case TUPLE: {
+      set_tuple_value();
+      size_t num_elems = ql_type->params().size();
+      for (size_t i = 0; i < num_elems; ++i) {
+        const shared_ptr<QLType>& elem_type = ql_type->param_type(i);
+        QLValue elem;
+        RETURN_NOT_OK(elem.Deserialize(elem_type, client, data));
+        RETURN_NOT_OK(CheckForNull(elem));
+        *add_tuple_elem() = std::move(*elem.mutable_value());
+      }
+      return Status::OK();
+    }
+
     QL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 

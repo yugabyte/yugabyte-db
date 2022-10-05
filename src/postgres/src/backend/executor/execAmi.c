@@ -40,6 +40,7 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeModifyTable.h"
 #include "executor/nodeNamedtuplestorescan.h"
+#include "executor/nodeYbBatchedNestloop.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeProjectSet.h"
 #include "executor/nodeRecursiveunion.h"
@@ -56,6 +57,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
+#include "executor/nodeYbSeqscan.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/relation.h"
 #include "utils/rel.h"
@@ -165,6 +167,10 @@ ExecReScan(PlanState *node)
 			ExecReScanSeqScan((SeqScanState *) node);
 			break;
 
+		case T_YbSeqScanState:
+			ExecReScanYbSeqScan((YbSeqScanState *) node);
+			break;
+
 		case T_SampleScanState:
 			ExecReScanSampleScan((SampleScanState *) node);
 			break;
@@ -235,6 +241,10 @@ ExecReScan(PlanState *node)
 
 		case T_NestLoopState:
 			ExecReScanNestLoop((NestLoopState *) node);
+			break;
+
+		case T_YbBatchedNestLoopState:
+			ExecReScanYbBatchedNestLoop((YbBatchedNestLoopState *) node);
 			break;
 
 		case T_MergeJoinState:
@@ -525,6 +535,9 @@ ExecSupportsBackwardScan(Plan *node)
 				if (flags & CUSTOMPATH_SUPPORT_BACKWARD_SCAN)
 					return true;
 			}
+			return false;
+
+		case T_YbSeqScan:
 			return false;
 
 		case T_SeqScan:

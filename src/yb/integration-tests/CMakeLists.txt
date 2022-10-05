@@ -43,6 +43,7 @@ YB_INCLUDE_EXTENSIONS()
 set(INTEGRATION_TESTS_SRCS
   cluster_itest_util.cc
   cluster_verifier.cc
+  create-table-itest-base.cc
   external_mini_cluster.cc
   external_mini_cluster_fs_inspector.cc
   load_balancer_test_util.cc
@@ -78,9 +79,10 @@ target_link_libraries(integration-tests
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
-  yb-tserver
-  yb-master
+  "${YB_MASTER_DYNAMIC_EXE_NAME}"
+  "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
+  gen_auto_flags_json
   yb-ts-cli)
 
 ADD_YB_TEST_LIBRARY(
@@ -107,6 +109,7 @@ set(YB_TEST_LINK_LIBS
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
+ADD_YB_TEST(auto_flags-itest)
 ADD_YB_TEST(registration-test)
 ADD_YB_TEST(clock_synchronization-itest)
 ADD_YB_TEST(client_failover-itest)

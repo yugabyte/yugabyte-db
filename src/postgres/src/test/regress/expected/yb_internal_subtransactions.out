@@ -33,56 +33,54 @@ NOTICE:  unique violation 1
 NOTICE:  unique violation 2
 -- Full table scan
 SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-              QUERY PLAN               
+              QUERY PLAN
 ---------------------------------------
  Sort
    Sort Key: k
-   ->  Seq Scan on subtrans_foo t
+   ->  YB Seq Scan on subtrans_foo t
          Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
 -- PK index scan
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN                         
-------------------------------------------------------------
+              QUERY PLAN
+---------------------------------------
  Sort
    Sort Key: k
-   ->  Index Scan using subtrans_foo_pkey on subtrans_foo t
-         Index Cond: (k > 0)
-         Filter: (v > 0)
-(5 rows)
+   ->  YB Seq Scan on subtrans_foo t
+         Filter: ((k > 0) AND (v > 0))
+(4 rows)
 
 -- Index scan using the secondary index that triggered the unique violation
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
- k | v  
+ k | v
 ---+----
  1 | 42
 (1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
-                         QUERY PLAN                          
--------------------------------------------------------------
+              QUERY PLAN
+---------------------------------------
  Sort
    Sort Key: k
-   ->  Index Scan using subtrans_foo_v_key on subtrans_foo t
-         Index Cond: (v > 0)
-         Filter: (k > 0)
-(5 rows)
+   ->  YB Seq Scan on subtrans_foo t
+         Filter: ((k > 0) AND (v > 0))
+(4 rows)
 
 -- Test that each buffering eligible operations are executed in the intended
 -- procedure block section.
@@ -100,7 +98,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -125,7 +123,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -149,7 +147,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
@@ -173,7 +171,7 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v   
+ k |  v
 ---+------
  1 | dog
  2 | cat
@@ -199,8 +197,30 @@ END;
 $body$;
 NOTICE:  caught unique violation
 SELECT * FROM subtrans_test ORDER BY 1;
- k |  v  
+ k |  v
 ---+-----
  1 | dog
 (1 row)
 
+-- Test calling a stored function from DDL statement
+CREATE OR REPLACE FUNCTION inverse(float8) RETURNS float8 AS
+$$
+BEGIN
+	RETURN 1::float8 / $1;
+EXCEPTION WHEN others THEN
+	RAISE NOTICE 'caught exception % %', sqlstate, sqlerrm;
+        RETURN 'NaN';
+END$$ LANGUAGE plpgsql;
+CREATE TABLE ddl_subtrans_test (c1 float8);
+INSERT INTO ddl_subtrans_test VALUES (0);
+ALTER TABLE ddl_subtrans_test ADD CONSTRAINT c1_not_nan CHECK (inverse(c1) <> 'NaN');
+NOTICE:  caught exception 22012 division by zero
+ERROR:  check constraint "c1_not_nan" is violated by some row
+-- Verify that the check constraint has not been added
+\d ddl_subtrans_test
+              Table "public.ddl_subtrans_test"
+ Column |       Type       | Collation | Nullable | Default
+--------+------------------+-----------+----------+---------
+ c1     | double precision |           |          |
+
+DROP TABLE ddl_subtrans_test;

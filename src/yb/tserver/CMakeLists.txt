@@ -177,6 +177,7 @@ set(TSERVER_SRCS
   pg_create_table.cc
   pg_table_cache.cc
   read_query.cc
+  remote_bootstrap_anchor_client.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
@@ -191,6 +192,7 @@ set(TSERVER_SRCS
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
+  xcluster_safe_time_map.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 set(TSERVER_DEPS
@@ -235,8 +237,8 @@ ADD_YB_LIBRARY(yb-tserver_util
 # yb-tserver
 #########################################
 
-add_executable(yb-tserver tablet_server_main.cc)
-target_link_libraries(yb-tserver
+add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}" tablet_server_main.cc)
+target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}"
   tserver
   yb-tserver_util
   yb-cql
@@ -248,9 +250,9 @@ target_link_libraries(yb-tserver
 # Generate tserver_flags.xml
 #########################################
 set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
-add_custom_command(TARGET yb-tserver POST_BUILD
+add_custom_command(TARGET "${YB_TSERVER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "yb-tserver"
+    "--program_name" "${YB_TSERVER_DYNAMIC_EXE_NAME}"
     "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 
@@ -264,7 +266,7 @@ add_library(tserver_test_util
   tablet_server-test-base.cc
   tablet_server_test_util.cc
   universe_key_test_util.cc)
-target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util)
+target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util yb_util)
 
 #########################################
 # tserver tests

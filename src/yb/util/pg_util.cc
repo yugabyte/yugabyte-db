@@ -13,7 +13,10 @@
 
 #include "yb/util/pg_util.h"
 
+#include <algorithm>
 #include <string>
+
+#include <glog/logging.h>
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
@@ -21,12 +24,52 @@
 namespace yb {
 
 // Derive a socket directory name for tserver-postgres authentication purposes.
-// Since the socket itself is named with the port number, the directory holding it must
-// be unique with respect to the bind address in order to avoid conflicts with other clusters
-// listening on different addresses but same ports.  To avoid the 108 character limit for the socket
-// path, use a hash of the bind address.
-std::string PgDeriveSocketDir(const std::string& host) {
-  return Format("/tmp/.yb.$0", HashUtil::MurmurHash2_64(host.c_str(), host.size(), 0 /* seed */));
+// The directory should be unique to each tserver (and its postgres) running on the same machine.
+// Accomplish this by putting the bind address host and port in the directory name.  To avoid the
+// 107 character limit for the socket path (see UNIXSOCK_PATH_BUFLEN - 1 in postgres fe-connect.c),
+// truncate and use a hash of the bind address if needed.
+std::string PgDeriveSocketDir(const HostPort& host_port) {
+  const std::string prefix = "/tmp/.yb";
+  const std::string& host = host_port.host();
+  const uint16_t port = host_port.port();
+
+  constexpr size_t kSocketMaxChars = 107;
+  // Port (16-bit) int can only be at most 5 digits long.
+  constexpr size_t kPrefixChars = 8;
+  DCHECK_EQ(prefix.size(), kPrefixChars);
+  constexpr size_t kPortMaxChars = 5;
+  DCHECK_LE(std::to_string(port).size(), kPortMaxChars);
+  // ".s.PGSQL.<port>" = 9 chars + max 5 chars
+  constexpr size_t kSocketFileChars = 14;
+  DCHECK_EQ(strlen(".s.PGSQL.") + kPortMaxChars, kSocketFileChars);
+  // directory name: 1 dot, 1 colon; 1 slash separating socket dir and socket file.
+  constexpr size_t kSeparatorChars = 3;
+  constexpr size_t kHostMaxChars = 77;
+  DCHECK_EQ(kSocketMaxChars - (kPrefixChars + kPortMaxChars + kSeparatorChars + kSocketFileChars),
+            kHostMaxChars);
+
+  // Make socket directory path.
+  std::string path;
+  if (host.size() <= kHostMaxChars) {
+    // Normal case: "/tmp/.yb.<host>:<port>".
+    path = Format("$0.$1:$2", prefix, host, port);
+  } else {
+    // Special case when host address is too long: "/tmp/.yb.<truncated_host>#<host_hash>:<port>".
+    const uint64_t hash = HashUtil::MurmurHash2_64(host.c_str(), host.size(), 0 /* seed */);
+    // Hash (64-bit) uint can only be at most 20 digits long.
+    constexpr size_t kHashMaxChars = 20;
+    DCHECK_LE(std::to_string(hash).size(), kHashMaxChars);
+    // directory name: 1 dot, 1 pound, 1 colon; 1 slash separating socket dir and socket file.
+    constexpr size_t kSeparatorChars = 4;
+    constexpr size_t kHostMaxChars = 56;
+    DCHECK_EQ(kSocketMaxChars - (kPrefixChars + kHashMaxChars + kPortMaxChars + kSeparatorChars +
+                                 kSocketFileChars),
+              kHostMaxChars);
+    const std::string& host_substring = host.substr(0, kHostMaxChars);
+    path = Format("$0.$1#$2:$3", prefix, host_substring, hash, port);
+  }
+  DCHECK_LE(path.size(), kSocketMaxChars);
+  return path;
 }
 
 } // namespace yb

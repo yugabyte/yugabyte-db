@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 
 import java.util.Random;
+import java.util.HashSet;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -39,8 +40,14 @@ public class WaitForYbcServer extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  protected UniverseTaskParams taskParams() {
-    return (UniverseTaskParams) taskParams;
+  public static class Params extends UniverseDefinitionTaskParams {
+    // The universe UUID must be stored in universeUUID field.
+    // The xCluster info object to persist.
+    public Set<NodeDetails> nodeDetailsSet = null;
+  }
+
+  protected Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
@@ -51,7 +58,10 @@ public class WaitForYbcServer extends UniverseTaskBase {
     YbcClient client = null;
     Random rand = new Random();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    Set<NodeDetails> nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    Set<NodeDetails> nodeDetailsSet =
+        taskParams().nodeDetailsSet == null
+            ? universe.getUniverseDetails().nodeDetailsSet
+            : taskParams().nodeDetailsSet;
     String errMsg = "";
 
     for (NodeDetails node : nodeDetailsSet) {

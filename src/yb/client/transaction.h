@@ -149,15 +149,11 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // So this transaction could be used by some other application instance.
   Result<TransactionMetadata> Release();
 
-  // Creates transaction by metadata, could be used in pair with release to transfer transaction
-  // between application instances.
-  static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
-
   void SetActiveSubTransaction(SubTransactionId id);
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
-  bool HasSubTransactionState();
+  bool HasSubTransaction(SubTransactionId id);
 
  private:
   class Impl;
@@ -173,6 +169,8 @@ class YBSubTransaction {
   void SetActiveSubTransaction(SubTransactionId id);
 
   Status RollbackToSubTransaction(SubTransactionId id);
+
+  bool HasSubTransaction(SubTransactionId id) const;
 
   const SubTransactionMetadata& get();
 

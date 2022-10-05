@@ -15,21 +15,21 @@ For Go applications, most drivers provide database connectivity through the stan
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link">
+    <a href="../yb-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link active">
+    <a href="../pgx/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link">
+    <a href="../pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -187,5 +187,5 @@ if err != nil {
 
 ## Next steps
 
-- Learn how to build Go applications using [GORM](../gorm).
+- Learn how to build Go applications using [GORM](../gorm/).
 - Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/#fundamentals) of the PGX Driver.

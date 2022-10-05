@@ -16,29 +16,50 @@ import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListRes
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UnusedIndexFinder {
 
-  private NodeUniverseManager nodeUniverseManager;
+  public static final String QUERY_EXECUTOR_THREAD_POOL_CONFIG_KEY = "yb.perf_advisor.max_threads";
+
+  private final NodeUniverseManager nodeUniverseManager;
+  private final PlatformExecutorFactory platformExecutorFactory;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
-  public UnusedIndexFinder(NodeUniverseManager nodeUniverseManager) {
+  public UnusedIndexFinder(
+      NodeUniverseManager nodeUniverseManager,
+      PlatformExecutorFactory platformExecutorFactory,
+      RuntimeConfigFactory runtimeConfigFactory) {
     this.nodeUniverseManager = nodeUniverseManager;
+    this.platformExecutorFactory = platformExecutorFactory;
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   private static final String GET_DB_LIST_STATEMENT =
@@ -48,7 +69,8 @@ public class UnusedIndexFinder {
   private static final String GET_UNUSED_INDEXES_STATEMENT =
       "select jsonb_agg(t) from (select current_database(), relname as table_name, "
           + "indexrelname as index_name, pg_get_indexdef(indexrelid) as index_command, "
-          + "'perf tuning' as comment from pg_stat_user_indexes where idx_scan = 0) as t;";
+          + "'perf tuning' as comment from pg_stat_user_indexes stat, pg_index idx where "
+          + "stat.indexrelid = idx.indexrelid and idx.indisunique = 'f' and idx_scan = 0) as t;";
 
   private static final String DEFAULT_DB_NAME = "yugabyte";
 
@@ -88,6 +110,8 @@ public class UnusedIndexFinder {
     log.trace("getDBList: {}", getDBList);
 
     boolean parseDBSuccess = false;
+    final Config config = runtimeConfigFactory.forUniverse(universe);
+    int maxParallelThreads = config.getInt(QUERY_EXECUTOR_THREAD_POOL_CONFIG_KEY);
 
     try {
       ObjectMapper objectMapper = new ObjectMapper();
@@ -103,32 +127,64 @@ public class UnusedIndexFinder {
       for (QueryUniverseDBListResponse dbname : universeDBList) {
 
         HashMap<String, Integer> entriesAcrossNodes = new HashMap<>();
+        ExecutorService threadPool =
+            platformExecutorFactory.createFixedExecutor(
+                getClass().getSimpleName(), maxParallelThreads, Executors.defaultThreadFactory());
+        Set<Future<List<UnusedIndexFinderResponse>>> futures = new HashSet<>();
 
-        for (NodeDetails liveNode : tserverLiveNodes) {
-          ShellResponse response =
-              nodeUniverseManager.runYsqlCommand(
-                  liveNode, universe, dbname.datname, GET_UNUSED_INDEXES_STATEMENT);
-          String responseJSON = CommonUtils.extractJsonisedSqlResponse(response);
+        try {
+          for (NodeDetails liveNode : tserverLiveNodes) {
+            Callable<List<UnusedIndexFinderResponse>> callable =
+                () -> {
+                  ShellResponse response =
+                      nodeUniverseManager.runYsqlCommand(
+                          liveNode, universe, dbname.datname, GET_UNUSED_INDEXES_STATEMENT);
+                  String responseJSON = CommonUtils.extractJsonisedSqlResponse(response);
 
-          // responseJSON unfortunately seems to return a length 1 empty string rather than null
-          // when given 0 rows, so .isEmpty() is insufficient.
-          if (responseJSON == null || responseJSON.length() <= 1) {
-            continue;
+                  // responseJSON unfortunately seems to return a length 1 empty string rather than
+                  // null when given 0 rows, so .isEmpty() is insufficient.
+                  if (responseJSON == null || responseJSON.length() <= 1) {
+                    return null;
+                  }
+
+                  return objectMapper.readValue(
+                      responseJSON, new TypeReference<List<UnusedIndexFinderResponse>>() {});
+                };
+
+            Future<List<UnusedIndexFinderResponse>> future = threadPool.submit(callable);
+            futures.add(future);
+          }
+          if (futures.isEmpty()) {
+            throw new IllegalStateException("None of the nodes are accessible.");
+          } else if (futures.size() != tserverLiveNodes.size()) {
+            throw new IllegalStateException(
+                "Failing the operation since some of the nodes are not accessible.");
           }
 
-          List<UnusedIndexFinderResponse> nodeUnusedIndexes = new ArrayList<>();
-          nodeUnusedIndexes.addAll(
-              objectMapper.readValue(
-                  responseJSON, new TypeReference<List<UnusedIndexFinderResponse>>() {}));
+          List<UnusedIndexFinderResponse> unusedIndexesAcrossNodes =
+              new ArrayList<UnusedIndexFinderResponse>();
+          try {
+            for (Future<List<UnusedIndexFinderResponse>> future : futures) {
+              if (future.get() != null) {
+                unusedIndexesAcrossNodes.addAll(future.get());
+              }
+            }
+          } catch (InterruptedException e) {
+            log.error("Error fetching unused index data", e);
+          } catch (ExecutionException e) {
+            log.error("Error fetching unused index data", e.getCause());
+          }
 
-          for (UnusedIndexFinderResponse entry : nodeUnusedIndexes) {
-            entriesAcrossNodes.merge(entry.indexName, 1, (a, b) -> a + b);
-
-            // Only entries that appear in the query for every node are universally unused.
-            if (entriesAcrossNodes.get(entry.indexName) == tserverLiveNodes.size()) {
-              unusedIndexResponse.add(entry);
+          Map<String, List<UnusedIndexFinderResponse>> unusedIndexesByName =
+              unusedIndexesAcrossNodes.stream().collect(Collectors.groupingBy(i -> i.indexName));
+          for (Map.Entry<String, List<UnusedIndexFinderResponse>> unusedIndexes :
+              unusedIndexesByName.entrySet()) {
+            if (unusedIndexes.getValue().size() == tserverLiveNodes.size()) {
+              unusedIndexResponse.add(unusedIndexes.getValue().get(0));
             }
           }
+        } finally {
+          threadPool.shutdown();
         }
       }
 

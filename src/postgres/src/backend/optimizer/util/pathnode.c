@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "miscadmin.h"
+#include "access/yb_scan.h"
 #include "foreign/fdwapi.h"
 #include "nodes/extensible.h"
 #include "nodes/nodeFuncs.h"
@@ -967,7 +968,23 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
 
-	cost_seqscan(pathnode, root, rel, pathnode->param_info);
+	/*
+	 * The ybcCostEstimate is used to cost a ForeignScan node on YB table,
+	 * so use it here too, to get consistent results.
+	 */
+	if (rel->is_yb_relation)
+	{
+		ybcCostEstimate(rel, YBC_FULL_SCAN_SELECTIVITY,
+						false, /* is_backward_scan */
+						true, /* is_seq_scan */
+						false, /* is_uncovered_idx_scan */
+						&pathnode->startup_cost,
+						&pathnode->total_cost,
+						rel->reltablespace);
+		pathnode->rows = rel->rows;
+	}
+	else
+		cost_seqscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
 }
@@ -2197,6 +2214,8 @@ calc_non_nestloop_required_outer(Path *outer_path, Path *inner_path)
 	return required_outer;
 }
 
+extern int yb_bnl_batch_size;
+
 /*
  * create_nestloop_path
  *	  Creates a pathnode corresponding to a nestloop join between two
@@ -2236,7 +2255,18 @@ create_nestloop_path(PlannerInfo *root,
 	 * because the restrict_clauses list can affect the size and cost
 	 * estimates for this path.
 	 */
-	if (bms_overlap(inner_req_outer, outer_path->parent->relids))
+	 ParamPathInfo *param_info = inner_path->param_info;
+	 Relids inner_req_batched = param_info == NULL
+		? NULL : param_info->yb_ppi_req_outer_batched;
+	 
+	 Relids outer_req_unbatched = outer_path->param_info ?
+	 	outer_path->param_info->yb_ppi_req_outer_unbatched :
+		NULL;
+
+	 bool is_batched = bms_overlap(inner_req_batched,
+	 							   outer_path->parent->relids) &&
+					   !bms_overlap(outer_req_unbatched, inner_req_batched);
+	if (!is_batched && bms_overlap(inner_req_outer, outer_path->parent->relids))
 	{
 		Relids		inner_and_outer = bms_union(inner_path->parent->relids,
 												inner_req_outer);
@@ -2253,6 +2283,12 @@ create_nestloop_path(PlannerInfo *root,
 				jclauses = lappend(jclauses, rinfo);
 		}
 		restrict_clauses = jclauses;
+	}
+
+	if (is_batched)
+	{
+		Assert(yb_bnl_batch_size > 1);
+		pathkeys = NIL;
 	}
 
 	pathnode->path.pathtype = T_NestLoop;

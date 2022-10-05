@@ -80,7 +80,7 @@ string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   ss << "("
      << entry.doc_hybrid_time.ToString() << ", "
      << entry.value_type << ", ";
-  if (entry.user_timestamp == ValueControlFields::kInvalidUserTimestamp) {
+  if (entry.user_timestamp == ValueControlFields::kInvalidTimestamp) {
     ss << "InvalidUserTimestamp";
   } else {
     ss << entry.user_timestamp;

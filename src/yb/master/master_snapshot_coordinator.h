@@ -90,7 +90,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       Status* complete_status) override;
 
   Status ListSnapshots(
-      const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
+      const TxnSnapshotId& snapshot_id, bool list_deleted,
+      ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp);
 
   Result<TxnSnapshotRestorationId> Restore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term);
@@ -109,6 +110,14 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Status DeleteSnapshotSchedule(
       const SnapshotScheduleId& snapshot_schedule_id, int64_t leader_term,
       CoarseTimePoint deadline);
+
+  Result<SnapshotScheduleInfoPB> EditSnapshotSchedule(
+      const SnapshotScheduleId& id, const EditSnapshotScheduleRequestPB& req, int64_t leader_term,
+      CoarseTimePoint deadline);
+
+  Status RestoreSnapshotSchedule(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at,
+      RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline);
 
   // Load snapshots data from system catalog.
   Status Load(tablet::Tablet* tablet) override;
@@ -134,6 +143,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
   bool IsPitrActive();
+
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 
   void Start();
 

@@ -41,7 +41,9 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
@@ -55,6 +57,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -76,6 +79,7 @@
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -148,6 +152,9 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+
+DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
+
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);
 
@@ -157,14 +164,16 @@ DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeou
              "Default timeout for the YBClient embedded into the tablet server that is used "
              "for distributed transactions.");
 
+DEFINE_test_flag(bool, select_all_status_tablets, false, "");
+
 namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-    : DbServerBase(
-          "TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
+    : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
+      auto_flags_manager_(new AutoFlagsManager("yb-tserver", fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -172,7 +181,11 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    ysql_db_catalog_version_index_used_ =
+      std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
+    ysql_db_catalog_version_index_used_->fill(false);
+  }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
 }
@@ -324,9 +337,30 @@ Status TabletServer::Init() {
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
-  shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+  if (PREDICT_FALSE(FLAGS_TEST_pg_auth_key != 0)) {
+    shared_object().SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
+  } else {
+    shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+  }
 
   return Status::OK();
+}
+
+Status TabletServer::InitAutoFlags() {
+  if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
+    RETURN_NOT_OK(auto_flags_manager_->LoadFromMaster(
+        options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
+  }
+
+  return Status::OK();
+}
+
+uint32_t TabletServer::GetAutoFlagConfigVersion() const {
+  return auto_flags_manager_->GetConfigVersion();
+}
+
+AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
+  return auto_flags_manager_->GetConfig();
 }
 
 Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
@@ -345,15 +379,17 @@ void TabletServer::AutoInitServiceFlags() {
   if (FLAGS_tablet_server_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    const int32 num_threads = std::min(512, num_cores * 32);
-    FLAGS_tablet_server_svc_num_threads = std::max(64, num_threads);
+    const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("tablet_server_svc_num_threads", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_tablet_server_svc_num_threads to "
               << FLAGS_tablet_server_svc_num_threads;
   }
 
   if (FLAGS_num_concurrent_backfills_allowed == -1) {
-    const int32 num_threads = std::min(8, num_cores / 2);
-    FLAGS_num_concurrent_backfills_allowed = std::max(1, num_threads);
+    const int32 num_threads = std::max(1, std::min(8, num_cores / 2));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("num_concurrent_backfills_allowed", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_num_concurrent_backfills_allowed to "
               << FLAGS_num_concurrent_backfills_allowed;
   }
@@ -361,8 +397,9 @@ void TabletServer::AutoInitServiceFlags() {
   if (FLAGS_ts_consensus_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
     // But bound it between 64 & 512.
-    const int32 num_threads = std::min(512, num_cores * 32);
-    FLAGS_ts_consensus_svc_num_threads = std::max(64, num_threads);
+    const int32 num_threads = std::max(64, std::min(512, num_cores * 32));
+    CHECK_OK(
+        SetFlagDefaultAndCurrent("ts_consensus_svc_num_threads", std::to_string(num_threads)));
     LOG(INFO) << "Auto setting FLAGS_ts_consensus_svc_num_threads to "
               << FLAGS_ts_consensus_svc_num_threads;
   }
@@ -389,7 +426,8 @@ Status TabletServer::RegisterServices() {
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
       std::make_unique<RemoteBootstrapServiceImpl>(
-          fs_manager_.get(), tablet_manager_.get(), metric_entity());
+          fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
+          &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
@@ -402,7 +440,8 @@ Status TabletServer::RegisterServices() {
           clock(),
           std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
-          &messenger()->scheduler())));
+          &messenger()->scheduler(),
+          &xcluster_safe_time_map_)));
 
   return Status::OK();
 }
@@ -475,17 +514,14 @@ Status TabletServer::GetLiveTServers(
 Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
                                      GetTabletStatusResponsePB* resp) const {
   VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
-  tablet::TabletPeerPtr peer;
-  if (!tablet_manager_->LookupTablet(req->tablet_id(), &peer)) {
-    return STATUS(NotFound, "Tablet not found", req->tablet_id());
-  }
-  peer->GetTabletStatusPB(resp->mutable_tablet_status());
+  auto tablet_peer = VERIFY_RESULT(tablet_manager_->GetTablet(req->tablet_id()));
+  tablet_peer->GetTabletStatusPB(resp->mutable_tablet_status());
   return Status::OK();
 }
 
 bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) const {
-  tablet::TabletPeerPtr peer;
-  if (!tablet_manager_->LookupTablet(tablet_id, &peer)) {
+  auto peer = tablet_manager_->LookupTablet(tablet_id);
+  if (!peer) {
     return false;
   }
   return peer->LeaderStatus(allow_stale) == consensus::LeaderStatus::LEADER_AND_READY;
@@ -577,12 +613,23 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
   return shared_object().postgres_auth_key();
 }
 
-void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
+Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
+    GetTserverCatalogVersionInfoResponsePB *resp) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  for (const auto it : ysql_db_catalog_version_map_) {
+    auto* entry = resp->add_entries();
+    entry->set_db_oid(it.first);
+    entry->set_shm_index(it.second.shm_index);
+  }
+  return Status::OK();
+}
+
+void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   std::lock_guard<simple_spinlock> l(lock_);
 
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_object().SetYSQLCatalogVersion(new_version);
+    shared_object().SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
     if (FLAGS_log_ysql_catalog_versions) {
       LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
@@ -591,6 +638,119 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+}
+
+void TabletServer::SetYsqlDBCatalogVersions(
+  const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  std::unordered_set<uint32_t> db_oid_set;
+  for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
+    const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
+    const uint32_t db_oid = db_catalog_version.db_oid();
+    const uint64_t new_version = db_catalog_version.current_version();
+    const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+    if (!db_oid_set.insert(db_oid).second) {
+      LOG(DFATAL) << "Ignoring duplicate db oid " << db_oid;
+      continue;
+    }
+    // Try to insert a new entry, using -1 as shm_index which will be updated later if the
+    // new entry is inserted successully.
+    // Design note:
+    // In per-db catalog version mode once a database is allocated a slot in the shared memory
+    // array db_catalog_versions_, it will remain allocated and will not change across the
+    // life-span of the database. In Yugabyte, a database can be dropped even if there is still
+    // a connection to it. However after the database is dropped, that connection will get error
+    // if it performs a query on any of the database objects. A query error will trigger a cache
+    // refresh which involves a call to YBIsDBConnectionValid, thus terminates that connection.
+    // Also in per-db catalog version mode we will reject a connection if we cannot find a slot
+    // in db_catalog_versions_ that is allocated for its MyDatabaseId.
+    const auto it = ysql_db_catalog_version_map_.insert(
+      std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
+                                                 .last_breaking_version = new_breaking_version,
+                                                 .shm_index = -1})));
+    bool row_inserted = it.second;
+    bool row_updated = false;
+    int shm_index = -1;
+    if (!row_inserted) {
+      auto& existing_entry = it.first->second;
+      if (new_version > existing_entry.current_version) {
+        existing_entry.current_version = new_version;
+        existing_entry.last_breaking_version = new_breaking_version;
+        row_updated = true;
+        shm_index = existing_entry.shm_index;
+        CHECK(shm_index >= 0 && shm_index < TServerSharedData::kMaxNumDbCatalogVersions)
+          << "Invalid shm_index: " << shm_index;
+      } else if (new_version < existing_entry.current_version) {
+        LOG(DFATAL) << "Ignoring ysql db " << db_oid
+                    << " catalog version update: new version too old. "
+                    << "New: " << new_version << ", Old: " << existing_entry.current_version;
+      } else {
+        // It is not possible to have same current_version but different last_breaking_version.
+        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version);
+      }
+    } else {
+      auto& inserted_entry = it.first->second;
+      // Allocate a new free slot in shared memory array db_catalog_versions_ for db_oid.
+      int count = 0;
+      while (count < TServerSharedData::kMaxNumDbCatalogVersions) {
+        if (!(*ysql_db_catalog_version_index_used_)[search_starting_index_]) {
+          // Found a free slot, remember it.
+          shm_index = search_starting_index_;
+          // Mark it as used.
+          (*ysql_db_catalog_version_index_used_)[shm_index] = true;
+          // Adjust search_starting_index_ for next time.
+          ++search_starting_index_;
+          break;
+        }
+
+        // The current slot is used, continue searching.
+        ++search_starting_index_;
+        if (search_starting_index_ == TServerSharedData::kMaxNumDbCatalogVersions) {
+          search_starting_index_ = 0;
+        }
+        // Will stop if all slots are found used.
+        ++count;
+      }
+      if (shm_index == -1) {
+        YB_LOG_EVERY_N_SECS(ERROR, 60) << "Cannot find free db_catalog_versions_ slot, db_oid: "
+                                       << db_oid;
+        continue;
+      }
+      // update the newly inserted entry to have the allocated slot.
+      inserted_entry.shm_index = shm_index;
+    }
+
+    if (row_inserted || row_updated) {
+      // Set the new catalog version in shared memory at slot shm_index.
+      shared_object().SetYsqlDbCatalogVersion(shm_index, new_version);
+      if (FLAGS_log_ysql_catalog_versions) {
+        LOG_WITH_FUNC(INFO) << "set db " << db_oid
+                            << " catalog version: " << new_version
+                            << ", breaking version: " << new_breaking_version;
+      }
+    }
+  }
+
+  // We only do full catalog report for now, remove entries that no longer exist.
+  for (auto it = ysql_db_catalog_version_map_.begin();
+       it != ysql_db_catalog_version_map_.end();) {
+    const uint32_t db_oid = it->first;
+    if (db_oid_set.count(db_oid) == 0) {
+      auto shm_index = it->second.shm_index;
+      CHECK(shm_index >= 0 &&
+            shm_index < TServerSharedData::kMaxNumDbCatalogVersions) << shm_index;
+      // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
+      (*ysql_db_catalog_version_index_used_)[shm_index] = false;
+      it = ysql_db_catalog_version_map_.erase(it);
+      // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
+      // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
+      // the shared memory file to examine its contents).
+      shared_object().SetYsqlDbCatalogVersion(shm_index, 0);
+    } else {
+      ++it;
+    }
   }
 }
 
@@ -614,6 +774,9 @@ client::TransactionPool& TabletServer::TransactionPool() {
 }
 
 client::LocalTabletFilter TabletServer::CreateLocalTabletFilter() {
+  if (FLAGS_TEST_select_all_status_tablets) {
+    return client::LocalTabletFilter();
+  }
   return std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1);
 }
 
@@ -623,6 +786,19 @@ const std::shared_ptr<MemTracker>& TabletServer::mem_tracker() const {
 
 void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
+}
+
+const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
+  return xcluster_safe_time_map_;
+}
+
+void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
+  xcluster_safe_time_map_.Update(safe_time_map);
+}
+
+Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
+    const NamespaceId& namespace_id, HybridTime commit_ht) const {
+  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
 }
 
 }  // namespace tserver

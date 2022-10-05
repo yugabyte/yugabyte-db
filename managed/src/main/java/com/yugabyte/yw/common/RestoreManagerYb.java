@@ -3,7 +3,6 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Singleton;
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -27,6 +26,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.StringUtils;
+
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -54,16 +56,18 @@ public class RestoreManagerYb extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = region.provider.getUnmaskedConfig();
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
     if (region.provider.code.equals("kubernetes")) {
-      PlacementInfo pi = primaryCluster.placementInfo;
-      podFQDNToConfig =
-          PlacementInfoUtil.getKubernetesConfigPerPod(
-              pi, universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        PlacementInfo pi = cluster.placementInfo;
+        podAddrToConfig.putAll(
+            PlacementInfoUtil.getKubernetesConfigPerPod(
+                pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
+      }
     } else {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
@@ -75,8 +79,11 @@ public class RestoreManagerYb extends DevopsBase {
             AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
-          ipToSshKeyPath.put(
-              nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          if (nodeInCluster.cloudInfo.private_ip != null
+              && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
+            ipToSshKeyPath.put(
+                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+          }
         }
       }
     }
@@ -111,6 +118,10 @@ public class RestoreManagerYb extends DevopsBase {
 
     if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
       commandArgs.add("--ssh2_enabled");
+    }
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+      commandArgs.add("--disable_xxhash_checksum");
     }
 
     commandArgs.add("--parallelism");
@@ -168,12 +179,12 @@ public class RestoreManagerYb extends DevopsBase {
         commandArgs.add("--restore_time");
         commandArgs.add(restoreTimeStampMicroUnix);
       }
-      if (restoreBackupParams.newOwner != null) {
+      if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
         commandArgs.add("--edit_ysql_dump_sed_reg_exp");
         commandArgs.add(
             String.format(
                 "s|OWNER TO %s|OWNER TO %s|",
-                restoreBackupParams.oldOwner, restoreBackupParams.newOwner));
+                backupStorageInfo.oldOwner, backupStorageInfo.newOwner));
       }
     }
 
@@ -183,7 +194,7 @@ public class RestoreManagerYb extends DevopsBase {
         region,
         customerConfig,
         provider,
-        podFQDNToConfig,
+        podAddrToConfig,
         nodeToNodeTlsEnabled,
         ipToSshKeyPath,
         commandArgs);
@@ -238,7 +249,7 @@ public class RestoreManagerYb extends DevopsBase {
       Region region,
       CustomerConfig customerConfig,
       Provider provider,
-      Map<String, String> podFQDNToConfig,
+      Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
@@ -246,7 +257,7 @@ public class RestoreManagerYb extends DevopsBase {
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
-      commandArgs.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
       commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
@@ -271,7 +282,10 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
-    if (restoreBackupParams.enableVerboseLogs) {
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    boolean verboseLogsEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+    if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
     if (restoreBackupParams.useTablespaces) {
@@ -279,6 +293,9 @@ public class RestoreManagerYb extends DevopsBase {
     }
     if (restoreBackupParams.disableChecksum) {
       commandArgs.add("--disable_checksums");
+    }
+    if (restoreBackupParams.disableMultipart) {
+      commandArgs.add("--disable_multipart");
     }
   }
 

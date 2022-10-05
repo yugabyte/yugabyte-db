@@ -2,17 +2,21 @@
 title: YugabyteDB Quick Start
 headerTitle: Quick start
 linkTitle: Quick start
+headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /quick-start/
 layout: single
 type: docs
+body_class: yb-page-style
+rightNav:
+  hideH4: true
 ---
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="/preview/quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -23,8 +27,6 @@ type: docs
     </li>
   </ul>
 </div>
-
-Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
@@ -65,9 +67,9 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-1. Python 3. To check the version, execute the following command:
+- Python 3. To check the version, execute the following command:
 
     ```sh
     python --version
@@ -77,7 +79,7 @@ Before installing YugabyteDB, ensure that you have the following available:
     Python 3.7.3
     ```
 
-1. `wget` or `curl`.
+- `wget` or `curl`.
 
     Note that the following instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
 
@@ -87,89 +89,90 @@ Before installing YugabyteDB, ensure that you have the following available:
     brew install wget
     ```
 
-1. Since each tablet maps to its own file, it is easy to create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
+#### Set file limits
 
-    ```sh
-    launchctl limit
-    ```
+Because each tablet maps to its own file, you can create a very large number of files in the current shell by experimenting with several hundred tables and several tablets per table. Execute the following command to ensure that the limit is set to a large number:
 
-    It is recommended to have at least the following soft and hard limits:
+```sh
+launchctl limit
+```
 
-    ```output
-    maxproc     2500        2500
-    maxfiles    1048576     1048576
-    ```
+It is recommended to have at least the following soft and hard limits:
 
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
+```output
+maxproc     2500        2500
+maxfiles    1048576     1048576
+```
 
-    ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
-    ```
+Edit `/etc/sysctl.conf`, if it exists, to include the following:
 
-    If this file does not exist, create the following two files:
+```sh
+kern.maxfiles=1048576
+kern.maxproc=2500
+kern.maxprocperuid=2500
+kern.maxfilesperproc=1048576
+```
 
-    - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+If this file does not exist, create the following two files:
 
-      ```xml
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-      ```
+- `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
-    - `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0">
+    <dict>
+      <key>Label</key>
+        <string>limit.maxfiles</string>
+      <key>ProgramArguments</key>
+        <array>
+          <string>launchctl</string>
+          <string>limit</string>
+          <string>maxfiles</string>
+          <string>1048576</string>
+          <string>1048576</string>
+        </array>
+      <key>RunAtLoad</key>
+        <true/>
+      <key>ServiceIPC</key>
+        <false/>
+    </dict>
+  </plist>
+  ```
 
-      ```xml
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxproc</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxproc</string>
-              <string>2500</string>
-              <string>2500</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-      ```
+- `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
 
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0">
+    <dict>
+      <key>Label</key>
+        <string>limit.maxproc</string>
+      <key>ProgramArguments</key>
+        <array>
+          <string>launchctl</string>
+          <string>limit</string>
+          <string>maxproc</string>
+          <string>2500</string>
+          <string>2500</string>
+        </array>
+      <key>RunAtLoad</key>
+        <true/>
+      <key>ServiceIPC</key>
+        <false/>
+    </dict>
+  </plist>
+  ```
 
-    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
+Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
-      ```sh
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
-      ```
+  ```sh
+sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
+  ```
 
-    You might need to `unload` the service before loading it.
+You might need to `unload` the service before loading it.
 
 ### Download YugabyteDB
 
@@ -195,21 +198,15 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ./bin/yugabyted start
 ```
 
-{{<note title="Note for macOS Monterey" >}}
-
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. To resolve the issue, you can disable AirPlay receiving, then start YugabyteDB, and then, optionally, re-enable AirPlay receiving. Alternatively, you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+If you are running macOS Monterey, run the following command:
 
 ```sh
 ./bin/yugabyted start --master_webserver_port=9999
 ```
 
-{{< /note >}}
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Using the [--master_webserver_port flag](../reference/configuration/yugabyted/#advanced-flags) when you start the cluster changes the default port number. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
-After the cluster has been created, clients can connect to the YSQL and YCQL APIs at http://localhost:5433 and http://localhost:9042 respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
-
-### Check cluster status
+### Check the cluster status
 
 Execute the following command to check the cluster status:
 
@@ -219,12 +216,12 @@ Execute the following command to check the cluster status:
 
 Expect an output similar to the following:
 
-
 ```output
 +--------------------------------------------------------------------------------------------------+
 |                                            yugabyted                                             |
 +--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
+| Status              : Running.                                                                   |
+| Replication Factor  : 1                                                                          |
 | Web console         : http://127.0.0.1:7000                                                      |
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
@@ -235,7 +232,11 @@ Expect an output similar to the following:
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### Check cluster status with Admin UI
+After the cluster has been created, clients can [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+
+If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+
+### Use the Admin UI
 
 The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
 
@@ -255,22 +256,72 @@ Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TS
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
+## Connect to the database
+
+Using the YugabyteDB SQL shell, [ysqlsh](../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
+
+To open the YSQL shell, run `ysqlsh`.
+
+```sh
+./bin/ysqlsh
+```
+
+```output
+ysqlsh (11.2-YB-2.1.0.0-b0)
+Type "help" for help.
+
+yugabyte=#
+```
+
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
+
 ## Build a Java application
+
+The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations.
+
+For examples using other languages, refer to [Build an application](../develop/build-apps/).
 
 ### Prerequisites
 
-Before building a Java application, perform the following:
+- Java Development Kit (JDK) 1.8 or later. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
+- [Apache Maven](https://maven.apache.org/index.html) 3.3 or later.
 
-- While YugabyteDB is running, use the [yb-ctl](/preview/admin/yb-ctl/#root) utility to create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned, as follows:
+### Start a local multi-node cluster
 
-  ```sh
-  cd <path-to-yugabytedb-installation>
+First, destroy the currently running single-node cluster:
 
-  ./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
-  ```
+```sh
+./bin/yugabyted destroy
+```
 
-- Ensure that Java Development Kit (JDK) 1.8 or later is installed. JDK installers can be downloaded from [OpenJDK](http://jdk.java.net/).
-- Ensure that [Apache Maven](https://maven.apache.org/index.html) 3.3 or later is installed.
+Create the first node as follows:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 --cloud_location=aws.us-east.us-east-1a
+```
+
+The additional nodes need loopback addresses configured that allow you to simulate the use of multiple hosts or nodes:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
+
+Add two more nodes to the cluster using the join option:
+
+```sh
+./bin/yugabyted start --advertise_address=127.0.0.2 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 --cloud_location=aws.us-east.us-east-2a
+
+./bin/yugabyted start --advertise_address=127.0.0.3 --join=127.0.0.1 --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 --cloud_location=aws.us-east.us-east-3a
+```
+
+After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
+
+```sh
+./bin/yugabyted configure --fault_tolerance=zone
+```
 
 ### Create and configure the Java project
 
@@ -297,7 +348,7 @@ Perform the following to create a sample Java project:
     </properties>
     ```
 
-1. Add the following dependencies for the driver HikariPool within the `<dependencies>` element in `pom.xml`:
+1. Add the following dependencies for the driver HikariPool in the `<dependencies>` element in `pom.xml`:
 
     ```xml
     <dependency>
@@ -414,7 +465,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-
       }
 
     }
@@ -522,7 +572,6 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
-
       }
 
     }

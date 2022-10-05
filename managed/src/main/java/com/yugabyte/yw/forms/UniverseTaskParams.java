@@ -17,6 +17,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class UniverseTaskParams extends AbstractTaskParams {
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
+
+  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
+  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {
@@ -116,21 +120,32 @@ public class UniverseTaskParams extends AbstractTaskParams {
     public boolean installNodeExporter = true;
   }
 
-  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getTargetXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getTargetXClusterConfigs() {
     if (universeUUID == null) {
       return new ArrayList<>();
     }
-    return new ArrayList<>(
-        XClusterConfig.getByTargetUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getByTargetUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
-  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  /**
+   * @deprecated Replaced by {@link
+   *     UniverseDefinitionTaskParams.XClusterInfo#getSourceXClusterConfigs()}, so all the xCluster
+   *     related info are in the same JSON object
+   */
+  @Deprecated
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getSourceXClusterConfigs() {
     if (universeUUID == null) {
       return Collections.emptyList();
@@ -156,6 +171,14 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Previous version used for task info.
   @ApiModelProperty(value = "Previous software version")
   public String ybPrevSoftwareVersion;
+
+  @ApiModelProperty public boolean enableYbc = false;
+
+  @ApiModelProperty public String ybcSoftwareVersion = null;
+
+  @ApiModelProperty public boolean installYbc = false;
+
+  @ApiModelProperty public boolean ybcInstalled = false;
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
@@ -189,16 +212,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Whether this task has been tried before or not. Awkward naming because we cannot use
   // `isRetry` due to play reading the "is" prefix differently.
   @ApiModelProperty(value = "Whether this task has been tried before")
+  @Deprecated
   public boolean firstTry = true;
-
-  // Previous task UUID for a retry.
-  @ApiModelProperty(value = "Previous task UUID only if this task is a retry")
-  public UUID previousTaskUUID;
 
   // The user that created the task
   public Users creatingUser;
-
-  public static boolean isFirstTryForTask(UniverseTaskParams params) {
-    return params.firstTry && params.previousTaskUUID == null;
-  }
 }

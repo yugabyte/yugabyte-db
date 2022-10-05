@@ -33,7 +33,9 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -43,12 +45,22 @@
 
 using namespace std::literals;
 
+DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
+                 "How much time in secs to delay restoring tablet split metadata after restoring "
+                 "checkpoint.");
+TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
+
 namespace yb {
 namespace tablet {
 
 namespace {
 
 const std::string kTempSnapshotDirSuffix = ".tmp";
+const std::string kTabletMetadataFile = "tablet.metadata";
+
+std::string TabletMetadataFile(const std::string& dir) {
+  return JoinPathSegments(dir, kTabletMetadataFile);
+}
 
 } // namespace
 
@@ -57,6 +69,14 @@ struct TabletSnapshots::RestoreMetadata {
   boost::optional<IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
+  google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
+};
+
+struct TabletSnapshots::ColocatedTableMetadata {
+  boost::optional<Schema> schema;
+  boost::optional<IndexMap> index_map;
+  uint32_t schema_version;
+  std::string table_id;
 };
 
 TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
@@ -163,6 +183,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
   }
 
+  bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
+
+  RETURN_NOT_OK(tablet().metadata()->SaveTo(TabletMetadataFile(tmp_snapshot_dir)));
+
   RETURN_NOT_OK_PREPEND(
       env->RenameFile(tmp_snapshot_dir, snapshot_dir),
       Format("Cannot rename temp snapshot dir $0 to $1", tmp_snapshot_dir, snapshot_dir));
@@ -170,7 +194,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
       env->SyncDir(top_snapshots_dir),
       Format("Cannot sync top snapshots dir $0", top_snapshots_dir));
 
-  if (data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id)) {
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
   }
 
@@ -231,9 +255,23 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
+
+  for (const auto& entry : request.colocated_tables_metadata()) {
+    auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
+    table_metadata->schema_version = entry.schema_version();
+    table_metadata->schema.emplace();
+    RETURN_NOT_OK(SchemaFromPB(entry.schema(), table_metadata->schema.get_ptr()));
+    table_metadata->index_map.emplace(entry.indexes());
+    table_metadata->table_id = entry.table_id();
+  }
+
   Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
+  int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
+  if (delay_time_secs > 0) {
+    SleepFor(MonoDelta::FromSeconds(delay_time_secs));
+  }
   if (s.ok() && restoration_id) {
     s = tablet().RestoreStarted(restoration_id);
   }
@@ -312,6 +350,10 @@ Status TabletSnapshots::RestoreCheckpoint(
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
     }
+    auto tablet_metadata_file = TabletMetadataFile(db_dir);
+    if (env().FileExists(tablet_metadata_file)) {
+      RETURN_NOT_OK(env().DeleteFile(tablet_metadata_file));
+    }
   }
 
   {
@@ -326,12 +368,37 @@ Status TabletSnapshots::RestoreCheckpoint(
     }
   }
 
+  bool need_flush = false;
+
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version);
     tablet().metadata()->SetHidden(restore_metadata.hide);
+    need_flush = true;
+  }
+
+  for (const auto& colocated_table_metadata : restore_metadata.colocated_tables_metadata) {
+    LOG(INFO) << "Setting schema, index information and schema version for table "
+              << colocated_table_metadata.table_id;
+    tablet().metadata()->SetSchema(
+        *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
+        {} /* deleted_columns */,
+        colocated_table_metadata.schema_version, colocated_table_metadata.table_id);
+    need_flush = true;
+  }
+
+  if (!dir.empty()) {
+    auto tablet_metadata_file = TabletMetadataFile(dir);
+    // Old snapshots could lack tablet metadata, so just do nothing in this case.
+    if (env().FileExists(tablet_metadata_file)) {
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+    }
+  }
+
+  if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
   }
@@ -351,6 +418,9 @@ Status TabletSnapshots::RestoreCheckpoint(
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
   }
+
+  // Schedule post split compaction after compaction enabled on the tablet.
+  tablet().TriggerPostSplitCompactionIfNeeded();
 
   // Ensure that op_pauses stays in scope throughout this function.
   for (auto* op_pause : op_pauses.AsArray()) {

@@ -207,6 +207,10 @@ public class AccessKey extends Model {
     return find.query().where().eq("provider_uuid", providerUUID).findList();
   }
 
+  public static List<AccessKey> getByProviderUuids(List<UUID> providerUUIDs) {
+    return find.query().where().in("provider_uuid", providerUUIDs).findList();
+  }
+
   public static List<AccessKey> getAll() {
     return find.query().findList();
   }

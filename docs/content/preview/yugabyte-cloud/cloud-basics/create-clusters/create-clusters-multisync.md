@@ -29,6 +29,7 @@ Multi-region replicated clusters include the following features:
 ## Prerequisites
 
 - Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
+- Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
@@ -104,5 +105,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 - [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../cloud-quickstart/cloud-build-apps/)
+- [Build an application](../../../../develop/build-apps/)
 - [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)

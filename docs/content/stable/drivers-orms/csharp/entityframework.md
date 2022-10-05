@@ -14,7 +14,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/csharp/entityframework/" class="nav-link active">
+    <a href="../entityframework/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       EntityFramework ORM
     </a>
@@ -150,4 +150,3 @@ Deleting the blog
 ## Next steps
 
 - Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop C# applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).

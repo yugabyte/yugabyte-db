@@ -65,6 +65,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
               "    params = ${?platform_ext_script_params}",
               "    schedule = ${?platform_ext_script_schedule}",
               "  }",
+              "  health { trigger_api.enabled = ${yb.cloud.enabled} }",
               "}"));
 
   @Inject

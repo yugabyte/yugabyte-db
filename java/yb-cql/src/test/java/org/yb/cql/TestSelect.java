@@ -57,6 +57,14 @@ public class TestSelect extends BaseCQLTest {
     builder.yqlSystemPartitionsVtableRefreshSecs(0);
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+
+    flagMap.put("ycql_allow_in_op_with_order_by", "true");
+    return flagMap;
+  }
+
   @Test
   public void testSimpleQuery() throws Exception {
     LOG.info("TEST CQL SIMPLE QUERY - Start");

@@ -92,7 +92,8 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
         ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
 
     HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
-    ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(), host_port, &meta_));
+    ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(),
+        host_port, ServerRegistrationPB(), &meta_));
   }
 
  protected:

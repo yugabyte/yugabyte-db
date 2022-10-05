@@ -17,6 +17,7 @@
 
 #include "access/transam.h"
 #include "catalog/pg_type.h"
+#include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/pathnode.h"
@@ -458,6 +459,19 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->plan.qual, rtoffset);
 			}
 			break;
+		case T_YbSeqScan:
+			{
+				YbSeqScan    *splan = (YbSeqScan *) plan;
+
+				splan->scan.scanrelid += rtoffset;
+				splan->remote.qual =
+					fix_scan_list(root, splan->remote.qual, rtoffset);
+				splan->scan.plan.targetlist =
+					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
+				splan->scan.plan.qual =
+					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
+			}
+			break;
 		case T_SampleScan:
 			{
 				SampleScan *splan = (SampleScan *) plan;
@@ -474,12 +488,28 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 		case T_IndexScan:
 			{
 				IndexScan  *splan = (IndexScan *) plan;
+				indexed_tlist *index_itlist;
 
+				index_itlist = build_tlist_index(splan->indextlist);
 				splan->scan.scanrelid += rtoffset;
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
+				splan->rel_remote.qual =
+					fix_scan_list(root, splan->rel_remote.qual, rtoffset);
+				splan->index_remote.qual = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->index_remote.qual,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset);
+				splan->index_remote.colrefs = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->index_remote.colrefs,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset);
 				splan->indexqual =
 					fix_scan_list(root, splan->indexqual, rtoffset);
 				splan->indexqualorig =
@@ -622,6 +652,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			break;
 
 		case T_NestLoop:
+		case T_YbBatchedNestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			set_join_references(root, (Join *) plan, rtoffset);
@@ -1032,6 +1063,18 @@ set_indexonlyscan_references(PlannerInfo *root,
 	plan->scan.plan.qual = (List *)
 		fix_upper_expr(root,
 					   (Node *) plan->scan.plan.qual,
+					   index_itlist,
+					   INDEX_VAR,
+					   rtoffset);
+	plan->remote.qual = (List *)
+		fix_upper_expr(root,
+					   (Node *) plan->remote.qual,
+					   index_itlist,
+					   INDEX_VAR,
+					   rtoffset);
+	plan->remote.colrefs = (List *)
+		fix_upper_expr(root,
+					   (Node *) plan->remote.colrefs,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
@@ -1620,9 +1663,11 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 								   rtoffset);
 
 	/* Now do join-type-specific stuff */
-	if (IsA(join, NestLoop))
+	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = (NestLoop *) join;
+		NestLoop   *nl = IsA(join, NestLoop) 
+						 ? (NestLoop *) join
+						 : &((YbBatchedNestLoop *) join)->nl;
 		ListCell   *lc;
 
 		foreach(lc, nl->nestParams)
@@ -1639,6 +1684,56 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 				  nlp->paramval->varno == OUTER_VAR))
 				elog(ERROR, "NestLoopParam was not reduced to a simple Var");
 		}
+		List *innerAttNos = NIL;
+		List *outerParamNos = NIL;
+
+		ListCell *l;
+		if (IsA(join, YbBatchedNestLoop))
+		{
+			YbBatchedNestLoop *batchednl = (YbBatchedNestLoop *) join;
+			ListCell *ll;
+			/* Fill in batchednl->innerHashAttNos if applicable */
+			forboth(l, join->joinqual, ll, batchednl->hashOps)
+			{
+				Expr *clause = (Expr *) lfirst(l);
+				Oid hashOp = lfirst_oid(ll);
+				if (OidIsValid(hashOp))
+				{
+					Assert(IsA(clause, OpExpr));
+					OpExpr *opexpr = (OpExpr *) clause;
+					Assert(list_length(opexpr->args) == 2);
+					Assert(IsA(lsecond(opexpr->args), Var));
+					Expr *leftArg = linitial(opexpr->args);
+					Expr *rightArg = lsecond(opexpr->args);
+
+					Var *innerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								? leftArg
+								: rightArg);
+					Var *outerArg =
+						(Var*) (((Var*) leftArg)->varno == INNER_VAR
+								 ? rightArg
+								 : leftArg);
+					Assert(IsA((Expr*) outerArg, Var));
+					
+					Assert(innerArg->varno = INNER_VAR);
+
+					innerAttNos =
+						lappend_int(innerAttNos,
+									((Var *) innerArg)->varattno);
+					outerParamNos =
+						lappend_int(outerParamNos, outerArg->varattno);
+				} else {
+					innerAttNos =
+						lappend_int(innerAttNos, InvalidOid);
+					outerParamNos =
+						lappend_int(outerParamNos, InvalidOid);
+				}
+			}
+			batchednl->innerHashAttNos = innerAttNos;
+			batchednl->outerParamNos =  outerParamNos;
+		}
+
 	}
 	else if (IsA(join, MergeJoin))
 	{
@@ -2431,6 +2526,29 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
+	if (IsA(node, YbExprParamDesc))
+	{
+		YbExprParamDesc *colref = castNode(YbExprParamDesc, node);
+		AttrNumber	varattno = colref->attno;
+		tlist_vinfo *vinfo;
+		int			i;
+
+		vinfo = context->subplan_itlist->vars;
+		i = context->subplan_itlist->num_vars;
+		while (i-- > 0)
+		{
+			if (vinfo->varattno == varattno)
+			{
+				/* Found a match */
+				YbExprParamDesc *newcolref = makeNode(YbExprParamDesc);
+				*newcolref = *colref;
+				newcolref->attno = vinfo->resno;
+				return (Node *) newcolref;
+			}
+			vinfo++;
+		}
+		elog(ERROR, "column reference not found in subplan target list");
+	}
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *aggref = (Aggref *) node;

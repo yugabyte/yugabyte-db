@@ -112,6 +112,14 @@ public class ShellProcessHandler {
                 redactedCommand.add(Util.redactString(value));
               });
     }
+    // If there are entries with redacted values, update them.
+    if (MapUtils.isNotEmpty(context.getRedactedVals())) {
+      redactedCommand.replaceAll(
+          entry ->
+              context.getRedactedVals().containsKey(entry)
+                  ? context.getRedactedVals().get(entry)
+                  : entry);
+    }
 
     ProcessBuilder pb = new ProcessBuilder(command);
     Map<String, String> envVars = pb.environment();

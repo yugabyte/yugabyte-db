@@ -252,7 +252,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -285,7 +286,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -330,7 +332,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -375,7 +378,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -420,7 +424,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -463,7 +468,8 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             "GFlags",
             "Instance",
             "ConsensusMeta",
-            "TabletMeta");
+            "TabletMeta",
+            "YbcLogs");
     ArrayNode componentsArray = mapper.valueToTree(components);
 
     bodyJson.put("startDate", "2022-02-01");
@@ -486,12 +492,10 @@ public class SupportBundleControllerTest extends FakeDBApplication {
               universe.setUniverseDetails(universeDetails);
             });
 
-    Result result =
-        assertPlatformException(
-            () -> createSupportBundle(customer.uuid, universe.universeUUID, bodyJson));
+    Result result = createSupportBundle(customer.uuid, universe.universeUUID, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(BAD_REQUEST, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertEquals(OK, result.status());
+    assertAuditEntry(1, customer.uuid);
   }
 
   /* ==== Delete Support Bundle API ==== */

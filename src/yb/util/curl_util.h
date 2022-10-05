@@ -64,7 +64,8 @@ class EasyCurl {
       const std::string& url,
       faststring* dst,
       int64_t timeout_sec = kDefaultTimeoutSec,
-      const std::vector<std::string>& headers = {});
+      const std::vector<std::string>& headers = {},
+      const std::string& ca_cert = "");
 
   // Issue an HTTP POST to the given URL with the given data.
   // Returns results in 'dst' as above.
@@ -72,14 +73,16 @@ class EasyCurl {
       const std::string& url,
       const std::string& post_data,
       faststring* dst,
-      int64_t timeout_sec = kDefaultTimeoutSec);
+      int64_t timeout_sec = kDefaultTimeoutSec,
+      const std::string& ca_cert = "");
 
   Status PostToURL(
       const std::string& url,
       const std::string& post_data,
       const std::string& content_type,
       faststring* dst,
-      int64_t timeout_sec = kDefaultTimeoutSec);
+      int64_t timeout_sec = kDefaultTimeoutSec,
+      const std::string& ca_cert = "");
 
   std::string EscapeString(const std::string& data);
 
@@ -98,7 +101,8 @@ class EasyCurl {
       const boost::optional<const std::string>& content_type,
       int64_t timeout_sec,
       faststring* dst,
-      const std::vector<std::string>& headers = {});
+      const std::vector<std::string>& headers = {},
+      const std::string& ca_cert = "");
 
   CURL* curl_;
   // Whether to return the HTTP headers with the response.

@@ -13,6 +13,11 @@ import { MetricsPanel } from '../../metrics';
 import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
+import {
+  DEFAULT_METRIC_TIME_RANGE_OPTION,
+  METRIC_TIME_RANGE_OPTIONS
+} from '../../xcluster/constants';
+
 import './Replication.scss';
 
 const GRAPH_TYPE = 'replication';
@@ -20,26 +25,26 @@ const METRIC_NAME = 'tserver_async_replication_lag_micros';
 const MILLI_IN_MIN = 60000.0;
 const MILLI_IN_SEC = 1000.0;
 
-const filterTypes = [
-  { label: 'Last 1 hr', type: 'hours', value: '1' },
-  { label: 'Last 6 hrs', type: 'hours', value: '6' },
-  { label: 'Last 12 hrs', type: 'hours', value: '12' },
-  { label: 'Last 24 hrs', type: 'hours', value: '24' },
-  { label: 'Last 7 days', type: 'days', value: '7' },
-  { type: 'divider' },
-  { label: 'Custom', type: 'custom' }
-];
+const {
+  type: DEFAULT_METRIC_TIME_RANGE_TYPE,
+  value: DEFAULT_METRIC_TIME_RANGE_VALUE,
+  label: DEFAULT_METRIC_TIME_RANGE_LABEL
+} = DEFAULT_METRIC_TIME_RANGE_OPTION;
 
 export default class Replication extends Component {
   constructor(props) {
     super(props);
+
     this.state = {
       graphWidth: props.hideHeader ? window.innerWidth - 300 : 840,
       intervalId: null,
-      filterLabel: filterTypes[0].label,
-      filterType: filterTypes[0].type,
-      filterValue: filterTypes[0].value,
-      startMoment: moment().subtract(filterTypes[0].value, filterTypes[0].type),
+      filterLabel: DEFAULT_METRIC_TIME_RANGE_LABEL,
+      filterType: DEFAULT_METRIC_TIME_RANGE_TYPE,
+      filterValue: DEFAULT_METRIC_TIME_RANGE_VALUE,
+      startMoment: moment().subtract(
+        DEFAULT_METRIC_TIME_RANGE_VALUE,
+        DEFAULT_METRIC_TIME_RANGE_TYPE
+      ),
       endMoment: moment()
     };
   }
@@ -53,20 +58,21 @@ export default class Replication extends Component {
     if (sourceUniverseUUID) {
       this.props.fetchCurrentUniverse(sourceUniverseUUID).then(() => {
         this.queryMetrics();
-      })
-    }
-    else {
+      });
+    } else {
       this.queryMetrics();
     }
-    const intervalId = setInterval(() => { this.queryMetrics() }, 10 * 2000);
+    const intervalId = setInterval(() => {
+      this.queryMetrics();
+    }, 10 * 2000);
     this.setState({
       intervalId
-    })
+    });
   }
 
   componentWillUnmount() {
     this.props.resetMasterLeader();
-    clearInterval(this.state.intervalId)
+    clearInterval(this.state.intervalId);
   }
 
   queryMetrics = () => {
@@ -88,35 +94,33 @@ export default class Replication extends Component {
     };
 
     if (filterLabel !== 'Custom') {
-      params['start'] = moment().subtract(filterValue, filterType).format('X')
-      params['end'] = moment().format('X')
+      params['start'] = moment().subtract(filterValue, filterType).format('X');
+      params['end'] = moment().format('X');
     }
 
     this.props.queryMetrics(params, GRAPH_TYPE);
   };
 
   handleFilterChange = (eventKey, event) => {
-
-    const filterInfo = filterTypes[eventKey]
+    const filterInfo = METRIC_TIME_RANGE_OPTIONS[eventKey];
     const self = this;
 
     let stateToUpdate = {
       filterLabel: filterInfo.label,
       filterType: filterInfo.type,
       filterValue: filterInfo.value
-    }
+    };
     if (event.target.getAttribute('data-filter-type') !== 'custom') {
       stateToUpdate = {
         ...stateToUpdate,
         endMoment: moment(),
         startMoment: moment().subtract(filterInfo.value, filterInfo.type)
-      }
-      this.setState(stateToUpdate, () => self.queryMetrics())
+      };
+      this.setState(stateToUpdate, () => self.queryMetrics());
+    } else {
+      this.setState(stateToUpdate);
     }
-    else {
-      this.setState(stateToUpdate)
-    }
-  }
+  };
 
   handleStartDateChange = (dateStr) => {
     this.setState({ startMoment: moment(dateStr) });
@@ -133,7 +137,7 @@ export default class Replication extends Component {
       hideHeader
     } = this.props;
     if (isEmpty(currentUniverse.data)) {
-      return <YBLoading />
+      return <YBLoading />;
     }
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
@@ -150,9 +154,8 @@ export default class Replication extends Component {
       const metricAliases = metrics[GRAPH_TYPE][METRIC_NAME].layout.yaxis.alias;
       const committedLagName = metricAliases['async_replication_committed_lag_micros'];
       aggregatedMetrics = { ...metrics[GRAPH_TYPE][METRIC_NAME] };
-      const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data.filter(
-        (x) => x.name === committedLagName
-      )
+      const replicationNodeMetrics = metrics[GRAPH_TYPE][METRIC_NAME].data
+        .filter((x) => x.name === committedLagName)
         .sort((a, b) => b.x.length - a.x.length);
 
       if (replicationNodeMetrics.length > 0) {
@@ -204,7 +207,9 @@ export default class Replication extends Component {
           </div>
         );
       }
-      let resourceNumber = <YBResourceCount size={parseFloat(latestStat.toFixed(4))} kind="ms" inline={true} />;
+      let resourceNumber = (
+        <YBResourceCount size={parseFloat(latestStat.toFixed(4))} kind="ms" inline={true} />
+      );
       if (latestStat > MILLI_IN_MIN) {
         resourceNumber = (
           <YBResourceCount size={(latestStat / MILLI_IN_MIN).toFixed(4)} kind="min" inline={true} />
@@ -238,7 +243,7 @@ export default class Replication extends Component {
 
     const self = this;
 
-    const menuItems = filterTypes.map((filter, idx) => {
+    const menuItems = METRIC_TIME_RANGE_OPTIONS.map((filter, idx) => {
       const key = 'graph-filter-' + idx;
       if (filter.type === 'divider') {
         return <MenuItem divider key={key} />;
@@ -277,8 +282,8 @@ export default class Replication extends Component {
               {!hideHeader && infoBlock}
               {!hideHeader && <div className="replication-content-stats">{recentStatBlock}</div>}
               {!showMetrics && <div className="no-data">No data to display.</div>}
-              {
-                showMetrics && <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
+              {showMetrics && (
+                <div className={`time-range-option ${!hideHeader ? 'old-view' : ''}`}>
                   {datePicker}
                   <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
                     <Dropdown.Toggle>
@@ -288,7 +293,7 @@ export default class Replication extends Component {
                     <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                   </Dropdown>
                 </div>
-              }
+              )}
 
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
@@ -300,6 +305,7 @@ export default class Replication extends Component {
                     width={this.state.graphWidth}
                     height={540}
                     prometheusQueryEnabled={prometheusQueryEnabled}
+                    shouldAbbreviateTraceName={false}
                   />
                 </div>
               )}

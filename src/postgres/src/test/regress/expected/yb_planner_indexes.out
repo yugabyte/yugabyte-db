@@ -177,6 +177,68 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
 (3 rows)
 
 --------------------------------------
+-- Multiple hash columns.
+CREATE TABLE t4(h1 int, h2 int, v1 int, primary key((h1, h2) hash));
+INSERT INTO t4 (SELECT s, s, s FROM generate_series(1,1000) s);
+-- Should use index scan when equality conditions use all hash columns
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 1) AND (h2 = 2))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = 2;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 4624) AND (h2 = 2))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = yb_hash_code(2);
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using t4_pkey on t4  (cost=0.00..4.12 rows=1 width=12)
+   Index Cond: ((h1 = 4624) AND (h2 = 49348))
+(2 rows)
+
+-- Should not use index scan when the filter does not have equality on all hash columns
+EXPLAIN SELECT * from t4 where h1 = 1;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..102.50 rows=1000 width=12)
+   Filter: (h1 = 1)
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = 1 and h2 > 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Filter: ((h2 > 10) AND (h1 = 1))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 > 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Filter: ((h1 > 1) AND (h2 > 10))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 > 1 and h2 = 10;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Filter: ((h1 > 1) AND (h2 = 10))
+(2 rows)
+
+EXPLAIN SELECT * from t4 where h1 = 1 or h2 = 2;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on t4  (cost=0.00..105.00 rows=1000 width=12)
+   Filter: ((h1 = 1) OR (h2 = 2))
+(2 rows)
+
+--------------------------------------
 -- Range-partitioned tables/indexes.
 --------------------------------------
 CREATE TABLE t2(h int, r int, v1 int, v2 int, v3 int, primary key(h ASC, r ASC));
@@ -334,3 +396,4 @@ EXPLAIN SELECT * FROM t3 WHERE v1 = 1 AND v2 <= 3 ORDER BY v2 DESC;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
+DROP TABLE t4;

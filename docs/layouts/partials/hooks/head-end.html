@@ -1,3 +1,7 @@
+{{ with .Params.block_indexing }}
+  <meta name="robots" content="noindex, nofollow">
+{{ end }}
+
 {{ with .Site.GoogleAnalytics }}
   <script async src="https://www.googletagmanager.com/gtag/js?id={{ . }}"></script>
   <script>
@@ -37,10 +41,6 @@
 {{ end }}
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-mfizz/2.4.1/font-mfizz.min.css" />
-
-{{ if eq .Type "homepage" }}
-<link rel="stylesheet" href="/css/homepage.css" />
-{{ end }}
 
 {{ with .Site.Params.algolia_docsearch }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css" />

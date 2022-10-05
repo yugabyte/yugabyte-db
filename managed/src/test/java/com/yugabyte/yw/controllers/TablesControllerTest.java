@@ -47,6 +47,7 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -64,7 +65,6 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.TablesController.TableInfoResp;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -132,7 +132,6 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  private YBClientService mockService;
   private TablesController tablesController;
   private YBClient mockClient;
   private AuditService auditService;
@@ -159,7 +158,6 @@ public class TablesControllerTest extends FakeDBApplication {
   public void setUp() {
     mockClient = mock(YBClient.class);
     mockConfig = mock(Config.class);
-    mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
@@ -277,7 +275,7 @@ public class TablesControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> tablesController.listTables(customer.uuid, u1.universeUUID, false))
-            .getResult();
+            .buildResult();
     assertEquals(503, r.status());
     assertEquals(
         "Expected error. Masters are not currently queryable.",
@@ -298,7 +296,7 @@ public class TablesControllerTest extends FakeDBApplication {
         assertThrows(
                 PlatformServiceException.class,
                 () -> tablesController.listTables(customer.uuid, u2.universeUUID, false))
-            .getResult();
+            .buildResult();
     assertEquals(500, r.status());
     assertEquals(
         "Could not find the master leader", Json.parse(contentAsString(r)).get("error").asText());
@@ -1055,15 +1053,17 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTableSpaces() throws Exception {
-    Universe u1 = createUniverse(customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    LOG.info("new code");
+    Provider provider = ModelFactory.awsProvider(customer);
+    Universe u1 = createFromConfig(provider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
+
     final String shellResponseString =
         TestUtils.readResource("com/yugabyte/yw/controllers/tablespaces_shell_response.txt");
 
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("1.1.1.1", 7000));
     ShellResponse shellResponse1 =
         ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, shellResponseString);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyString(), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), anyString(), any()))
         .thenReturn(shellResponse1);
 
     Result r = tablesController.listTableSpaces(customer.uuid, u1.universeUUID);

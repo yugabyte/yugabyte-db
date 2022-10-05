@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -149,32 +148,8 @@ public class BackupGarbageCollector {
         backup.transitionState(BackupState.DeleteInProgress);
         try {
           switch (customerConfig.name) {
-              // for cases S3, NFS, GCS, we get Util from CloudUtil class
+              // for cases S3, AZ, GCS, we get Util from CloudUtil class
             case S3:
-              CustomerConfigStorageS3Data s3Data =
-                  (CustomerConfigStorageS3Data) customerConfig.getDataObject();
-              if (s3Data.isIAMInstanceProfile) {
-                if (isUniversePresent(backup)) {
-                  BackupTableParams backupParams = backup.getBackupInfo();
-                  List<BackupTableParams> backupList =
-                      backupParams.backupList == null
-                          ? ImmutableList.of(backupParams)
-                          : backupParams.backupList;
-                  boolean success = deleteScriptBackup(backupList);
-                  if (success) {
-                    backup.delete();
-                    log.info("Backup {} is successfully deleted", backupUUID);
-                  } else {
-                    backup.transitionState(BackupState.FailedToDelete);
-                  }
-                } else {
-                  backup.transitionState(BackupState.FailedToDelete);
-                  log.info(
-                      "Cannot delete S3 IAM Backup {} as universe is not present",
-                      backup.backupUUID);
-                }
-                break;
-              }
             case GCS:
             case AZ:
               CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);

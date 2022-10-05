@@ -110,6 +110,8 @@ IndexNext(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -121,7 +123,11 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+		scandesc->yb_idx_pushdown =
+			YbInstantiateRemoteParams(&plan->index_remote, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -261,6 +267,8 @@ IndexNextWithReorder(IndexScanState *node)
 
 	if (scandesc == NULL)
 	{
+		IndexScan *plan = castNode(IndexScan, node->ss.ps.plan);
+
 		/*
 		 * We reach here if the index scan is not parallel, or if we're
 		 * serially executing an index scan that was planned to be parallel.
@@ -272,7 +280,11 @@ IndexNextWithReorder(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
-		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->rel_remote, estate);
+		scandesc->yb_idx_pushdown =
+			YbInstantiateRemoteParams(&plan->index_remote, estate);
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -1306,16 +1318,16 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			if (IsA(leftop, FuncExpr)
 				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
 			{
-				flags |= SK_IS_HASHED;
+				flags |= YB_SK_IS_HASHED;
 			}
 
 			if (!(IsA(leftop, Var) &&
 				  ((Var *) leftop)->varno == INDEX_VAR)
-				  && ((flags & SK_IS_HASHED) == 0))
+				  && ((flags & YB_SK_IS_HASHED) == 0))
 				elog(ERROR, "indexqual doesn't have key on left side");
 
 
-			if ((flags & SK_IS_HASHED) != 0)
+			if ((flags & YB_SK_IS_HASHED) != 0)
 			{
 				varattno = InvalidAttrNumber;
 				opfamily = INTEGER_LSM_FAM_OID;

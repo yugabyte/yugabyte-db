@@ -30,7 +30,7 @@
     ],
     "cloud_store_spec": {
       "default_backup_location": {
-        "bucket": "backups.yugabyte.com",
+        "bucket": "def_bucket",
         "cloud_dir": "default\/foo\/keyspace-bar\/"
       }
     },

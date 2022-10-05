@@ -2,7 +2,7 @@
 title: Deploy clusters in YugabyteDB Managed
 linkTitle: Deploy clusters
 description: Deploy clusters in YugabyteDB Managed.
-headcontent: Deploy production-ready clusters.
+headcontent: Deploy production-ready clusters
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:

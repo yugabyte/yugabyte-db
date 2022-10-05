@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "yb/client/tablet_server.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -40,7 +41,6 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_memctx.h"
@@ -86,13 +86,20 @@ namespace {
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
 
-template<class T>
-YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
+template<class T, class Functor>
+YBCStatus ExtractValueFromResult(Result<T> result, const Functor& functor) {
   if (result.ok()) {
-    *value = *result;
+    functor(std::move(*result));
     return YBCStatusOK();
   }
   return ToYBCStatus(result.status());
+}
+
+template<class T>
+YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
+  return ExtractValueFromResult(std::move(result), [value](T src) {
+    *value = std::move(src);
+  });
 }
 
 YBCStatus ProcessYbctid(
@@ -110,7 +117,14 @@ Slice YbctidAsSlice(uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-} // anonymous namespace
+inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
+  if (type == YB_YQL_BOUND_INVALID) {
+    return std::nullopt;
+  }
+  return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // C API.
@@ -163,18 +177,9 @@ const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
 
-YBCStatus YBCPgCreateEnv(YBCPgEnv *pg_env) {
-  return ToYBCStatus(pgapi->CreateEnv(pg_env));
-}
-
-YBCStatus YBCPgDestroyEnv(YBCPgEnv pg_env) {
-  return ToYBCStatus(pgapi->DestroyEnv(pg_env));
-}
-
-YBCStatus YBCPgInitSession(const YBCPgEnv pg_env,
-                           const char *database_name) {
+YBCStatus YBCPgInitSession(const char *database_name) {
   const string db_name(database_name ? database_name : "");
-  return ToYBCStatus(pgapi->InitSession(pg_env, db_name));
+  return ToYBCStatus(pgapi->InitSession(db_name));
 }
 
 YBCPgMemctx YBCPgCreateMemctx() {
@@ -228,6 +233,22 @@ YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
 #endif
   }
   return YBCStatusOK();
+}
+
+bool YBCTryMemConsume(int64_t bytes) {
+  if (pgapi) {
+    pgapi->GetMemTracker().Consume(bytes);
+    return true;
+  }
+  return false;
+}
+
+bool YBCTryMemRelease(int64_t bytes) {
+  if (pgapi) {
+    pgapi->GetMemTracker().Release(bytes);
+    return true;
+  }
+  return false;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -454,6 +475,10 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
   return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
 }
 
+YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }
@@ -620,6 +645,17 @@ YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
   }
 }
 
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+                                YBCPgOid database_oid,
+                                int64_t *size,
+                                int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(pgapi->GetTableDiskSize({database_oid, table_oid}),
+                                [size, num_missing_tablets](auto value) {
+     *size = value.table_size;
+     *num_missing_tablets = value.num_missing_tablets;
+  });
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,
@@ -688,12 +724,12 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_primary));
 }
 
-YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
-  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref, bool is_primary) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref, is_primary));
 }
 
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
@@ -739,13 +775,12 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
-                                 bool start_inclusive, uint64_t start_hash_val,
-                                 bool end_valid, bool end_inclusive,
-                                 uint64_t end_hash_val) {
-  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start_valid,
-                      start_inclusive, start_hash_val, end_valid,
-                      end_inclusive, end_hash_val));
+YBCStatus YBCPgDmlBindHashCodes(
+  YBCPgStatement handle,
+  YBCPgBoundType start_type, uint64_t start_value,
+  YBCPgBoundType end_type, uint64_t end_value) {
+  return ToYBCStatus(pgapi->DmlBindHashCode(
+      handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
@@ -1260,7 +1295,8 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
         .zone = YBCPAllocStdString(info.zone),
         .public_ip = YBCPAllocStdString(info.public_ip),
         .is_primary = info.is_primary,
-        .pg_port = info.pg_port
+        .pg_port = info.pg_port,
+        .uuid = YBCPAllocStdString(info.server.uuid),
       };
       ++dest;
     }

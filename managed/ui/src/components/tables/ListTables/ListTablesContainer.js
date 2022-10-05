@@ -3,11 +3,12 @@
 import { connect } from 'react-redux';
 import { ListTables } from '..';
 
-function mapStateToProps(state) {
+function mapStateToProps(state, ownProps) {
   return {
     universe: state.universe,
     tables: state.tables,
-    customer: state.customer
+    customer: state.customer,
+    fetchUniverseTables: ownProps.fetchUniverseTables
   };
 }
 

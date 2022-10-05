@@ -1,0 +1,44 @@
+#!/bin/bash
+# Copyright (c) YugaByte, Inc.
+
+set -euo pipefail
+
+print_help() {
+  cat <<-EOT
+Generates the node agent packages in destination.
+Usage: ${0##*/} <options>
+Options:
+  -h, --help
+    Show usage.
+  -d, --destination
+    Directory into which the binary should be copied.
+EOT
+}
+
+export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
+export YB_MANAGED_DEVOPS_USE_PYTHON3=1
+
+. "$DEVOPS_HOME/bin/"/common.sh
+
+readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
+
+destination=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    -d|--destination)
+      destination="$2"
+      shift
+  esac
+  shift
+done
+
+if [[ ! -d $destination ]]; then
+  fatal "No destination directory found ('$destination')"
+fi
+
+activate_virtualenv
+$node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination

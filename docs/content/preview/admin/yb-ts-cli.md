@@ -49,6 +49,7 @@ The following commands are available:
 * [flush_tablet](#flush-tablet)
 * [list_tablets](#list-tablets)
 * [reload_certificates](#reload-certificates)
+* [remote_bootstrap](#remote-bootstrap)
 * [set_flag](#set-flag)
 * [status](#status)
 
@@ -201,6 +202,22 @@ yb-ts-cli [ --server_address=<host>:<port> ] reload_certificates
 ```
 
 * *host*:*port*: The *host* and *port* of the master or tablet server. Default is `localhost:9100`.
+
+##### remote_bootstrap
+
+Trigger a remote bootstrap of a tablet from another tablet server to the specified tablet server.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
+* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+
+See [Manual remote bootstrap of failed peer](../../troubleshoot/cluster/replace_failed_peers/) for example usage.
 
 ##### set_flag
 

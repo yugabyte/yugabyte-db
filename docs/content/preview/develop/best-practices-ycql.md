@@ -74,7 +74,7 @@ TTL is not applicable to transactional tables and hence is not supported in that
 
 ### Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../quick-start/build-apps/) because they are cluster and partition aware and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](../../develop/build-apps/) because they are cluster and partition aware and support `jsonb` columns.
 
 ### Leverage connection pooling in the YCQL client
 

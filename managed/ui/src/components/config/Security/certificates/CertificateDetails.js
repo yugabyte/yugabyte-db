@@ -32,10 +32,12 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
         <label>Certificate</label>
         <div>{certificate.certificate}</div>
       </li>
-      <li>
-        <label>Private Key</label>
-        <div>{certificate.privateKey}</div>
-      </li>
+      {certificate.privateKey && (
+        <li>
+          <label>Private Key</label>
+          <div>{certificate.privateKey}</div>
+        </li>
+      )}
       {certificate.rootCertPath && (
         <Fragment>
           <li>

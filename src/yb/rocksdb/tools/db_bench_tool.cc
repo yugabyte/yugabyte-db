@@ -2774,8 +2774,7 @@ class Benchmark {
 
       if (thread->shared->write_rate_limiter.get() != nullptr) {
         thread->shared->write_rate_limiter->Request(
-            entries_per_batch_ * (value_size_ + key_size_),
-            Env::IO_HIGH);
+            entries_per_batch_ * (value_size_ + key_size_), yb::IOPriority::kHigh);
         // Set time at which last op finished to Now() to hide latency and
         // sleep from rate limiter. Also, do the check once per batch, not
         // once per write.
@@ -3225,8 +3224,7 @@ class Benchmark {
 
       if (FLAGS_benchmark_write_rate_limit > 0) {
         write_rate_limiter->Request(
-            entries_per_batch_ * (value_size_ + key_size_),
-            Env::IO_HIGH);
+            entries_per_batch_ * (value_size_ + key_size_), yb::IOPriority::kHigh);
       }
     }
     thread->stats.AddBytes(bytes);

@@ -107,6 +107,15 @@ class RpcServerBase {
   const std::string get_hostname() const;
 
   virtual Status ReloadKeysAndCertificates() { return Status::OK(); }
+  virtual Status ReloadPgConfig() {
+    // TODO: This should never be called on master, so we should return a bad status here.
+    // Unfortunately master library depends on tserver library (#14034), so it gets all its flags
+    // including the pg flags. Just return OK for now so that everything looks consistent.
+    return Status::OK();
+  }
+  virtual std::string GetCertificateDetails() { return ""; }
+
+  virtual uint32_t GetAutoFlagConfigVersion() const { return 0; }
 
  protected:
   RpcServerBase(std::string name,
@@ -116,6 +125,7 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
+  virtual Status InitAutoFlags();
   virtual Status Init();
   virtual Status Start();
 

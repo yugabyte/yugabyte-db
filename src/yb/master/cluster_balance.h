@@ -80,6 +80,8 @@ class ClusterLoadBalancer {
   explicit ClusterLoadBalancer(CatalogManager* cm);
   virtual ~ClusterLoadBalancer();
 
+  void InitMetrics();
+
   // Executes one run of the load balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
   // create a new PerTableLoadState object.
@@ -96,12 +98,20 @@ class ClusterLoadBalancer {
 
   bool CanBalanceGlobalLoad() const;
 
+  void ReportMetrics();
+
+  MonoTime LastRunTime() const;
+
   Status IsIdle() const;
 
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.
   vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
+
+  // Return the replication info for 'table'.
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table) const;
 
   //
   // Catalog manager indirection methods.
@@ -128,20 +138,6 @@ class ClusterLoadBalancer {
   // Get the table info object for given table uuid.
   virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const
     REQUIRES_SHARED(catalog_manager_->mutex_);
-
-  // Get the replication info from the cluster configuration.
-  virtual const ReplicationInfoPB& GetClusterReplicationInfo() const;
-
-  // Get the placement information from the cluster configuration.
-  // Gets appropriate live or read only cluster placement,
-  // depending on placement_uuid_.
-  virtual const PlacementInfoPB& GetClusterPlacementInfo() const;
-
-  // Get the blacklist information.
-  virtual const BlacklistPB& GetServerBlacklist() const;
-
-  // Get the leader blacklist information.
-  virtual const BlacklistPB& GetLeaderBlacklist() const;
 
   // Should skip load-balancing of this table?
   virtual bool SkipLoadBalancing(const TableInfo& table) const
@@ -210,9 +206,6 @@ class ClusterLoadBalancer {
   // building the initial state.
 
   virtual void InitTablespaceManager();
-
-  // Return the replication info for 'table'.
-  Result<ReplicationInfoPB> GetTableReplicationInfo(const scoped_refptr<TableInfo>& table) const;
 
   // Method called when initially analyzing tablets, to build up load and usage information.
   // Returns an OK status if the method succeeded or an error if there are transient errors in
@@ -334,6 +327,10 @@ class ClusterLoadBalancer {
 
   virtual const PlacementInfoPB& GetLiveClusterPlacementInfo() const;
 
+  void AddTSIfBlacklisted(
+      const std::shared_ptr<TSDescriptor>& ts_desc, const BlacklistPB& blacklist,
+      const bool leader_blacklist);
+
   //
   // Generic load information methods.
   //
@@ -362,6 +359,9 @@ class ClusterLoadBalancer {
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
 
+  // Info about if load balancing is enabled in the cluster.
+  scoped_refptr<AtomicGauge<int64_t>> is_load_balancing_enabled_metric_;
+
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
   template <class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
@@ -384,6 +384,8 @@ class ClusterLoadBalancer {
       TabletServerId* from_ts,
       TabletServerId* to_ts,
       std::string* to_ts_path);
+
+  virtual void SetBlacklistAndPendingDeleteTS();
 
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
@@ -431,6 +433,8 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  std::atomic<MonoTime> last_load_balance_run_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

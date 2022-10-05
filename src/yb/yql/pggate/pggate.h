@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -41,10 +42,10 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
@@ -123,13 +124,9 @@ class PgApiImpl {
   void Interrupt();
   void ResetCatalogReadTime();
 
-  // Initialize ENV within which PGSQL calls will be executed.
-  Status CreateEnv(PgEnv **pg_env);
-  Status DestroyEnv(PgEnv *pg_env);
-
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const PgEnv *pg_env, const std::string& database_name);
+  Status InitSession(const std::string& database_name);
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
@@ -295,6 +292,8 @@ class PgApiImpl {
   Status AlterTableRenameTable(PgStatement *handle, const char *db_name,
                                        const char *newname);
 
+  Status AlterTableIncrementSchemaVersion(PgStatement *handle);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status NewDropTable(const PgObjectId& table_id,
@@ -317,6 +316,8 @@ class PgApiImpl {
   Status SetIsSysCatalogVersionChange(PgStatement *handle);
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
+
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   //------------------------------------------------------------------------------------------------
   // Create and drop index.
@@ -357,9 +358,9 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Status DmlAppendQual(PgStatement *handle, PgExpr *expr);
+  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref);
+  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -390,10 +391,8 @@ class PgApiImpl {
                              int n_attr_values,
                              YBCPgExpr *attr_value);
 
-  Status DmlBindHashCode(PgStatement *handle, bool start_valid,
-                         bool start_inclusive, uint64_t start_hash_val,
-                         bool end_valid, bool end_inclusive,
-                         uint64_t end_hash_val);
+  Status DmlBindHashCode(
+      PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
@@ -599,7 +598,7 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
-  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
   class Interrupter;
@@ -618,10 +617,6 @@ class PgApiImpl {
 
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
-
-  // TODO(neil) Map for environments (we should have just one ENV?). Environments should contain
-  // all the custom flags the PostgreSQL sets. We ignore them all for now.
-  PgEnv::SharedPtr pg_env_;
 
   scoped_refptr<server::HybridClock> clock_;
 

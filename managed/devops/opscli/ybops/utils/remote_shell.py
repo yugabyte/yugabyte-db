@@ -9,9 +9,8 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import os
-import logging
 
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils.ssh import SSHClient
 
 CONNECTION_ATTEMPTS = 5
@@ -55,7 +54,7 @@ class RemoteShell(object):
             result.stdout = output
             result.exited = 0
         except Exception as e:
-            result.stderr = e
+            result.stderr = str(e)
             result.exited = 1
 
         return result
@@ -64,7 +63,7 @@ class RemoteShell(object):
         result = self.run_command_raw(command)
 
         if result.exited:
-            raise YBOpsRuntimeError(
+            raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(command.encode('utf-8'),
                                                          result.stderr,

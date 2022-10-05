@@ -14,6 +14,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -39,16 +44,13 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -172,7 +174,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private void setupMockMetricQueryHelperResponse() {
     // Note: This is completely fake, unlike the real metric response
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
-    when(mockMetricQueryHelper.query(any(), any(), any())).thenReturn(fakeMetricResponse);
+    doReturn(fakeMetricResponse)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   private void validateGetXClusterResponse(
@@ -245,7 +249,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     XClusterConfig xClusterConfig =
         XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
     assertEquals(xClusterConfig.name, configName);
-    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Init);
+    assertEquals(xClusterConfig.status, XClusterConfigStatusType.Initialized);
     assertEquals(xClusterConfig.getTables(), exampleTables);
 
     JsonNode resultJson = Json.parse(contentAsString(result));
@@ -258,7 +262,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
@@ -530,8 +534,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                     tableConfig -> tableConfig.streamId = exampleTablesAndStreamIDs.get(tableId)));
 
     String fakeErrMsg = "failed to fetch metric data";
-    when(mockMetricQueryHelper.query(any(), any(), any()))
-        .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg));
+    doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
+        .when(mockMetricQueryHelper)
+        .query(any(), any(), any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
 
@@ -573,7 +578,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -610,7 +615,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -644,7 +649,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
@@ -870,7 +875,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(
         customerTask.getTargetUUID(),
-        allOf(notNullValue(), equalTo(xClusterConfig.targetUniverseUUID)));
+        allOf(notNullValue(), equalTo(xClusterConfig.sourceUniverseUUID)));
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(customerTask.getTarget(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
     assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Delete)));

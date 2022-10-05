@@ -96,6 +96,15 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      if (currentNode.dedicatedTo == ServerType.TSERVER) {
+        String msg =
+            "Unable to start the Master process on node "
+                + taskParams().nodeName
+                + ", node is dedicated to tserver.";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
       log.info(
           "Bringing up master for under replicated universe {} ({})",
           universe.universeUUID,
@@ -103,66 +112,7 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       preTaskActions();
 
-      // Update node state to Starting Master.
-      createSetNodeStateTask(currentNode, NodeState.Starting)
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-      List<NodeDetails> nodeAsList = Arrays.asList(currentNode);
-
-      // Set gflags for master.
-      createGFlagsOverrideTasks(
-          nodeAsList,
-          ServerType.MASTER,
-          true /* isShell */,
-          VmUpgradeTaskType.None,
-          false /*ignoreUseCustomImageConfig*/);
-
-      // Check that installed MASTER software version is consistent.
-      createSoftwareInstallTasks(
-          nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
-
-      // Update master configuration on the node.
-      createConfigureServerTasks(
-              nodeAsList,
-              params -> {
-                params.isMasterInShellMode = true;
-                params.updateMasterAddrsOnly = true;
-                params.isMaster = true;
-              })
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Start a master process.
-      createStartMasterTasks(nodeAsList)
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-      // Mark node as isMaster in YW DB.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-      // Wait for the master to be responsive.
-      createWaitForServersTasks(nodeAsList, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Add master to the quorum.
-      createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
-
-      // Update all server conf files with new master information.
-      createMasterInfoUpdateTask(universe, currentNode);
-
-      // Update the master addresses on the target universes whose source universe belongs to
-      // this task.
-      createXClusterConfigUpdateMasterAddressesTask();
-
-      // Update node state to running.
-      createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
-      // Mark universe update success to true.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+      createStartMasterOnNodeTasks(universe, currentNode, null, false);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

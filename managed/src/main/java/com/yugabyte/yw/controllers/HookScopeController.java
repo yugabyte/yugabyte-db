@@ -7,6 +7,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.HookScopeFormData;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
@@ -34,6 +35,8 @@ public class HookScopeController extends AuthenticatedController {
 
   public static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
+
+  @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject RuntimeConfigFactory rConfigFactory;
 
@@ -149,6 +152,6 @@ public class HookScopeController extends AuthenticatedController {
     if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
-    TokenAuthenticator.superAdminOrThrow(ctx());
+    tokenAuthenticator.superAdminOrThrow(ctx());
   }
 }

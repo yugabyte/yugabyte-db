@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import java.io.ByteArrayOutputStream;
@@ -29,6 +30,8 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+
 @Singleton
 @Slf4j
 public class AZUtil implements CloudUtil {
@@ -39,20 +42,20 @@ public class AZUtil implements CloudUtil {
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
 
-  public static String[] getSplitLocationValue(String backupLocation, Boolean isConfigLocation) {
+  public static String[] getSplitLocationValue(String backupLocation) {
     backupLocation = backupLocation.substring(8);
-    Integer splitValue = isConfigLocation ? 2 : 3;
-    String[] split = backupLocation.split("/", splitValue);
+    String[] split = backupLocation.split("/", 3);
     return split;
   }
 
+  @Override
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitLocation = getSplitLocationValue(defaultBackupLocation, false);
+    String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String azureUrl = "https://" + splitLocation[0];
-    String container = splitLocation[1];
-    String blob = splitLocation[2];
+    String container = splitLocation.length > 1 ? splitLocation[1] : "";
+    String blob = splitLocation.length > 2 ? splitLocation[2] : "";
     String keyLocation = blob.substring(0, blob.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     String sasToken = azData.azureSasToken;
     try {
@@ -74,16 +77,36 @@ public class AZUtil implements CloudUtil {
     }
   }
 
+  // Returns a map for <container_url, SAS token>
+  private Map<String, String> getContainerTokenMap(CustomerConfigStorageAzureData azData) {
+    Map<String, String> containerTokenMap = new HashMap<>();
+    containerTokenMap.put(StringUtils.removeEnd(azData.backupLocation, "/"), azData.azureSasToken);
+    if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
+      azData.regionLocations.forEach(
+          (rL) -> {
+            containerTokenMap.put(StringUtils.removeEnd(rL.location, "/"), rL.azureSasToken);
+          });
+    }
+    return containerTokenMap;
+  }
+
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    for (String configLocation : locations) {
-      String[] splitLocation = getSplitLocationValue(configLocation, true);
+    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
+    for (String location : locations) {
+      String[] splitLocation = getSplitLocationValue(location);
       String azureUrl = "https://" + splitLocation[0];
-      String container = splitLocation[1];
-      String sasToken = azData.azureSasToken;
+      String container = splitLocation.length > 1 ? splitLocation[1] : "";
+      String containerEndpoint = String.format("%s/%s", azureUrl, container);
+      String sasToken = containerTokenMap.get(containerEndpoint);
+      if (StringUtils.isEmpty(sasToken)) {
+        log.error("No SAS token for given location {}", location);
+        return false;
+      }
       try {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
@@ -92,8 +115,7 @@ public class AZUtil implements CloudUtil {
       } catch (Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s",
-                configLocation),
+                "Credential cannot list objects in the specified backup location %s", location),
             e);
         return false;
       }
@@ -116,13 +138,18 @@ public class AZUtil implements CloudUtil {
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     for (String backupLocation : backupLocations) {
       try {
-        String[] splitLocation = getSplitLocationValue(backupLocation, false);
+        String[] splitLocation = getSplitLocationValue(backupLocation);
         String azureUrl = "https://" + splitLocation[0];
         String container = splitLocation[1];
         String blob = splitLocation[2];
-        String sasToken = azData.azureSasToken;
+        String containerEndpoint = String.format("%s/%s", azureUrl, container);
+        String sasToken = containerTokenMap.get(containerEndpoint);
+        if (StringUtils.isEmpty(sasToken)) {
+          throw new Exception(String.format("No SAS token for given location %s", backupLocation));
+        }
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);
@@ -160,46 +187,47 @@ public class AZUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
-    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation, true);
-    String azureUrl = "https://" + splitValues[0];
-    String container = splitValues[1];
-    String cloudDir = commonDir + "/";
-    Map<String, String> azCredsMap = createCredsMapYbc(azData.azureSasToken, azureUrl);
-    return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
+    String cloudDir = BackupUtil.appendSlash(commonDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      String[] splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 2 ? BackupUtil.appendSlash(splitValues[2]) : previousCloudDir;
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(
+        pair.getFirst(), cloudDir, previousCloudDir, pair.getSecond(), Util.AZ);
   }
 
   @Override
-  public CloudStoreSpec createCloudStoreSpec(
-      CustomerConfigData configData, String bucket, String dir) {
-    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String azureUrl = "https://" + bucket;
-    String container = dir.split("/")[0];
-    String cloudDir = dir.split("/")[1];
-    Map<String, String> azCredsMap = createCredsMapYbc(azData.azureSasToken, azureUrl);
-    return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
+    if (isDsm) {
+      String[] splitValues = getSplitLocationValue(storageLocation);
+      String location = BackupUtil.appendSlash(splitValues[2]);
+      return YbcBackupUtil.buildCloudStoreSpec(
+          pair.getFirst(), location, "", pair.getSecond(), Util.AZ);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(
+        pair.getFirst(), cloudDir, "", pair.getSecond(), Util.AZ);
   }
 
-  @Override
-  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
-      throws Exception {
+  private Pair<String, Map<String, String>> getContainerCredsMapPair(
+      CustomerConfigData configData, String storageLocation) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitValues = getSplitLocationValue(location, false);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String azureUrl = "https://" + splitValues[0];
     String container = splitValues[1];
-    String blob = splitValues[2];
-    String sasToken = azData.azureSasToken;
-
-    BlobContainerClient blobContainerClient =
-        createBlobContainerClient(azureUrl, sasToken, container);
-    BlobClient blobClient = blobContainerClient.getBlobClient(blob);
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    blobClient.download(outputStream);
-
-    ObjectMapper mapper = new ObjectMapper();
-    JsonNode json = mapper.readTree(new String(outputStream.toByteArray()));
-    return json;
+    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
+    String containerEndpoint = String.format("%s/%s", azureUrl, container);
+    String azureSasToken = containerTokenMap.get(containerEndpoint);
+    Map<String, String> azCredsMap = createCredsMapYbc(azureSasToken, azureUrl);
+    return new Pair(container, azCredsMap);
   }
 
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
@@ -214,10 +242,12 @@ public class AZUtil implements CloudUtil {
     return new ArrayList<>();
   }
 
-  @Override
-  public String createDirPath(String bucket, String dir) {
-    StringJoiner joiner = new StringJoiner("/");
-    joiner.add("https:/").add(bucket).add(dir);
-    return joiner.toString();
+  public Map<String, String> getRegionLocationsMap(CustomerConfigData configData) {
+    Map<String, String> regionLocationsMap = new HashMap<>();
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
+      azData.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
+    }
+    return regionLocationsMap;
   }
 }

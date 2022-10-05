@@ -15,15 +15,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/java/ebean/" class="nav-link ">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+    <a href="../ebean/" class="nav-link ">
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/java/hibernate" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+    <a href="../hibernate/" class="nav-link active">
       Hibernate ORM
     </a>
   </li>
@@ -232,5 +230,4 @@ Query returned: name=John, age=35, language: Java
 
 ## Next Steps
 
-- Explore [Scaling Java Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Java applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/).
+Explore [Scaling Java Applications](../../../explore/linear-scalability) with YugabyteDB.

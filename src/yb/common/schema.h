@@ -78,6 +78,8 @@ namespace yb {
 
 class DeletedColumnPB;
 
+static const int kNoDefaultTtl = -1;
+
 // Struct for storing information about deleted columns for cleanup.
 struct DeletedColumn {
   ColumnId id;
@@ -89,6 +91,8 @@ struct DeletedColumn {
 
   static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
+
+  friend bool operator==(const DeletedColumn&, const DeletedColumn&) = default;
 };
 
 // The schema for a given column.
@@ -283,6 +287,9 @@ class ColumnSchema {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  // Should account for every field in ColumnSchema.
+  static bool TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs);
+
  private:
   friend class SchemaBuilder;
 
@@ -469,7 +476,6 @@ class TableProperties {
   // operator== and Equivalent methods to make sure that the new property
   // is being taken into consideration when deciding whether properties between
   // two different tables are equal or equivalent.
-  static const int kNoDefaultTtl = -1;
   int64_t default_time_to_live_;
   bool contain_counters_;
   bool is_transactional_;
@@ -901,19 +907,17 @@ class Schema {
     return Equals(other, ColumnSchema::CompareByDefault);
   }
 
-  // Return true if the schemas have exactly the same set of columns
-  // and respective types, and equivalent properties.
-  // For example, one table property could have different property
-  // retain_delete_markers_ but still be equivalent.
-  bool EquivalentForDataCopy(const Schema& other) const {
-    if (this == &other) return true;
-    if (this->num_key_columns_ != other.num_key_columns_) return false;
-    if (!this->table_properties_.Equivalent(other.table_properties_)) return false;
-    if (this->cols_.size() != other.cols_.size()) return false;
+  // Return true if this schema has exactly the same set of columns and respective types, and
+  // equivalent properties as the source.  The source must be an equivalent subset of this object.
+  bool EquivalentForDataCopy(const Schema& source) const {
+    if (this == &source) return true;
+    if (this->num_key_columns_ != source.num_key_columns_) return false;
+    if (!this->table_properties_.Equivalent(source.table_properties_)) return false;
+    if (this->cols_.size() < source.cols_.size()) return false;
 
-    for (size_t i = 0; i < other.cols_.size(); i++) {
-      if (!this->cols_[i].Equals(other.cols_[i])) return false;
-      if (this->column_id(i) != other.column_id(i)) return false;
+    for (size_t i = 0; i < source.cols_.size(); i++) {
+      if (!this->cols_[i].Equals(source.cols_[i])) return false;
+      if (this->column_id(i) != source.column_id(i)) return false;
     }
 
     return true;
@@ -1021,6 +1025,10 @@ class Schema {
   size_t memory_footprint_including_this() const;
 
   static ColumnId first_column_id();
+
+  // Should account for every field in Schema.
+  // TODO: Some of them should be in Equals too?
+  static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
 

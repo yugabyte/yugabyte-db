@@ -1,8 +1,9 @@
 @supports (position: sticky) {
   .td-sidebar-toc {
-    top: 8rem;
+    top: 129px;
     background: rgb(246, 246, 248);
     margin-top: 129px;
+    height: calc(100vh - 129px);
   }
 }
 
@@ -23,5 +24,17 @@
 
   .active-scroll {
     color: $primary !important;
+  }
+
+  &.hide-h3 {
+    nav > ul > li > ul > li {
+      display: none;
+    }
+  }
+
+  &.hide-h4 {
+    nav > ul > li > ul > li > ul {
+      display: none;
+    }
   }
 }

@@ -78,6 +78,9 @@ struct TableInfo {
   // Table id, name and type.
   std::string table_id;
   std::string namespace_name;
+  // namespace_id is currently used on the xcluster path to determine safe time on the apply
+  // transaction path.
+  NamespaceId namespace_id;
   std::string table_name;
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
@@ -133,6 +136,11 @@ struct TableInfo {
       const TableInfoPtr& self, uint32_t schema_version, HybridTime history_cutoff);
 
   const Schema& schema() const;
+
+  Status MergeWithRestored(const TableInfoPB& pb);
+
+  // Should account for every field in TableInfo.
+  static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -148,8 +156,10 @@ struct KvStoreInfo {
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
   Status LoadFromPB(const KvStoreInfoPB& pb,
-                            const TableId& primary_table_id,
-                            bool local_superblock);
+                    const TableId& primary_table_id,
+                    bool local_superblock);
+
+  Status MergeWithRestored(const KvStoreInfoPB& pb);
 
   Status LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
@@ -183,6 +193,9 @@ struct KvStoreInfo {
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
+
+  // Should account for every field in KvStoreInfo.
+  static bool TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs);
 };
 
 struct RaftGroupMetadataData {
@@ -221,8 +234,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const;
+  Result<TableInfoPtr> GetTableInfo(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(
+      const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const
+      REQUIRES(data_mutex_);
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
@@ -247,15 +263,20 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the name, type, schema, index map, schema, etc of the table.
   std::string namespace_name(const TableId& table_id = "") const;
 
-  std::string table_name(const TableId& table_id = "") const;
+  NamespaceId namespace_id() const;
+
+  std::string table_name(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   TableType table_type(const TableId& table_id = "") const;
 
-  yb::SchemaPtr schema(const TableId& table_id = "") const;
+  yb::SchemaPtr schema(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
 
-  SchemaVersion schema_version(const TableId& table_id = "") const;
+  SchemaVersion schema_version(
+      const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
   const std::string& indexed_table_id(const TableId& table_id = "") const;
 
@@ -285,6 +306,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
 
   const std::string& wal_dir() const { return wal_dir_; }
+
+  Status set_namespace_id(const NamespaceId& namespace_id);
 
   // Set the WAL retention time for the primary table.
   void set_wal_retention_secs(uint32 wal_retention_secs);
@@ -379,6 +402,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status Flush();
 
+  Status SaveTo(const std::string& path);
+
+  // Merge this metadata with restored metadata located at specified path.
+  Status MergeWithRestored(const std::string& path);
+
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
   // The metadata (superblock) is not deleted. For that, call DeleteSuperBlock().
@@ -413,7 +441,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   OpId tombstone_last_logged_opid() const;
 
   // Loads the currently-flushed superblock from disk into the given protobuf.
-  Status ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* superblock) const;
+  // When path is empty - obtain path from fs manager for this Raft group.
+  Status ReadSuperBlockFromDisk(
+      RaftGroupReplicaSuperBlockPB* superblock, const std::string& path = std::string()) const;
 
   // Sets *superblock to the serialized form of the current metadata.
   void ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const;
@@ -482,6 +512,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
+  const KvStoreInfo& TEST_kv_store() const {
+    return kv_store_;
+  }
+
  private:
   typedef simple_spinlock MutexType;
 
@@ -509,7 +543,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Fully replace superblock.
   // Requires 'flush_lock_'.
-  Status SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
+  // When path is empty - obtain path from fs manager for this Raft group.
+  Status SaveToDiskUnlocked(
+      const RaftGroupReplicaSuperBlockPB &pb, const std::string& path = std::string());
 
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
@@ -591,6 +627,8 @@ inline bool CanServeTabletData(TabletDataState state) {
   return state == TabletDataState::TABLET_DATA_READY ||
          state == TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
 }
+
+Status CheckCanServeTabletData(const RaftGroupMetadata& metadata);
 
 } // namespace tablet
 } // namespace yb

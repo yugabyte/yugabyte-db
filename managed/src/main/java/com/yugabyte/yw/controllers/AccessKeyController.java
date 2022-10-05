@@ -24,9 +24,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +66,21 @@ public class AccessKeyController extends AuthenticatedController {
 
     List<AccessKey> accessKeys;
     accessKeys = AccessKey.getAll(providerUUID);
+    return PlatformResults.withData(accessKeys);
+  }
+
+  @ApiOperation(
+      value = "List access keys for all providers of a customer",
+      response = AccessKey.class,
+      responseContainer = "List")
+  public Result listAllForProviders(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    List<UUID> providerUUIDs =
+        Provider.getAll(customerUUID)
+            .stream()
+            .map(provider -> provider.uuid)
+            .collect(Collectors.toList());
+    List<AccessKey> accessKeys = AccessKey.getByProviderUuids(providerUUIDs);
     return PlatformResults.withData(accessKeys);
   }
 

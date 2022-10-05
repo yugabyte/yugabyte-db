@@ -10,16 +10,20 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.math.BigInteger;
 import java.security.SecureRandom;
+import java.util.Calendar;
 import java.util.Date;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -131,7 +135,7 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   public Date creationDate;
 
-  private String authToken;
+  @Encrypted private String authToken;
 
   @Column(nullable = true)
   @ApiModelProperty(
@@ -379,14 +383,30 @@ public class Users extends Model {
    * @param authToken
    * @return Authenticated Users Info
    */
-  public static Users authWithToken(String authToken) {
+  public static Users authWithToken(String authToken, Duration authTokenExpiry) {
     if (authToken == null) {
       return null;
     }
 
     try {
-      // TODO: handle authToken expiry etc.
-      return find.query().where().eq("authToken", authToken).findOne();
+      Users userWithToken = find.query().where().eq("authToken", authToken).findOne();
+      if (userWithToken != null) {
+        long tokenExpiryDuration = authTokenExpiry.toMinutes();
+        int tokenExpiryInMinutes = (int) tokenExpiryDuration;
+        Calendar calTokenExpiryDate = Calendar.getInstance();
+        calTokenExpiryDate.setTime(userWithToken.authTokenIssueDate);
+        calTokenExpiryDate.add(Calendar.MINUTE, tokenExpiryInMinutes);
+        Calendar calCurrentDate = Calendar.getInstance();
+        long tokenDiffMinutes =
+            Duration.between(calCurrentDate.toInstant(), calTokenExpiryDate.toInstant())
+                .toMinutes();
+
+        // Call deleteAuthToken to delete authToken and its issueDate for that specific user
+        if (tokenDiffMinutes <= 0) {
+          userWithToken.deleteAuthToken();
+        }
+      }
+      return userWithToken;
     } catch (Exception e) {
       return null;
     }

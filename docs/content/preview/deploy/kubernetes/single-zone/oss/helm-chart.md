@@ -39,25 +39,24 @@ type: docs
   </li>
 </ul>
 
-## Introduction
 
 [Helm](https://helm.sh/) is an open source packaging tool that helps install applications and services on Kubernetes. It uses a packaging format called `charts`. A Helm chart is a package containing all resource definitions necessary to create an instance of a Kubernetes application, tool, or service in a Kubernetes cluster.
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Installing Helm](https://helm.sh/docs/intro/install/).
+You must have a Kubernetes cluster that has Helm configured. If you have not installed the Helm client (`helm`), see [Install Helm](https://helm.sh/docs/intro/install/).
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
+- Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
 - Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
-Confirm that `helm` and `kubectl` are configured correctly:
+Confirm that `helm` and `kubectl` are configured correctly, as follows:
 
 ```sh
-$ helm version
+helm version
 ```
 
 ```output
@@ -65,19 +64,19 @@ version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d41
 ```
 
 ```sh
-$ kubectl version
+kubectl version
 ```
 
 ## Create cluster
 
-Create a cluster includes adding a repository for charts and updating this repository, checking the version, and installing YugabyteDB.
+Creating a cluster includes adding a repository for charts and updating this repository, checking the version, and installing YugabyteDB.
 
 ### Add charts repository
 
 To add the YugabyteDB charts repository, run the following command:
 
 ```sh
-$ helm repo add yugabytedb https://charts.yugabyte.com
+helm repo add yugabytedb https://charts.yugabyte.com
 ```
 
 ### Fetch updates from the repository
@@ -85,13 +84,15 @@ $ helm repo add yugabytedb https://charts.yugabyte.com
 Make sure that you have the latest updates to the repository by running the following command:
 
 ```sh
-$ helm repo update
+helm repo update
 ```
 
 ### Validate the chart version
 
+To check the chart version, run the following command:
+
 ```sh
-$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
+helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 Expect output similar to the following:
@@ -107,53 +108,51 @@ Install YugabyteDB in the Kubernetes cluster using the commands desribed in the 
 
 #### On multi-node Kubernetes
 
-Create a namespace and then install YugabyteDB:
+Create a namespace and then install YugabyteDB, as follows:
 
 ```sh
-$ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --wait
+kubectl create namespace yb-demo
+
+helm install yb-demo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --wait
 ```
 
 #### On Minikube
 
-If you are running in a resource-constrained environment or a local environment, such as Minikube, you have to change the default resource requirements by using the following command:
+If you are running in a resource-constrained environment or a local environment, such as Minikube, you have to change the default resource requirements.
 
-Create a `yb-demo` namespace:
+Create a `yb-demo` namespace, as follows:
 
 ```sh
-$ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte \
+kubectl create namespace yb-demo
+
+helm install yb-demo yugabytedb/yugabyte \
 --version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi --namespace yb-demo
 ```
 
-Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to turn off these services, simply pass the `enableLoadBalancer=False` flag, as follows:
+Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to disable these services, pass the `enableLoadBalancer=False` flag, as follows:
 
 ```sh
-$ helm install yb-demo yugabytedb/yugabyte \
+helm install yb-demo yugabytedb/yugabyte \
 --version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 enableLoadBalancer=False --namespace yb-demo
 ```
 
-{{< note title="Important" >}}
-
-On some environments, such as macOS, Minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5GB memory so the cluster has room to start up. The following is an example command:
+In some environments, such as macOS, Minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5 GB memory so the cluster has room to start up. The following is an example command:
 
 ```sh
-$ minikube start --cpus 4 --memory 5120
+minikube start --cpus 4 --memory 5120
 ```
-
-{{< /note >}}
 
 ## Check the cluster status
 
 You can check the status of the cluster using the following commands:
 
 ```sh
-$ helm status yb-demo -n yb-demo
+helm status yb-demo -n yb-demo
 ```
 
 Expect output similar to the following:
@@ -191,7 +190,7 @@ NOTES:
 Check the pods, as follows:
 
 ```sh
-$ kubectl get pods --namespace yb-demo
+kubectl get pods --namespace yb-demo
 ```
 
 Expect output similar to the following:
@@ -209,7 +208,7 @@ yb-tserver-2   2/2       Running   0          4m
 Check the services, as follows:
 
 ```sh
-$ kubectl get services --namespace yb-demo
+kubectl get services --namespace yb-demo
 ```
 
 Expect output similar to the following:
@@ -225,7 +224,7 @@ yb-tservers          ClusterIP      None            <none>         7100/TCP,9000
 You can also check the history of the `yb-demo` deployment, as follows:
 
 ```sh
-$ helm history yb-demo -n yb-demo
+helm history yb-demo -n yb-demo
 ```
 
 Expect output similar to the following:
@@ -240,13 +239,13 @@ REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESC
 To connect and use the YSQL Shell (`ysqlsh`), run the following command:
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
+kubectl exec -n yb-demo -it yb-tserver-0 -- ysqlsh -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
 To connect and use the YCQL Shell (`ycqlsh`), run the following command:
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo
+kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo
 ```
 
 ## Connect using external clients
@@ -254,7 +253,7 @@ $ kubectl exec -n yb-demo -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb
 To connect an external program, get the load balancer `EXTERNAL-IP` IP address of the `yb-tserver-service` service and connect to the 5433 / 9042 ports for YSQL / YCQL services respectively, as follows:
 
 ```sh
-$ kubectl get services --namespace yb-demo
+kubectl get services --namespace yb-demo
 ```
 
 Expect output similar to the following:
@@ -272,7 +271,7 @@ Instead of using the default values in the Helm chart, you can modify the config
 
 ### CPU, memory, and replica count
 
-The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The following is a listing of the most important ones. As noted in [Prerequisites](#prerequisites), the defaults are set for a 3-node Kubernetes cluster, each node with 4 CPU cores and 6 GB RAM allocated to YugabyteDB.
+The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The following is a listing of the most important values. As noted in [Prerequisites](#prerequisites), the defaults are set for a 3-node Kubernetes cluster, each node with 4 CPU cores and 6 GB RAM allocated to YugabyteDB.
 
 ```yaml
 storage:
@@ -313,13 +312,13 @@ partition:
 If you want to change the defaults, you can use the following command. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults:
 
 ```sh
-$ helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
+helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
 
-Replica count can be changed using the following command. Note only the t-servers need to be scaled in a Replication Factor 3 cluster which keeps the masters count at `3`:
+Replica count can be changed using the following command. Note that only the YB-TServers need to be scaled in a replication factor 3 cluster which keeps the masters count at `3`:
 
 ```sh
-$ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
+helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
 ### Independent LoadBalancers
@@ -338,7 +337,7 @@ If you intend to use a preallocated (reserved) IP for the exposed YB-Master and 
 
 The following is an example of the `values-overrides.yaml` file that allows you to override IP values in the Helm charts:
 
-```
+```properties
 serviceEndpoints:
   - name: "yb-master-ui"
     app: "yb-master"
@@ -358,25 +357,25 @@ serviceEndpoints:
 
 You apply the override by executing the following Helm command:
 
-```
+```sh
 helm install yb-demo ./yugabyte -f values-overrides.yaml
 ```
 
 Assuming that you already reserved the IP addresses (11.11.11.11 and 22.22.22.22), `yb-master-ui` and `yb-tserver-service` will use the predetermined addresses.
 
-Note that setting the load balancer IP results in a behavior that might not be entirely consistent across cloud providers.
+Note that setting the load balancer IP can result in behavior that might not be entirely consistent across cloud providers.
 
 ### Storage class
 
-In case you want to use a storage class other than the standard class for your deployment, provision the storage class and then pass in the name of the class while running the helm install command, as follows:
+If you want to use a storage class other than the standard class for your deployment, provision the storage class and then pass in the name of the class while running the helm install command, as follows:
 
 ```sh
-$ helm install yugabyte --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
+helm install yugabyte --version {{<yb-version version="preview" format="short">}} --namespace yb-demo --name yb-demo --set storage.master.storageClass=<desired storage class>,storage.tserver.storageClass=<desired storage class> --wait
 ```
 
 ### Configure YB-Master and YB-TServer pods
 
-Flags on the YB-Master and YB-TServer pods can be done via the command line or by overriding the `values.yaml` file in the charts repository. For example, the following example shows how to set the three geo-distribution related flags `placement_cloud`, `placement_region`, and `placement_zone` on a Minikube cluster:
+Flags on the YB-Master and YB-TServer pods can be specified via the command line or by overriding the `values.yaml` file in the charts repository. The following example shows how to set the three geo-distribution-related flags `placement_cloud`, `placement_region`, and `placement_zone` on a Minikube cluster:
 
 ```sh
 helm install yb-demo yugabytedb/yugabyte \
@@ -393,7 +392,7 @@ gflags.tserver.placement_cloud=myk8s-cloud,gflags.tserver.placement_region=myk8s
 You can perform rolling upgrades on the YugabyteDB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugabyteDB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the installation uses the `latest` Docker image. In the following example, the Docker image specified is `2.1.6.0-b17`:
 
 ```sh
-$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n yb-demo
+helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n yb-demo
 ```
 
 ## Delete cluster
@@ -401,9 +400,9 @@ $ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=2.1.6.0-b17 --wait -n
 To delete the cluster, you need to purge the Helm chart, and then delete the PVCs, as follows:
 
 ```sh
-$ helm uninstall yb-demo -n yb-demo
+helm uninstall yb-demo -n yb-demo
 ```
 
 ```sh
-$ kubectl delete pvc --namespace yb-demo --all
+kubectl delete pvc --namespace yb-demo --all
 ```

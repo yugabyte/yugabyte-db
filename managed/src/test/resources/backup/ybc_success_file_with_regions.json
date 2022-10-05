@@ -30,16 +30,16 @@
     ],
     "cloud_store_spec": {
       "default_backup_location": {
-        "bucket": "backups.yugabyte.com",
+        "bucket": "def_bucket",
         "cloud_dir": "default\/foo\/keyspace-bar\/"
       },
       "region_location_map": {
-        "us-west2": {
-          "bucket": "region-1",
+        "us-west1": {
+          "bucket": "reg1_bucket",
           "cloud_dir": "region_1\/foo\/keyspace-bar\/"
         },
-        "us-west1": {
-          "bucket": "region-2",
+        "us-west2": {
+          "bucket": "reg2_bucket",
           "cloud_dir": "region_2\/foo\/keyspace-bar\/"
         }
       }

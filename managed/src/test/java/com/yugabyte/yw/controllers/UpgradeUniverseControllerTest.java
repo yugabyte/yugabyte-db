@@ -21,7 +21,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -44,6 +43,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.CustomWsClientFactory;
+import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -92,7 +93,6 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
-import play.test.Helpers;
 import play.test.WithApplication;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 
@@ -179,6 +179,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
+        .overrides(
+            bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();
   }
 
@@ -787,8 +789,9 @@ public class UpgradeUniverseControllerTest extends WithApplication {
   public void testTlsToggleWithRootCaUpdate() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, TMP_CERTS_PATH);
-    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, TMP_CERTS_PATH);
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_CERTS_PATH);
+    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.uuid);
+    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.uuid);
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";

@@ -145,15 +145,24 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-      // Only process split tablets if we have plenty of time to process the work
-      // (> 50% of timeout).
+      // Only process storage metadata if we have plenty of time to process the work (> 50% of
+      // timeout).
       auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-
-      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
       if (rpc.GetClientDeadline() > safe_time_left) {
         for (const auto& storage_metadata : req->storage_metadata()) {
           server_->catalog_manager_impl()->ProcessTabletStorageMetadata(
                 ts_desc.get()->permanent_uuid(), storage_metadata);
+        }
+      }
+
+      // Only process the replication status if we have plenty of time to process the work (> 50% of
+      // timeout).
+      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (rpc.GetClientDeadline() > safe_time_left) {
+        for (const auto& replication_state : req->replication_state()) {
+          ERROR_NOT_OK(
+            server_->catalog_manager_impl()->ProcessTabletReplicationStatus(replication_state),
+            "Failed to process tablet replication status");
         }
       }
 
@@ -171,21 +180,43 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     // Retrieve the ysql catalog schema version.
-    uint64_t last_breaking_version = 0;
-    uint64_t catalog_version = 0;
-    s = server_->catalog_manager_impl()->GetYsqlCatalogVersion(
-        &catalog_version, &last_breaking_version);
-    if (s.ok()) {
-      resp->set_ysql_catalog_version(catalog_version);
-      resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
-      if (FLAGS_log_ysql_catalog_versions) {
-        VLOG_WITH_FUNC(1) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
-                          << ") catalog version: " << catalog_version
-                          << ", breaking version: " << last_breaking_version;
+    if (FLAGS_TEST_enable_db_catalog_version_mode) {
+      DbOidToCatalogVersionMap versions;
+      s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(&versions);
+      if (s.ok()) {
+        auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
+        for (const auto& it : versions) {
+          auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
+          catalog_version->set_db_oid(it.first);
+          catalog_version->set_current_version(it.second.first);
+          catalog_version->set_last_breaking_version(it.second.second);
+        }
+        if (FLAGS_log_ysql_catalog_versions) {
+          VLOG_WITH_FUNC(2) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
+                            << ") db catalog versions: "
+                            << resp->db_catalog_version_data().ShortDebugString();
+        }
+      } else {
+        LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "
+                     << s.ToUserMessage();
       }
     } else {
-      LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
-                   << s.ToUserMessage();
+      uint64_t last_breaking_version = 0;
+      uint64_t catalog_version = 0;
+      s = server_->catalog_manager_impl()->GetYsqlCatalogVersion(
+          &catalog_version, &last_breaking_version);
+      if (s.ok()) {
+        resp->set_ysql_catalog_version(catalog_version);
+        resp->set_ysql_last_breaking_catalog_version(last_breaking_version);
+        if (FLAGS_log_ysql_catalog_versions) {
+          VLOG_WITH_FUNC(1) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
+                            << ") catalog version: " << catalog_version
+                            << ", breaking version: " << last_breaking_version;
+        }
+      } else {
+        LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
+                     << s.ToUserMessage();
+      }
     }
 
     uint64_t transaction_tables_version = server_->catalog_manager()->GetTransactionTablesVersion();

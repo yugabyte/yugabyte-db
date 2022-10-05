@@ -255,3 +255,6 @@ FROM t1
 EXPLAIN SELECT *
 FROM t4
      FULL JOIN t3 on t4.h = t3.h;
+
+-- Clean up
+DROP TABLE t1, t2, t3, t4 CASCADE;

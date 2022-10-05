@@ -18,7 +18,6 @@ import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public class NodeTaskBaseTest extends WithApplication {
@@ -43,7 +42,6 @@ public class NodeTaskBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))

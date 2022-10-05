@@ -11,7 +11,7 @@ Use HELP for help.
 ycqlsh>
 ```
 
-* Run a cql command to verify it is working.
+Run a cql command to verify it is working.
 
 ```cql
 ycqlsh> describe keyspaces;

@@ -36,6 +36,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(CLIENT_SRCS
   async_initializer.cc
   async_rpc.cc
+  auto_flags_manager.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
@@ -45,6 +46,7 @@ set(CLIENT_SRCS
   client_utils.cc
   error.cc
   error_collector.cc
+  external_transaction.cc
   in_flight_op.cc
   meta_cache.cc
   meta_data_cache.cc
@@ -107,7 +109,7 @@ endif()
 # and therefore don't need to worry about export strictness)
 ADD_YB_LIBRARY(yb_client_test_util
                SRCS client-test-util.cc
-               DEPS gmock yb_client)
+               DEPS gmock gtest yb_client)
 
 ADD_YB_LIBRARY(ql-dml-test-base
                SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc

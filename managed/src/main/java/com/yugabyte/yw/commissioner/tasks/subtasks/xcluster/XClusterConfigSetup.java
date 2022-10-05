@@ -8,16 +8,12 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -155,7 +151,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         getUniverse(true).incrementVersion();
       }
     } catch (Exception e) {
-      log.error("{} hit erro  r : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, targetUniverseMasterAddresses);

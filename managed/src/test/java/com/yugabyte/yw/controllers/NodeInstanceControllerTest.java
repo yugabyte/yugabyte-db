@@ -92,6 +92,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequest("GET", uri);
   }
 
+  private Result getNodeDetails(UUID universeUUID, String nodeName) {
+    String uri =
+        "/api/customers/"
+            + customer.uuid
+            + "/universes/"
+            + universeUUID
+            + "/nodes/"
+            + nodeName
+            + "/details";
+    return FakeApiHelper.doRequest("GET", uri);
+  }
+
   private Result listByZone(UUID zoneUuid) {
     String uri = "/api/customers/" + customer.uuid + "/zones/" + zoneUuid + "/nodes/list";
     return FakeApiHelper.doRequest("GET", uri);
@@ -213,6 +225,29 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     UUID uuid = UUID.randomUUID();
     Result r = assertPlatformException(() -> getNode(uuid));
     String expectedError = "Invalid node UUID: " + uuid;
+    assertBadRequest(r, expectedError);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetNodeDetailsWithValidUuid() {
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse("node-allowed-actions", customer.getCustomerId())
+                .universeUUID,
+            ApiUtils.mockUniverseUpdater());
+    Result r = getNodeDetails(u.universeUUID, "host-n1");
+    checkOk(r);
+    JsonNode json = parseResult(r);
+    assertTrue(json.isObject());
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testGetNodeDetailsWithInValidUuid() {
+    UUID uuid = UUID.randomUUID();
+    Result r = assertPlatformException(() -> getNodeDetails(uuid, "host-n1"));
+    String expectedError = "Cannot find universe " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
@@ -438,6 +473,12 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
         "Cannot STOP "
             + curNode.nodeName
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
+
+    Result invalidReboot =
+        assertPlatformException(
+            () ->
+                performNodeAction(
+                    customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REBOOT, false));
 
     // Changing to another node as n1 is in progress by previous operations.
     NodeDetails nodeToDelete = u.getNode("host-n3");

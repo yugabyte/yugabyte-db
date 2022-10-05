@@ -368,6 +368,23 @@ typedef struct Scan
 typedef Scan SeqScan;
 
 /* ----------------
+ *		YB table sequential scan node
+ * ----------------
+ */
+
+typedef struct PushdownExprs
+{
+	List *qual;
+	List *colrefs;
+} PushdownExprs;
+
+typedef struct YbSeqScan
+{
+	Scan		scan;
+	PushdownExprs remote;
+} YbSeqScan;
+
+/* ----------------
  *		table sample scan node
  * ----------------
  */
@@ -424,7 +441,10 @@ typedef struct IndexScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indexorderbyorig;	/* the same in original form */
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
+	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+	PushdownExprs index_remote;
+	PushdownExprs rel_remote;
 } IndexScan;
 
 /* ----------------
@@ -452,6 +472,13 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
+	PushdownExprs remote;
+	/*
+	 * yb_indexqual_for_recheck is the modified version of indexqual.
+	 * It is used in tuple recheck step only.
+	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
+	 */
+	List	   *yb_indexqual_for_recheck;
 } IndexOnlyScan;
 
 /* ----------------
@@ -718,11 +745,29 @@ typedef struct NestLoop
 	List	   *nestParams;		/* list of NestLoopParam nodes */
 } NestLoop;
 
+typedef struct YbBatchedNestLoop
+{
+	NestLoop nl;
+
+	/* 
+	 * Only relevant if we're using the hash batching strategy.
+	 */
+	List	   *hashOps;		 /* List of operators to hash with for local 
+									join phase of batching */
+	List	   *innerHashAttNos; /* List of attributes of inner tuple that
+									are to be hashed if we are using the hash
+									strategy. */
+	List	   *outerParamNos; /* List of attributes of outer tuple that
+									are to be hashed if we are using the hash
+									strategy. */
+} YbBatchedNestLoop;
+
 typedef struct NestLoopParam
 {
 	NodeTag		type;
 	int			paramno;		/* number of the PARAM_EXEC Param to set */
 	Var		   *paramval;		/* outer-relation Var to assign to Param */
+	int	   		yb_batch_size;	/* Batch size of this param. */
 } NestLoopParam;
 
 /* ----------------

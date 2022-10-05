@@ -41,35 +41,20 @@ class GenericRateLimiter : public RateLimiter {
   virtual ~GenericRateLimiter();
 
   // This API allows user to dynamically change rate limiter's bytes per second.
-  virtual void SetBytesPerSecond(int64_t bytes_per_second) override;
+  void SetBytesPerSecond(int64_t bytes_per_second) override;
 
   // Request for token to write bytes. If this request can not be satisfied,
   // the call is blocked. Caller is responsible to make sure
   // bytes <= GetSingleBurstBytes()
-  virtual void Request(const int64_t bytes, const Env::IOPriority pri) override;
+  void Request(const int64_t bytes, const yb::IOPriority pri) override;
 
-  virtual int64_t GetSingleBurstBytes() const override {
+  int64_t GetSingleBurstBytes() const override {
     return refill_bytes_per_period_.load(std::memory_order_relaxed);
   }
 
-  virtual int64_t GetTotalBytesThrough(
-      const Env::IOPriority pri = Env::IO_TOTAL) const override {
-    MutexLock g(&request_mutex_);
-    if (pri == Env::IO_TOTAL) {
-      return total_bytes_through_[Env::IO_LOW] +
-             total_bytes_through_[Env::IO_HIGH];
-    }
-    return total_bytes_through_[pri];
-  }
+  int64_t GetTotalBytesThrough(const yb::IOPriority pri = yb::IOPriority::kTotal) const override;
 
-  virtual int64_t GetTotalRequests(
-      const Env::IOPriority pri = Env::IO_TOTAL) const override {
-    MutexLock g(&request_mutex_);
-    if (pri == Env::IO_TOTAL) {
-      return total_requests_[Env::IO_LOW] + total_requests_[Env::IO_HIGH];
-    }
-    return total_requests_[pri];
-  }
+  int64_t GetTotalRequests(const yb::IOPriority pri = yb::IOPriority::kTotal) const override;
 
  private:
   void Refill();
@@ -89,8 +74,8 @@ class GenericRateLimiter : public RateLimiter {
   port::CondVar exit_cv_;
   int32_t requests_to_wait_;
 
-  int64_t total_requests_[Env::IO_TOTAL];
-  int64_t total_bytes_through_[Env::IO_TOTAL];
+  int64_t total_requests_[yb::kElementsInIOPriority];
+  int64_t total_bytes_through_[yb::kElementsInIOPriority];
   int64_t available_bytes_;
   int64_t next_refill_us_;
 
@@ -99,7 +84,7 @@ class GenericRateLimiter : public RateLimiter {
 
   struct Req;
   Req* leader_;
-  std::deque<Req*> queue_[Env::IO_TOTAL];
+  std::deque<Req*> queue_[yb::kElementsInIOPriority];
 };
 
 }  // namespace rocksdb

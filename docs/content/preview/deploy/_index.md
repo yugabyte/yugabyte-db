@@ -3,11 +3,10 @@ title: Deploy
 headerTitle: Deploy YugabyteDB
 linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
-headcontent: Deploy to any public cloud or private data center of your choice.
+headcontent: Deploy to the public cloud or private data center of your choice
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
-  - /preview/deploy/
 menu:
   preview:
     identifier: deploy
@@ -64,7 +63,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
@@ -79,7 +78,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-dc/">
       <div class="head">

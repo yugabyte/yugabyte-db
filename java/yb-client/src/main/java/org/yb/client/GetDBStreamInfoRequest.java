@@ -15,7 +15,7 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.util.Pair;
 
@@ -29,7 +29,7 @@ public class GetDBStreamInfoRequest extends YRpc<GetDBStreamInfoResponse>{
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
     final MasterReplicationOuterClass.GetCDCDBStreamInfoRequestPB.Builder builder =
             MasterReplicationOuterClass.GetCDCDBStreamInfoRequestPB.newBuilder();
@@ -55,7 +55,7 @@ public class GetDBStreamInfoRequest extends YRpc<GetDBStreamInfoResponse>{
 
     GetDBStreamInfoResponse response =
       new GetDBStreamInfoResponse(deadlineTracker.getElapsedMillis(), tsUUID,
-        respBuilder.getTableInfoList());
+        respBuilder.getTableInfoList(), respBuilder.getNamespaceId().toStringUtf8());
     return new Pair<GetDBStreamInfoResponse, Object>(
       response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

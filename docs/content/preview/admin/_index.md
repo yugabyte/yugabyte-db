@@ -27,7 +27,7 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
         <div class="title">yb-ctl</div>
       </div>
       <div class="body">
-        Command line utility to easily create and manage local clusters on macOS or Linux.
+        Command line utility to create and manage local clusters on macOS or Linux.
       </div>
     </a>
   </div>
@@ -39,7 +39,7 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
         <div class="title">yb-docker-ctl</div>
       </div>
       <div class="body">
-        Command line utility to easily create and manage Docker-based local clusters.
+        Command line utility to create and manage Docker-based local clusters.
       </div>
     </a>
   </div>

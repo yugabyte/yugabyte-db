@@ -16,7 +16,7 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/docdb/packed_row.h"
+#include "yb/docdb/schema_packing.h"
 
 namespace yb {
 namespace docdb {
@@ -46,10 +46,22 @@ struct DocReadContext {
   }
 
   template <class PB>
+  Status MergeWithRestored(const PB& pb) {
+    return schema_packing_storage.MergeWithRestored(
+        pb.schema_version(), pb.schema(), pb.old_schema_packings());
+  }
+
+  template <class PB>
   void ToPB(SchemaVersion schema_version, PB* out) {
     DCHECK(schema.has_column_ids());
     SchemaToPB(schema, out->mutable_schema());
     schema_packing_storage.ToPB(schema_version, out->mutable_old_schema_packings());
+  }
+
+  // Should account for every field in DocReadContext.
+  static bool TEST_Equals(const DocReadContext& lhs, const DocReadContext& rhs) {
+    return Schema::TEST_Equals(lhs.schema, rhs.schema) &&
+        lhs.schema_packing_storage == rhs.schema_packing_storage;
   }
 
   Schema schema;

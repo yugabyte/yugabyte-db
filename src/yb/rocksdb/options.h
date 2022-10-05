@@ -78,6 +78,7 @@ class InternalKeyComparator;
 class WalFilter;
 class MemoryMonitor;
 
+struct RocksDBPriorityThreadPoolMetrics;
 struct FileMetaData;
 
 typedef std::shared_ptr<const InternalKeyComparator> InternalKeyComparatorPtr;
@@ -1365,6 +1366,9 @@ struct DBOptions {
   // The filters are currently used to expire files in time-series DBs that have
   // completely expired based on their table and/or column TTL.
   std::shared_ptr<CompactionFileFilterFactory> compaction_file_filter_factory;
+
+  // Metrics tracker for tasks in the priority thread pool.
+  std::shared_ptr<RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics;
 
   // Used for identifying disk in priorty pool. This corresponds to the hashed
   // data root directory for the rocksdb instance.

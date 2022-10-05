@@ -25,6 +25,7 @@
 #include <ev++.h>
 
 #include "yb/client/client_utils.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
@@ -266,9 +267,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     exec_params.rowmark = ROW_MARK_KEYSHARE;
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps(make_lw_function([&it, table_id, end] {
+    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    })));
+    }), static_cast<size_t>(end - it)}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -280,18 +281,19 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   precast_sender.DisableCollecting();
   // Collect the results from the docdb ops.
   ybctids->clear();
-  std::list<PgDocResult> rowsets;
   for (auto& it : doc_ops) {
-    do {
-      rowsets.clear();
-      RETURN_NOT_OK(it->GetResult(&rowsets));
+    for (;;) {
+      auto rowsets = VERIFY_RESULT(it->GetResult());
+      if (rowsets.empty()) {
+        break;
+      }
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
           ybctids->emplace_back(it->table()->id().object_oid, ybctid.ToBuffer());
         }
       }
-    } while (!rowsets.empty());
+    }
   }
 
   return Status::OK();
@@ -442,20 +444,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::CreateEnv(PgEnv **pg_env) {
-  *pg_env = pg_env_.get();
-  return Status::OK();
-}
-
-Status PgApiImpl::DestroyEnv(PgEnv *pg_env) {
-  pg_env_ = nullptr;
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgApiImpl::InitSession(const PgEnv *pg_env,
-                              const string& database_name) {
+Status PgApiImpl::InitSession(const string& database_name) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(&pg_client_,
                                                database_name,
@@ -865,6 +854,16 @@ Status PgApiImpl::AlterTableRenameTable(PgStatement *handle, const char *db_name
   return pg_stmt->RenameTable(db_name, newname);
 }
 
+Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->IncrementSchemaVersion();
+}
+
 Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
@@ -976,6 +975,10 @@ Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_c
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
+Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
+  return pg_session_->GetTableDiskSize(table_oid);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewCreateIndex(const char *database_name,
@@ -1076,12 +1079,12 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
-  return down_cast<PgDml*>(handle)->AppendQual(qual);
+Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
 
-Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref) {
-  return down_cast<PgDml*>(handle)->AppendColumnRef(colref);
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary) {
+  return down_cast<PgDml*>(handle)->AppendColumnRef(colref, is_primary);
 }
 
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
@@ -1121,13 +1124,9 @@ Status PgApiImpl::DmlAddRowLowerBound(YBCPgStatement handle,
                                                         is_inclusive);
 }
 
-Status PgApiImpl::DmlBindHashCode(PgStatement *handle, bool start_valid,
-                                    bool start_inclusive,
-                                    uint64_t start_hash_val, bool end_valid,
-                                    bool end_inclusive, uint64_t end_hash_val) {
-  return down_cast<PgDmlRead*>(handle)
-                  ->BindHashCode(start_valid, start_inclusive, start_hash_val,
-                                  end_valid, end_inclusive, end_hash_val);
+Status PgApiImpl::DmlBindHashCode(
+  PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end) {
+  return down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
@@ -1758,6 +1757,7 @@ void PgApiImpl::StartSysTablePrefetching() {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
+  CHECK(!pg_session_->HasCatalogReadPoint());
   pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
 }
 

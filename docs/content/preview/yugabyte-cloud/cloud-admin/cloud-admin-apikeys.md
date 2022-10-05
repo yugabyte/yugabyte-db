@@ -2,7 +2,8 @@
 title: API keys
 headerTitle:
 linkTitle: Manage API keys
-description: Manage your cloud API keys.
+description: Manage API keys for use with the YugabyteDB Managed REST API.
+headcontent: Manage API keys for use with the YugabyteDB Managed REST API
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-admin-apikeys

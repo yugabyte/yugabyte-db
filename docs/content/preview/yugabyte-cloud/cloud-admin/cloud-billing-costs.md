@@ -2,7 +2,7 @@
 title: Cluster costs
 linkTitle: Cluster costs
 description: YugabyteDB Managed cluster configuration costs.
-headcontent:
+headcontent: YugabyteDB Managed cluster configuration costs
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:

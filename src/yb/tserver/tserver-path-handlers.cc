@@ -176,14 +176,13 @@ bool GetTabletID(const Webserver::WebRequest& req, string* id, std::stringstream
   return true;
 }
 
-bool GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
-                   std::shared_ptr<TabletPeer>* peer, const string& tablet_id,
-                   std::stringstream *out) {
-  if (!tserver->tablet_manager()->LookupTablet(tablet_id, peer)) {
+tablet::TabletPeerPtr GetTabletPeer(TabletServer* tserver, const Webserver::WebRequest& req,
+                                    const TabletId& tablet_id, std::stringstream *out) {
+  auto result = tserver->tablet_manager()->LookupTablet(tablet_id);
+  if (!result) {
     (*out) << "Tablet " << EscapeForHtmlToString(tablet_id) << " not found";
-    return false;
   }
-  return true;
+  return result;
 }
 
 bool TabletReady(const std::shared_ptr<TabletPeer>& peer, const string& tablet_id,
@@ -201,14 +200,16 @@ bool TabletReady(const std::shared_ptr<TabletPeer>& peer, const string& tablet_i
 
 // Returns true if the tablet_id was properly specified, the
 // tablet is found, and is in a non-bootstrapping state.
-bool LoadTablet(TabletServer* tserver,
-                const Webserver::WebRequest& req,
-                string* tablet_id, std::shared_ptr<TabletPeer>* peer,
-                std::stringstream* out) {
-  if (!GetTabletID(req, tablet_id, out)) return false;
-  if (!GetTabletPeer(tserver, req, peer, *tablet_id, out)) return false;
-  if (!TabletReady(*peer, *tablet_id, out)) return false;
-  return true;
+tablet::TabletPeerPtr LoadTablet(TabletServer* tserver,
+                                 const Webserver::WebRequest& req,
+                                 string* tablet_id,
+                                 std::stringstream* out) {
+  if (!GetTabletID(req, tablet_id, out)) return nullptr;
+  auto result = GetTabletPeer(tserver, req, *tablet_id, out);
+  if (!result || !TabletReady(result, *tablet_id, out)) {
+    return nullptr;
+  }
+  return result;
 }
 
 void HandleTabletPage(
@@ -380,8 +381,8 @@ void RegisterTabletPathHandler(
   auto handler = [tserver, f](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     std::stringstream *output = &resp->output;
     string tablet_id;
-    tablet::TabletPeerPtr peer;
-    if (!LoadTablet(tserver, req, &tablet_id, &peer, output)) return;
+    tablet::TabletPeerPtr peer = LoadTablet(tserver, req, &tablet_id, output);
+    if (!peer) return;
 
     f(tablet_id, peer, req, resp);
   };

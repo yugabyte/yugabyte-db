@@ -11,7 +11,6 @@ menu:
   preview:
     identifier: manage
     parent: launch-and-manage
-    weight: 900
 type: indexpage
 ---
 <div class="row">
@@ -34,7 +33,7 @@ type: indexpage
         <div class="title">Migrate data</div>
       </div>
       <div class="body">
-        Bulk data import and export in the context of YugabyteDB.
+        Bulk data export and import in the context of YugabyteDB.
       </div>
     </a>
   </div>

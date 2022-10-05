@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
 
@@ -18,7 +17,6 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -48,15 +46,23 @@ public class YsqlQueryExecutor {
           + "(SELECT oid FROM pg_class WHERE relname='pg_authid')"
           + " AND refobjid IN (SELECT oid FROM pg_roles WHERE rolname IN "
           + "('pg_execute_server_program', 'pg_read_server_files', "
-          + "'pg_write_server_files' )); ";
+          + "'pg_write_server_files'));";
   private static final String DEL_PG_ROLES_CMD_2 =
       "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
-          + "DROP ROLE pg_execute_server_program, pg_read_server_files, pg_write_server_files; "
+          + "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
+          + "pg_write_server_files; "
           + "UPDATE pg_yb_catalog_version "
           + "SET current_version = current_version + 1 WHERE db_oid = 1;";
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-  @Inject NodeUniverseManager nodeUniverseManager;
+  RuntimeConfigFactory runtimeConfigFactory;
+  NodeUniverseManager nodeUniverseManager;
+
+  @Inject
+  public YsqlQueryExecutor(
+      RuntimeConfigFactory runtimeConfigFactory, NodeUniverseManager nodeUniverseManager) {
+    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.nodeUniverseManager = nodeUniverseManager;
+  }
 
   private String wrapJsonAgg(String query) {
     return String.format("SELECT jsonb_agg(x) FROM (%s) as x", query);
@@ -151,10 +157,16 @@ public class YsqlQueryExecutor {
     String queryString =
         queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
 
-    ShellResponse shellResponse =
-        nodeUniverseManager
-            .runYsqlCommand(node, universe, queryParams.db_name, queryString)
-            .processErrors("Ysql Query Execution Error");
+    ShellResponse shellResponse = new ShellResponse();
+    try {
+      shellResponse =
+          nodeUniverseManager
+              .runYsqlCommand(node, universe, queryParams.db_name, queryString)
+              .processErrors("Ysql Query Execution Error");
+    } catch (RuntimeException e) {
+      response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
+      return response;
+    }
     try {
       ObjectMapper objectMapper = new ObjectMapper();
       if (queryType.equals("SELECT")) {
@@ -163,6 +175,7 @@ public class YsqlQueryExecutor {
         response.set("result", jsonNode);
       } else {
         response.put("queryType", queryType);
+        response.put("result", shellResponse.message);
       }
 
     } catch (Exception e) {
@@ -192,99 +205,103 @@ public class YsqlQueryExecutor {
     boolean isCloudEnabled =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
 
-    RunQueryFormData ysqlQuery = new RunQueryFormData();
-    JsonNode ysqlResponse;
+    StringBuilder allQueries = new StringBuilder();
+    String query;
+
+    query =
+        String.format(
+            "CREATE USER \"%s\" INHERIT CREATEROLE CREATEDB LOGIN BYPASSRLS PASSWORD '%s'",
+            data.username, Util.escapeSingleQuotesOnly(data.password));
+    allQueries.append(String.format("%s; ", query));
 
     if (isCloudEnabled) {
-      // Create admin role if it doesn't exist already
-      ysqlQuery.query =
+      // Create admin role
+      query =
           String.format(
               "CREATE ROLE \"%s\" INHERIT CREATEROLE CREATEDB BYPASSRLS", DB_ADMIN_ROLE_NAME);
-      ysqlQuery.db_name = data.dbName;
-      ysqlResponse =
-          executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
-      LOG.info("Creating YSQL admin role, result: " + ysqlResponse.toString());
-      if (ysqlResponse.has("error")) {
-        String roleError = ysqlResponse.get("error").asText();
-        if (!roleError.toUpperCase().contains("ALREADY EXISTS")) {
-          throw new PlatformServiceException(Http.Status.BAD_REQUEST, roleError);
+      allQueries.append(String.format("%s; ", query));
+      boolean versionMatch =
+          universe.getVersions().stream().allMatch(v -> Util.compareYbVersions(v, "2.6.4.0") >= 0);
+      String rolesList = "pg_read_all_stats, pg_signal_backend";
+      if (versionMatch) {
+        // yb_extension is only supported in recent YB versions 2.6.x >= 2.6.4 and >= 2.8.0
+        // not including the odd 2.7.x, 2.9.x releases
+        rolesList += ", yb_extension";
+      }
+      query =
+          String.format(
+              "GRANT %2$s TO \"%1$s\"; "
+                  + "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO \"%1$s\"; "
+                  + "GRANT ALL ON DATABASE yugabyte, postgres TO \"%1$s\";",
+              DB_ADMIN_ROLE_NAME, rolesList);
+      allQueries.append(String.format("%s ", query));
+      allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_1));
+
+      try {
+        runUserDbCommands(allQueries.toString(), data.dbName, universe);
+        LOG.info("Created users and deleted dependencies");
+      } catch (Exception e) {
+        if (e.getMessage().contains("already exists")) {
+          // User exists, we should still try and run the rest of the tasks
+          // since they are idempotent.
+          LOG.warn(String.format("User already exists, skipping...\n%s", e.getMessage()));
         } else {
-          LOG.info(
-              "Creating YSQL admin role, ignoring error for existing role: {}",
-              ysqlResponse.toString());
-        }
-      } else {
-        boolean versionMatch =
-            universe
-                .getVersions()
-                .stream()
-                .allMatch(v -> Util.compareYbVersions(v, "2.6.4.0") >= 0);
-        String rolesList = "pg_read_all_stats, pg_signal_backend";
-        if (versionMatch) {
-          // yb_extension is only supported in recent YB versions 2.6.x >= 2.6.4 and >= 2.8.0
-          // not including the odd 2.7.x, 2.9.x releases
-          rolesList += ", yb_extension";
-        }
-        ysqlResponse =
-            runQueryUtil(
-                universe,
-                data,
-                String.format(
-                    "GRANT %2$s TO \"%1$s\"; "
-                        + "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO  \"%1$s\"; "
-                        + " GRANT ALL ON DATABASE yugabyte, postgres TO \"%1$s\";",
-                    DB_ADMIN_ROLE_NAME, rolesList));
-        LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
-
-        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_1);
-        LOG.info("Delete pg roles 1 result: {}", ysqlResponse.toString());
-
-        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_2);
-        LOG.info("Delete pg roles 2 result: {}", ysqlResponse.toString());
-
-        versionMatch =
-            universe
-                .getVersions()
-                .stream()
-                .allMatch(v -> Util.compareYbVersions(v, "2.12.2.0-b31") >= 0);
-        if (versionMatch) {
-          ysqlResponse =
-              runQueryUtil(
-                  universe,
-                  data,
-                  String.format(
-                      "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION",
-                      PRECREATED_DB_ADMIN, DB_ADMIN_ROLE_NAME));
+          throw e;
         }
       }
-    }
 
-    ysqlResponse =
-        runQueryUtil(
-            universe,
-            data,
+      allQueries.setLength(0);
+      allQueries.append(String.format("%s ", DEL_PG_ROLES_CMD_2));
+      runUserDbCommands(allQueries.toString(), data.dbName, universe);
+      LOG.info("Dropped unrequired roles");
+
+      allQueries.setLength(0);
+
+      versionMatch =
+          universe
+              .getVersions()
+              .stream()
+              .allMatch(v -> Util.compareYbVersions(v, "2.12.2.0-b31") >= 0);
+      if (versionMatch) {
+        query =
             String.format(
-                "CREATE USER \"%s\" INHERIT CREATEROLE CREATEDB LOGIN BYPASSRLS PASSWORD '%s'",
-                data.username, Util.escapeSingleQuotesOnly(data.password)));
-    LOG.info("Creating YSQL user {}, result: {}", data.username, ysqlResponse.toString());
-
-    if (isCloudEnabled) {
-      ysqlResponse =
-          runQueryUtil(
-              universe,
-              data,
-              String.format(
-                  "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username));
-      LOG.info("Grant admin role to user {}, result: {}", data.username, ysqlResponse.toString());
+                "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION",
+                PRECREATED_DB_ADMIN, DB_ADMIN_ROLE_NAME);
+        allQueries.append(String.format("%s; ", query));
+      }
+      query =
+          String.format(
+              "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username);
+      allQueries.append(String.format("%s; ", query));
     }
+    query = "SELECT pg_stat_statements_reset();";
+    allQueries.append(query);
 
-    // Reset pg_stat_statements table to remove queries containing credentials.
-    runQueryUtil(universe, data, "SELECT pg_stat_statements_reset()");
-    LOG.info("Resetting pg_stat_statements");
+    runUserDbCommands(allQueries.toString(), data.dbName, universe);
+    LOG.info("Assigned permissions to the user");
+  }
+
+  private void runUserDbCommands(String query, String dbName, Universe universe) {
+    NodeDetails nodeToUse;
+    try {
+      nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
+    } catch (IllegalStateException e) {
+      throw new PlatformServiceException(
+          Http.Status.INTERNAL_SERVER_ERROR, "DB not ready to create a user");
+    }
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = query;
+    ysqlQuery.db_name = dbName;
+    JsonNode ysqlResponse = executeQueryInNodeShell(universe, ysqlQuery, nodeToUse);
+    if (ysqlResponse.has("error")) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+    }
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.db_name = data.dbName;
     ysqlQuery.query = "SELECT 1";
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
@@ -301,26 +318,14 @@ public class YsqlQueryExecutor {
 
   public void updateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     // Update admin user password YSQL.
-    RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query =
+    StringBuilder allQueries = new StringBuilder();
+    String query =
         String.format(
             "ALTER USER \"%s\" WITH PASSWORD '%s'",
             data.ysqlAdminUsername, Util.escapeSingleQuotesOnly(data.ysqlAdminPassword));
-    ysqlQuery.db_name = data.dbName;
-    JsonNode ysqlResponse =
-        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlCurrAdminPassword);
-    LOG.info("Updating YSQL user, result: " + ysqlResponse.toString());
-    if (ysqlResponse.has("error")) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
-    }
-    ysqlQuery.query = "SELECT pg_stat_statements_reset()";
-    ysqlResponse =
-        executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
-    LOG.info("Resetting pg_stat_statements");
-    if (ysqlResponse.has("error")) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
-    }
+    allQueries.append(String.format("%s; ", query));
+    query = "SELECT pg_stat_statements_reset();";
+    allQueries.append(query);
+    runUserDbCommands(allQueries.toString(), data.dbName, universe);
   }
 }

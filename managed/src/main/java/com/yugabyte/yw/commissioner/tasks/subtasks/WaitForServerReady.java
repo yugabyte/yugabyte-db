@@ -74,14 +74,14 @@ public class WaitForServerReady extends ServerSubTaskBase {
             : UpgradeParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
     HostAndPort hp = getHostPort();
-    boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
+    boolean isMasterTask = taskParams().serverType == ServerType.MASTER;
 
     IsServerReadyResponse response = null;
     YBClient client = getClient();
     try {
       while (true) {
         numIters++;
-        response = client.isServerReady(hp, isTserverTask);
+        response = client.isServerReady(hp, !isMasterTask);
 
         if (response.hasError()) {
           log.info("Response has error {} after iters={}.", response.errorMessage(), numIters);

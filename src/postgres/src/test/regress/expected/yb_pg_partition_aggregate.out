@@ -934,12 +934,12 @@ ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p1 SET (parallel_workers = 0);
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ANALYZE pagg_tab_para;
 /*
 EXPLAIN (COSTS OFF)
@@ -960,7 +960,7 @@ ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
 ERROR:  ALTER TABLE SET not supported yet
 LINE 1: ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
                                      ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ANALYZE pagg_tab_para;
 /*
 EXPLAIN (COSTS OFF)

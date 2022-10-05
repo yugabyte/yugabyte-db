@@ -15,6 +15,7 @@
       - pg_max_mem_mb is defined
       - use_chrony is defined
       - configure_ybc is defined
+      - lun_indexes is defined
 
 - block:
   - name: Install and configure chrony with given server list
@@ -213,7 +214,7 @@
       group: "{{ user_name }}"
       mode: 0644
 
- # Adding systemd service files for yb-controller
+  # Adding systemd service files for yb-controller
   - name: Add yb-controller.service
     template:
       src: "yb-controller.service"

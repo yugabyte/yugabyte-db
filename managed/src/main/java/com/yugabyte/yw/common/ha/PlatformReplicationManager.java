@@ -456,6 +456,7 @@ public class PlatformReplicationManager {
       commandArgs.add("restore");
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
+      commandArgs.add("--disable_version_check");
 
       return commandArgs;
     }

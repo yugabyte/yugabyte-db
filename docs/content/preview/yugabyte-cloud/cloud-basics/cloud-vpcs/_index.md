@@ -4,7 +4,7 @@ headerTitle: VPC network
 linkTitle: VPC network
 description: Configure VPC networking.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
-headcontent: Set up VPC networking so that your clusters can communicate privately with applications.
+headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:
   - /preview/yugabyte-cloud/cloud-network/vpc-peers/
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/

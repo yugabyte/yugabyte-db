@@ -1413,6 +1413,14 @@ PTSubscriptedColumn::PTSubscriptedColumn(MemoryContext *memctx,
 PTSubscriptedColumn::~PTSubscriptedColumn() {
 }
 
+std::string PTSubscriptedColumn::QLName(QLNameOption option) const {
+  std::string ql_name = name_->QLName();
+  if (!args_->node_list().empty()) {
+    ql_name += "['" + args_->node_list().front()->QLName() + "']";
+  }
+  return ql_name;
+}
+
 Status PTSubscriptedColumn::AnalyzeOperator(SemContext *sem_context) {
 
   // Check if this refers to the whole table (SELECT *).
@@ -1613,8 +1621,11 @@ Status PTBindVar::Analyze(SemContext *sem_context) {
 
   internal_type_ = sem_context->expr_expected_internal_type();
   expected_internal_type_ = internal_type_;
-  hash_col_ = sem_context->hash_col();
-  if (hash_col_ != nullptr) {
+  const ColumnDesc* const hash_col_in_context = sem_context->hash_col();
+  // If this bindvar is valid in this statement context (table/index)
+  // then add it to the binvar list for this statement.
+  if (hash_col_in_context != nullptr) {
+    hash_col_ = hash_col_in_context; // Store this hash column desc.
     DCHECK(sem_context->current_dml_stmt() != nullptr);
     sem_context->current_dml_stmt()->AddHashColumnBindVar(this);
   }

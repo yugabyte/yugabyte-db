@@ -14,13 +14,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize/" class="nav-link">
+    <a href="../sequelize/" class="nav-link">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Sequelize
     </a>
   </li>
   <li>
-    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link active">
+    <a href="../prisma/" class="nav-link active">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>
@@ -264,5 +264,4 @@ Open [http://localhost:5555](http://localhost:5555) in your browser to see the t
 
 ## Next steps
 
-- Explore [Scaling Node.js Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+- Explore [Scaling Node.js Applications](../../../explore/linear-scalability/) with YugabyteDB.

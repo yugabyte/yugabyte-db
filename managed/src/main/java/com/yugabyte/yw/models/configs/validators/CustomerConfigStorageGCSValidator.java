@@ -11,8 +11,7 @@ import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData.RegionLocation;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.io.IOException;
 import java.util.Arrays;
@@ -20,7 +19,7 @@ import java.util.Collection;
 import javax.inject.Inject;
 import org.apache.commons.lang.StringUtils;
 
-public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageWithRegionsValidator {
+public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageValidator {
 
   private static final Collection<String> GCS_URL_SCHEMES =
       Arrays.asList(new String[] {"https", "gs"});
@@ -50,7 +49,13 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageWith
       validateGCSUrl(
           storage, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, gcsData.backupLocation);
       if (gcsData.regionLocations != null) {
-        for (RegionLocation location : gcsData.regionLocations) {
+        for (RegionLocations location : gcsData.regionLocations) {
+          if (StringUtils.isEmpty(location.region)) {
+            throwBeanValidatorError(
+                CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
+          }
+          validateUrl(
+              CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
           validateGCSUrl(
               storage, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
         }

@@ -30,14 +30,19 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_service.h"
+#include "yb/tserver/tserver_error.h"
+
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
-
 #include "yb/util/tsan_util.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
+#include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
@@ -49,66 +54,10 @@ using namespace std::literals;
 namespace yb {
 namespace pgwrapper {
 
-class PgTabletSplitTest : public PgMiniTestBase {
+using TabletRecordsInfo =
+    std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
 
- protected:
-  using TabletRecordsInfo =
-      std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
-
-  Status SplitSingleTablet(const TableId& table_id) {
-    auto master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-    if (tablets.size() != 1) {
-      return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
-    }
-    auto tablet_id = tablets.at(0)->tablet_id();
-
-    return master->catalog_manager().SplitTablet(tablet_id, master::ManualSplit::kTrue);
-  }
-
-  Status InvokeSplitTabletRpc(const std::string& tablet_id) {
-    master::SplitTabletRequestPB req;
-    req.set_tablet_id(tablet_id);
-    master::SplitTabletResponsePB resp;
-
-    auto master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    RETURN_NOT_OK(master->catalog_manager_impl().SplitTablet(&req, &resp, nullptr));
-    if (resp.has_error()) {
-      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-    }
-    return Status::OK();
-  }
-
-  Status InvokeSplitTabletRpcAndWaitForSplitCompleted(tablet::TabletPeerPtr peer) {
-    SCHECK_NOTNULL(peer.get());
-    RETURN_NOT_OK(InvokeSplitTabletRpc(peer->tablet_id()));
-    return WaitFor([&]() -> Result<bool> {
-      const auto leaders =
-          ListTableActiveTabletLeadersPeers(cluster_.get(), peer->tablet_metadata()->table_id());
-      return leaders.size() == 2;
-    }, 15s * kTimeMultiplier, "Wait for split completion.");
-  }
-
-  Status WaitForAnySstFiles(tablet::TabletPeer* tablet_peer) {
-    return WaitFor([&] {
-        return tablet_peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
-    }, 5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1));
-  }
-
-  Status DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
-    for (auto& peer : *peers) {
-      RETURN_NOT_OK(peer->tablet()->doc_db().regular->SetOptions({
-          {"level0_file_num_compaction_trigger", std::to_string(std::numeric_limits<int32>::max())}
-      }));
-    }
-    return Status::OK();
-  }
-
- private:
-  virtual size_t NumTabletServers() override {
-    return 1;
-  }
-};
+class PgTabletSplitTest : public PgTabletSplitTestBase {};
 
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
@@ -148,6 +97,51 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
   ASSERT_OK(conn.CommitTransaction());
 }
 
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)) {
+  // The intent of the test is to check that splitting is not happening when middle split key
+  // matches one of the bounds (it actually can match only lower bound). Placed the test at this
+  // file as it's hard to create a table of such structure with the functionality inside
+  // tablet-split-itest.cc.
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Create a table with combined key; this allows to have a unique DocKey with the same HASH.
+  // Setting table's partitioning explicitly to have one of bounds be specified for each tablet.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(k1 INT, k2 INT, v TEXT, PRIMARY KEY (k1 HASH, k2 ASC))"
+      "  SPLIT INTO 2 TABLETS;"));
+
+  // Make a special structure of records: it has the same HASH but different DocKey, thus from
+  // tablet splitting perspective it should give middle split key that matches the partition bound.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT 13402, i, i::text FROM generate_series(1, 200) as i;"));
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(2, peers.size());
+
+  // Select a peer whose lower bound is specified.
+  auto peer_it = std::find_if(peers.begin(), peers.end(),
+      [](const tablet::TabletPeerPtr& peer){
+    return !(peer->tablet_metadata()->partition()->partition_key_start().empty());
+  });
+  ASSERT_FALSE((peer_it == peers.end()));
+  auto peer = *peer_it;
+
+  // Make sure SST files appear to be able to split.
+  ASSERT_OK(WaitForAnySstFiles(peer));
+
+  // Have to make a low-level direct call of split middle key to verify an error.
+  auto result = peer->tablet()->GetEncodedMiddleSplitKey();
+  ASSERT_NOK(result);
+  ASSERT_EQ(
+      tserver::TabletServerError(result.status()),
+      tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL);
+  ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
+}
+
 class PgPartitioningVersionTest :
     public PgTabletSplitTest,
     public testing::WithParamInterface<uint32_t> {
@@ -155,8 +149,7 @@ class PgPartitioningVersionTest :
   using PartitionBounds = std::pair<std::string, std::string>;
 
   void SetUp() override {
-    // Additional disabling is required as YB_DISABLE_TEST_IN_TSAN is not allowed in parameterized
-    // test with TEST_P and calling path cannot reach test body due to initdb timeout in TSAN mode.
+    // Additional disabling is required due to initdb timeout in TSAN mode.
     YB_SKIP_TEST_IN_TSAN();
     PgTabletSplitTest::SetUp();
   }
@@ -191,7 +184,7 @@ class PgPartitioningVersionTest :
                       expected_partitioning_version, partitioning_version));
 
     // Make sure SST files appear to be able to split
-    RETURN_NOT_OK(WaitForAnySstFiles(peer.get()));
+    RETURN_NOT_OK(WaitForAnySstFiles(peer));
     return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer);
   }
 
@@ -328,8 +321,6 @@ class PgPartitioningVersionTest :
 // as of now, it is ok to keep only one test as manual and automatic splitting use the same
 // execution path in context of table/tablet validation.
 TEST_P(PgPartitioningVersionTest, ManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   const auto expected_partitioning_version = GetParam();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
@@ -365,7 +356,7 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
-    ASSERT_OK(WaitForAnySstFiles(peer.get()));
+    ASSERT_OK(WaitForAnySstFiles(peer));
 
     auto status = InvokeSplitTabletRpc(peer->tablet_id());
     if (partitioning_version == 0) {
@@ -395,8 +386,6 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key when it contains NULLs in user columns.
   const auto expected_partitioning_version = GetParam();
@@ -441,7 +430,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
       // Make sure SST files appear to be able to split
-      ASSERT_OK(WaitForAnySstFiles(parent_peer.get()));
+      ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
       const auto encoded_split_key =
@@ -506,8 +495,6 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key, where `ybuniqueidxkeysuffix` value is set to null.
   const auto expected_partitioning_version = GetParam();
@@ -549,7 +536,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_EQ(partitioning_version, expected_partitioning_version);
 
     // Make sure SST files appear to be able to split
-    ASSERT_OK(WaitForAnySstFiles(parent_peer.get()));
+    ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
     auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
@@ -606,8 +593,6 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, SplitAt) {
-  YB_SKIP_TEST_IN_TSAN();
-
   const auto expected_partitioning_version = GetParam();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
@@ -655,7 +640,6 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       "idx2", 4,
       adjust_partitions(expected_partitioning_version, {{"\"800\""}, {"\"600\""}, {"\"400\""}})));
 }
-
 
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,

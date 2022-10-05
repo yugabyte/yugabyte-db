@@ -54,6 +54,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
@@ -112,6 +113,7 @@ namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
 const char kInstanceMetadataFileName[] = "instance";
+const char kAutoFlagsConfigFileName[] = "auto_flags_config";
 const char kFsLockFileName[] = "fs-lock";
 const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
@@ -135,7 +137,7 @@ FsManagerOpts::FsManagerOpts()
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
-    FLAGS_fs_wal_dirs = FLAGS_fs_data_dirs;
+    CHECK_OK(SetFlagDefaultAndCurrent("fs_wal_dirs", FLAGS_fs_data_dirs));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
@@ -251,6 +253,74 @@ Status FsManager::Init() {
   return Status::OK();
 }
 
+Status FsManager::ReadAutoFlagsConfig(Message* msg) {
+  RETURN_NOT_OK(Init());
+
+  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+
+  // First call after process startup: Iterate over all data roots to see if a config file was
+  // previously created.
+  if (auto_flags_config_path_.empty()) {
+    for (const string& root : canonicalized_data_fs_roots_) {
+      const string data_root = GetServerTypeDataPath(root, server_type_);
+      const string config_file_path = JoinPathSegments(data_root, kAutoFlagsConfigFileName);
+
+      if (env_->FileExists(config_file_path)) {
+        auto_flags_config_path_ = config_file_path;
+        break;
+      }
+    }
+
+    // First every process start on a new node: Pick the first data root.
+    if (auto_flags_config_path_.empty()) {
+      RSTATUS_DCHECK(
+          !canonicalized_data_fs_roots_.empty(), IOError,
+          "List of data directories (fs_data_dirs) not provided.");
+
+      const auto data_root =
+          GetServerTypeDataPath(*canonicalized_data_fs_roots_.begin(), server_type_);
+      RETURN_NOT_OK(CheckWrite(data_root));
+      auto_flags_config_path_ = JoinPathSegments(data_root, kAutoFlagsConfigFileName);
+
+      return STATUS(
+          NotFound, Format(
+                        "AutoFlagsConfig file wasn't found in $0",
+                        JoinStrings(canonicalized_data_fs_roots_, ",")));
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      pb_util::ReadPBContainerFromPath(env_, auto_flags_config_path_, msg),
+      Substitute("Could not load AutoFlag config from $0", auto_flags_config_path_));
+
+  return Status::OK();
+}
+
+Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
+  RETURN_NOT_OK(Init());
+
+  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+
+  // auto_flags_config_path_ is set when we attempt to read the file.
+  // We expect at least one read of the file to happen before the write.
+  // This check should only fail in tests.
+  SCHECK(
+      !auto_flags_config_path_.empty(), RuntimeError,
+      "AutoFlags config file path not initialized. Please check the --fs_data_dirs parameter.");
+
+  // OVERWRITE mode will atomically replace the old contents of the file with the new data.
+  RETURN_NOT_OK(pb_util::WritePBContainerToPath(
+      env_, auto_flags_config_path_, *msg, pb_util::OVERWRITE, pb_util::SYNC));
+
+  LOG(INFO) << "AutoFlags config stored in '" << auto_flags_config_path_ << "'.";
+  return Status::OK();
+}
+
+std::string FsManager::GetAutoFlagsConfigPath() const {
+  std::lock_guard<std::mutex> lock(auto_flag_mutex_);
+  return auto_flags_config_path_;
+}
+
 Status FsManager::CheckAndOpenFileSystemRoots() {
   RETURN_NOT_OK(Init());
 
@@ -346,6 +416,12 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
     }
     auto data_dirs = GetDataRootDirs();
     removal_list.insert(removal_list.begin(), data_dirs.begin(), data_dirs.end());
+
+    const auto auto_flags_config_path = GetAutoFlagsConfigPath();
+    if (!auto_flags_config_path.empty()) {
+      removal_list.push_back(auto_flags_config_path);
+    }
+
     removal_set.insert(removal_list.begin(), removal_list.end());
   }
 
@@ -503,6 +579,7 @@ void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
     hostname = "<unknown host>";
   }
   metadata->set_format_stamp(Substitute("Formatted at $0 on $1", time_str, hostname));
+  metadata->set_initdb_done_set_after_sys_catalog_restore(true);
 }
 
 Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
@@ -584,6 +661,10 @@ Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* creat
 
 const string& FsManager::uuid() const {
   return CHECK_NOTNULL(metadata_.get())->uuid();
+}
+
+bool FsManager::initdb_done_set_after_sys_catalog_restore() const {
+  return CHECK_NOTNULL(metadata_.get())->initdb_done_set_after_sys_catalog_restore();
 }
 
 set<string> FsManager::GetFsRootDirs() const {

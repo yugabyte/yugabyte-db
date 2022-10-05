@@ -329,6 +329,9 @@ Status ReadPBContainerFromPath(Env* env, const std::string& path, const std::str
 // Serialize a "containerized" protobuf to the given path.
 //
 // If create == NO_OVERWRITE and 'path' already exists, the function will fail.
+// If create == OVERWRITE and 'path' already exists, then it is atomically replaced. If there is a
+// system crash during the operation, it is guaranteed that an intact copy of either the old or new
+// version of the file will continue to exist.
 // If sync == SYNC, the newly created file will be fsynced before returning.
 Status WritePBContainerToPath(Env* env, const std::string& path,
                               const google::protobuf::Message& msg,

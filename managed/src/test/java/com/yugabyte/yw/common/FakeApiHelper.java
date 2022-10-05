@@ -43,6 +43,11 @@ public class FakeApiHelper {
     return doRequestWithAuthToken(method, url, getAuthToken());
   }
 
+  public static Result doGetRequestNoAuth(String url) {
+    Http.RequestBuilder request = Helpers.fakeRequest("GET", url);
+    return route(request);
+  }
+
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken);
@@ -93,6 +98,12 @@ public class FakeApiHelper {
     return route(request);
   }
 
+  public static Result doRequestWithBodyAndWithoutAuthToken(
+      String method, String url, JsonNode body) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url).bodyJson(body);
+    return route(request);
+  }
+
   public static Result doRequestWithJWTAndBody(
       String method, String url, String authToken, JsonNode body) {
     Http.RequestBuilder request =
@@ -136,7 +147,7 @@ public class FakeApiHelper {
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);
-          return YWErrorHandler.onServerError(null, throwable);
+          return YWErrorHandler.onServerError(requestBuilder.build(), throwable);
         };
 
     return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);

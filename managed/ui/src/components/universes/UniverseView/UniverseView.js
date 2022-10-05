@@ -237,10 +237,16 @@ export const UniverseView = (props) => {
     );
   };
 
-  const formatCost = (pricePerHour) => {
+  const formatCost = (pricePerHour, row) => {
+    const isPricingKnown = row.resources?.pricingKnown;
     return (
       <div className="universe-cost-cell">
-        <YBCost value={pricePerHour} multiplier="month" base="month" />
+        <YBCost
+          value={pricePerHour}
+          multiplier="month"
+          base="month"
+          isPricingKnown={isPricingKnown}
+        />
       </div>
     );
   };

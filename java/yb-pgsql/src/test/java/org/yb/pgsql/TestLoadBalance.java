@@ -73,6 +73,7 @@ public class TestLoadBalance extends BasePgSQLTest {
       String region = rs.getString(6);
       String zone = rs.getString(7);
       String publicIp = rs.getString(8);
+      String uuid = rs.getString(9);
       Integer portInMap = hostPorts.get(host);
       AssertionWrappers.assertNotNull(portInMap);
       HostAndPort hp = HostAndPort.fromParts(host, portInMap);
@@ -93,6 +94,7 @@ public class TestLoadBalance extends BasePgSQLTest {
       AssertionWrappers.assertEquals("datacenter1", region);
       AssertionWrappers.assertEquals("rack1", zone);
       AssertionWrappers.assertTrue(publicIp.isEmpty());
+      AssertionWrappers.assertTrue(!uuid.isEmpty());
       cnt++;
     }
     AssertionWrappers.assertEquals(

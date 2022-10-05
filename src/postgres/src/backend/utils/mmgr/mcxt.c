@@ -28,7 +28,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-YbPgMemTracker PgMemTracker = PG_MEM_TRACKER_INIT;
+YbPgMemTracker PgMemTracker = {0};
 
 /*
  * A helper function to take snapshot of current memory usage.
@@ -41,7 +41,7 @@ YbPgMemTracker PgMemTracker = PG_MEM_TRACKER_INIT;
  * during an execution.
  */
 static Size
-SnapshotMemory()
+YbSnapshotMemory()
 {
 #ifdef TCMALLOC_ENABLED
 	int64_t cur_tc_actual_sz = 0;
@@ -52,10 +52,14 @@ SnapshotMemory()
 #endif
 }
 
-void
+/*
+ * Update current memory usage in MemTracker, when there is no PG
+ * memory allocation activities.
+ */
+static void
 YbPgMemUpdateMax()
 {
-	const Size snapshot_mem = SnapshotMemory();
+	const Size snapshot_mem = YbSnapshotMemory();
 	PgMemTracker.backend_max_mem_bytes =
 		Max(PgMemTracker.backend_max_mem_bytes, snapshot_mem);
 	PgMemTracker.stmt_max_mem_bytes =
@@ -64,31 +68,43 @@ YbPgMemUpdateMax()
 }
 
 void
-YbPgMemAddConsumption(const Size sz)
+YbPgMemAddConsumption(Size sz)
 {
+	if (IsMultiThreadedMode())
+		return;
+
 	PgMemTracker.pg_cur_mem_bytes += sz;
+	/*
+	 * Try to track PG's memory consumption by the root MemTracker.
+	 * Consume the current PG's memory consumption instead the sz bytes since
+	 * the root MemTracker is initiated, to compensate the missed memory
+	 * consumption since the process starts.
+	 */
+	PgMemTracker.pggate_alive = YBCTryMemConsume(
+		PgMemTracker.pggate_alive ? sz : PgMemTracker.pg_cur_mem_bytes);
+
 	/* Only update max memory when memory is increasing */
 	YbPgMemUpdateMax();
 }
 
 void
-YbPgMemSubConsumption(const Size sz)
+YbPgMemSubConsumption(Size sz)
 {
+	if (IsMultiThreadedMode())
+		return;
+
 	// Avoid overflow when subtracting sz.
-	if (PgMemTracker.pg_cur_mem_bytes >= sz)
-	{
-		PgMemTracker.pg_cur_mem_bytes -= sz;
-	}
-	else
-	{
-		PgMemTracker.pg_cur_mem_bytes = 0;
-	}
+	PgMemTracker.pg_cur_mem_bytes = Max(PgMemTracker.pg_cur_mem_bytes - sz, 0);
+	// Only call release if pggate is alive, and update its liveness from the
+	// return value.
+	if (PgMemTracker.pggate_alive)
+		PgMemTracker.pggate_alive = YBCTryMemRelease(sz);
 }
 
 void
 YbPgMemResetStmtConsumption()
 {
-	PgMemTracker.stmt_max_mem_base_bytes = SnapshotMemory();
+	PgMemTracker.stmt_max_mem_base_bytes = YbSnapshotMemory();
 	PgMemTracker.stmt_max_mem_bytes = 0;
 }
 

@@ -28,6 +28,8 @@
 
         - name: Systemd system scope
           block:
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
             - name: Enable the {{ process }}
               shell: "sudo systemctl enable yb-{{ process }}"
               when: command == 'start'
@@ -36,6 +38,8 @@
             - name: Disable the {{ process }}
               shell: "sudo systemctl disable yb-{{ process }}"
               when: command == 'stop'
+            - name: Reload daemon
+              shell: "sudo systemctl daemon-reload"
           when: systemd_system.stat.exists
 
         - name: Systemd user scope
@@ -46,6 +50,7 @@
               state: started
               enabled: yes
               scope: user
+              daemon_reload: yes
             when: command == 'start'
           - name: Stop the {{ process }}
             systemd:
@@ -53,6 +58,7 @@
               state: stopped
               enabled: no
               scope: user
+              daemon_reload: yes
             when: command == 'stop'
           when: not systemd_system.stat.exists
       when: systemd_option and process != "thirdparty" and process != "platform-services"
@@ -82,16 +88,16 @@
     - block:
       - name: Determine system or user scope
         stat:
-          path: /etc/systemd/system/yb-clean_cores.timer
-        register: systemd_system
+          path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/"
+        become: yes
+        become_method: sudo
+        register: systemd_user
 
       - set_fact:
-          systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
-          user_arg: "--user"
-      - set_fact:
           systemd_dir: "/etc/systemd/system"
-          user_arg: ""
-        when: systemd_system.stat.exists
+      - set_fact:
+          systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
+        when: systemd_user.stat.exists
 
       - name: Delete clean cores timer
         file:
@@ -135,15 +141,36 @@
         become: yes
         become_method: sudo
 
+      - name: Delete yb-master service
+        file:
+          path: "{{ systemd_dir }}/yb-master.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
+      - name: Delete yb-tserver service
+        file:
+          path: "{{ systemd_dir }}/yb-tserver.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
+      - name: Delete yb-controller service
+        file:
+          path: "{{ systemd_dir }}/yb-controller.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
       - name: Perform daemon-reload for removed services
         shell:
-          cmd: "systemctl {{ user_arg }} daemon-reload"
+          cmd: "systemctl daemon-reload"
         become: yes
         become_method: sudo
 
       - name: Perform reset-failed for removed services
         shell:
-          cmd: "systemctl {{ user_arg }} reset-failed"
+          cmd: "systemctl reset-failed"
         become: yes
         become_method: sudo
 
@@ -170,5 +197,4 @@
           state: absent
         become: yes
         become_method: sudo
-
       when: process == "platform-services" and command == "stop-services"

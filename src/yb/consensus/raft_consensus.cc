@@ -69,6 +69,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random.h"
@@ -213,7 +214,7 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
+DEFINE_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
 
 DEFINE_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
@@ -234,6 +235,9 @@ TAG_FLAG(raft_disallow_concurrent_outstanding_report_failure_tasks, hidden);
 DEFINE_int64(protege_synchronization_timeout_ms, 1000,
              "Timeout to synchronize protege before performing step down. "
              "0 to disable synchronization.");
+
+DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
+                 "Inside RaftConsensus::ReportFailureDetectedTask, skip normal election.");
 
 namespace yb {
 namespace consensus {
@@ -745,8 +749,8 @@ Status RaftConsensus::StartStepDownUnlocked(const RaftPeerPB& peer, bool gracefu
   election_state->rpc.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   election_state->proxy->RunLeaderElectionAsync(
       &election_state->req, &election_state->resp, &election_state->rpc,
-      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, this,
-          election_state));
+      std::bind(&RaftConsensus::RunLeaderElectionResponseRpcCallback, shared_from(this),
+                election_state));
 
   LOG_WITH_PREFIX(INFO) << "Transferring leadership to " << peer.permanent_uuid();
 
@@ -1010,6 +1014,12 @@ void RaftConsensus::ReportFailureDetectedTask() {
         old_value, MonoTime::Min(), std::memory_order_release)) {
       break;
     }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_skip_election_when_fail_detected)) {
+    LOG_WITH_PREFIX(INFO) << "Skip normal election when failure detected due to "
+                          << "FLAGS_TEST_skip_election_when_fail_detected";
+    return;
   }
 
   // Start an election.
@@ -2374,29 +2384,19 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                                            const string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-  size_t servers_in_transition = 0;
-  if (type == ADD_SERVER) {
-    servers_in_transition = CountServersInTransition(active_config);
-  } else if (type == REMOVE_SERVER) {
-    // If we are trying to remove the server in transition, then servers_in_transition shouldn't
-    // count it so we can proceed with the operation.
-    servers_in_transition = CountServersInTransition(active_config, server_uuid);
-  }
 
   // Check that all the following requirements are met:
   // 1. We are required by Raft to reject config change operations until we have
   //    committed at least one operation in our current term as leader.
   //    See https://groups.google.com/forum/#!topic/raft-dev/t4xj6dJTP6E
   // 2. Ensure there is no other pending change config.
-  // 3. There are no peers that are in the process of becoming VOTERs or OBSERVERs.
   if (!state_->AreCommittedAndCurrentTermsSameUnlocked() ||
-      state_->IsConfigChangePendingUnlocked() ||
-      servers_in_transition != 0) {
+      state_->IsConfigChangePendingUnlocked()) {
     return STATUS_FORMAT(IllegalState,
                          "Leader is not ready for Config Change, can try again. "
-                         "Num peers in transit: $0. Type: $1. Has opid: $2. Committed config: $3. "
-                         "Pending config: $4. Current term: $5. Committed op id: $6.",
-                         servers_in_transition, ChangeConfigType_Name(type),
+                         "Type: $0. Has opid: $1. Committed config: $2. "
+                         "Pending config: $3. Current term: $4. Committed op id: $5.",
+                         ChangeConfigType_Name(type),
                          active_config.has_opid_index(),
                          state_->GetCommittedConfigUnlocked().ShortDebugString(),
                          state_->IsConfigChangePendingUnlocked() ?

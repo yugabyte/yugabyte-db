@@ -43,8 +43,8 @@ public class HealthCheckMetrics {
   private static final String REDIS_CONNECTIVITY_CHECK = "Connectivity with redis-cli";
   private static final String DISK_UTILIZATION_CHECK = "Disk utilization";
   private static final String CORE_FILES_CHECK = "Core files";
-  public static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
-  private static final String CLOCK_SYNC_CHECK = "Clock synchronization";
+  static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
+  static final String CLOCK_SYNC_CHECK = "Clock synchronization";
   private static final String NODE_TO_NODE_CA_CERT_CHECK = "Node To Node CA Cert Expiry Days";
   private static final String NODE_TO_NODE_CERT_CHECK = "Node To Node Cert Expiry Days";
   private static final String CLIENT_TO_NODE_CA_CERT_CHECK = "Client To Node CA Cert Expiry Days";
@@ -52,6 +52,7 @@ public class HealthCheckMetrics {
   private static final String CLIENT_CA_CERT_CHECK = "Client CA Cert Expiry Days";
   private static final String CLIENT_CERT_CHECK = "Client Cert Expiry Days";
   public static final String NODE_EXPORTER_CHECK = "Node exporter";
+  private static final String YB_CONTROLLER_CHECK = "YB-Controller server check";
 
   public static final String CUSTOM_NODE_METRICS_COLLECTION_METRIC = "yb_node_custom_node_metrics";
 
@@ -74,6 +75,7 @@ public class HealthCheckMetrics {
           .add(PlatformMetrics.HEALTH_CHECK_N2N_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT)
           .add(PlatformMetrics.HEALTH_CHECK_C2N_CERT)
+          .add(PlatformMetrics.HEALTH_CHECK_YB_CONTROLLER_DOWN)
           .build();
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS =
@@ -130,6 +132,8 @@ public class HealthCheckMetrics {
         return PlatformMetrics.HEALTH_CHECK_CLIENT_CA_CERT;
       case CLIENT_CERT_CHECK:
         return PlatformMetrics.HEALTH_CHECK_CLIENT_CERT;
+      case YB_CONTROLLER_CHECK:
+        return PlatformMetrics.HEALTH_CHECK_YB_CONTROLLER_DOWN;
       default:
         return null;
     }

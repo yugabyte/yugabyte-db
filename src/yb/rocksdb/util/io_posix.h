@@ -41,39 +41,6 @@ namespace rocksdb {
 
 #define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
 
-class PosixWritableFile : public WritableFile {
- private:
-  const std::string filename_;
-  int fd_;
-  uint64_t filesize_;
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-  bool allow_fallocate_;
-  bool fallocate_with_keep_size_;
-#endif
-
- public:
-  PosixWritableFile(const std::string& fname, int fd,
-                    const EnvOptions& options);
-  ~PosixWritableFile();
-
-  // Means Close() will properly take care of truncate
-  // and it does not need any additional information
-  virtual Status Truncate(uint64_t size) override;
-  virtual Status Close() override;
-  virtual Status Append(const Slice& data) override;
-  virtual Status Flush() override;
-  virtual Status Sync() override;
-  virtual Status Fsync() override;
-  virtual bool IsSyncThreadSafe() const override;
-  virtual uint64_t GetFileSize() override;
-  virtual Status InvalidateCache(size_t offset, size_t length) override;
-#ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(uint64_t offset, uint64_t len) override;
-  virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override;
-  virtual size_t GetUniqueId(char* id) const override;
-#endif
-};
-
 class PosixMmapReadableFile : public RandomAccessFile {
  private:
   int fd_;

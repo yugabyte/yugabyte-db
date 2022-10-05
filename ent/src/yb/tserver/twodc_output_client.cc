@@ -16,11 +16,13 @@
 
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_rpc.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
+#include "yb/client/transaction.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/rpc/rpc.h"
@@ -63,7 +65,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       const std::shared_ptr<CDCClient>& local_client,
       rpc::Rpcs* rpcs,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
-      bool use_local_tserver) :
+      bool use_local_tserver,
+      client::YBTablePtr global_transaction_status_table,
+      bool enable_replicate_transaction_status_table) :
       cdc_consumer_(cdc_consumer),
       consumer_tablet_info_(consumer_tablet_info),
       producer_tablet_info_(producer_tablet_info),
@@ -72,7 +76,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       write_handle_(rpcs->InvalidHandle()),
       apply_changes_clbk_(std::move(apply_changes_clbk)),
       use_local_tserver_(use_local_tserver),
-      all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")) {}
+      all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
+      global_transaction_status_table_(global_transaction_status_table),
+      enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table) {}
 
   ~TwoDCOutputClient() {
     std::lock_guard<decltype(lock_)> l(lock_);
@@ -100,11 +106,24 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       const cdc::CDCRecordPB& record,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
 
-  Result<bool> ProcessSplitOp(const cdc::CDCRecordPB& record);
+  bool IsValidMetaOp(const cdc::CDCRecordPB& record);
+  Result<bool> ProcessMetaOp(const cdc::CDCRecordPB& record);
 
   // Processes the Record and sends the CDCWrite for it.
   Status ProcessRecord(
       const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record);
+
+  Status ProcessCommitRecord(
+      const std::string& status_tablet,
+      const std::vector<std::string>& involved_target_tablet_ids,
+      const cdc::CDCRecordPB& record);
+
+  Result<std::vector<TabletId>> GetInvolvedTargetTabletsFromCommitRecord(
+      const cdc::CDCRecordPB& record);
+
+  Status SendTransactionCommits();
+
+  Status SendUserTableWrites();
 
   void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
 
@@ -116,7 +135,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   void SendResponse(const cdc::OutputClientResponse& resp) EXCLUDES(lock_);
 
   void HandleResponse() EXCLUDES(lock_);
-  void HandleError(const Status& s, bool done) EXCLUDES(lock_);
+  void HandleError(const Status& s) EXCLUDES(lock_);
 
   bool UseLocalTserver();
 
@@ -126,6 +145,8 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   std::shared_ptr<CDCClient> local_client_;
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle write_handle_ GUARDED_BY(lock_);
+  // Retain COMMIT rpcs in-flight as these need to be cleaned up on shutdown
+  std::vector<std::shared_ptr<client::ExternalTransaction>> external_transactions_;
   std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk_;
 
   bool use_local_tserver_;
@@ -138,6 +159,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
   bool done_processing_ GUARDED_BY(lock_) = false;
   bool shutdown_ GUARDED_BY(lock_) = false;
+  uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
@@ -148,18 +170,23 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Store the result of the lookup for all the tablets.
   yb::Result<std::vector<scoped_refptr<yb::client::internal::RemoteTablet>>> all_tablets_result_;
 
+  client::YBTablePtr global_transaction_status_table_;
+
   yb::MonoDelta timeout_ms_;
 
   std::unique_ptr<TwoDCWriteInterface> write_strategy_ GUARDED_BY(lock_);
+
+  bool enable_replicate_transaction_status_table_;
 };
 
-#define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) do { \
-  auto&& _s = (status); \
-  if (!_s.ok()) { \
-    HandleError(_s, true); \
-    return std::move(_s); \
-  } \
-} while (0);
+#define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) \
+  do { \
+    auto&& _s = (status); \
+    if (!_s.ok()) { \
+      HandleError(_s); \
+      return std::move(_s); \
+    } \
+  } while (0);
 
 Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_resp) {
   // ApplyChanges is called in a single threaded manner.
@@ -179,6 +206,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
     op_id_ = poller_resp->checkpoint().op_id();
     error_status_ = Status::OK();
     done_processing_ = false;
+    wait_for_version_ = 0;
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
     ResetWriteInterface(&write_strategy_);
@@ -210,59 +238,147 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
 
 Status TwoDCOutputClient::ProcessChangesStartingFromIndex(int start) {
   bool processed_write_record = false;
-  for (int i = start; i < twodc_resp_copy_.records_size(); i++) {
+  auto records_size = twodc_resp_copy_.records_size();
+  for (int i = start; i < records_size; i++) {
     // All KV-pairs within a single CDC record will be for the same row.
     // key(0).key() will contain the hash code for that row. We use this to lookup the tablet.
     const auto& record = twodc_resp_copy_.records(i);
 
-    if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
+    if (IsValidMetaOp(record)) {
       if (processed_write_record) {
-        // We have existing write operations to handle first, so we'll handle those first, and
-        // then return to processing this split op later (see WriteCDCRecordDone).
-        // It is important to handle these buffered writes first, since handling the split op will
-        // cause us to replace this poller, and thus if any of those writes fail, we would end up
-        // losing those records (as the new pollers would start processing ops after the split op).
+        // We have existing write operations, so flush them first (see WriteCDCRecordDone and
+        // SendTransactionCommits).
         break;
       }
-      // No other records to process, so we can process the SPLIT_OP.
-      bool done = VERIFY_RESULT(ProcessSplitOp(record));
+      // No other records to process, so we can process the meta ops.
+      bool done = VERIFY_RESULT(ProcessMetaOp(record));
       if (done) {
+        // Currently, we expect Producers to send any terminating ops last.
+        DCHECK(i == records_size - 1);
         HandleResponse();
         return Status::OK();
       }
       continue;
-    }
-
-    if (UseLocalTserver()) {
+    } else if (UseLocalTserver()) {
       RETURN_NOT_OK(ProcessRecordForLocalTablet(record));
     } else {
-      if (record.operation() == cdc::CDCRecordPB::APPLY) {
-        RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
-      } else {
-        auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
-            VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
-        auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
-            table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
-        RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
+      switch (record.operation()) {
+        case cdc::CDCRecordPB::APPLY:
+          RETURN_NOT_OK(ProcessRecordForTabletRange(record, all_tablets_result_));
+          break;
+        case cdc::CDCRecordPB::COMMITTED:
+          // TODO(Rahul): Handle the non 1:1 case for the transaction status table.
+          return STATUS(IllegalState, "Cannot currently handle COMMIT records when there is not a "
+                                      "1 to 1 tablet mapping for the transaction status table.");
+           break;
+        default: {
+          auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
+              VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
+          auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
+              table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms_).get();
+          RETURN_NOT_OK(ProcessRecordForTablet(record, tablet_result));
+          break;
+        }
       }
     }
     processed_write_record = true;
   }
 
   if (processed_write_record) {
-    // Send out the buffered writes.
-    std::unique_ptr<WriteRequestPB> write_request;
-    {
-      std::lock_guard<decltype(lock_)> l(lock_);
-      write_request = write_strategy_->GetNextWriteRequest();
+    if (table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      return SendTransactionCommits();
+    } else {
+      return SendUserTableWrites();
     }
-    if (!write_request) {
-      LOG(WARNING) << "Expected to find a write_request but were unable to";
-      return STATUS(IllegalState, "Could not find a write request to send");
+  }
+  return Status::OK();
+}
+
+Result<std::vector<TabletId>> TwoDCOutputClient::GetInvolvedTargetTabletsFromCommitRecord(
+    const cdc::CDCRecordPB& record) {
+  std::unordered_set<TabletId> involved_target_tablets;
+  auto involved_producer_tablets = std::vector<TabletId>(
+      record.transaction_state().tablets().begin(),
+      record.transaction_state().tablets().end());
+  for (const auto& producer_tablet : involved_producer_tablets) {
+    auto consumer_tablet_info = cdc_consumer_->GetConsumerTableInfo(producer_tablet);
+    // Ignore records for which we dont have any consumer tablets.
+    if (!consumer_tablet_info.ok()) {
+      if (consumer_tablet_info.status().IsNotFound()) {
+        VLOG_WITH_FUNC(3) << "Ignoring producer tablet '" << producer_tablet
+                          << "' from commit record of transaction '"
+                          << record.transaction_state().transaction_id()
+                          << "' as it is not replicated to our universe";
+        continue;
+      }
+      return consumer_tablet_info.status();
     }
-    SendNextCDCWriteToTablet(std::move(write_request));
+    involved_target_tablets.insert(consumer_tablet_info->tablet_id);
+    // TODO(Rahul): Add the n : m case for involved tablets.
   }
 
+  return std::vector<TabletId>(involved_target_tablets.begin(), involved_target_tablets.end());
+}
+
+Status TwoDCOutputClient::SendTransactionCommits() {
+  std::vector<client::ExternalTransactionMetadata> transaction_metadatas;
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    transaction_metadatas = std::move(write_strategy_->GetTransactionMetadatas());
+  }
+  std::vector<std::future<Status>> transaction_commit_futures;
+  for (const auto& transaction_metadata : transaction_metadatas) {
+    // Create the ExternalTransactions and COMMIT them locally.
+    auto* transaction_manager = cdc_consumer_->TransactionManager();
+    if (!transaction_manager) {
+      return STATUS(InvalidArgument, "Could not commit transactions");
+    }
+    auto external_tran =
+        std::make_shared<client::ExternalTransaction>(transaction_manager, transaction_metadata);
+    external_transactions_.push_back(external_tran);
+    transaction_commit_futures.push_back(external_tran->CommitFuture());
+  }
+  for (auto& future : transaction_commit_futures) {
+    DCHECK(future.valid());
+    RETURN_NOT_OK(future.get());
+  }
+  external_transactions_.clear();
+
+  int next_record = 0;
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    if (processed_record_count_ < record_count_) {
+      // processed_record_count_ is 1-based, so no need to add 1 to get next record.
+      next_record = processed_record_count_;
+    }
+  }
+
+  if (next_record > 0) {
+    // Process rest of the records.
+    Status s = ProcessChangesStartingFromIndex(next_record);
+    if (!s.ok()) {
+      HandleError(s);
+    }
+  } else {
+    // Last record, return response to caller.
+    HandleResponse();
+  }
+
+  return Status::OK();
+}
+
+Status TwoDCOutputClient::SendUserTableWrites() {
+  // Send out the buffered writes.
+  std::unique_ptr<WriteRequestPB> write_request;
+  {
+    std::lock_guard<decltype(lock_)> l(lock_);
+    write_request = write_strategy_->GetNextWriteRequest();
+  }
+  if (!write_request) {
+    LOG(WARNING) << "Expected to find a write_request but were unable to";
+    return STATUS(IllegalState, "Could not find a write request to send");
+  }
+  SendNextCDCWriteToTablet(std::move(write_request));
   return Status::OK();
 }
 
@@ -270,11 +386,34 @@ bool TwoDCOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
 }
 
+Status TwoDCOutputClient::ProcessCommitRecord(
+    const std::string& status_tablet,
+    const std::vector<std::string>& involved_target_tablet_ids,
+    const cdc::CDCRecordPB& record) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  return write_strategy_->ProcessCommitRecord(status_tablet, involved_target_tablet_ids, record);
+}
+
 Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_ids,
-                                      const cdc::CDCRecordPB& record) {
+                                        const cdc::CDCRecordPB& record) {
   std::lock_guard<decltype(lock_)> l(lock_);
   for (const auto& tablet_id : tablet_ids) {
-    auto status = write_strategy_->ProcessRecord(tablet_id, record);
+    std::string status_tablet_id;
+    if (enable_replicate_transaction_status_table_ && record.has_transaction_state()) {
+      // This is an intent record and we want to use the txn status table, so get the status tablet
+      // for this txn id.
+      auto deadline = CoarseMonoClock::Now() +
+                      MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+      status_tablet_id = VERIFY_RESULT(local_client_->client->LookupTabletByKeyFuture(
+          global_transaction_status_table_,
+          record.transaction_state().transaction_id(),
+          deadline).get())->tablet_id();
+    }
+    auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
+      .tablet_id = tablet_id,
+      .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
+      .status_tablet_id = status_tablet_id
+    }, record);
     if (!status.ok()) {
       error_status_ = status;
       return status;
@@ -313,31 +452,54 @@ Status TwoDCOutputClient::ProcessRecordForTabletRange(
 }
 
 Status TwoDCOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
+  if (record.operation() == cdc::CDCRecordPB::COMMITTED) {
+    auto target_tablet_ids = VERIFY_RESULT(GetInvolvedTargetTabletsFromCommitRecord(record));
+    RETURN_NOT_OK(ProcessCommitRecord(consumer_tablet_info_.tablet_id, target_tablet_ids, record));
+  }
+
   return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
 }
 
-Result<bool> TwoDCOutputClient::ProcessSplitOp(const cdc::CDCRecordPB& record) {
-  // Construct and send the update request.
-  master::ProducerSplitTabletInfoPB split_info;
-  split_info.set_tablet_id(record.split_tablet_request().tablet_id());
-  split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
-  split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
-  split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
-  split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+bool TwoDCOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
+  auto type = record.operation();
+  return type == cdc::CDCRecordPB::SPLIT_OP || type == cdc::CDCRecordPB::CHANGE_METADATA;
+}
 
-  if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
-    return STATUS(
-        InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
+Result<bool> TwoDCOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
+  uint32_t wait_for_version = 0;
+  if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
+    // Construct and send the update request.
+    master::ProducerSplitTabletInfoPB split_info;
+    split_info.set_tablet_id(record.split_tablet_request().tablet_id());
+    split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
+    split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
+    split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
+    split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+
+    if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
+      return STATUS(
+          InternalError, "Fail due to FLAGS_TEST_xcluster_consumer_fail_after_process_split_op");
+    }
+
+    RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
+        producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
+  } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
+    bool should_halt = VERIFY_RESULT(local_client_->client->UpdateConsumerOnProducerMetadata(
+        producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id,
+        record.change_metadata_request()));
+    if (should_halt) {
+      LOG(INFO) << "Halting Polling for " << producer_tablet_info_.tablet_id;
+      wait_for_version = record.change_metadata_request().schema_version();
+    }
   }
 
-  RETURN_NOT_OK(local_client_->client->UpdateConsumerOnProducerSplit(
-      producer_tablet_info_.universe_uuid, producer_tablet_info_.stream_id, split_info));
-
   // Increment processed records, and check for completion.
-  bool done;
+  bool done = false;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     done = IncProcessedRecordCount();
+    wait_for_version_ = wait_for_version;
+    DCHECK(wait_for_version == 0 || done); // If (should_wait) then done.
   }
   return done;
 }
@@ -376,10 +538,10 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
     }
   }
   if (!status.ok()) {
-    HandleError(status, true /* done */);
+    HandleError(status);
     return;
   } else if (response.has_error()) {
-    HandleError(StatusFromPB(response.error().status()), true /* done */);
+    HandleError(StatusFromPB(response.error().status()));
     return;
   }
   cdc_consumer_->IncrementNumSuccessfulWriteRpcs();
@@ -407,7 +569,7 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
       // Process rest of the records.
       Status s = ProcessChangesStartingFromIndex(next_record);
       if (!s.ok()) {
-        HandleError(s, true);
+        HandleError(s);
       }
     } else {
       // Last record, return response to caller.
@@ -416,7 +578,7 @@ void TwoDCOutputClient::WriteCDCRecordDone(const Status& status, const WriteResp
   }
 }
 
-void TwoDCOutputClient::HandleError(const Status& s, bool done) {
+void TwoDCOutputClient::HandleError(const Status& s) {
   LOG(ERROR) << "Error while applying replicated record: " << s
              << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   {
@@ -427,9 +589,8 @@ void TwoDCOutputClient::HandleError(const Status& s, bool done) {
       table_->MarkPartitionsAsStale();
     }
   }
-  if (done) {
-    HandleResponse();
-  }
+
+  HandleResponse();
 }
 
 cdc::OutputClientResponse TwoDCOutputClient::PrepareResponse() {
@@ -438,6 +599,7 @@ cdc::OutputClientResponse TwoDCOutputClient::PrepareResponse() {
   if (response.status.ok()) {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
+    response.wait_for_version = wait_for_version_;
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;
@@ -473,10 +635,13 @@ std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     const std::shared_ptr<CDCClient>& local_client,
     rpc::Rpcs* rpcs,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
-    bool use_local_tserver) {
+    bool use_local_tserver,
+    client::YBTablePtr global_transaction_status_table,
+    bool enable_replicate_transaction_status_table) {
   return std::make_unique<TwoDCOutputClient>(
       cdc_consumer, consumer_tablet_info, producer_tablet_info, local_client, rpcs,
-      std::move(apply_changes_clbk), use_local_tserver);
+      std::move(apply_changes_clbk), use_local_tserver, global_transaction_status_table,
+      enable_replicate_transaction_status_table);
 }
 
 } // namespace enterprise

@@ -363,6 +363,13 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
+	/*
+	 * Information is lacking for hypothetical index in order for estimation
+	 * in YB to work.
+	 * So we skip hypothetical index.
+	 */
+	if (path->indexinfo->hypothetical)
+		return;
 	ybcIndexCostEstimate(root,
 						 path,
 						 indexSelectivity,
@@ -416,8 +423,10 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation, scan->xs_want_itup,
-	                                 nscankeys, scankey, scan->yb_scan_plan);
+	YbScanDesc ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
+									 scan->xs_want_itup, nscankeys, scankey,
+									 scan->yb_scan_plan, scan->yb_rel_pushdown,
+									 scan->yb_idx_pushdown);
 	scan->opaque = ybScan;
 }
 

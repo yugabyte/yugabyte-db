@@ -193,13 +193,18 @@ class PostgresBuilder(YbBuildToolBase):
     @overrides
     def add_command_line_args(self) -> None:
         parser = self.arg_parser
-        parser.add_argument('--cflags', help='C compiler flags')
         parser.add_argument('--clean',
                             action='store_true',
                             help='Clean PostgreSQL build and installation directories.')
+
+        # These flags automatically get propagated to the appropriate environment variables,
+        # such as CFLAGS, CXXFLAGS, LDFLAGS, LDFLAGS_EX, CPPFLAGS.
+        parser.add_argument('--cflags', help='C compiler flags')
         parser.add_argument('--cxxflags', help='C++ compiler flags')
         parser.add_argument('--ldflags', help='Linker flags for all binaries')
         parser.add_argument('--ldflags_ex', help='Linker flags for executables')
+        parser.add_argument('--cppflags', help='C/C++ preprocessor flags')
+
         parser.add_argument('--openssl_include_dir', help='OpenSSL include dir')
         parser.add_argument('--openssl_lib_dir', help='OpenSSL lib dir')
         parser.add_argument('--run_tests',
@@ -299,7 +304,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
-        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX']:
+        for var_name in ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX', 'CPPFLAGS']:
             arg_value = getattr(self.args, var_name.lower())
             self.set_env_var(var_name, arg_value)
 
@@ -325,7 +330,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '-Wno-error=unused-function'
             ]
 
-            if self.build_type == 'release':
+            if self.build_type in ['release', 'prof_gen', 'prof_use']:
                 if self.is_clang():
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
@@ -479,7 +484,7 @@ class PostgresBuilder(YbBuildToolBase):
             # TODO: do we still need this limitation?
             configure_cmd_line += ['--without-readline']
 
-        if self.build_type != 'release':
+        if self.build_type not in ['release', 'prof_gen', 'prof_use']:
             configure_cmd_line += ['--enable-cassert']
         # Unset YB_SHOW_COMPILER_COMMAND_LINE when configuring postgres to avoid unintended side
         # effects from additional compiler output.

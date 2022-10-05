@@ -93,6 +93,7 @@ class ConsensusQueueTest : public YBTest {
                             nullptr,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
+                            log_thread_pool_.get(),
                             std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                             &log_));
     clock_.reset(new server::HybridClock());
@@ -874,9 +875,9 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
 
   ASSERT_TRUE(rb_req.IsInitialized()) << rb_req.ShortDebugString();
   ASSERT_EQ(kTestTablet, rb_req.tablet_id());
-  ASSERT_EQ(kLeaderUuid, rb_req.bootstrap_peer_uuid());
+  ASSERT_EQ(kLeaderUuid, rb_req.bootstrap_source_peer_uuid());
   ASSERT_EQ(FakeRaftPeerPB(kLeaderUuid).last_known_private_addr()[0].ShortDebugString(),
-            rb_req.source_private_addr()[0].ShortDebugString());
+            rb_req.bootstrap_source_private_addr()[0].ShortDebugString());
 }
 
 // Tests that ReadReplicatedMessagesForCDC() only reads messages until the last known

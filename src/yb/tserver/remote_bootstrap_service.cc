@@ -33,6 +33,7 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -41,9 +42,12 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_context.h"
 
@@ -54,6 +58,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -69,9 +74,9 @@ using namespace std::literals;
 
 #define RPC_RETURN_NOT_OK(expr, app_err, message) \
   do { \
-    Status s = (expr); \
+    auto&& s = (expr); \
     if (!s.ok()) { \
-      RPC_RETURN_APP_ERROR(app_err, message, s); \
+      RPC_RETURN_APP_ERROR(app_err, message, MoveStatus(s)); \
     } \
   } while (false)
 
@@ -106,6 +111,11 @@ DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
                  "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
                  "server it is remote bootstrapping, but before it sends a success response.");
 
+DEFINE_test_flag(
+    double, fault_crash_on_rbs_anchor_register, 0.0,
+    "Fraction of the time when the peer will crash while "
+    "servicing a RemoteBootstrapAnchorService RegisterLogAnchor() RPC call.");
+
 DEFINE_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
               "Timeout for change role operation during remote bootstrap.");
 
@@ -133,10 +143,14 @@ static void SetupErrorAndRespond(rpc::RpcContext* context,
 RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
     FsManager* fs_manager,
     TabletPeerLookupIf* tablet_peer_lookup,
-    const scoped_refptr<MetricEntity>& metric_entity)
+    const scoped_refptr<MetricEntity>& metric_entity,
+    CloudInfoPB cloud_info,
+    rpc::ProxyCache* proxy_cache)
     : RemoteBootstrapServiceIf(metric_entity),
       fs_manager_(CHECK_NOTNULL(fs_manager)),
       tablet_peer_lookup_(CHECK_NOTNULL(tablet_peer_lookup)),
+      local_cloud_info_pb_(cloud_info),
+      proxy_cache_(proxy_cache),
       shutdown_latch_(1) {
   CHECK_OK(Thread::Create("remote-bootstrap", "rb-session-exp",
                           &RemoteBootstrapServiceImpl::EndExpiredSessions, this,
@@ -152,15 +166,30 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         rpc::RpcContext context) {
   const string& requestor_uuid = req->requestor_uuid();
   const string& tablet_id = req->tablet_id();
+
   // For now, we use the requestor_uuid with the tablet id as the session id,
   // but there is no guarantee this will not change in the future.
   MonoTime now = MonoTime::Now();
   const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
 
-  std::shared_ptr<TabletPeer> tablet_peer;
-  RPC_RETURN_NOT_OK(tablet_peer_lookup_->GetTabletPeer(tablet_id, &tablet_peer),
+  scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client(nullptr);
+  if (req->has_tablet_leader_conn_info()) {
+    rbs_anchor_client.reset(new RemoteBootstrapAnchorClient(
+        requestor_uuid,
+        session_id,
+        proxy_cache_,
+        HostPortFromPB(DesiredHostPort(
+            req->tablet_leader_conn_info().broadcast_addresses(),
+            req->tablet_leader_conn_info().private_rpc_addresses(),
+            req->tablet_leader_conn_info().cloud_info(),
+            local_cloud_info_pb_))));
+  }
+
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(tablet_id);
+  RPC_RETURN_NOT_OK(tablet_peer_result,
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Unable to find specified tablet: $0", tablet_id));
+  auto tablet_peer = std::move(*tablet_peer_result);
   RPC_RETURN_NOT_OK(tablet_peer->CheckRunning(),
                     RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
                     Substitute("Tablet is not running yet: $0", tablet_id));
@@ -174,7 +203,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
       session.reset(new RemoteBootstrapSession(
-          tablet_peer, session_id, requestor_uuid, &nsessions_));
+          tablet_peer, session_id, requestor_uuid, &nsessions_, rbs_anchor_client));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
       auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
       LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
@@ -185,7 +214,10 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
                 << " from peer " << requestor_uuid << " at " << context.requestor_string()
                 << ": session id = " << session_id;
     }
-    it->second.ResetExpiration();
+    RemoteBootstrapErrorPB::Code app_error;
+    RPC_RETURN_NOT_OK(it->second.ResetExpiration(&app_error),
+                      app_error,
+                      Substitute("Refresh Log Anchor session failed"));
   }
 
   RPC_RETURN_NOT_OK(session->Init(),
@@ -211,16 +243,18 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   context.RespondSuccess();
 }
 
-void RemoteBootstrapServiceImpl::CheckSessionActive(
-        const CheckRemoteBootstrapSessionActiveRequestPB* req,
-        CheckRemoteBootstrapSessionActiveResponsePB* resp,
-        rpc::RpcContext context) {
+void RemoteBootstrapServiceImpl::CheckRemoteBootstrapSessionActive(
+    const CheckRemoteBootstrapSessionActiveRequestPB* req,
+    CheckRemoteBootstrapSessionActiveResponsePB* resp,
+    rpc::RpcContext context) {
   // Look up and validate remote bootstrap session.
   std::lock_guard<std::mutex> l(sessions_mutex_);
   auto it = sessions_.find(req->session_id());
   if (it != sessions_.end()) {
     if (req->keepalive()) {
-      it->second.ResetExpiration();
+      RemoteBootstrapErrorPB::Code app_error;
+      WARN_NOT_OK(it->second.ResetExpiration(&app_error),
+                  Substitute("Refresh Log Anchor session failed"));
     }
     resp->set_session_is_active(true);
     context.RespondSuccess();
@@ -245,7 +279,10 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
           RemoteBootstrapErrorPB::NO_SESSION, "No such session",
           STATUS_FORMAT(NotFound, "Fetch data for unknown sessions id: $0", session_id));
     }
-    it->second.ResetExpiration();
+    RemoteBootstrapErrorPB::Code app_error;
+    RPC_RETURN_NOT_OK(it->second.ResetExpiration(&app_error),
+                      app_error,
+                      Substitute("Refresh Log Anchor session failed"));
     session = it->second.session;
   }
 
@@ -266,11 +303,15 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   RPC_RETURN_NOT_OK(ValidateFetchRequestDataId(data_id, &info.error_code, session),
                     info.error_code, "Invalid DataId");
 
+  session->data_read_timer().resume();
   RPC_RETURN_NOT_OK(session->GetDataPiece(data_id, &info),
                     info.error_code, "Unable to get piece of data file");
+  session->data_read_timer().stop();
 
   session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  session->crc_compute_timer().resume();
   uint32_t crc32 = Crc32c(info.data.data(), info.data.length());
+  session->crc_compute_timer().stop();
 
   DataChunkPB* data_chunk = resp->mutable_chunk();
   *data_chunk->mutable_data() = std::move(info.data);
@@ -296,7 +337,7 @@ void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
               << " received from " << context.requestor_string();
 
     if (!req->keep_session()) {
-      RemoveSession(req->session_id());
+      RemoveRemoteBootstrapSession(req->session_id());
     } else {
       resp->set_session_kept(true);
     }
@@ -304,18 +345,18 @@ void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
   context.RespondSuccess();
 }
 
-void RemoteBootstrapServiceImpl::RemoveSession(
-        const RemoveSessionRequestPB* req,
-        RemoveSessionResponsePB* resp,
-        rpc::RpcContext context) {
+void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(
+    const RemoveRemoteBootstrapSessionRequestPB* req,
+    RemoveRemoteBootstrapSessionResponsePB* resp,
+    rpc::RpcContext context) {
   {
     std::lock_guard<std::mutex> l(sessions_mutex_);
-    RemoveSession(req->session_id());
+    RemoveRemoteBootstrapSession(req->session_id());
   }
   context.RespondSuccess();
 }
 
-void RemoteBootstrapServiceImpl::RemoveSession(const std::string& session_id) {
+void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(const std::string& session_id) {
   // Remove the session from the map.
   // It will get destroyed once there are no outstanding refs.
   auto it = sessions_.find(session_id);
@@ -333,17 +374,36 @@ void RemoteBootstrapServiceImpl::Shutdown() {
   shutdown_latch_.CountDown();
   session_expiration_thread_->Join();
 
-  std::lock_guard<std::mutex> lock(sessions_mutex_);
-  // Destroy all remote bootstrap sessions.
-  std::vector<string> session_ids;
-  session_ids.reserve(sessions_.size());
-  for (const auto& entry : sessions_) {
-    session_ids.push_back(entry.first);
+  {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    // Destroy all remote bootstrap sessions.
+    std::vector<string> session_ids;
+    session_ids.reserve(sessions_.size());
+    for (const auto& entry : sessions_) {
+      session_ids.push_back(entry.first);
+    }
+    for (const string& session_id : session_ids) {
+      LOG(INFO) << "Destroying remote bootstrap session " << session_id
+                << " due to service shutdown";
+      RemoteBootstrapErrorPB::Code app_error;
+      CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
+    }
   }
-  for (const string& session_id : session_ids) {
-    LOG(INFO) << "Destroying remote bootstrap session " << session_id << " due to service shutdown";
-    RemoteBootstrapErrorPB::Code app_error;
-    CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
+
+  {
+    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    std::vector<string> session_ids;
+    session_ids.reserve(log_anchors_map_.size());
+    for (const auto& entry : log_anchors_map_) {
+      session_ids.push_back(entry.first);
+    }
+
+    for (const string& session_id : session_ids) {
+      LOG(INFO) << "Destroying Remote Bootstrap Log Anchor session " << session_id
+                << " due to service shutdown";
+      RemoteBootstrapErrorPB::Code app_error;
+      CHECK_OK(DoEndLogAnchorSession(session_id, &app_error));
+    }
   }
 }
 
@@ -362,8 +422,14 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
   return session->ValidateDataId(data_id);
 }
 
-void RemoteBootstrapServiceImpl::SessionData::ResetExpiration() {
+Status RemoteBootstrapServiceImpl::SessionData::ResetExpiration(
+    RemoteBootstrapErrorPB::Code* app_error) {
   expiration = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 1ms;
+  auto status = session->RefreshRemoteLogAnchorSessionAsync();
+  if (!status.ok()) {
+    *app_error = RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE;
+  }
+  return status;
 }
 
 Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
@@ -378,7 +444,21 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   auto session = it->second.session;
 
   if (session_succeeded || session->Succeeded()) {
-    session->SetSuccess();
+    if(!session->Succeeded()) {
+      session->SetSuccess();
+
+      const auto total_bytes = session->rate_limiter().total_bytes();
+      LOG(INFO) << std::fixed << std::setprecision(3) << "Remote bootstrap session with id "
+        << session_id << " completed. Stats: Transmission rate: "
+        << session->rate_limiter().GetRate() << ", RateLimiter total time slept: "
+        << session->rate_limiter().total_time_slept() << ", Total bytes: "
+        << total_bytes << ", Read rate "
+        << (total_bytes / session->data_read_timer().elapsed().wall_millis())
+        << " bytes/msec (Total ms: " << session->data_read_timer().elapsed().wall_millis()
+        << "), CRC computation rate: "
+        << (total_bytes / session->crc_compute_timer().elapsed().wall_millis()) << " bytes/msec"
+        << "(Total ms: " << session->crc_compute_timer().elapsed().wall_millis() << ")";
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
       LOG(INFO) << "Injecting latency for test";
@@ -406,8 +486,8 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
                    << ", error : " << status;
       if (!status.IsLeaderHasNoLease() || MonoTime::Now() >= deadline) {
-        it->second.ResetExpiration();
-        return Status::OK();
+        RemoteBootstrapErrorPB::Code app_error;
+        return it->second.ResetExpiration(&app_error);
       }
     }
   } else {
@@ -419,24 +499,232 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
   return Status::OK();
 }
 
+RemoteBootstrapServiceImpl::LogAnchorSessionData::LogAnchorSessionData(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const std::shared_ptr<log::LogAnchor>& log_anchor_ptr)
+    : tablet_peer_(tablet_peer), log_anchor_ptr_(log_anchor_ptr) {
+  // the timeout period for remote bootstrap anchor session should be >> remote bootstrap session
+  // as we need to account for the additional latency for communication between the source serving
+  // the rbs requests and the tablet leader peer.
+  expiration_ = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 2 * 1ms;
+}
+
+RemoteBootstrapServiceImpl::LogAnchorSessionData::~LogAnchorSessionData() {}
+
+void RemoteBootstrapServiceImpl::LogAnchorSessionData::ResetExpiration() {
+  // the timeout period for remote bootstrap anchor session should be >> remote bootstrap session
+  // as we need to account for the additional latency for communication between the source serving
+  // the rbs requests and the tablet leader peer.
+  expiration_ = CoarseMonoClock::now() + FLAGS_remote_bootstrap_idle_timeout_ms * 2 * 1ms;
+}
+
+void RemoteBootstrapServiceImpl::RegisterLogAnchor(
+    const RegisterLogAnchorRequestPB* req,
+    RegisterLogAnchorResponsePB* resp,
+    rpc::RpcContext context) {
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(req->tablet_id());
+  RPC_RETURN_NOT_OK(
+      tablet_peer_result,
+      RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
+      Substitute("Unable to find specified tablet: $0", req->tablet_id()));
+  auto tablet_peer = std::move(*tablet_peer_result);
+  RPC_RETURN_NOT_OK(
+      tablet_peer->CheckRunning(),
+      RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
+      Substitute("Tablet is not running yet: $0", req->tablet_id()));
+
+  int64_t min_available_log_index = tablet_peer->log()->GetLogReader()->GetMinReplicateIndex();
+  if (min_available_log_index == -1) {
+    min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
+  }
+
+  if (req->op_id().index() < min_available_log_index) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
+        Substitute("Cannot register LogAnchor for index $0", req->op_id().index()),
+        STATUS(NotSupported, "Not Supported: Requested LogAnchor index < MinReplicateIndex"));
+  }
+
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_on_rbs_anchor_register);
+
+  {
+    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    auto it = log_anchors_map_.find(req->owner_info());
+    if (it == log_anchors_map_.end()) {
+      std::shared_ptr<log::LogAnchor> log_anchor_ptr(new log::LogAnchor());
+      tablet_peer->log_anchor_registry()->Register(
+          req->op_id().index(), req->owner_info(), log_anchor_ptr.get());
+      std::shared_ptr<LogAnchorSessionData> anchor_session_data(
+          new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
+      log_anchors_map_[req->owner_info()] = anchor_session_data;
+    } else {
+      tablet_peer.reset(it->second->tablet_peer_.get());
+      std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
+      it->second->ResetExpiration();
+      RPC_RETURN_NOT_OK(
+          tablet_peer->log_anchor_registry()->UpdateRegistration(
+              req->op_id().index(), log_anchor_ptr.get()),
+          RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
+          Substitute(
+              "Cannot Update LogAnchor for tablet $0 to index $1", tablet_peer->tablet_id(),
+              req->op_id().index()));
+    }
+  }
+
+  context.RespondSuccess();
+}
+
+void RemoteBootstrapServiceImpl::UpdateLogAnchor(
+    const UpdateLogAnchorRequestPB* req, UpdateLogAnchorResponsePB* resp, rpc::RpcContext context) {
+  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  auto it = log_anchors_map_.find(req->owner_info());
+  if (it == log_anchors_map_.end()) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::NO_SESSION,
+        Substitute("No existing Log Anchor session with id $0", req->owner_info()),
+        STATUS(IllegalState, "Cannot Update Log Anchor without Registering for one"));
+  }
+
+  std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
+  std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
+  it->second->ResetExpiration();
+  RPC_RETURN_NOT_OK(
+      tablet_peer->log_anchor_registry()->UpdateRegistration(
+          req->op_id().index(), log_anchor_ptr.get()),
+      RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
+      Substitute(
+          "Cannot Update LogAnchor for tablet $0 to $1", tablet_peer->tablet_id(),
+          req->op_id().index()));
+
+  context.RespondSuccess();
+}
+
+void RemoteBootstrapServiceImpl::KeepLogAnchorAlive(
+    const KeepLogAnchorAliveRequestPB* req,
+    KeepLogAnchorAliveResponsePB* resp,
+    rpc::RpcContext context) {
+  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  auto it = log_anchors_map_.find(req->owner_info());
+  if (it == log_anchors_map_.end()) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::NO_SESSION,
+        Substitute("No existing Log Anchor session with id $0", req->owner_info()),
+        STATUS(IllegalState, "Cannot Refresh Log Anchor Session"));
+  }
+  std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
+  std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
+  it->second->ResetExpiration();
+  context.RespondSuccess();
+}
+
+void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
+    const UnregisterLogAnchorRequestPB* req,
+    UnregisterLogAnchorResponsePB* resp,
+    rpc::RpcContext context) {
+  RemoteBootstrapErrorPB::Code app_error;
+  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  RPC_RETURN_NOT_OK(
+      DoEndLogAnchorSession(req->owner_info(), &app_error),
+      app_error,
+      Substitute("No existing Log Anchor session with id $0", req->owner_info())
+  );
+  RemoveLogAnchorSession(req->owner_info());
+  context.RespondSuccess();
+}
+
+void RemoteBootstrapServiceImpl::ChangePeerRole(
+    const ChangePeerRoleRequestPB* req, ChangePeerRoleResponsePB* resp, rpc::RpcContext context) {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  {
+    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    auto it = log_anchors_map_.find(req->owner_info());
+    if (it == log_anchors_map_.end()) {
+      RPC_RETURN_APP_ERROR(
+          RemoteBootstrapErrorPB::NO_SESSION,
+          Substitute("No existing Log Anchor session with id $0", req->owner_info()),
+          STATUS(IllegalState, "Cannot execute ChangePeerRole with an invalid session"));
+    }
+
+    tablet_peer = it->second->tablet_peer_;
+    it->second->ResetExpiration();
+  }
+
+  RPC_RETURN_NOT_OK(
+      tablet_peer->ChangeRole(req->requestor_uuid()),
+      RemoteBootstrapErrorPB::REMOTE_CHANGE_PEER_ROLE_FAILURE,
+      Substitute("Cannot ChangePeerRole for peer $0", req->requestor_uuid()));
+  context.RespondSuccess();
+}
+
+void RemoteBootstrapServiceImpl::RemoveLogAnchorSession(const std::string& session_id) {
+  auto it = log_anchors_map_.find(session_id);
+  if (it == log_anchors_map_.end()) {
+    LOG(WARNING) << "Attempt to remove Log Anchor session with unknown id: " << session_id;
+    return;
+  }
+  log_anchors_map_.erase(it);
+}
+
+Status RemoteBootstrapServiceImpl::DoEndLogAnchorSession(
+    const std::string& session_id, RemoteBootstrapErrorPB::Code* app_error) {
+  auto it = log_anchors_map_.find(session_id);
+  if (it == log_anchors_map_.end()) {
+    *app_error = RemoteBootstrapErrorPB::NO_SESSION;
+    return STATUS_FORMAT(NotFound, "End of unknown Log Anchor session id: $0", session_id);
+  }
+
+  std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
+  std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
+  auto s = tablet_peer->log_anchor_registry()->UnregisterIfAnchored(log_anchor_ptr.get());
+  if (!s.ok()) {
+    *app_error = RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE;
+    return STATUS_FORMAT(NotFound, "Couldn't unregister LogAnchor for session: $0", session_id);
+  }
+
+  return Status::OK();
+}
+
+void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
+  std::lock_guard<std::mutex> l(sessions_mutex_);
+  auto now = CoarseMonoClock::Now();
+
+  std::vector<string> expired_session_ids;
+  for (const auto& entry : sessions_) {
+    if (entry.second.expiration < now) {
+      expired_session_ids.push_back(entry.first);
+    }
+  }
+  for (const string& session_id : expired_session_ids) {
+    LOG(INFO) << "Remote bootstrap session " << session_id << " has expired. Terminating session.";
+    RemoteBootstrapErrorPB::Code app_error;
+    CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
+    RemoveRemoteBootstrapSession(session_id);
+  }
+}
+
+void RemoteBootstrapServiceImpl::EndExpiredLogAnchorSessions() {
+  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  auto now = CoarseMonoClock::Now();
+
+  std::vector<string> expired_session_ids;
+  for (const auto& entry : log_anchors_map_) {
+    if (entry.second->expiration_ < now) {
+      expired_session_ids.push_back(entry.first);
+    }
+  }
+  for (const string& session_id : expired_session_ids) {
+    LOG(INFO) << "Remote Bootstrap Log Anchor session " << session_id
+              << " has expired. Terminating session.";
+    RemoteBootstrapErrorPB::Code app_error;
+    CHECK_OK(DoEndLogAnchorSession(session_id, &app_error));
+    RemoveLogAnchorSession(session_id);
+  }
+}
+
 void RemoteBootstrapServiceImpl::EndExpiredSessions() {
   do {
-    std::lock_guard<std::mutex> l(sessions_mutex_);
-    auto now = CoarseMonoClock::Now();
-
-    std::vector<string> expired_session_ids;
-    for (const auto& entry : sessions_) {
-      if (entry.second.expiration < now) {
-        expired_session_ids.push_back(entry.first);
-      }
-    }
-    for (const string& session_id : expired_session_ids) {
-      LOG(INFO) << "Remote bootstrap session " << session_id
-                << " has expired. Terminating session.";
-      RemoteBootstrapErrorPB::Code app_error;
-      CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
-      RemoveSession(session_id);
-    }
+    EndExpiredRemoteBootstrapSessions();
+    EndExpiredLogAnchorSessions();
   } while (!shutdown_latch_.WaitFor(MonoDelta::FromMilliseconds(
                                     FLAGS_remote_bootstrap_timeout_poll_period_ms)));
 }

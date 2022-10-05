@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 import tableIcon from '../images/table.png';
 import './ListTables.scss';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -15,10 +16,30 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 import { formatSchemaName } from '../../../utils/Formatters';
+import { YBButtonLink } from '../../common/forms/fields';
 
 class TableTitle extends Component {
   render() {
-    const { numCassandraTables, numRedisTables, numPostgresTables } = this.props;
+    const {
+      numCassandraTables,
+      numRedisTables,
+      numPostgresTables,
+      universe,
+      tables,
+      fetchUniverseTables
+    } = this.props;
+    const currentUniverseUUID = universe?.currentUniverse?.data?.universeUUID;
+    const fetchCurrentUniverseTables = (currentUniverseUUID) => {
+      fetchUniverseTables(currentUniverseUUID);
+      if (tables?.error?.message) {
+        toast.error('Refresh failed, try again', {
+          // Adding toastId helps prevent multiple duplicate toasts that appears
+          // on screen when user presses refresh button multiple times
+          toastId: 'table-fetch-failure',
+        });
+      }
+    };
+
     return (
       <div className="table-container-title clearfix">
         <div className="pull-left">
@@ -35,6 +56,13 @@ class TableTitle extends Component {
             <Image src={tableIcon} className="table-type-logo" />
             <YBResourceCount kind="YEDIS" size={numRedisTables} />
           </div>
+        </div>
+        <div className="pull-right">
+          <YBButtonLink
+            btnIcon="fa fa-refresh"
+            btnClass="btn btn-default refresh-btn"
+            onClick={() => fetchCurrentUniverseTables(currentUniverseUUID)}
+          />
         </div>
       </div>
     );
@@ -140,6 +168,7 @@ class ListTableGrid extends Component {
             actionType="create-backup"
             disabled={actions_disabled || !disableManualBackup}
             btnClass={'btn-orange'}
+            universeUUID={currentUniverse.universeUUID}
           />
         ];
         if (getTableIcon(row.tableType) === 'YCQL') {
@@ -166,8 +195,6 @@ class ListTableGrid extends Component {
         );
       }
     };
-
-    const tablePlacementDummyData = { read: '-', write: '-' };
 
     const formatTableStatus = function (item, row) {
       if (item === 'success') {
@@ -210,10 +237,9 @@ class ListTableGrid extends Component {
           tableType: item.tableType,
           tableName: item.tableName,
           status: 'success',
-          read: tablePlacementDummyData.read,
-          write: tablePlacementDummyData.write,
           isIndexTable: item.isIndexTable,
-          sizeBytes: item.sizeBytes
+          sizeBytes: item.sizeBytes,
+          walSizeBytes: item.walSizeBytes
         };
       });
     }
@@ -271,7 +297,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn
           dataField={'tableType'}
           dataFormat={getTableIcon}
-          width="10%"
+          width="15%"
           columnClassName={'table-type-image-header yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
@@ -280,7 +306,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'keySpace'}
-          width="10%"
+          width="15%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatKeySpace}
           dataSort
@@ -289,7 +315,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'status'}
-          width="5%"
+          width="15%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatTableStatus}
         >
@@ -302,13 +328,16 @@ class ListTableGrid extends Component {
           dataFormat={formatBytes}
           dataSort
         >
-          Size
+          SST Size
         </TableHeaderColumn>
-        <TableHeaderColumn dataField={'read'} width="10%" columnClassName={'yb-table-cell'}>
-          Read
-        </TableHeaderColumn>
-        <TableHeaderColumn dataField={'write'} width="10%" columnClassName={'yb-table-cell'}>
-          Write
+        <TableHeaderColumn
+          dataField={'walSizeBytes'}
+          width="15%"
+          columnClassName={'yb-table-cell'}
+          dataFormat={formatBytes}
+          dataSort
+        >
+          WAL Size
         </TableHeaderColumn>
         {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
           <TableHeaderColumn

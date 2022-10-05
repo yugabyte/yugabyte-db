@@ -27,6 +27,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
@@ -48,14 +49,11 @@ DEFINE_bool(enable_ysql, true,
 DEFINE_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 
-DEFINE_bool(
-    // TODO: switch the default to true after updating all external callers (yb-ctl, YugaWare)
-    // and unit tests.
-    master_auto_run_initdb, false,
-    "Automatically run initdb on master leader initialization");
-
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
+
+DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
+                 "Kill the master process after successfully restoring the sys catalog snapshot.");
 
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
@@ -141,6 +139,12 @@ Status RestoreInitialSysCatalogSnapshot(
 
   sys_catalog_tablet_peer->Submit(std::move(operation), term);
 
+  if (FLAGS_TEST_fail_initdb_after_snapshot_restore && term == 1) {
+    // Only on term 1 (the first master leader), wait until the snapshot operation is complete
+    // before killing the process.
+    latch.Wait();
+    LOG(FATAL) << "Simulate failover during initdb";
+  }
   // Now restore tablet metadata.
   tserver::ExportedTabletMetadataChanges tablet_metadata_changes;
   RETURN_NOT_OK(ReadPBContainerFromPath(
@@ -194,7 +198,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
       VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
-      FLAGS_initial_sys_catalog_snapshot_path = candidate_dir;
+      CHECK_OK(SetFlagDefaultAndCurrent("initial_sys_catalog_snapshot_path", candidate_dir));
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";
@@ -211,29 +215,6 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }
-}
-
-bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists) {
-  if (pg_proc_exists) {
-    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
-    return false;
-  }
-
-  if (!FLAGS_master_auto_run_initdb) {
-    LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
-    return false;
-  }
-
-  {
-    auto l = ysql_catalog_config->LockForRead();
-    if (l->pb.ysql_catalog_config().initdb_done()) {
-      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
-      return false;
-    }
-  }
-
-  LOG(INFO) << "initdb has never been run on this cluster, running it";
-  return true;
 }
 
 Status MakeYsqlSysCatalogTablesTransactional(

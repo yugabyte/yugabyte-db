@@ -30,6 +30,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -283,6 +284,7 @@ class TransactionPool::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       last_transaction_ = transaction;
     }
+    TRACE_TO(transaction->trace(), "Take");
     return transaction;
   }
 

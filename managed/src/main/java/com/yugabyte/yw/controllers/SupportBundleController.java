@@ -84,7 +84,8 @@ public class SupportBundleController extends AuthenticatedController {
               universe.universeUUID));
     }
 
-    // Temporarily cannot create for k8s properly. Will result in empty directories
+    // Support bundle for onprem and k8s universes was originally behind a runtime flag.
+    // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     Boolean k8s_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(K8S_ENABLED);
     Boolean onprem_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(ONPREM_ENABLED);
@@ -96,7 +97,9 @@ public class SupportBundleController extends AuthenticatedController {
     }
     if (cloudType == CloudType.kubernetes && !k8s_enabled) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot currently create support bundle for k8s clusters");
+          BAD_REQUEST,
+          "Creating support bundle for k8s universes is not enabled. "
+              + "Please set k8s_enabled=true to create support bundle");
     }
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);

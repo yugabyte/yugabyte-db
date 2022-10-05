@@ -137,7 +137,7 @@ In addition, verify the following:
 
    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br><br>
 
-1. Upload the custom CA root certificate as the root certificate. 
+1. Upload the custom CA root certificate as the root certificate.
 
    If you do not have the root certificate but instead have an intermediate certificate, you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then using this bundle as the root certificate.
 
@@ -406,6 +406,8 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../develop/build-apps/java/ysql-jdbc-ssl/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+
 ### Connect to a YCQL endpoint with TLS
 
 If you created your universe with the Client-to-Node TLS option enabled, then you must download client certificates to your client computer to establish connection to your database, as follows:
@@ -482,7 +484,7 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, since the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"

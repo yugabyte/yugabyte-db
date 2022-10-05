@@ -17,6 +17,7 @@ interface ChartDataPoint {
   ['AVERAGE_WRITE_LATENCY_MS']?: number | null;
   ['DISK_USAGE_GB']?: number | null;
   ['PROVISIONED_DISK_SPACE_GB']?: number | null;
+  ['TOTAL_LIVE_NODES']?: number | null;
 }
 
 interface ChartContainerProps {

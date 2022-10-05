@@ -52,15 +52,15 @@ Users can change default privileges only for objects that are created by them or
 
 - Grant SELECT privilege to all tables that are created in schema marketing to all users.
 
-```plpgsql
-yugabyte=# ALTER DEFAULT PRIVILEGES IN SCHEMA marketing GRANT SELECT ON TABLES TO PUBLIC;
-```
+  ```plpgsql
+  yugabyte=# ALTER DEFAULT PRIVILEGES IN SCHEMA marketing GRANT SELECT ON TABLES TO PUBLIC;
+  ```
 
 - Revoke INSERT privilege on all tables from user john.
 
-```plpgsql
-yugabyte=# ALTER DEFAULT PRIVILEGES REVOKE INSERT ON TABLES FROM john;
-```
+  ```plpgsql
+  yugabyte=# ALTER DEFAULT PRIVILEGES REVOKE INSERT ON TABLES FROM john;
+  ```
 
 ## See also
 

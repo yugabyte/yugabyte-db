@@ -126,6 +126,9 @@ class FsManager {
   FsManager(Env* env, const FsManagerOpts& opts);
   ~FsManager();
 
+  Status ReadAutoFlagsConfig(google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+  Status WriteAutoFlagsConfig(const google::protobuf::Message* msg) EXCLUDES(auto_flag_mutex_);
+
   // Initialize and load the basic filesystem metadata.
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
@@ -152,6 +155,8 @@ class FsManager {
   // Return the UUID persisted in the local filesystem. If Open()
   // has not been called, this will crash.
   const std::string& uuid() const;
+
+  bool initdb_done_set_after_sys_catalog_restore() const;
 
   // ==========================================================================
   //  on-disk path
@@ -209,6 +214,8 @@ class FsManager {
   // Return the path where ConsensusMetadataPB is stored.
   Result<std::string> GetConsensusMetadataPath(const std::string& tablet_id) const;
 
+  std::string GetAutoFlagsConfigPath() const EXCLUDES(auto_flag_mutex_);
+
   Env *env() { return env_; }
 
   bool read_only() const {
@@ -236,6 +243,7 @@ class FsManager {
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
+  FRIEND_TEST(FsManagerTestBase, AutoFlagsTest);
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   Status Init();
@@ -301,6 +309,8 @@ class FsManager {
 
   std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
   mutable std::mutex data_mutex_;
+  mutable std::mutex auto_flag_mutex_;
+  std::string auto_flags_config_path_ GUARDED_BY(auto_flag_mutex_);
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 

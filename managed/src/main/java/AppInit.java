@@ -10,10 +10,11 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.PitrConfigPoller;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -28,6 +29,8 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
+import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -58,6 +61,7 @@ public class AppInit {
       CustomerTaskManager taskManager,
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
+      PitrConfigPoller pitrConfigPoller,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       BackupGarbageCollector backupGC,
@@ -65,6 +69,7 @@ public class AppInit {
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
       AlertConfigurationWriter alertConfigurationWriter,
+      SwamperTargetsFileUpdater swamperTargetsFileUpdater,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       QueryHelper queryHelper,
@@ -74,14 +79,16 @@ public class AppInit {
       HealthChecker healthChecker,
       ShellLogsManager shellLogsManager,
       Config config,
-      SupportBundleCleanup supportBundleCleanup)
+      SupportBundleCleanup supportBundleCleanup,
+      NodeAgentHandler nodeAgentHandler,
+      YbcUpgrade ybcUpgrade)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
 
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
 
-    String version = configHelper.getCurrentVersion(application);
+    String version = ConfigHelper.getCurrentVersion(application);
 
     String previousSoftwareVersion =
         configHelper
@@ -194,6 +201,7 @@ public class AppInit {
 
       platformMetricsProcessor.start();
       alertConfigurationWriter.start();
+      swamperTargetsFileUpdater.start();
 
       replicationManager.init();
 
@@ -202,6 +210,10 @@ public class AppInit {
       queryAlerts.start();
       healthChecker.initialize();
       shellLogsManager.startLogsGC();
+      nodeAgentHandler.init();
+      pitrConfigPoller.start();
+
+      ybcUpgrade.start();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

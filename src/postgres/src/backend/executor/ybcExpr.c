@@ -44,7 +44,7 @@
 #include "executor/ybcExpr.h"
 #include "catalog/yb_type.h"
 
-Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI);
+Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);
 bool yb_pushdown_walker(Node *node, List **params);
 bool yb_can_pushdown_func(Oid funcid);
 
@@ -87,49 +87,70 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
  *
  *	  Expression mutator used internally by YbExprInstantiateParams
  */
-Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
+Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate)
 {
 	if (node == NULL)
 		return NULL;
 
 	if (IsA(node, Param))
 	{
-		Param *param = castNode(Param, node);
-		ParamExternData *prm = NULL;
-		ParamExternData prmdata;
-		if (paramLI->paramFetch != NULL)
-			prm = paramLI->paramFetch(paramLI, param->paramid,
-									  true, &prmdata);
-		else
-			prm = &paramLI->params[param->paramid - 1];
-
-		if (!OidIsValid(prm->ptype) ||
-			prm->ptype != param->paramtype)
-		{
-			/* Planner should ensure this does not happen */
-			elog(ERROR, "Invalid parameter: %s", nodeToString(param));
-		}
+		Param	   *param = castNode(Param, node);
+		Datum		pval = 0;
+		bool		pnull = true;
 		int16		typLen = 0;
 		bool		typByVal = false;
-		Datum		pval = 0;
-
-		get_typlenbyval(param->paramtype, &typLen, &typByVal);
-		if (prm->isnull || typByVal)
+		if (param->paramkind == PARAM_EXEC)
+		{
+			ParamExecData *prm = &(estate->es_param_exec_vals[param->paramid]);
+			/*
+			 * We do not support obtaining parameter values from a subplan yet,
+			 * and we are not aware of any cases when it is required.
+			 * Make a user friendly error message and suggest a workaround if
+			 * such a case is encountered in the wild.
+			 */
+			if (prm->execPlan != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Pushdown of param values provided by subplans "
+						 		"is not supported"),
+						 errhint("Please set yb_enable_expression_pushdown "
+								 "to false in order to run this query")));
 			pval = prm->value;
+			pnull = prm->isnull;
+		}
 		else
-			pval = datumCopy(prm->value, typByVal, typLen);
+		{
+			ParamExternData *prm = NULL;
+			ParamExternData prmdata;
+			if (estate->es_param_list_info->paramFetch != NULL)
+				prm = estate->es_param_list_info->paramFetch(
+					estate->es_param_list_info, param->paramid, true, &prmdata);
+			else
+				prm = &estate->es_param_list_info->params[param->paramid - 1];
+
+			Assert(OidIsValid(prm->ptype) && prm->ptype == param->paramtype);
+			pval = prm->value;
+			pnull = prm->isnull;
+		}
+		get_typlenbyval(param->paramtype, &typLen, &typByVal);
+		/*
+		 * If parameter is by reference, make a copy in the current memory
+		 * context
+		 */
+		if (!pnull && !typByVal)
+			pval = datumCopy(pval, typByVal, typLen);
 
 		return (Node *) makeConst(param->paramtype,
 								  param->paramtypmod,
 								  param->paramcollid,
 								  (int) typLen,
 								  pval,
-								  prm->isnull,
+								  pnull,
 								  typByVal);
 	}
 	return expression_tree_mutator(node,
 								   yb_expr_instantiate_params_mutator,
-								   (void *) paramLI);
+								   (void *) estate);
 }
 
 /*
@@ -138,11 +159,12 @@ Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
  *	  Replace the Param nodes of the expression tree with Const nodes carrying
  *	  current parameter values before pushing the expression down to DocDB
  */
-Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
+Expr *YbExprInstantiateParams(Expr* expr, EState *estate)
 {
 	/* Fast-path if there are no params. */
-	if (paramLI == NULL)
-		return expr;
+	if (estate->es_param_list_info == NULL &&
+		estate->es_param_exec_vals == NULL)
+			return expr;
 
 	/*
 	 * This does not follow common pattern of mutator invocation due to the
@@ -152,8 +174,33 @@ Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 	 * getting replaced, and if the expr is anything else, it will be properly
 	 * forwarded to the expression_tree_mutator.
 	 */
-	return (Expr *) yb_expr_instantiate_params_mutator((Node *) expr, paramLI);
+	return (Expr *) yb_expr_instantiate_params_mutator((Node *) expr, estate);
 }
+
+/*
+ * YbInstantiateRemoteParams
+ *	  Replace the Param nodes of the expression trees with Const nodes carrying
+ *	  current parameter values before pushing the expression down to DocDB.
+ */
+PushdownExprs *
+YbInstantiateRemoteParams(PushdownExprs *remote, EState *estate)
+{
+	PushdownExprs *result;
+	if (remote->qual == NIL)
+		return NULL;
+	/* Make new instance for the scan state. */
+	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
+	/* Store mutated list of expressions. */
+	result->qual = (List *)
+		YbExprInstantiateParams((Expr *) remote->qual, estate);
+	/*
+	 * Column references are not modified by the executor, so it is OK to copy
+	 * the reference.
+	 */
+	result->colrefs = remote->colrefs;
+	return result;
+}
+
 
 /*
  * yb_can_pushdown_func
@@ -318,8 +365,7 @@ bool yb_pushdown_walker(Node *node, List **params)
 		case T_Param:
 		{
 			Param *p = castNode(Param, node);
-			if (p->paramkind != PARAM_EXTERN ||
-					!YBCPgFindTypeEntity(p->paramtype))
+			if (!YBCPgFindTypeEntity(p->paramtype))
 			{
 				return true;
 			}

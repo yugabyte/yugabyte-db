@@ -68,6 +68,7 @@
 
 /*  YB includes. */
 #include "executor/ybc_fdw.h"
+#include "executor/ybcExpr.h"
 #include "pg_yb_utils.h"
 
 /* results of subquery_is_pushdown_safe */
@@ -201,11 +202,18 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 			{
 				RangeTblEntry *rte = root->simple_rte_array[rti];
 				if (IsYBRelationById(rte->relid)) {
+					ListCell *lc;
 					/*
 					 * Set the YugaByte FDW routine because we will use the foreign
 					 * scan API below.
 					 */
+					relation->is_yb_relation = true;
 					relation->fdwroutine = (FdwRoutine *) ybc_fdw_handler();
+					foreach(lc, relation->baserestrictinfo)
+					{
+						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+						ri->yb_pushable = YbCanPushdownExpr(ri->clause, NULL);
+					}
 				}
 			}
 		}

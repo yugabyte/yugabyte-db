@@ -571,7 +571,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns approximate middle key for tablet split:
   // - for hash-based partitions: encoded hash code in order to split by hash code.
   // - for range-based partitions: encoded doc key in order to split by row.
-  Result<std::string> GetEncodedMiddleSplitKey() const;
+  // If `partition_split_key` is specified it will be updated with partition middle key for
+  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
+  // range-based partitions always matches the returned middle key.
+  Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
 
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
@@ -697,11 +700,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   }
 
   // Triggers a compaction on this tablet if it is the result of a tablet split but has not yet been
-  // compacted. Assumes ownership of the provided thread pool token, and uses it to submit the
-  // compaction task. It is an error to call this method if a post-split compaction has been
-  // triggered previously by this tablet.
-  Status TriggerPostSplitCompactionIfNeeded(
-    std::function<std::unique_ptr<ThreadPoolToken>()> get_token_for_compaction);
+  // compacted. It is an error to call this method if a post-split compaction has been triggered
+  // previously by this tablet.
+  void TriggerPostSplitCompactionIfNeeded();
 
   // Verifies the data on this tablet for consistency. Returns status OK if checks pass.
   Status VerifyDataIntegrity();
@@ -746,6 +747,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return unique_index_key_schema_.get();
   }
 
+  bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -767,7 +770,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       int64_t batch_idx, // index of this batch in its transaction
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
-      const rocksdb::UserFrontiers* frontiers);
+      const rocksdb::UserFrontiers* frontiers,
+      bool external_transaction = false);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
@@ -833,6 +837,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info);
+
+  // Returns true if the tablet was created after a split but it has not yet had data from it's
+  // parent which are now outside of its key range removed.
+  bool StillHasOrphanedPostSplitDataAbortable();
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -1022,6 +1030,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // compaction if this member is already set, as the existence of this member implies that such a
   // compaction has already been triggered for this instance.
   std::unique_ptr<ThreadPoolToken> post_split_compaction_task_pool_token_ = nullptr;
+
+  // Pointer to shared thread pool in TsTabletManager. Managed by the TsTabletManager.
+  ThreadPool* post_split_compaction_pool_ = nullptr;
+
+  // Gauge to monitor post-split compactions that have been started.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
   simple_spinlock operation_filters_mutex_;
 

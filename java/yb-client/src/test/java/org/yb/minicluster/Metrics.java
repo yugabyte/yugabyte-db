@@ -23,6 +23,7 @@ import java.util.Scanner;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 
 
 /**
@@ -46,6 +47,23 @@ public class Metrics {
     }
     protected Metric(JsonObject metric, String s) {
       name = metric.get(s).getAsString();
+    }
+  }
+
+  /**
+   * A boolean gauge metric.
+   */
+  public static class BooleanGauge extends Metric {
+    public final boolean value;
+
+    /**
+     * Constructs a {@code BooleanGauge} metric.
+     *
+     * @param metric  the JSON object that contains the metric
+     */
+    BooleanGauge(JsonObject metric) {
+      super(metric);
+      value = metric.get("value").getAsBoolean();
     }
   }
 
@@ -223,8 +241,14 @@ public class Metrics {
     for (JsonElement subelem : obj.getAsJsonArray("metrics")) {
       JsonObject metric = subelem.getAsJsonObject();
       if (metric.has("value")) {
-        Counter counter = new Counter(metric);
-        map.put(counter.name, counter);
+        JsonPrimitive value = metric.get("value").getAsJsonPrimitive();
+        if (value.isBoolean()) {
+          BooleanGauge booleangauge = new BooleanGauge(metric);
+          map.put(booleangauge.name, booleangauge);
+        } else {
+          Counter counter = new Counter(metric);
+          map.put(counter.name, counter);
+        }
       } else if (metric.has("total_count")) {
         Histogram histogram = new Histogram(metric);
         map.put(histogram.name, histogram);
@@ -247,6 +271,15 @@ public class Metrics {
         map.put(ysqlstat.query, ysqlstat);
       }
     }
+  }
+
+  /**
+   * Retrieves a {@code BooleanGauge} metric.
+   *
+   * @param name  the metric name
+   */
+  public BooleanGauge getBooleanGauge(String name) {
+    return (BooleanGauge)map.get(name);
   }
 
   /**

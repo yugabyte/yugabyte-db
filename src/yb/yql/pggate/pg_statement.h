@@ -29,7 +29,6 @@
 
 #include "yb/util/bytes_formatter.h"
 
-#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_session.h"

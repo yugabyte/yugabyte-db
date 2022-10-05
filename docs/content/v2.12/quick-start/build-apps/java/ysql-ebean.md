@@ -65,7 +65,7 @@ The following tutorial implements a REST API server using the Java [Ebean](https
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
 
 ## Prerequisites
 
@@ -78,7 +78,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebeans
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-examples/java/ebean
 ```
 
 ## Database configuration
@@ -90,7 +90,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
   default.username=yugabyte
   default.password=""
   default.driver=com.yugabyte.Driver
-  default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebeans?load-balance=true"
+  default.url="jdbc:yugabytedb://127.0.0.1:5433/ysql_ebean?load-balance=true"
   ```
 
 - Add a dependency in `build.sbt` for the YugabyteDB JDBC driver.
@@ -112,16 +112,16 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
   yugabyte=#
   ```
 
-- Create the `ysql_ebeans` database using:
+- Create the `ysql_ebean` database using:
 
   ```sql
-  yugabyte=# CREATE DATABASE ysql_ebeans;
+  yugabyte=# CREATE DATABASE ysql_ebean;
   ```
 
 - Connect to the database using:
 
   ```sql
-  yugabyte=# \c ysql_ebeans;
+  yugabyte=# \c ysql_ebean;
   ```
 
 ## Build the application
@@ -132,7 +132,7 @@ Create a `build.properties` file under the `project` directory and add the sbt v
 sbt.version=1.2.8
 ```
 
-Build the REST API server from the `ebeans` directory using:
+Build the REST API server from the `ebean` directory using:
 
 ```sh
 $ sbt compile
@@ -151,7 +151,7 @@ libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 
 ## Run the application
 
-Run the application from the `ebeans` directory using:
+Run the application from the `ebean` directory using:
 
 ```sh
 $ sbt run
@@ -185,10 +185,10 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
 
-In your YSQL shell, verify the `userId` and `productId` from the `ysql_ebeans` database using the following YSQL commands.
+In your YSQL shell, verify the `userId` and `productId` from the `ysql_ebean` database using the following YSQL commands.
 
 ```sql
-ysql_ebeans=# select * from users;
+ysql_ebean=# select * from users;
 ```
 
 ```output
@@ -200,7 +200,7 @@ ysql_ebeans=# select * from users;
 ```
 
 ```sql
-ysql_ebeans=# select * from products;
+ysql_ebean=# select * from products;
 ```
 
 ```output
@@ -232,7 +232,7 @@ $ curl \
 In your YSQL shell, list the tables created by the application.
 
 ```sql
-ysql_ebeans=#  \d
+ysql_ebean=#  \d
 ```
 
 ```output
@@ -252,7 +252,7 @@ List of relations
 Note the 4 tables and 3 sequences in the list above.
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM users;
+ysql_ebean=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -263,7 +263,7 @@ ysql_ebeans=# SELECT count(*) FROM users;
 ```
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM products;
+ysql_ebean=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -274,7 +274,7 @@ ysql_ebeans=# SELECT count(*) FROM products;
 ```
 
 ```sql
-ysql_ebeans=# SELECT count(*) FROM orders;
+ysql_ebean=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -285,7 +285,7 @@ ysql_ebeans=# SELECT count(*) FROM orders;
 ```
 
 ```sql
-ysql_ebeans=# SELECT * FROM orderline;
+ysql_ebean=# SELECT * FROM orderline;
 ```
 
 ```output
@@ -301,7 +301,7 @@ ysql_ebeans=# SELECT * FROM orderline;
 
 ### Using the REST API
 
-To use the REST API server to verify that the users, products, and orders were created in the `ysql_ebeans` database, enter the following commands. The results are output in JSON format.
+To use the REST API server to verify that the users, products, and orders were created in the `ysql_ebean` database, enter the following commands. The results are output in JSON format.
 
 ```sh
 $ curl http://localhost:8080/users
@@ -391,4 +391,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.

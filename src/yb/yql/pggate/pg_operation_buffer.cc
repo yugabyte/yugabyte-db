@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <boost/circular_buffer.hpp>
+#include <boost/container/small_vector.hpp>
 
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -148,8 +149,8 @@ struct InFlightOperation {
   RowKeys keys;
   PerformFuture future;
 
-  explicit InFlightOperation(PerformFuture future_) : future(std::move(future_)) {
-  }
+  explicit InFlightOperation(PerformFuture future_)
+      : future(std::move(future_)) {}
 };
 
 using InFlightOps = boost::circular_buffer_space_optimized<InFlightOperation,
@@ -227,6 +228,16 @@ class PgOperationBuffer::Impl {
     ops_.Clear();
     txn_ops_.Clear();
     keys_.clear();
+    // Clearing of in_flight_ops_ might get blocked on future::get()
+    // (see PerformFuture::~PerformFuture() for details). And due to the #12884 issue
+    // in_flight_ops_'s destructor might get called. In this case it is safer to keep
+    // in_flight_ops_ empty before blocking on future::get().
+    // Remove this code after fixing #12884.
+    boost::container::small_vector<InFlightOperation, 16> in_flight_ops;
+    in_flight_ops.reserve(in_flight_ops_.size());
+    for (auto& i : in_flight_ops_) {
+      in_flight_ops.push_back(std::move(i));
+    }
     in_flight_ops_.clear();
   }
 
@@ -253,7 +264,7 @@ class PgOperationBuffer::Impl {
       // Prevent conflicts on in-flight operations which use current row_id.
       for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
         if (i->keys.find(row_id) != i->keys.end()) {
-          RETURN_NOT_OK(EnsureCompleted(++i));
+          RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
           break;
         }
       }
@@ -270,7 +281,7 @@ class PgOperationBuffer::Impl {
 
   Status DoFlush() {
     RETURN_NOT_OK(SendBuffer());
-    return EnsureCompleted(in_flight_ops_.end());
+    return EnsureAllCompleted();
   }
 
   Result<BufferableOperations> DoFlushTake(
@@ -287,7 +298,7 @@ class PgOperationBuffer::Impl {
             }
             return false;
           })));
-      RETURN_NOT_OK(EnsureCompleted(in_flight_ops_.end()));
+      RETURN_NOT_OK(EnsureAllCompleted());
     }
     return result;
   }
@@ -300,11 +311,15 @@ class PgOperationBuffer::Impl {
     return ops_count;
   }
 
-  Status EnsureCompleted(const InFlightOps::iterator& end) {
-    for (auto i = in_flight_ops_.begin(); i != end; ++i) {
-      RETURN_NOT_OK(i->future.Get());
+  Status EnsureAllCompleted() {
+    return EnsureCompleted(in_flight_ops_.size());
+  }
+
+  Status EnsureCompleted(size_t count) {
+    for(; count && !in_flight_ops_.empty(); --count) {
+      RETURN_NOT_OK(in_flight_ops_.front().future.Get());
+      in_flight_ops_.pop_front();
     }
-    in_flight_ops_.erase(in_flight_ops_.begin(), end);
     return Status::OK();
   }
 
@@ -356,9 +371,8 @@ class PgOperationBuffer::Impl {
       int64_t space_required = (InFlightOpsCount() + ops_count) - actual_max_in_flight_operations;
       while (!in_flight_ops_.empty() &&
              (space_required > 0 || in_flight_ops_.front().future.Ready())) {
-        auto it = in_flight_ops_.begin();
-        space_required -= it->keys.size();
-        RETURN_NOT_OK(EnsureCompleted(++it));
+        space_required -= in_flight_ops_.front().keys.size();
+        RETURN_NOT_OK(EnsureCompleted(1));
       }
       in_flight_ops_.push_back(
         InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));

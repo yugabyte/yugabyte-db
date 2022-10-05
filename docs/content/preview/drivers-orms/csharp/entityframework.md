@@ -4,6 +4,8 @@ linkTitle: Use an ORM
 description: C# ORM support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /preview/integrations/entity-framework/
 menu:
   preview:
     identifier: csharp-orm
@@ -14,19 +16,18 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/csharp/entityframework/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      EntityFramework ORM
+    <a href="../entityframework/" class="nav-link active">
+      Entity Framework ORM
     </a>
   </li>
 
 </ul>
 
-[EntityFramework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
+[Entity Framework](https://docs.microsoft.com/en-us/ef/) is a popular ORM provider for C# applications, and is widely used by C# Developers for database access. YugabyteDB provides full support for the EntityFramework ORM.
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../develop/build-apps/csharp/ysql-entity-framework/) page.
 
 The following sections break down the example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
@@ -149,5 +150,4 @@ Deleting the blog
 
 ## Next steps
 
-- Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop C# applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
+Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.

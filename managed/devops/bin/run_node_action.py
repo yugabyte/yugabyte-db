@@ -8,6 +8,7 @@ import sys
 import uuid
 import warnings
 import logging
+import json
 from ybops.utils.ssh import SSHClient
 
 warnings.filterwarnings("ignore")
@@ -18,8 +19,8 @@ ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
 
 def add_k8s_subparser(subparsers, command, parent):
     k8s_parser = subparsers.add_parser(command, help='is k8s universe', parents=[parent])
-    k8s_parser.add_argument('--pod_fqdn', type=str, help='k8s pod FQDN', required=True)
-    k8s_parser.add_argument('--kubeconfig', type=str, help='k8s kubeconfig', required=True)
+    k8s_parser.add_argument('--k8s_config', type=str, help='k8s configuration of a pod',
+                            required=True)
     return k8s_parser
 
 
@@ -38,6 +39,7 @@ def add_ssh_subparser(subparsers, command, parent):
 def add_run_command_subparser(subparsers, command, parent):
     parser = subparsers.add_parser(command, help='run command and get output',
                                    parents=[parent])
+    parser.add_argument('--skip_cmd_logging', action='store_true', default=False)
     parser.add_argument('--command', nargs=argparse.REMAINDER)
 
 
@@ -45,6 +47,8 @@ def handle_run_command(args, client):
     kwargs = {}
     if args.node_type == 'ssh':
         kwargs['output_only'] = True
+        if args.skip_cmd_logging:
+            kwargs['skip_cmd_logging'] = True
     output = client.exec_command(args.command, **kwargs)
     print('Command output:')
     print(output)
@@ -241,7 +245,7 @@ def parse_args():
 
     for node_type in node_types:
         node_type_subparser = node_types[node_type]\
-          .parser(node_type_subparsers, node_type, parent_parser)
+            .parser(node_type_subparsers, node_type, parent_parser)
         action_subparser = node_type_subparser.add_subparsers(title="action",
                                                               dest="action")
         action_subparser.required = True
@@ -261,6 +265,9 @@ def main():
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
     elif args.node_type != 'ssh':
+        args.k8s_config = json.loads(args.k8s_config)
+        if args.k8s_config is None:
+            sys.exit("Failed to load k8s configs")
         client = KubernetesClient(args)
 
     try:

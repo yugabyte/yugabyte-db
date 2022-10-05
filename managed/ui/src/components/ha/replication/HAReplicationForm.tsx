@@ -1,4 +1,5 @@
 import React, { FC, useRef } from 'react';
+import _ from 'lodash';
 import { useMutation, useQueryClient } from 'react-query';
 import { Alert, Col, Grid, Row } from 'react-bootstrap';
 import * as Yup from 'yup';
@@ -141,7 +142,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
         {(formikProps) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
-          const { instanceType } = formikProps.values;
+          const { instanceType, clusterKey } = formikProps.values;
           return (
             <Form role="form">
               <Grid fluid>
@@ -205,7 +206,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         className="ha-replication-form__input"
                       />
                       {instanceType === HAInstanceTypes.Active ? (
-                        <YBCopyButton text={formikProps.values.clusterKey} />
+                        <YBCopyButton text={clusterKey} disabled={_.isEmpty(clusterKey)} />
                       ) : (
                         <YBPasteButton
                           onPaste={(text: string) => formikProps.setFieldValue('clusterKey', text)}

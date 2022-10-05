@@ -9,6 +9,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.RunApiTriggeredHooks;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.HookRequestData;
@@ -46,6 +47,8 @@ public class HookController extends AuthenticatedController {
   public static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
   public static final String ENABLE_API_HOOK_RUN_PATH =
       "yb.security.custom_hooks.enable_api_triggered_hooks";
+
+  @Inject private TokenAuthenticator tokenAuthenticator;
 
   @Inject RuntimeConfigFactory rConfigFactory;
   @Inject Commissioner commissioner;
@@ -208,6 +211,6 @@ public class HookController extends AuthenticatedController {
     if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
-    TokenAuthenticator.superAdminOrThrow(ctx());
+    tokenAuthenticator.superAdminOrThrow(ctx());
   }
 }

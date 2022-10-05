@@ -39,10 +39,15 @@ YB_PEERING_CONNECTION_FORMAT = "yb-peering-{}-with-{}"
 YB_FIREWALL_NAME = "yb-internal-firewall"
 YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
+STARTUP_SCRIPT_META_KEY = "startup-script"
+SERVER_TYPE_META_KEY = "server_type"
+SSH_KEYS_META_KEY = "ssh-keys"
+BLOCK_PROJECT_SSH_KEY = "block-project-ssh-keys"
+
+META_KEYS = [STARTUP_SCRIPT_META_KEY, SERVER_TYPE_META_KEY, SSH_KEYS_META_KEY]
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
-GCP_INTERNAL_INSTANCE_PREFIXES = ("N2-")
 
 
 # Code 429 does not have a name in httplib.
@@ -78,6 +83,10 @@ def gcp_exception_handler(e):
           (e.status == TOO_MANY_REQUESTS or
            e.status >= 500)):
         logging.warning('Caught transient credential refresh error (%s), retrying', e)
+    elif (isinstance(e, HttpError) and
+          (e.resp.status == TOO_MANY_REQUESTS or
+           e.resp.status >= 500)):
+        logging.warning('Caught transient server error (%s), retrying', e)
     else:
         return False
     return True
@@ -632,7 +641,7 @@ class GoogleCloudAdmin():
             if disk['index'] != 0:
                 # The source is the complete URL of the disk, with the last
                 # component being the name.
-                disk_name = disk['source'].split('/')[-1]
+                disk_name = self.get_disk_name(disk)
                 print("Updating disk " + disk_name)
                 operation = self.compute.disks().resize(project=self.project,
                                                         zone=zone,
@@ -726,10 +735,13 @@ class GoogleCloudAdmin():
     @gcp_request_limit_retry
     def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
-        if not filters:
-            filters = "(status = \"RUNNING\")"
+        filter_params = []
+        if filters:
+            filter_params.append(filters)
         if instance_name is not None:
-            filters += " AND (name = \"{}\")".format(instance_name)
+            filter_params.append("(name = \"{}\")".format(instance_name))
+        if len(filter_params) > 0:
+            filters = " AND ".join(filter_params)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
             filter=filters,
@@ -753,7 +765,6 @@ class GoogleCloudAdmin():
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
             node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
             universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
-            interface = [None]
             private_ip = None
             primary_subnet = None
             secondary_private_ip = None
@@ -778,6 +789,8 @@ class GoogleCloudAdmin():
             zone = data["zone"].split("/")[-1]
             region = zone[:-2]
             machine_type = data["machineType"].split("/")[-1]
+            instance_state = data.get("status")
+            logging.info("VM state {}".format(instance_state))
             result = dict(
                 id=data.get("name"),
                 name=data.get("name"),
@@ -795,7 +808,9 @@ class GoogleCloudAdmin():
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
                 root_volume=root_vol["source"],
-                root_volume_device_name=root_vol["deviceName"]
+                root_volume_device_name=root_vol["deviceName"],
+                instance_state=instance_state,
+                is_running=True if instance_state == "RUNNING" else False
             )
             if not get_all:
                 return result
@@ -820,6 +835,8 @@ class GoogleCloudAdmin():
         if boot_disk_size_gb is not None:
             # Default: 10GB
             boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+        # Create boot disk backed by a zonal persistent SSD
+        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}
@@ -852,12 +869,16 @@ class GoogleCloudAdmin():
             "metadata": {
                 "items": [
                     {
-                        "key": "server_type",
+                        "key": SERVER_TYPE_META_KEY,
                         "value": server_type
                     },
                     {
-                        "key": "ssh-keys",
+                        "key": SSH_KEYS_META_KEY,
                         "value": ssh_keys
+                    },
+                    {
+                        "key": BLOCK_PROJECT_SSH_KEY,
+                        "value": True
                     }
                 ]
             },
@@ -885,7 +906,7 @@ class GoogleCloudAdmin():
         if boot_script:
             with open(boot_script, 'r') as script:
                 body["metadata"]["items"].append({
-                    "key": "startup-script",
+                    "key": STARTUP_SCRIPT_META_KEY,
                     "value": script.read()
                 })
 
@@ -936,3 +957,67 @@ class GoogleCloudAdmin():
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''
+
+    def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
+        tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}
+        tags_to_remove = set(tags_to_remove_str.split(",") if tags_to_remove_str else [])
+
+        zone = args.zone
+        instance_info = self.compute.instances().get(project=self.project,
+                                                     zone=zone,
+                                                     instance=instance).execute()
+        # modifying metadata
+        metadata_items = instance_info["metadata"]["items"]
+        meta_to_set = dict(tags_to_set)
+        for entry in metadata_items:
+            key = entry["key"]
+            value = entry["value"]
+            if key in META_KEYS or (key not in tags_to_set and key not in tags_to_remove):
+                meta_to_set[key] = value
+        metadata_items = [{"key": k, "value": v} for (k, v) in meta_to_set.items()]
+        metadata_body = {
+            "items": metadata_items,
+            "kind": instance_info["metadata"]["kind"],
+            "fingerprint": instance_info["metadata"]["fingerprint"]
+        }
+        operations = []
+        operations.append(self.compute.instances().setMetadata(project=self.project,
+                                                               zone=zone,
+                                                               instance=instance,
+                                                               body=metadata_body).execute())
+        # modifying labels
+        cur_labels = instance_info.get("labels", {})
+        for (k, v) in tags_to_set.items():
+            cur_labels[k] = v
+        for k in tags_to_remove:
+            if k in cur_labels:
+                del cur_labels[k]
+        body = {
+            "labels": cur_labels,
+            "labelFingerprint": instance_info["labelFingerprint"]
+        }
+        # modifying instance labels
+        operations.append(self.compute.instances().setLabels(project=self.project,
+                                                             zone=zone,
+                                                             instance=instance,
+                                                             body=body).execute())
+        # modifying disks labels
+        for disk in instance_info.get("disks", []):
+            disk = self.compute.disks().get(project=self.project,
+                                            zone=zone,
+                                            disk=self.get_disk_name(disk)).execute()
+            disk_body = {
+                "labels": cur_labels,
+                "labelFingerprint": disk["labelFingerprint"]
+            }
+            operations.append(self.compute.disks().setLabels(project=self.project,
+                                                             zone=zone,
+                                                             resource=disk["id"],
+                                                             body=disk_body).execute())
+        # waiting for all operations to complete
+        for operation in operations:
+            self.waiter.wait(operation, zone=zone)
+
+    @staticmethod
+    def get_disk_name(disk):
+        return disk['source'].split('/')[-1]

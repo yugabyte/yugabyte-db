@@ -11,7 +11,7 @@ weight: 10
 type: docs
 ---
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../../yugabyte-platform/overview/). It is responsible for creating and managing customer YugabyteDB clusters deployed on cloud provider infrastructure.
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Google Cloud Platform (GCP) and Amazon Web Services (AWS), with more public cloud provider options coming soon. YugabyteDB Managed runs on top of [YugabyteDB Anywhere](../../../yugabyte-platform/). It is responsible for creating and managing customer YugabyteDB clusters deployed on cloud provider infrastructure.
 
 ![YugabyteDB Managed high-level architecture](/images/yb-cloud/cloud-security-diagram.png)
 

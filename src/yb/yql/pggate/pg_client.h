@@ -101,6 +101,8 @@ class PgClient {
 
   Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
+
   Status InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,

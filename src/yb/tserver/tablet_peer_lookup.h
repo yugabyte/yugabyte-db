@@ -34,21 +34,15 @@
 
 #include <memory>
 
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/consensus/consensus_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
-
-class HostPort;
-class NodeInstancePB;
-class ServerRegistrationPB;
-
-namespace consensus {
-class StartRemoteBootstrapRequestPB;
-} // namespace consensus
-
-namespace tablet {
-class TabletPeer;
-} // namespace tablet
 
 namespace tserver {
 
@@ -60,16 +54,14 @@ class TabletPeerLookupIf {
  public:
   virtual ~TabletPeerLookupIf() {}
 
-  virtual Status GetTabletPeer(
-      const std::string& tablet_id,
-      std::shared_ptr<tablet::TabletPeer>* tablet_peer) const = 0;
+  virtual Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const = 0;
+  virtual Result<tablet::TabletPeerPtr> GetServingTablet(const Slice& tablet_id) const = 0;
 
   virtual const NodeInstancePB& NodeInstance() const = 0;
 
   virtual Status GetRegistration(ServerRegistrationPB* reg) const = 0;
 
-  virtual Status StartRemoteBootstrap(
-      const consensus::StartRemoteBootstrapRequestPB& req) = 0;
+  virtual Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) = 0;
 };
 
 } // namespace tserver

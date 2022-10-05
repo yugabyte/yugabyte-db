@@ -47,7 +47,7 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 | Predictable p99 read latency | Yes | No | Yes
 | High data density | No | Sometimes - latencies suffer when densities increase | Yes - predictable latencies at high data densities
 | Tunable reads with timeline consistency | No - manual setup | Sometimes | Yes
-| Read replica support | No - manual setup | No - no async replication | Yes - sync and async replication options
+| Read replica support | No - manual setup | No - no asynchronous replication | Yes - synchronous and asynchronous replication options
 
 ## Core features
 

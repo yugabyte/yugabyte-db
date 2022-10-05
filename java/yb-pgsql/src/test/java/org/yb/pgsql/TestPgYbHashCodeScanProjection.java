@@ -18,7 +18,9 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.io.OutputStream;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -30,13 +32,10 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgYbHashCodeScanProjection.class);
   private static final String kTableName = "scan_test_table";
   private static final int kNumTableColumns = 10;
   private static final int kTableRows = 2000;
@@ -65,8 +64,8 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
 
   @Before
   public void setUp() throws Exception {
+    logInterceptor.attach();
     try (Statement stmt = connection.createStatement()) {
-      LOG.info("Creating table " + kTableName);
       stmt.execute(String.format(
           "CREATE TABLE %s ("
           + "k int, a text, b text, c int, d double precision, "
@@ -90,37 +89,10 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
 
   @After
   public void tearDown() throws Exception {
+    logInterceptor.detach();
     try (Statement stmt = connection.createStatement()) {
-      LOG.info("Dropping table " + kTableName);
       stmt.execute("DROP TABLE " + kTableName);
     }
-  }
-
-  // Extract the column reference ids from a DocDB request debug string pattern:
-  // "column_refs { ids: <id0> ids: <id1> ... }"
-  // "column_refs {}" can be empty e.g. when COUNT(*) gets pushed down
-  private static List<String> extractColumnRefIdsFromDocDbRequest(String docDbReqStr) {
-    Matcher colRefMatcher = Pattern.compile("(column_refs \\{ (ids: \\d+ )*\\})")
-                            .matcher(docDbReqStr);
-    boolean found = colRefMatcher.find();
-    assertTrue("column_refs list not found in:\n" + docDbReqStr, found);
-    String colRefStr = colRefMatcher.group(1);
-
-    List<String> colRefIds = new ArrayList<String>();
-    Matcher colIdMatcher = Pattern.compile("(ids: (\\d+))").matcher(colRefStr);
-    for (int start = 0; colIdMatcher.find(start); start = colIdMatcher.end()) {
-      colRefIds.add(colIdMatcher.group(2));
-    }
-    return colRefIds;
-  }
-
-  private static int extractMaxHashCodeFromDocDbRequest(String docDbReqStr) {
-    Matcher matcher = Pattern.compile("max_hash_code: (\\d+)")
-                            .matcher(docDbReqStr);
-    if (matcher.find()) {
-      return Integer.parseInt(matcher.group(1));
-    }
-    return kNoHashCode;
   }
 
   // rocksdb_db_iter_bytes_read is accumulated key and the value sizes whenever
@@ -129,43 +101,20 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
     return getTableCounterMetric(tableName, "rocksdb_db_iter_bytes_read");
   }
 
-  private static class ScanInfo {
-    List<String> projection;  // requested columns
-    int maxHashCode;          // requested hash code upper bound. -1 if none.
-    int iterBytesRead;        // ITER_BYTES_READ RocksDB stats
-
-    public String toString() {
-      return String.format("{ iterBytesRead: %d colIds: %s maxHashCode: %d }",
-                           iterBytesRead, projection.toString(), maxHashCode);
-    }
-  };
-
   private ScanInfo executeQueryAndCollectScanInfo(Statement stmt, String query) throws Exception {
-    final ByteArrayOutputStream docDbReq = new ByteArrayOutputStream();
-    final PrintStream origOut = System.out;
-    ScanInfo info = new ScanInfo();
-
-    origOut.flush();
-    System.setOut(new PrintStream(docDbReq, true/*autoFlush*/));
-    try {
-      stmt.execute("SET yb_debug_log_docdb_requests = true");
-      int iterBytesRead0 = getRocksDbIterBytesRead(kTableName);
-      try (ResultSet rs = stmt.executeQuery(query)) {
-        while (rs.next()) {
-        }
-        rs.close();
+    stmt.execute("SET yb_debug_log_docdb_requests = true");
+    final int iterBytesReadInitial = getRocksDbIterBytesRead(kTableName);
+    String logs;
+    logInterceptor.start();
+    try (ResultSet rs = stmt.executeQuery(query)) {
+      while (rs.next()) {
       }
-      info.iterBytesRead = getRocksDbIterBytesRead(kTableName) - iterBytesRead0;
-      stmt.execute("SET yb_debug_log_docdb_requests = false");
-      String docDbReqStr = docDbReq.toString();
-      info.projection = extractColumnRefIdsFromDocDbRequest(docDbReqStr);
-      info.maxHashCode = extractMaxHashCodeFromDocDbRequest(docDbReqStr);
+      rs.close();
     } finally {
-      // send the captured output to the original stdout stream, too.
-      origOut.print(docDbReq.toString());
-      System.setOut(origOut);
+      logs = logInterceptor.stop();
     }
-    return info;
+    stmt.execute("SET yb_debug_log_docdb_requests = false");
+    return infoBuilder.build(getRocksDbIterBytesRead(kTableName) - iterBytesReadInitial, logs);
   }
 
   private ScanInfo collectSeqScanInfo(Statement stmt, String selectList) throws Exception {
@@ -180,16 +129,15 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
     final String query = String.format(
         "/*+ Set(enable_seqscan off) */SELECT %s FROM %s WHERE k < %d",
         selectList, kTableName, (kTableRows + 1));
-    assertTrue(isIndexScan(stmt, query, kTableName + "_pkey"));
+    assertFalse(isIndexScan(stmt, query, kTableName + "_pkey"));
     return executeQueryAndCollectScanInfo(stmt, query);
   }
 
   private ScanInfo collectHashCodeScanInfo(Statement stmt, String selectList, int maxHashCode)
       throws Exception {
-    final String query
-        = String.format("/*+ Set(enable_seqscan off) */"
-                        + "SELECT %s FROM %s WHERE yb_hash_code(k) <= %d",
-                        selectList, kTableName, maxHashCode);
+    final String query = String.format(
+      "/*+ Set(enable_seqscan off) */ SELECT %s FROM %s WHERE yb_hash_code(k) <= %d",
+      selectList, kTableName, maxHashCode);
     assertTrue(isIndexScan(stmt, query, kTableName + "_pkey"));
     assertFalse(doesNeedPgFiltering(stmt, query));
     return executeQueryAndCollectScanInfo(stmt, query);
@@ -211,8 +159,9 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
   // @param selectList The SELECT-list items used in the queries
   // @param expectedNumColumns Expected number of items in the column_refs DocDB request field
   // @param maxHashCode The yb_hash_code predicate upper bound value to use in the query.
-  private void testOneCase(Statement stmt, String selectList, int expectedNumColumns,
-                           int maxHashCode) throws Exception {
+  private void testOneCase(
+      Statement stmt, String selectList, int expectedNumColumns, int maxHashCode)
+      throws Exception {
     final ScanInfo seqScan = collectSeqScanInfo(stmt, selectList);
     final ScanInfo indexScan = collectFullIndexScanInfo(stmt, selectList);
     final ScanInfo hashScan = collectHashCodeScanInfo(stmt, selectList, maxHashCode);
@@ -222,35 +171,144 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
 
     final String message = String.format(
         "selectList=[%s] maxHashCode=%d seqScan: %s indexScan: %s hashScan: %s",
-        selectList, maxHashCode, seqScan.toString(), indexScan.toString(), hashScan.toString());
+        selectList, maxHashCode, seqScan, indexScan, hashScan);
 
     assertEquals(message, maxHashCode, hashScan.maxHashCode);
     assertEquals(message, expectedNumColumns, hashScan.projection.size());
 
-    verifyPartialScanIterBytesRead(message, seqScan.iterBytesRead, scanFraction,
-                                   hashScan.iterBytesRead, errorTolerance);
+    verifyPartialScanIterBytesRead(
+      message, seqScan.iterBytesRead, scanFraction, hashScan.iterBytesRead, errorTolerance);
 
-    verifyPartialScanIterBytesRead(message, indexScan.iterBytesRead, scanFraction,
-                                   hashScan.iterBytesRead, errorTolerance);
+    verifyPartialScanIterBytesRead(
+      message, indexScan.iterBytesRead, scanFraction, hashScan.iterBytesRead, errorTolerance);
   }
 
   @Test
   public void testScans() throws Exception {
-    String results = "";
     try (Statement stmt = connection.createStatement()) {
+      // Note: In case of using yb_hash_code function all its argument columns are fetched.
+      //       They are required for row recheck.
+
       // full range
-      testOneCase(stmt, "z", 1, kYbHashCodeMax);
-      testOneCase(stmt, "z, d", 2, kYbHashCodeMax);
+      testOneCase(stmt, "z", 2, kYbHashCodeMax);
+      testOneCase(stmt, "z, d", 3, kYbHashCodeMax);
       testOneCase(stmt, "*", kNumTableColumns, kYbHashCodeMax);
       testOneCase(stmt, "k", 1, kYbHashCodeMax);  // the hash key
-      testOneCase(stmt, "0", 0, kYbHashCodeMax);  // no table column
+      testOneCase(stmt, "0", 1, kYbHashCodeMax);  // no table column
       testOneCase(stmt, "yb_hash_code(k)", 1, kYbHashCodeMax);
 
       // partial range
-      testOneCase(stmt, "z", 1, 32767);  // 1/2
-      testOneCase(stmt, "z", 1, 16383);  // 1/4
-      testOneCase(stmt, "z", 1, 8191);   // 1/8
-      testOneCase(stmt, "z", 1, 4095);   // 1/16
+      testOneCase(stmt, "z", 2, 32767); // 1/2
+      testOneCase(stmt, "z", 2, 16383); // 1/4
+      testOneCase(stmt, "z", 2, 8191);  // 1/8
+      testOneCase(stmt, "z", 2, 4095);  // 1/16
     }
   }
+
+  private static class OutputStreamCombiner extends OutputStream {
+
+    public OutputStreamCombiner(OutputStream str[]) {
+      streams = str;
+    }
+
+    @Override
+    public void write(int b) throws IOException {
+      for (OutputStream s : streams) {
+        s.write(b);
+      }
+    }
+
+    @Override
+    public void flush() throws IOException {
+      for (OutputStream s : streams) {
+        s.flush();
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      for (OutputStream s : streams) {
+        s.close();
+      }
+    }
+
+    private final OutputStream[] streams;
+  }
+
+  private static class LogInterceptor extends OutputStream {
+    public void attach() {
+      original = System.out;
+      System.setOut(new PrintStream(new OutputStreamCombiner(new OutputStream[]{original, this})));
+    }
+
+    public void detach() {
+      System.setOut(original);
+    }
+
+    public void start() {
+      intercepting = true;
+    }
+
+    public String stop() {
+      intercepting = false;
+      String result = intercepted.toString();
+      intercepted.reset();
+      return result;
+    }
+
+    @Override
+    public void write(int b) throws IOException {
+      if (intercepting) {
+        intercepted.write(b);
+      }
+    }
+
+    private PrintStream original;
+    private boolean intercepting = false;
+    private final ByteArrayOutputStream intercepted = new ByteArrayOutputStream();
+  };
+
+  private static class ScanInfo {
+    final List<String> projection; // requested columns
+    final int maxHashCode;         // requested hash code upper bound. -1 if none.
+    final int iterBytesRead;       // ITER_BYTES_READ RocksDB stats
+
+    ScanInfo(List<String> p, int hC, int bR) {
+      projection = p;
+      maxHashCode = hC;
+      iterBytesRead = bR;
+    }
+
+    @Override
+    public String toString() {
+      return String.format(
+        "{ iterBytesRead: %d colIds: %s maxHashCode: %d }",
+        iterBytesRead, projection, maxHashCode);
+    }
+  };
+
+  private static class ScanInfoBuilder {
+    public ScanInfo build(int bytesRead, String logs) {
+      Matcher colRefMatcher = colRef.matcher(logs);
+      assertTrue("column_refs list not found in:\n" + logs, colRefMatcher.find());
+      List<String> colRefIds = new ArrayList<>();
+      Matcher colIdMatcher = colId.matcher(colRefMatcher.group(1));
+      for (int start = 0; colIdMatcher.find(start); start = colIdMatcher.end()) {
+        colRefIds.add(colIdMatcher.group(2));
+      }
+      Matcher hashMatcher = hashCode.matcher(logs);
+      return new ScanInfo(
+          colRefIds,
+          hashMatcher.find() ? Integer.parseInt(hashMatcher.group(1))
+                             : kNoHashCode,
+          bytesRead);
+    }
+
+    private final Pattern colRef = Pattern.compile("(column_refs \\{ (ids: \\d+ )*\\})");
+    private final Pattern colId = Pattern.compile("(ids: (\\d+))");
+    private final Pattern hashCode = Pattern.compile("max_hash_code: (\\d+)");
+  };
+
+  private final LogInterceptor logInterceptor = new LogInterceptor();
+  private final ScanInfoBuilder infoBuilder = new ScanInfoBuilder();
 }

@@ -76,7 +76,8 @@ public class RunHooks extends NodeTaskBase {
         hook.uuid.toString(),
         Audit.ActionType.RunHook,
         body,
-        this.userTaskUUID);
+        this.userTaskUUID,
+        null);
 
     if (!hookFile.delete()) log.warn("Failed to delete hook file " + taskParams().hookPath);
     response.processErrors();

@@ -89,7 +89,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
   public void setUp() {
     LOCAL_MOCK_RUN = MOCK_RUN;
     config = new KmsConfig();
-    config.authConfig = Json.parse(jsonString);
+    config.authConfig = (ObjectNode) Json.parse(jsonString);
     config.customerUUID = customerID;
     config.configUUID = testConfigID;
   }
@@ -98,7 +98,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
   public void testGetVaultSecretEngine() {
     String key = "key1";
     byte[] data = "TestData".getBytes();
-    ObjectNode cfg = config.authConfig.deepCopy();
+    ObjectNode cfg = config.authConfig;
 
     try {
       VaultSecretEngineBase transitEngine;

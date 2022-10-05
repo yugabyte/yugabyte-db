@@ -130,6 +130,8 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 
 	scan->yb_exec_params = NULL;
 	scan->yb_scan_plan = NULL;
+	scan->yb_rel_pushdown = NULL;
+	scan->yb_idx_pushdown = NULL;
 	return scan;
 }
 

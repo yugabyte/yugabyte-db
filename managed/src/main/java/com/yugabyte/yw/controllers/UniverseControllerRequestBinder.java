@@ -137,16 +137,19 @@ public class UniverseControllerRequestBinder {
    */
   private static Map<String, String> serializeGFlagListToMap(ObjectNode formNode, String listType) {
     Map<String, String> gflagMap = new HashMap<>();
-    JsonNode formNodeList = formNode.get(listType);
-    if (formNodeList != null && formNodeList.isArray()) {
-      ArrayNode flagNodeArray = (ArrayNode) formNodeList;
-      for (JsonNode gflagNode : flagNodeArray) {
-        if (gflagNode.has("name")) {
-          gflagMap.put(gflagNode.get("name").asText(), gflagNode.get("value").asText());
+    JsonNode formNodeList = formNode.remove(listType);
+    if (formNodeList != null) {
+      if (formNodeList.isArray()) {
+        ArrayNode flagNodeArray = (ArrayNode) formNodeList;
+        for (JsonNode gflagNode : flagNodeArray) {
+          if (gflagNode.has("name")) {
+            gflagMap.put(gflagNode.get("name").asText(), gflagNode.get("value").asText());
+          }
         }
+      } else if (formNodeList instanceof ObjectNode) {
+        gflagMap = Json.fromJson(formNodeList, Map.class);
       }
     }
-    formNode.remove(listType);
     return gflagMap;
   }
 }

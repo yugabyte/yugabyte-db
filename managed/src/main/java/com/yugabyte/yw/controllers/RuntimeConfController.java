@@ -10,9 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.ha.PlatformInstanceClientFactory.YB_HA_WS_KEY;
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -20,9 +17,10 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigPreChangeNotifier;
+import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
@@ -36,6 +34,7 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Model;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -48,6 +47,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Result;
@@ -55,22 +55,25 @@ import play.mvc.Result;
 @Api(
     value = "Runtime configuration",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class RuntimeConfController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfController.class);
   private final SettableRuntimeConfigFactory settableRuntimeConfigFactory;
-  private final PlatformInstanceClientFactory platformInstanceClientFactory;
   private final Result mutableKeysResult;
   private final Set<String> mutableObjects;
   private final Set<String> mutableKeys;
   private static final Set<String> sensitiveKeys =
       ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
 
+  @Inject private TokenAuthenticator tokenAuthenticator;
+
+  @Inject private RuntimeConfigPreChangeNotifier preChangeNotifier;
+
+  @Inject private RuntimeConfigChangeNotifier changeNotifier;
+
   @Inject
-  public RuntimeConfController(
-      SettableRuntimeConfigFactory settableRuntimeConfigFactory,
-      PlatformInstanceClientFactory platformInstanceClientFactory) {
+  public RuntimeConfController(SettableRuntimeConfigFactory settableRuntimeConfigFactory) {
     this.settableRuntimeConfigFactory = settableRuntimeConfigFactory;
-    this.platformInstanceClientFactory = platformInstanceClientFactory;
     this.mutableObjects =
         Sets.newLinkedHashSet(
             settableRuntimeConfigFactory
@@ -80,8 +83,8 @@ public class RuntimeConfController extends AuthenticatedController {
     this.mutableKeysResult = buildCachedResult();
   }
 
-  private static RuntimeConfigFormData listScopesInternal(Customer customer) {
-    boolean isSuperAdmin = TokenAuthenticator.superAdminAuthentication(ctx());
+  private RuntimeConfigFormData listScopesInternal(Customer customer) {
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
     RuntimeConfigFormData formData = new RuntimeConfigFormData();
     formData.addGlobalScope(isSuperAdmin);
     formData.addMutableScope(ScopeType.CUSTOMER, customer.uuid);
@@ -92,7 +95,7 @@ public class RuntimeConfController extends AuthenticatedController {
     return formData;
   }
 
-  private static Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
+  private Optional<ScopedConfig> getScopedConfigInternal(UUID customerUUID, UUID scopeUUID) {
     RuntimeConfigFormData runtimeConfigFormData =
         listScopesInternal(Customer.getOrBadRequest(customerUUID));
     return runtimeConfigFormData
@@ -224,6 +227,7 @@ public class RuntimeConfController extends AuthenticatedController {
           paramType = "body",
           dataType = "java.lang.String",
           required = true))
+  @Transactional
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path) {
     String contentType = request().contentType().orElse("UNKNOWN");
     if (!contentType.equals("text/plain")) {
@@ -251,12 +255,13 @@ public class RuntimeConfController extends AuthenticatedController {
         logValue.length());
     final RuntimeConfig<?> mutableRuntimeConfig =
         getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID);
+    preConfigChangeValidate(scopeUUID, path, newValue);
     if (mutableObjects.contains(path)) {
       mutableRuntimeConfig.setObject(path, newValue);
     } else {
       mutableRuntimeConfig.setValue(path, newValue);
     }
-    postConfigChange(customerUUID, scopeUUID, path);
+    postConfigChange(scopeUUID, path);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -267,35 +272,28 @@ public class RuntimeConfController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  // TODO: In future we can "register" change listeners for specific customer/scope/path
-  // And implement proper subscribe notify mechanism
-  // For now this is just hardcoded here. We can also have a preHook where config change can be
-  // validated and rejected
-  private void postConfigChange(UUID customerUUID, UUID scopeUUID, String path) {
+  private void postConfigChange(UUID scopeUUID, String path) {
     try {
-      if (GLOBAL_SCOPE_UUID.equals(scopeUUID)) {
-        if (path.equals(YB_HA_WS_KEY)) {
-          platformInstanceClientFactory.refreshWsClient(path);
-          // } else if (path.equals("")) {
-          // invoke handler;
-        }
-      }
+      changeNotifier.notifyListeners(scopeUUID, path);
     } catch (RuntimeException e) {
-      // TODO: Should we instead propagate error to caller? Should we rollback and error?
-      LOG.warn(
-          "Ignoring unexpected exception while processing config change for {}:{}:{}",
-          customerUUID,
-          scopeUUID,
-          path);
+      log.error("Failed to apply runtime config value", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to apply runtime config value");
     }
   }
 
+  private void preConfigChangeValidate(UUID scopeUUID, String path, String newValue) {
+    preChangeNotifier.notifyListeners(scopeUUID, path, newValue);
+  }
+
   @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
+  @Transactional
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path) {
     if (!mutableKeys.contains(path))
       throw new PlatformServiceException(NOT_FOUND, "No mutable key found: " + path);
 
     getMutableRuntimeConfigForScopeOrFail(customerUUID, scopeUUID).deleteEntry(path);
+    postConfigChange(scopeUUID, path);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),

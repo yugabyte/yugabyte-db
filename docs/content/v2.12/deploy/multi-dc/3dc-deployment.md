@@ -64,7 +64,7 @@ Run the [yb-tserver](../../../reference/configuration/yb-tserver/) server on eac
 $ ./bin/yb-tserver \
   --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
   --rpc_bind_addresses 172.151.17.130 \
-  --start_pgsql_proxy \
+  --enable_ysql \
   --pgsql_proxy_bind_address 172.151.17.130:5433 \
   --cql_proxy_bind_address 172.151.17.130:9042 \
   --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \

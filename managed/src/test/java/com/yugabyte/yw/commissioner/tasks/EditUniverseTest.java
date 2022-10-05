@@ -17,7 +17,11 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -27,7 +31,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +49,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
@@ -175,6 +183,77 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  @Test
+  public void testEditTags() throws JsonProcessingException {
+    Universe universe = defaultUniverse;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
+                  ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
+            });
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.universeUUID = universe.universeUUID;
+    Map<String, String> newTags = ImmutableMap.of("q", "vq", "q2", "v2");
+    taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    List<TaskInfo> instanceActions = subTasksByPosition.get(0);
+    assertEquals(
+        new ArrayList<>(
+            Arrays.asList(
+                TaskType.InstanceActions, TaskType.InstanceActions, TaskType.InstanceActions)),
+        instanceActions
+            .stream()
+            .map(t -> t.getTaskType())
+            .collect(Collectors.toCollection(ArrayList::new)));
+    JsonNode details = instanceActions.get(0).getTaskDetails();
+    assertEquals(Json.toJson(newTags), details.get("tags"));
+    assertEquals("q1,q3", details.get("deleteTags").asText());
+
+    List<TaskInfo> updateUniverseTagsTask = subTasksByPosition.get(1);
+    assertEquals(
+        new ArrayList<>(Collections.singletonList(TaskType.UpdateUniverseTags)),
+        updateUniverseTagsTask
+            .stream()
+            .map(t -> t.getTaskType())
+            .collect(Collectors.toCollection(ArrayList::new)));
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        new HashMap<>(newTags),
+        new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags));
+  }
+
+  @Test
+  public void testEditTagsUnsupportedProvider() {
+    Universe universe = defaultUniverse;
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.providerType =
+                  Common.CloudType.onprem;
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
+                  ImmutableMap.of("q", "v");
+            });
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.universeUUID = universe.universeUUID;
+    Map<String, String> newTags = ImmutableMap.of("q1", "v1");
+    taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(
+        0, subTasks.stream().filter(t -> t.getTaskType() == TaskType.InstanceActions).count());
   }
 
   @Test

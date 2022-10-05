@@ -1,8 +1,7 @@
 ---
-title: Diesel ORM
-linkTitle: Diesel ORM
+title: Use an ORM
+linkTitle: Use an ORM
 description: Diesel ORM support for YugabyteDB
-headcontent: Diesel ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -12,30 +11,45 @@ menu:
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../diesel/" class="nav-link active">
+      <i class="fab fa-rust" aria-hidden="true"></i>
+      Diesel
+    </a>
+  </li>
+</ul>
+
 [Diesel](https://diesel.rs/) is a safe, extensible object-relational mapping (ORM) tool and query builder for [Rust](https://www.rust-lang.org/). Diesel lets you create safe and composable abstractions over queries, and eliminates the possibility of incorrect database interactions at compile time. It's designed to be abstracted over, enabling you to write reusable code and think in terms of your problem domain.
 
-YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications. This page provides details for getting started with Diesel ORM for connecting to YugabyteDB.
+YugabyteDB's YSQL API is fully compatible with Diesel ORM for data persistence in Rust applications.
 
-## Create a new Rust-Diesel project
+## CRUD operations
 
-Ensure you have a recent version of Rust and Cargo installed. Then, do the following:
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/rust/ysql-diesel/) page.
 
-1. Create a new project:
+The following sections break down the example to demonstrate how to perform common tasks required for Rust application development using Diesel.
+
+### Step 1: Add the Diesel ORM dependency
+
+<!-- 1. Create a new project using the following command:
 
    ```shell
    $ cargo new --lib diesel_demo && cd diesel_demo
-   ```
+   ``` -->
 
-1. Add the following to the project's `Cargo.toml` file, in the `[dependencies]` section:
+Add the following dependencies to the project's `Cargo.toml` file, in the `[dependencies]` section:
 
-   ```toml
-   diesel = { version = "1.4.4", features = ["postgres"] }
-   dotenv = "0.15.0"
-   ```
+```toml
+diesel = { version = "1.4.4", features = ["postgres"] }
+dotenv = "0.15.0"
+```
+
+### Step 2: Set up the project and configure the database
 
 1. Install the Diesel command-line interface for PostgreSQL:
 
-   ```shell
+   ```sh
    $ cargo install diesel_cli --no-default-features --features postgres
    ```
 
@@ -47,25 +61,23 @@ Ensure you have a recent version of Rust and Cargo installed. Then, do the follo
 
 1. Execute the following command to finish setting up the project:
 
-   ```shell
+   ```sh
    $ diesel setup
    ```
 
-   \
    This creates an empty migrations directory that you can use to manage your schema. It also creates the `ysql_diesel` database.
 
-## Build the REST API
+### Step 3: Build the REST API
 
-Migrations allow you to evolve the database schema over time. Each migration can be applied (via `up.sql`) or reverted (via `down.sql`).
+Migrations allow you to evolve the database schema over time. Each migration can be applied via `up.sql`, or reverted via `down.sql`. To create a migration, do the following:
 
-1. Create a migration to create an employee table:
+1. Create an employee table using the following command:
 
-   ```shell
+   ```sh
    $ diesel migration generate create_employee
    ```
 
-   \
-   This creates two empty files in the `migrations/create_employee migration` directory: `up.sql` and `down.sql`.
+   This creates two empty files in the `migrations/create_employee migration` directory - `up.sql` and `down.sql`.
 
 1. Add the following code in `up.sql`:
 
@@ -86,7 +98,7 @@ Migrations allow you to evolve the database schema over time. Each migration can
 
    {{<note title="Note">}}
 
-When you ran `diesel setup`, it created a file called `diesel.toml`. This file tells Diesel to create and maintain a file tracking your schema. After running the migrations, `src/schema.rs` gets populated with employee table information by the Diesel ORM as follows:
+When you run `diesel setup` while [setting up a new Rust-Diesel project](#step-2-set-up-the-project-and-configure-the-database), it creates a file called `diesel.toml`. This file tells Diesel to create and maintain a file tracking your schema. After running the migrations, `src/schema.rs` gets populated with employee table information by the Diesel ORM as follows:
 
 ```rust
 table! {
@@ -101,7 +113,7 @@ table! {
 
    {{</note>}}
 
-1. Create a file called `src/models.rs`, to contain the structure of what data must be queried for Employee and what data must be inserted for employee as a NewEmployee, and add the following code:
+1. Create a file called `src/models.rs`, to contain the structure of data to be queried for Employee and data to be inserted for employee as a new employee, and add the following code:
 
    ```rs
    use crate::schema::employee;
@@ -123,7 +135,7 @@ table! {
    }
    ```
 
-1. Add the following code to `src/lib.rs` to create a database connection and create a new employee:
+1. Create a database connection and a new employee by adding the following code to `src/lib.rs`:
 
    ```rs
    #[macro_use]
@@ -165,14 +177,14 @@ table! {
    }
    ```
 
-1. Create the `src/bin` directory, and open it.
+1. Create the `src/bin` directory, and open it as follows:
 
-   ```shell
+   ```sh
    $ mkdir src/bin
    $ cd src/bin
    ```
 
-1. Create `insert_employee.rs` and add the following code:
+1. Create a rust file `insert_employee.rs` to establish the database connection, ask for details of the employee to be inserted, and insert them into the employee table. Add the following code to the file:
 
    ```rs
    extern crate diesel_demo;
@@ -219,10 +231,7 @@ table! {
    }
    ```
 
-   \
-   This establishes the database connection, asks for details of the employee to be inserted, and inserts them into the employee table.
-
-1. Create `show_employees.rs` and add the following code:
+1. Create a rust file `show_employees.rs`, to display employees information according to the order of employee IDs. Add the following code to the file:
 
    ```rs
    extern crate diesel_demo;
@@ -274,14 +283,11 @@ table! {
    }
    ```
 
-   \
-   This prompts the user to enter the number of employees to display employees information according to the order of employee IDs.
-
-## Run the APIs
+### Step 4: Run the APIs
 
 1. Run the following command to insert the data:
 
-   ```shell
+   ```sh
    $ cargo run --bin insert_employee
    ```
 
@@ -302,33 +308,33 @@ table! {
    Employee Inserted with id 1.
    ```
 
-1. Run the following command to show the data:
+### Step 5: Run the application and verify the results
 
-   ```shell
-   $ cargo run --bin  show_employees
-   ```
+Run the following command to output the data:
 
-   \
-   This prompts you to enter number of employees to display. Enter `2` and get the first two employees' data:
+```sh
+$ cargo run --bin  show_employees
+```
 
-   ```output
-   Displaying details of first 2 employees according to id:
+This prompts you to enter the number of employees to display. Enter `2` and get the first two employees' data:
 
-   1.
-   Employee id: 1
-   First Name: "John"
-   Last Name: "Smith"
-   Email: "jsmith@example.com"
+```output
+Displaying details of first 2 employees according to id:
+
+1.
+Employee id: 1
+First Name: "John"
+Last Name: "Smith"
+Email: "jsmith@example.com"
 
 
-   2.
-   Employee id: 2
-   First Name: "Tom"
-   Last Name: "Stewart"
-   Email: "tstewart@example.com"
-   ```
+2.
+Employee id: 2
+First Name: "Tom"
+Last Name: "Stewart"
+Email: "tstewart@example.com"
+```
 
 ## Next steps
 
-- Explore [Scaling Rust Applications](/preview/explore/linear-scalability/) with YugabyteDB.
-- Learn how to [develop Rust applications with Yugabyte Cloud](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/).
+- Explore [Scaling applications](../../../explore/linear-scalability/) with YugabyteDB.

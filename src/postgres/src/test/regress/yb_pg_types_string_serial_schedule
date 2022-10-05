@@ -1,9 +1,8 @@
 # src/test/regress/yb_pg_types_string_serial_schedule
 #
-####################################################################################################
-# Postgres Testsuites: Porting from PostgreSQL original tests.
-# This suite includes all tests on datatypes that are enabled for YugaByte.
-####################################################################################################
+################################################################################
+# This suite includes tests on string datatypes that are enabled for Yugabyte.
+################################################################################
 
 test: yb_char
 test: yb_pg_text
@@ -23,6 +22,7 @@ test: yb_collate_icu_utf8
 
 test: yb_pg_tsearch
 test: yb_pg_tsdicts
+test: yb_tsdicts
 
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb_pg_xml

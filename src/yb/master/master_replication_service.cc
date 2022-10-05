@@ -42,6 +42,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
     (UpdateConsumerOnProducerSplit)
+    (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
     (SetUniverseReplicationEnabled)
     (SetupUniverseReplication)
@@ -49,7 +50,12 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
+    (SetupNSUniverseReplication)
+    (GetReplicationStatus)
   )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+      CatalogManager, (GetXClusterEstimatedDataLoss)(GetXClusterSafeTime))
 };
 
 } // namespace

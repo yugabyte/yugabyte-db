@@ -19,6 +19,7 @@
 
 #include "yb/common/entity_ids_types.h"
 
+#include "yb/master/master_fwd.h"
 #include "yb/master/tablet_split_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -31,6 +32,7 @@ class TabletSplitDriverIf {
   virtual ~TabletSplitDriverIf() {}
   virtual Status SplitTablet(
       const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
+  virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
 };
 
 }  // namespace master

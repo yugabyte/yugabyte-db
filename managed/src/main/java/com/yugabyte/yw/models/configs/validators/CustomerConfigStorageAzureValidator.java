@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData.RegionLocation;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData.RegionLocations;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.net.UnknownHostException;
 import java.util.Arrays;
@@ -17,7 +17,7 @@ import java.util.Collection;
 import javax.inject.Inject;
 import org.apache.commons.lang.StringUtils;
 
-public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageWithRegionsValidator {
+public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageValidator {
 
   private static final Collection<String> AZ_URL_SCHEMES = Arrays.asList(new String[] {"https"});
 
@@ -41,9 +41,15 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageWi
           CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
           azureData.backupLocation);
       if (azureData.regionLocations != null) {
-        for (RegionLocation location : azureData.regionLocations) {
+        for (RegionLocations location : azureData.regionLocations) {
+          if (StringUtils.isEmpty(location.region)) {
+            throwBeanValidatorError(
+                CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
+          }
+          validateUrl(
+              CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
           validateAzureUrl(
-              azureData.azureSasToken,
+              location.azureSasToken,
               CustomerConfigConsts.REGION_LOCATION_FIELDNAME,
               location.location);
         }
@@ -60,7 +66,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageWi
       String exceptionMsg = "Invalid azUriPath format: " + azUriPath;
       throwBeanValidatorError(fieldName, exceptionMsg);
     } else {
-      String[] splitLocation = AZUtil.getSplitLocationValue(azUriPath, false);
+      String[] splitLocation = AZUtil.getSplitLocationValue(azUriPath);
       int splitLength = splitLocation.length;
       if (splitLength < 2) {
         // azUrl and container should be there in backup location.

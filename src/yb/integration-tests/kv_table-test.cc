@@ -36,10 +36,10 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

@@ -131,6 +131,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private LdapUtil ldapUtil;
 
+  @Inject private TokenAuthenticator tokenAuthenticator;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -363,6 +365,7 @@ public class SessionController extends AbstractPlatformController {
         user.uuid.toString(),
         Audit.ActionType.Login,
         null,
+        null,
         null);
     return withData(sessionInfo);
   }
@@ -384,6 +387,9 @@ public class SessionController extends AbstractPlatformController {
     String emailAttr =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
+    String originUrl = request().getQueryString("orig_url");
+    String redirectTo = originUrl != null ? originUrl : "/";
+
     if (emailAttr.equals("")) {
       email = profile.getEmail();
     } else {
@@ -418,12 +424,14 @@ public class SessionController extends AbstractPlatformController {
           user.uuid.toString(),
           Audit.ActionType.Login,
           null,
+          null,
           null);
     }
+
     if (environment.isDev()) {
-      return redirect("http://localhost:3000/");
+      return redirect("http://localhost:3000" + redirectTo);
     } else {
-      return redirect("/");
+      return redirect(redirectTo);
     }
   }
 
@@ -464,6 +472,7 @@ public class SessionController extends AbstractPlatformController {
           Audit.TargetType.User,
           user.uuid.toString(),
           Audit.ActionType.Login,
+          null,
           null,
           null);
       return withData(sessionInfo);
@@ -567,7 +576,7 @@ public class SessionController extends AbstractPlatformController {
     if (customerCount == 0) {
       return withData(registerCustomer(data, true, generateApiToken));
     } else {
-      if (TokenAuthenticator.superAdminAuthentication(ctx())) {
+      if (tokenAuthenticator.superAdminAuthentication(ctx())) {
         return withData(registerCustomer(data, false, generateApiToken));
       } else {
         throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");

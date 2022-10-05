@@ -265,6 +265,7 @@ const formFieldNames = [
   'primary.mountPoints',
   'primary.awsArnString',
   'primary.useSystemd',
+  'primary.dedicatedNodes',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -288,6 +289,7 @@ const formFieldNames = [
   'async.throughput',
   'async.mountPoints',
   'async.useSystemd',
+  'async.dedicatedNodes',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
@@ -305,7 +307,8 @@ const portFields = [
   'yqlHttpPort',
   'yqlRpcPort',
   'ysqlHttpPort',
-  'ysqlRpcPort'
+  'ysqlRpcPort',
+  'nodeExporterPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -335,7 +338,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
-    data[clusterType].ybcPackagePath = userIntent.ybcPackagePath;
+    data[clusterType].ybcSoftwareVersion = userIntent.ybcSoftwareVersion;
     data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
@@ -345,6 +348,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
     data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
+    data[clusterType].dedicatedNodes = userIntent.dedicatedNodes;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return { value: item.uuid, name: item.name, label: item.name };
@@ -397,7 +401,7 @@ function mapStateToProps(state, ownProps) {
     primary: {
       universeName: '',
       ybSoftwareVersion: '',
-      ybcPackagePath: '',
+      ybcSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.4xlarge',
@@ -418,11 +422,13 @@ function mapStateToProps(state, ownProps) {
       awsArnString: '',
       selectEncryptionAtRestConfig: null,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     },
     async: {
       universeName: '',
-      ybcPackagePath: '',
+      ybSoftwareVersion: '',
+      ybcSoftwareVersion: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
@@ -438,7 +444,8 @@ function mapStateToProps(state, ownProps) {
       enableNodeToNodeEncrypt: true,
       enableClientToNodeEncrypt: true,
       diskIops: null,
-      throughput: null
+      throughput: null,
+      dedicatedNodes: false,
     }
   };
 
@@ -515,8 +522,10 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.nodeExporterPort',
       'primary.useSystemd',
-      'primary.ybcPackagePath',
+      'primary.ybcSoftwareVersion',
+      'primary.dedicatedNodes',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -526,7 +535,7 @@ function mapStateToProps(state, ownProps) {
       'async.instanceType',
       'async.deviceInfo',
       'async.ybSoftwareVersion',
-      'async.ybcPackagePath',
+      'async.ybcSoftwareVersion',
       'async.accessKeyCode',
       'async.diskIops',
       'async.throughput',
@@ -546,6 +555,7 @@ function mapStateToProps(state, ownProps) {
       'async.mountPoints',
       'async.useTimeSync',
       'async.useSystemd',
+      'async.dedicatedNodes',
       'masterGFlags',
       'gFlags',
       'tserverGFlags',

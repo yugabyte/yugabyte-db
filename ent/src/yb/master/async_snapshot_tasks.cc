@@ -55,7 +55,8 @@ AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
                                              const string& snapshot_id,
                                              tserver::TabletSnapshotOpRequestPB::Operation op)
   : RetryingTSRpcTask(
-        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get()),
+        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
+        /* async_task_throttler */ nullptr),
     tablet_(tablet),
     snapshot_id_(snapshot_id),
     operation_(op) {
@@ -173,6 +174,8 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
     req.set_hide(hide_);
   }
 
+  *req.mutable_colocated_tables_metadata() = colocated_tables_metadata_;
+
   if (db_oid_) {
     req.set_db_oid(*db_oid_);
   }
@@ -208,6 +211,15 @@ void AsyncTabletSnapshotOp::SetMetadata(const SysTablesEntryPB& pb) {
   schema_version_ = pb.version();
   schema_ = pb.schema();
   indexes_ = pb.indexes();
+}
+
+void AsyncTabletSnapshotOp::SetColocatedTableMetadata(
+    const TableId& table_id, const SysTablesEntryPB& pb) {
+  auto* metadata = colocated_tables_metadata_.Add();
+  metadata->set_schema_version(pb.version());
+  *metadata->mutable_schema() = pb.schema();
+  *metadata->mutable_indexes() = pb.indexes();
+  metadata->set_table_id(table_id);
 }
 
 } // namespace master

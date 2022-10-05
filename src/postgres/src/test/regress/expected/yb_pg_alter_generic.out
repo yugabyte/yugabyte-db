@@ -39,14 +39,14 @@ ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;  -- failed (not aggregate)
 ERROR:  ALTER AGGREGATE not supported yet
 LINE 1: ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_func1(int) OWNER TO regress_alter_generic_user3;  -- failed (not aggregate)
 ERROR:  function alt_func1(integer) is not an aggregate
 ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;  -- failed (not aggregate)
 ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
 LINE 1: ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func2;  -- failed (name conflict)
 ERROR:  function alt_func2(integer) already exists in schema "alt_nsp1"
 ALTER FUNCTION alt_func1(int) RENAME TO alt_func3;  -- OK
@@ -59,12 +59,12 @@ ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;   -- failed (name conflict)
 ERROR:  ALTER AGGREGATE not supported yet
 LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;   -- OK
 ERROR:  ALTER AGGREGATE not supported yet
 LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
 ERROR:  must be member of role "regress_alter_generic_user2"
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- OK
@@ -72,7 +72,7 @@ ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- OK
 ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
 LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 SET SESSION AUTHORIZATION regress_alter_generic_user2;
 CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
   AS 'SELECT $1 + 2';
@@ -101,12 +101,12 @@ ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;   -- failed (not owner)
 ERROR:  ALTER AGGREGATE not supported yet
 LINE 1: ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;   -- OK
 ERROR:  ALTER AGGREGATE not supported yet
 LINE 1: ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_agg3(int) OWNER TO regress_alter_generic_user2;  -- failed (not owner)
 ERROR:  aggregate alt_agg3(integer) does not exist
 ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
@@ -114,12 +114,12 @@ ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;  -- failed (not owner)
 ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
 LINE 1: ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- failed (name conflict)
 ERROR:  ALTER AGGREGATE SET SCHEMA not supported yet
 LINE 1: ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;
         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/2717. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/2717. React with thumbs up to raise its priority
 RESET SESSION AUTHORIZATION;
 SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   FROM pg_proc p, pg_namespace n, pg_authid a
@@ -450,29 +450,44 @@ DROP OPERATOR FAMILY alt_opf18 USING btree;
 --
 -- Text Search Configuration
 --
--- SET SESSION AUTHORIZATION regress_alter_generic_user1;
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
--- SET SESSION AUTHORIZATION regress_alter_generic_user2;
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
--- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
--- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
--- RESET SESSION AUTHORIZATION;
--- SELECT nspname, cfgname, rolname
---   FROM pg_ts_config t, pg_namespace n, pg_authid a
---   WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
---     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
---   ORDER BY nspname, cfgname;
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
+ERROR:  text search configuration "alt_ts_conf2" already exists in schema "alt_nsp1"
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user2"
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
+ERROR:  must be owner of text search configuration alt_ts_conf3
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ERROR:  must be owner of text search configuration alt_ts_conf3
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ERROR:  must be member of role "regress_alter_generic_user3"
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+ERROR:  must be owner of text search configuration alt_ts_conf3
+ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+ERROR:  text search configuration "alt_ts_conf2" already exists in schema "alt_nsp2"
+RESET SESSION AUTHORIZATION;
+SELECT nspname, cfgname, rolname
+  FROM pg_ts_config t, pg_namespace n, pg_authid a
+  WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
+    AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, cfgname;
+ nspname  |   cfgname    |           rolname
+----------+--------------+-----------------------------
+ alt_nsp1 | alt_ts_conf2 | regress_alter_generic_user2
+ alt_nsp1 | alt_ts_conf3 | regress_alter_generic_user1
+ alt_nsp1 | alt_ts_conf4 | regress_alter_generic_user2
+ alt_nsp2 | alt_ts_conf2 | regress_alter_generic_user3
+(4 rows)
+
 --
 -- Text Search Template
 --
@@ -534,10 +549,9 @@ SELECT nspname, prsname
 RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
-NOTICE:  drop cascades to 23 other objects
+NOTICE:  drop cascades to 26 other objects
 DROP SCHEMA alt_nsp2 CASCADE;
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 6 other objects
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;
-

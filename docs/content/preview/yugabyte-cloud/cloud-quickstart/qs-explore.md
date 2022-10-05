@@ -83,4 +83,4 @@ To run this tutorial from your desktop shell, refer to [Explore Yugabyte SQL](..
 
 ## Next step
 
-[Build an application](../cloud-build-apps/)
+[Build an application](../../../develop/build-apps/)

@@ -180,8 +180,6 @@ class GcpQueryInstanceTypesMethod(AbstractMethod):
         self.parser.add_argument("--regions", nargs='+')
         self.parser.add_argument("--custom_payload", required=False,
                                  help="JSON payload of per-region data.")
-        self.parser.add_argument("--gcp_internal", action="store_true", default=False,
-                                 help="display internal testing instance types")
 
     def callback(self, args):
         print(json.dumps(self.cloud.get_instance_types(args)))
@@ -336,3 +334,16 @@ class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):
         super(GcpUpdateMountedDisksMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+
+
+class GcpTagsMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpTagsMethod, self).__init__(base_command, "tags")
+
+    def add_extra_args(self):
+        super(GcpTagsMethod, self).add_extra_args()
+        self.parser.add_argument("--remove_tags", required=False,
+                                 help="Tag keys to remove.")
+
+    def callback(self, args):
+        self.cloud.modify_tags(args)

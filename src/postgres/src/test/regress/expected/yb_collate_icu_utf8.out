@@ -42,7 +42,7 @@ CREATE TABLE collate_test_like (
 ERROR:  LIKE clause not supported yet
 LINE 2:     LIKE collate_test1
             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d collate_test_like
 CREATE TABLE collate_test2 (
     a int,
@@ -1018,7 +1018,7 @@ DROP COLLATION test0, test_schema.test11, test5; -- fail in YB
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP COLLATION test0, test_schema.test11, test5;
                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 DROP COLLATION test0;
 DROP COLLATION test_schema.test11;
 DROP COLLATION test5;
@@ -1173,6 +1173,23 @@ CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
  id     | text | en-US-x-icu |          |
 Indexes:
     "tab5_id_idx" lsm (id COLLATE "C" ASC)
+
+-- No index scan when collation does not match
+CREATE TABLE collate_filter_pushdown (k text collate "C", v text, PRIMARY KEY(k hash));
+INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "C"; -- should push down filter and result in Index scan.
+                                                 QUERY PLAN
+-------------------------------------------------------------------------------------------------------------
+ Index Scan using collate_filter_pushdown_pkey on collate_filter_pushdown  (cost=0.00..4.11 rows=1 width=64)
+   Index Cond: (k = 'A'::text COLLATE "C")
+(2 rows)
+
+EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "en_US"; -- should NOT push down filter and result in Seq scan.
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Seq Scan on collate_filter_pushdown  (cost=0.00..102.50 rows=1000 width=64)
+   Filter: (k = 'A'::text COLLATE "en_US")
+(2 rows)
 
 -- cleanup
 SET client_min_messages = WARNING; -- suppress cascading notice

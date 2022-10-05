@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,7 +51,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       if (!universe.getUniverseDetails().isImportedUniverse()) {
         // Create tasks to resume the existing nodes.
-        createResumeServerTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+        createResumeServerTasks(universe).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       }
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
@@ -77,16 +78,22 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      createSwamperTargetUpdateTask(false);
+      // Set the node state to live.
+      Set<NodeDetails> nodesToMarkLive =
+          nodes
+              .stream()
+              .filter(node -> node.isMaster || node.isTserver)
+              .collect(Collectors.toSet());
+      createSetNodeStateTasks(nodesToMarkLive, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Create alert definition files.
       createUnivManageAlertDefinitionsTask(true)
           .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+
+      createSwamperTargetUpdateTask(false);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
-
-      // Set the node state to live.
-      createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();

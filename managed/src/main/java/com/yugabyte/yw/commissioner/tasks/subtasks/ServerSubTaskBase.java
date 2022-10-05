@@ -92,7 +92,8 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
     }
 
     if (taskParams().serverType != ServerType.TSERVER
-        && taskParams().serverType != ServerType.MASTER) {
+        && taskParams().serverType != ServerType.MASTER
+        && taskParams().serverType != ServerType.CONTROLLER) {
       throw new IllegalArgumentException(
           "Unexpected server type "
               + taskParams().serverType

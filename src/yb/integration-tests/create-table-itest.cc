@@ -30,45 +30,9 @@
 // under the License.
 //
 
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
+#include "yb/integration-tests/create-table-itest-base.h"
 
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/client-test-util.h"
-#include "yb/client/table.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_info.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
-#include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_util.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/tsan_util.h"
-
-using std::multimap;
-using std::set;
-using std::string;
-using std::vector;
-using strings::Substitute;
-using yb::client::YBTableType;
-using yb::client::YBTableName;
+#include "yb/util/backoff_waiter.h"
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_entity(tablet);
@@ -78,80 +42,12 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_Del
 
 DECLARE_int32(ycql_num_tablets);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
-static const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "test-table");
-
-class CreateTableITest : public ExternalMiniClusterITestBase {
- public:
-  Status CreateTableWithPlacement(
-      const master::ReplicationInfoPB& replication_info, const string& table_suffix,
-      const YBTableType table_type = YBTableType::YQL_TABLE_TYPE) {
-    auto db_type = master::GetDatabaseTypeForTable(
-        client::ClientToPBTableType(table_type));
-    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(), db_type));
-    std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-    client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
-    if (table_type != YBTableType::REDIS_TABLE_TYPE) {
-      table_creator->schema(&client_schema);
-    }
-    return table_creator->table_name(
-        YBTableName(db_type,
-                    kTableName.namespace_name(),
-                    Substitute("$0:$1", kTableName.table_name(), table_suffix)))
-        .replication_info(replication_info)
-        .table_type(table_type)
-        .wait(true)
-        .Create();
-  }
-
-  Result<bool> VerifyTServerTablets(int idx, int num_tablets, int num_leaders,
-                                    const std::string& table_name, bool verify_leaders) {
-    auto tablets = VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(idx)));
-
-    int leader_count = 0, tablet_count = 0;
-    for (const auto& tablet : tablets) {
-      if (tablet.table_name() != table_name) {
-        continue;
-      }
-      if (tablet.state() != tablet::RaftGroupStatePB::RUNNING) {
-        return false;
-      }
-      tablet_count++;
-      if (tablet.is_leader()) {
-        leader_count++;
-      }
-    }
-    LOG(INFO) << "For table " << table_name << ", on tserver " << idx << " number of leaders "
-              << leader_count << " number of tablets " << tablet_count;
-    if ((verify_leaders && leader_count != num_leaders) || tablet_count != num_tablets) {
-      return false;
-    }
-    return true;
-  }
-
-  void PreparePlacementInfo(const std::unordered_map<string, int>& zone_to_replica_count,
-                            int num_replicas, master::PlacementInfoPB* placement_info) {
-    placement_info->set_num_replicas(num_replicas);
-    for (const auto& zone_and_count : zone_to_replica_count) {
-      auto* pb = placement_info->add_placement_blocks();
-      pb->mutable_cloud_info()->set_placement_cloud("c");
-      pb->mutable_cloud_info()->set_placement_region("r");
-      pb->mutable_cloud_info()->set_placement_zone(zone_and_count.first);
-      pb->set_min_num_replicas(zone_and_count.second);
-    }
-  }
-
-  void AddTServerInZone(const string& zone) {
-    vector<std::string> flags = {
-      "--placement_cloud=c",
-      "--placement_region=r",
-      "--placement_zone=" + zone
-    };
-    ASSERT_OK(cluster_->AddTabletServer(true, flags));
-  }
-};
+class CreateTableITest : public CreateTableITestBase {};
 
 // TODO(bogdan): disabled until ENG-2687
 TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
@@ -263,7 +159,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   int64_t num_create_attempts = 0;
   while (num_create_attempts < 3) {
     SleepFor(MonoDelta::FromMilliseconds(100));
-    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetInt64Metric(
+    num_create_attempts = ASSERT_RESULT(cluster_->tablet_server(0)->GetMetric<int64>(
         &METRIC_ENTITY_server,
         "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
@@ -306,14 +202,16 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
 }
 
 // Ensure that, when a table is created,
-// the tablets are well spread out across the machines in the cluster.
+// both the tablets and leaders are well spread out across the machines in the cluster.
 TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   const int kNumServers = 10;
   const int kNumTablets = 20;
+  const int kReplicationFactor = 3;
   vector<string> ts_flags;
   vector<string> master_flags;
   ts_flags.push_back("--never_fsync");  // run faster on slow disks
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  master_flags.push_back(Format("--replication_factor=$0", kReplicationFactor));
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
@@ -325,12 +223,55 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
             .num_tablets(kNumTablets)
             .Create());
 
-  // Load should be equal on all the 10 servers without any deviation.
-  for (int ts_idx = 0; ts_idx < kNumServers; ts_idx++) {
-    auto num_replicas = inspect_->ListTabletsOnTS(ts_idx).size();
-    LOG(INFO) << "TS " << ts_idx << " has " << num_replicas << " tablets";
-    ASSERT_EQ(num_replicas, 6);
+  // Validate that both the tablets and leaders are evenly distributed among the tservers.
+  const int kExpectedTablets = kNumTablets * kReplicationFactor / kNumServers;
+  const int kExpectedLeaders = kNumTablets / kNumServers;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (int i = 0; i < kNumServers; i++) {
+      if (!VERIFY_RESULT(VerifyTServerTablets(
+          i, kExpectedTablets, kExpectedLeaders, kTableName.table_name(), true))) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Are tablets running", 1s));
+}
+
+TEST_F(CreateTableITest, CreateTableWithoutQuorum) {
+  const int kNumServers = 3;
+  const int kNumTablets = 1;
+  const int kReplicationFactor = 3;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+  ts_flags.push_back("--never_fsync");  // run faster on slow disks
+  master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
+  master_flags.push_back(Format("--replication_factor=$0", kReplicationFactor));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+
+  // Disable heartbeats on all but the first tserver. This ensures that the master does not receive
+  // a quorum of tserver heartbeats. This prevents the master from starting the initial leader
+  // election.
+  for (int i = 1; i < kNumServers; ++i) {
+    ASSERT_OK(
+      cluster_->SetFlag(cluster_->tablet_server(i), "TEST_tserver_disable_heartbeat", "true"));
   }
+
+  // Create a table. Set a timeout long enough to ensure that the standard raft failure detection
+  // will run and elect a raft leader for the single tablet. When the raft leader is elected, the
+  // table will come online.
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  table_creator->timeout(MonoDelta::FromMilliseconds(
+    4 *
+    FLAGS_raft_heartbeat_interval_ms *
+    static_cast<int>(FLAGS_leader_failure_max_missed_heartbeat_periods)));
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+  ASSERT_OK(table_creator->table_name(kTableName)
+            .schema(&client_schema)
+            .num_tablets(kNumTablets)
+            .Create());
 }
 
 TEST_F(CreateTableITest, TestNoAllocBlacklist) {
@@ -528,7 +469,7 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
     auto tablet_ids = ASSERT_RESULT(cluster_->GetTabletIds(cluster_->tablet_server(i)));
     for(size_t ti = 0; ti < inspect_->ListTabletsOnTS(i).size(); ti++) {
       const char *tabletId = tablet_ids[ti].c_str();
-      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetInt64Metric(
+      kNumRaftLeaders += ASSERT_RESULT(cluster_->tablet_server(i)->GetMetric<int64>(
           &METRIC_ENTITY_tablet, tabletId, &METRIC_is_raft_leader, "value"));
     }
   }

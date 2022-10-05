@@ -22,9 +22,14 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/common/common_net.pb.h"
+
 #include "yb/util/result.h"
 
 namespace yb {
+
+// enum depicting the locality level of two PeerMessageQueue::TrackedPeer s'.
+YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 
 class PlacementInfoConverter {
  public:
@@ -44,6 +49,10 @@ class PlacementInfoConverter {
   static Result<Placement> FromString(const std::string& placement);
 
   static Result<Placement> FromQLValue(const std::vector<std::string>& placement);
+
+  // Returns the locality level for given CloudInfoPB references.
+  static LocalityLevel GetLocalityLevel(
+      const CloudInfoPB& src_cloud_info, const CloudInfoPB& dest_cloud_info);
 
  private:
   static Result<Placement> FromJson(const std::string& placement_str,

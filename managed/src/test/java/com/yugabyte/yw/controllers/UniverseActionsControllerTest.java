@@ -330,8 +330,11 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
   public void testUniverseToggleTlsWithRootCaUpdate() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID certUUID1 = CertificateHelper.createRootCA("test cert 1", customer.uuid, "/tmp/certs");
-    UUID certUUID2 = CertificateHelper.createRootCA("test cert 2", customer.uuid, "/tmp/certs");
+    when(mockRuntimeConfig.getString("yb.storage.path")).thenReturn("/tmp/certs");
+    UUID certUUID1 =
+        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 1", customer.uuid);
+    UUID certUUID2 =
+        CertificateHelper.createRootCA(mockRuntimeConfig, "test cert 2", customer.uuid);
     UUID universeUUID = prepareUniverseForToggleTls(true, true, certUUID1);
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";

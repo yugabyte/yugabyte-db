@@ -18,7 +18,7 @@ The following projects are recommended for implementing Rust applications using 
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
-| Diesel | [Documentation](diesel/) | [Hello World](../../quick-start/build-apps/rust/ysql-diesel/) |
+| Diesel | [Documentation](diesel/) | [Hello World](../../develop/build-apps/rust/ysql-diesel/) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 

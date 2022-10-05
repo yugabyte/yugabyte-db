@@ -26,7 +26,10 @@
   set_fact:
     ybc_package_name: "{{ ybc_package | basename }}"
     remote_tmp_ybc_package: "/tmp/{{ ybc_package | basename }}"
-  when: ybc_package is defined
+    software_ybc_package_folder: "{{ yb_software_dir }}/{{ ybc_dir }}"
+    ybc_symlink_dir: "{{ yb_home_dir }}/controller"
+  when: configure_ybc
+  tags: always
 
 # Need a separate set_fact since package_folder is not available until the previous set_fact has
 # completed.
@@ -49,8 +52,7 @@
   become: yes
   become_method: sudo
   become_user: "{{ user_name }}"
-  tags:
-    - download-software
+  tags: download-software
 
 - name: Remove older releases
   shell: "ls \"{{ yb_home_dir }}/releases\" -t | \
@@ -109,7 +111,7 @@
 
 # doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
 - name: Remove older yb software folders
-  shell: "ls \"{{ yb_software_dir }}\" -t | \
+  shell: "ls --ignore='ybc*' \"{{ yb_software_dir }}\" -t | \
       tail -n +{{ num_releases_to_keep + 2 }} | \
       xargs -I{} --no-run-if-empty rm -rv \"{{ yb_software_dir }}/{}\" --"
   register: rm_yb_softwares_result

@@ -2,7 +2,7 @@
 title: Connect via client shells
 linkTitle: Client shell
 description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
-headcontent:
+headcontent: Connect to YugabyteDB Managed databases from your desktop
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -12,13 +12,19 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB cluster database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 {{< warning title="IP allow list" >}}
 
 Before you can connect using a shell or other client, you need to add your computer to a cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
 {{< /warning >}}
+
+{{< note title="Multi-region clusters" >}}
+
+Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you cannot connect to multi-region clusters from a desktop shell. Use the [Cloud shell](../connect-cloud-shell/) instead.
+
+{{< /note >}}
 
 {{< note title="Note" >}}
 

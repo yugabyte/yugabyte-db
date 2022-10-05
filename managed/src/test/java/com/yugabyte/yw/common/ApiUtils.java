@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -131,6 +132,17 @@ public class ApiUtils {
       final boolean setMasters,
       final boolean updateInProgress,
       final PlacementInfo placementInfo) {
+    return mockUniverseUpdater(
+        userIntent, nodePrefix, setMasters, updateInProgress, placementInfo, false);
+  }
+
+  public static Universe.UniverseUpdater mockUniverseUpdater(
+      final UserIntent userIntent,
+      final String nodePrefix,
+      final boolean setMasters,
+      final boolean updateInProgress,
+      final PlacementInfo placementInfo,
+      final boolean enableYbc) {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
@@ -138,6 +150,8 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        universeDetails.enableYbc = enableYbc;
+        universeDetails.ybcInstalled = enableYbc;
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
           PlacementCloud placementCloud = placementInfo.cloudList.get(0);
@@ -148,6 +162,7 @@ public class ApiUtils {
             }
           }
         }
+        boolean markMasters = setMasters && !userIntent.dedicatedNodes;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
@@ -155,13 +170,31 @@ public class ApiUtils {
               getDummyNodeDetails(
                   idx,
                   NodeDetails.NodeState.Live,
-                  setMasters && idx <= userIntent.replicationFactor);
+                  markMasters && idx <= userIntent.replicationFactor);
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();
             node.azUuid = azUUIDList.get(azIndex);
           }
+          if (userIntent.dedicatedNodes) {
+            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.TSERVER;
+          }
           universeDetails.nodeDetailsSet.add(node);
+        }
+        if (userIntent.dedicatedNodes) {
+          for (int idx = userIntent.numNodes + 1;
+              idx <= userIntent.numNodes + userIntent.replicationFactor;
+              idx++) {
+            NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true);
+            node.isTserver = false;
+            node.dedicatedTo = UniverseDefinitionTaskBase.ServerType.MASTER;
+            node.placementUuid = universeDetails.getPrimaryCluster().uuid;
+            if (azUUIDList != null) {
+              int azIndex = (idx - 1) % azUUIDList.size();
+              node.azUuid = azUUIDList.get(azIndex);
+            }
+            universeDetails.nodeDetailsSet.add(node);
+          }
         }
         universeDetails.nodePrefix = nodePrefix;
         universeDetails.rootCA = universe.getUniverseDetails().rootCA;

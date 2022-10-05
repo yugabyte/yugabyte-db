@@ -156,6 +156,13 @@ class TestQLQuery : public QLTestBase {
     // Create test table.
     CHECK_OK(processor->Run("CREATE TABLE scan_bounds_test (h1 int, h2 text, r1 int, v1 int,"
                                 " PRIMARY KEY((h1, h2), r1));"));
+    CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE h1 in (1, 3) ORDER BY r1 DESC");
+
+    string createTableStmt = "CREATE TABLE tab (i int, j int, k int, primary key(i, j)) ";
+    CHECK_OK(processor->Run(createTableStmt + "WITH transactions = {'enabled': 'false'};"));
+    string createIdxStmt = "CREATE INDEX tab_index ON tab (j, k) WITH transactions = {'enabled':";
+    CHECK_OK(processor->Run(createIdxStmt + " 'false', 'consistency_level': 'user_enforced'};"));
+    CHECK_INVALID_STMT("SELECT * from tab where j in (1, 2) order by k");
 
     client::YBTableName name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "scan_bounds_test");
     shared_ptr<client::YBTable> table;

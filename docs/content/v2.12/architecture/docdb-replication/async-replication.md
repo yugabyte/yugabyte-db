@@ -2,7 +2,7 @@
 title: xCluster replication
 headerTitle: xCluster replication
 linkTitle: xCluster replication
-description: Asynchronous replication between multiple YugabyteDB clusters.
+description: xCluster replication between multiple YugabyteDB clusters.
 menu:
   v2.12:
     identifier: architecture-docdb-async-replication
@@ -15,13 +15,13 @@ xCluster replication enables asynchronous replication between independent Yugaby
 
 ## Overview
 
-YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use asynchronous replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
+YugabyteDB provides synchronous replication of data in clusters dispersed across multiple (three or more) data centers by leveraging the Raft consensus algorithm to achieve enhanced high availability and performance. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. For these needs, YugabyteDB supports two data center (2DC) deployments that use xCluster replication built on top of [change data capture (CDC)](../change-data-capture) in DocDB.
 
 For details about configuring a 2DC deployment, see [Replicate between two data centers](../../../deploy/multi-dc/async-replication).
 
 {{< note title="Note" >}}
 
-Asynchronous replication of data works across all the APIs (YSQL, YCQL), since the replication across the clusters is done at the DocDB level.
+xCluster replication of data works across all the APIs (YSQL, YCQL), since the replication across the clusters is done at the DocDB level.
 
 {{</note >}}
 

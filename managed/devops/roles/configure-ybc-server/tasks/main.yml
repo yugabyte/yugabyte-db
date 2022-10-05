@@ -2,22 +2,74 @@
     that:
       - user_name is defined
       - systemd_option is defined
+      - _mount_points is defined
+
+- name: Download ybc package
+  include: download-ybc-package.yml
+  become: yes
+  become_method: sudo
+  become_user: "{{ user_name }}"
+  tags: ybc-install
+
+- name: Create ybc symlink folders
+  file:
+    path: "{{ ybc_symlink_dir }}"
+    state: directory
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  tags:
+    - ybc-install
+    - yb-prebuilt-ami
+
+- name: Install | Create symlink to ybc package folder
+  file:
+    src: "{{ software_ybc_package_folder }}/bin"
+    dest: "{{ ybc_symlink_dir }}/bin"
+    mode: 0755
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    state: link
+  tags:
+    - ybc-install
+    - yb-prebuilt-ami
 
 - block:
-  - name: Setup | Create yb-controller logs directory
+  - set_fact:
+      _mount_logs_dir: "{{ _mount_points[0] }}/ybc-data/controller/logs"
+    tags: always
+
+  - name: Setup | Create controller logs directory
     file:
-      path: "{{ ybc_logs_dir }}"
+      path: "{{ _mount_logs_dir }}"
       state: directory
       mode: 0755
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
+    tags:
+      - yb-prebuilt-ami
+      - ybc-install
+
+  - name: Setup | Symlink {{ yb_process_type }} logs directory
+    file:
+      src: "{{ _mount_logs_dir }}"
+      dest: "{{ ybc_logs_dir }}"
+      mode: 0755
+      owner: "{{ user_name }}"
+      group: "{{ user_name }}"
+      state: link
+      force: yes
+    tags:
+      - yb-prebuilt-ami
+      - ybc-install
 
   - name: Remove existing ybc conf file
     file:
       path: "{{ ybc_conf_file }}"
       state: absent
     tags:
-      - override_gflags
+      - override_ybc_gflags
+      - ybc-install
     when: ybc_flags is defined
 
   - name: Configure | Set ybc flags
@@ -28,10 +80,24 @@
       create: yes
     with_dict: "{{ ybc_flags }}"
     tags:
-      - override_gflags
+      - ybc-install
+      - override_ybc_gflags
     when: ybc_flags is defined
 
 - block:
+  - name: Configure | Add yb server ctl script
+    vars:
+      mount_paths: "{{ _mount_points | join(' ') }}"
+    template:
+      src: "roles/configure-cluster-server/templates/yb-server-ctl.sh.j2"
+      dest: "{{ yb_bin_dir }}/yb-server-ctl.sh"
+      owner: "{{ user_name }}"
+      mode: 0755
+    when: not systemd_option
+    tags:
+      - ybc-install
+      - yb-prebuilt-ami
+
   # Cronjob approach for starting yb-controller
   - name: Setup cron to check liveness of controller
     cron:
@@ -46,7 +112,9 @@
       - cron_result is failed
       - cloud_type != "onprem"
     when: not systemd_option
-    tags: yb-prebuilt-ami
+    tags:
+      - ybc-install
+      - yb-prebuilt-ami
 
 - block:
   # Remove old cron job and its tasks that start yb-controller
@@ -86,10 +154,30 @@
         state: started
         enabled: yes
         scope: user
+
+    - name: Enable and start controller
+      systemd:
+        name: yb-controller
+        state: started
+        enabled: yes
+        scope: user
     when: not systemd_system.stat.exists
 
   - name: System systemd units
     block:
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl stop yb-controller"
+
+    - name: Stop existing running controller
+      shell:
+        cmd: "sudo systemctl disable yb-controller"
+
+    # Systemd daemon-reload for yb-controller service files
+    - name: Perform daemon-reload for the new services
+      shell:
+        cmd: "sudo systemctl daemon-reload"
+
     - name: Enable yb-controller service
       shell:
         cmd: "sudo systemctl enable yb-controller"
@@ -97,14 +185,10 @@
     - name: Run yb-controller.service to start the yb-controller
       shell:
         cmd: "sudo systemctl start yb-controller"
-
-    # Systemd daemon-reload for yb-controller service files
-    - name: Perform daemon-reload for the new services
-      shell:
-        cmd: "sudo systemctl daemon-reload"
     when: systemd_system.stat.exists
 
   tags:
-    - override_gflags
+    - override_ybc_gflags
     - systemd_upgrade
+    - ybc-install
   when: systemd_option

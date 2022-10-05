@@ -191,6 +191,7 @@ class PGConnBuilder {
  private:
   const std::string conn_str_;
   const std::string conn_str_for_log_;
+  const size_t connect_timeout_;
 };
 
 bool HasTryAgain(const Status& status);

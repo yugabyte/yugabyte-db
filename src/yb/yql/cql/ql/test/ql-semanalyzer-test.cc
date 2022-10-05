@@ -16,11 +16,14 @@
 #include "yb/common/ql_type.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
 
+#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
@@ -293,6 +296,76 @@ TEST_F(QLTestAnalyzer, TestBindVariableAnalyzer) {
   ANALYZE_INVALID_STMT("SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
 
   CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
+TEST_F(QLTestAnalyzer, TestBindVariableInChildSelect) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  EXEC_VALID_STMT("CREATE TABLE tbl ("
+                  "  h1 INT, h2 TEXT, r1 INT, r2 TEXT, c1 INT, PRIMARY KEY ((h1, h2), r1, r2)"
+                  ") WITH transactions = {'enabled': 'true'};");
+  EXEC_VALID_STMT("CREATE INDEX ind ON tbl ((h1, r2), h2, r1);");
+
+  // Wait for read permissions on the index.
+  client::YBTableName table_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "tbl");
+  client::YBTableName index_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "ind");
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_name, INDEX_PERM_READ_WRITE_AND_DELETE));
+
+  const client::YBTableInfo table_info = ASSERT_RESULT(client_->GetYBTableInfo(table_name));
+  // The first column id is 0 in Release and 10 in Debug.
+  const int base_id = table_info.schema.ColumnId(0);
+
+  auto checkPTBindVar =
+      [base_id](PTSelectStmt::PTBindVarSet::const_iterator it,
+                const char* name, int id, int64_t pos) {
+        ASSERT_STREQ((*it)->name()->c_str(), name);
+        ASSERT_EQ((*it)->pos(), pos);
+        ASSERT_NE((*it)->hash_col(), nullptr);
+        ASSERT_EQ((*it)->hash_col()->id(), base_id + id);
+      };
+
+  EXEC_INVALID_STMT_WITH_ERROR(
+      "SELECT h2, r1, c1 FROM tbl WHERE h1 = :h1 AND h2 = :h2 AND r2 = :r2;",
+      "no bind variable available");
+  // The block here is needed to clean temporary shared pointers (like 'main_select')
+  // before the ParserTree destructor call.
+  {
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
+    ASSERT_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
+    PTSelectStmt::SharedPtr main_select = std::static_pointer_cast<PTSelectStmt>(root);
+    // PTSelectStmt::table_name() returns a referenced table name from the 'FROM' clause.
+    ASSERT_EQ(main_select->table_name(), table_name);
+    ASSERT_EQ(main_select->table()->name(), table_name);
+    ASSERT_FALSE(main_select->table()->IsIndex());
+
+    // In the SELECT statement the bind variables positions: :h1 - 0, :h2 - 1, :r2 - 2.
+    {
+      const PTSelectStmt::PTBindVarSet& hash_col_bindvars = main_select->TEST_hash_col_bindvars();
+      ASSERT_EQ(2, hash_col_bindvars.size());
+      PTSelectStmt::PTBindVarSet::const_iterator it = hash_col_bindvars.begin();
+      // In the table hash columns: h1, h2 - positions in SELECT: 0, 1.
+      checkPTBindVar(it, "h1", 0, 0);
+      checkPTBindVar(++it, "h2", 1, 1);
+    }
+
+    PTSelectStmt::SharedPtr child_select = main_select->child_select();
+    ASSERT_NE(child_select, nullptr);
+    ASSERT_EQ(child_select->table()->name(), index_name);
+    ASSERT_TRUE(child_select->table()->IsIndex());
+    ASSERT_FALSE(child_select->covers_fully());
+    {
+      const PTSelectStmt::PTBindVarSet& hash_col_bindvars = child_select->TEST_hash_col_bindvars();
+      ASSERT_EQ(2, hash_col_bindvars.size());
+      PTSelectStmt::PTBindVarSet::const_iterator it = hash_col_bindvars.begin();
+      // In the index hash columns: h1, r2 - positions in SELECT: 0, 2.
+      checkPTBindVar(it, "h1", 0, 0);
+      checkPTBindVar(++it, "r2", 1, 2);
+    }
+  }
+
+  EXEC_VALID_STMT("DROP TABLE tbl;");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(QLTestAnalyzer, TestCreateIndex) {

@@ -14,7 +14,6 @@ import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.modules.swagger.SwaggerModule;
 import play.test.WithApplication;
 
 public class SubTaskBaseTest extends WithApplication {
@@ -33,7 +32,6 @@ public class SubTaskBaseTest extends WithApplication {
     mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
-        .disable(SwaggerModule.class)
         .disable(GuiceModule.class)
         .configure(testDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))

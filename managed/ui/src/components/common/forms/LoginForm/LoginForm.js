@@ -24,6 +24,10 @@ class LoginForm extends Component {
     clearCredentials();
   }
 
+  componentDidMount = () => {
+    this.props.getYugaWareVersion();
+  };
+
   submitLogin = (formValues) => {
     const { loginCustomer } = this.props;
     formValues.email = trimString(formValues.email);
@@ -49,16 +53,25 @@ class LoginForm extends Component {
   }
 
   runSSO() {
+    const searchParam = new URLSearchParams(window.location.search);
+    const pathToRedirect = searchParam.get('orig_url');
     if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
       localStorage.setItem('__yb_intro_dialog__', 'new');
     }
-    window.location.replace(`${ROOT_URL}/third_party_login`);
+    window.location.replace(
+      pathToRedirect
+        ? `${ROOT_URL}/third_party_login?orig_url=${pathToRedirect}`
+        : `${ROOT_URL}/third_party_login`
+    );
   }
 
   render() {
     const {
-      customer: { authToken }
+      customer: { authToken, yugawareVersion }
     } = this.props;
+    const version = getPromiseState(yugawareVersion).isSuccess()
+      ? yugawareVersion.data?.version
+      : null;
 
     const validationSchema = Yup.object().shape({
       email: Yup.string().required('Enter Email or Username'),
@@ -172,6 +185,9 @@ class LoginForm extends Component {
                 </Form>
               )}
             </Formik>
+          )}
+          {version && (
+            <span className="align-center yba-version"> Platform Version: {version}</span>
           )}
         </div>
       </div>

@@ -289,7 +289,7 @@ The output should be as follows:
  e_contact_method | Phone
 ```
 
-### 2. Create a table with an `ENUM` column
+### 3. Create a table with an `ENUM` column
 
 ```sql
 CREATE TABLE contact_method_info (
@@ -299,17 +299,20 @@ CREATE TABLE contact_method_info (
 );
 ```
 
-### 3. Insert a row with `ENUM`
+### 4. Insert a row with `ENUM`
 
 The `ENUM` should have a valid value, as follows:
 
 ```sql
-INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com')
+INSERT INTO contact_method_info VALUES ('Jeff', 'Email', 'jeff@mail.com');
 ```
 
 Execute the following to verify:
+```sql
+select * from contact_method_info;
 ```
-yugabyte=# select * from contact_method_info;
+
+```output
  contact_name | contact_method |     value
 --------------+----------------+---------------
  Jeff         | Email          | jeff@mail.com
@@ -319,10 +322,10 @@ yugabyte=# select * from contact_method_info;
 Inserting an invalid `ENUM` value would fail, as shown in the following example:
 
 ```sql
-yugabyte=# INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563456');
+INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563456');
 ```
 You should see the following error (which is compatible with that of PostgreSQL):
-```
+```output
 ERROR:  22P02: invalid input value for enum e_contact_method: "Fax"
 LINE 1: INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563...
 ```

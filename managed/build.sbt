@@ -1,10 +1,9 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import sbt.Tests._
 
 import scala.sys.process.Process
-
-import Tests._
 
 useCoursier := false
 
@@ -13,7 +12,7 @@ useCoursier := false
 // ------------------------------------------------------------------------------------------------
 
 // This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), true)
+lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), default = true)
 
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
@@ -91,9 +90,12 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
+lazy val buildModules = taskKey[Int]("Build modules")
+lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
+lazy val cleanModules = taskKey[Int]("Clean modules")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -115,7 +117,7 @@ lazy val root = (project in file("."))
   })
 
 scalaVersion := "2.12.10"
-version := (sys.process.Process("cat version.txt").lineStream_!.head)
+version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
 libraryDependencies ++= Seq(
@@ -125,10 +127,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
-  "org.mockito" % "mockito-core" % "2.13.0",
-  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
-  "org.mindrot" % "jbcrypt" % "0.4" % Test,
-  "org.postgresql" % "postgresql" % "42.2.25",
+  "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -146,8 +145,13 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.cronutils" % "cron-utils" % "9.1.6",
+  // Be careful when changing azure library versions.
+  // Make sure all itests and existing functionality works as expected.
+  "com.azure" % "azure-core" % "1.13.0",
+  "com.azure" % "azure-identity" % "1.2.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.2.5",
   "com.azure" % "azure-storage-blob" % "12.7.0",
-  "com.azure" % "azure-core" % "1.1.0",
+  "javax.mail" % "mail" % "1.4.7",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
@@ -158,11 +162,6 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-json" % "2.6.14",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
-  "com.h2database" % "h2" % "2.1.212" % Test,
-  "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
-  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
-  "com.icegreen" % "greenmail" % "1.6.1" % Test,
-  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
@@ -177,7 +176,6 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -188,7 +186,21 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-text" % "1.9",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
-  "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5"
+  "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
+  "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
+  // ---------------------------------------------------------------------------------------------//
+  //                                   TEST DEPENDENCIES                                          //
+  // ---------------------------------------------------------------------------------------------//
+  "org.mockito" % "mockito-core" % "2.13.0" % Test,
+  "org.mockito" % "mockito-inline" % "3.8.0" % Test,
+  "org.mindrot" % "jbcrypt" % "0.4" % Test,
+  "com.h2database" % "h2" % "2.1.212" % Test,
+  "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
+  "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
+  "com.icegreen" % "greenmail" % "1.6.1" % Test,
+  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
 )
 // Clear default resolvers.
 appResolvers := None
@@ -273,8 +285,10 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
+(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+  ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
   buildUI.value
   versionGenerate.value
@@ -284,14 +298,16 @@ cleanPlatform := {
   clean.value
   cleanVenv.value
   cleanUI.value
+  cleanModules.value
 }
 
 versionGenerate := {
-  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("../build-support/gen_version_info.py --build-type=" + buildType + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
+  Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
   status
 }
 
@@ -308,8 +324,20 @@ buildUI := {
   status
 }
 
+buildModules := {
+  ybLog("Building modules...")
+  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  status
+}
+
+buildDependentArtifacts := {
+  ybLog("Building dependencies...")
+  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
+  status
+}
+
 compileJavaGenClient := {
-  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
   status
 }
@@ -317,6 +345,12 @@ compileJavaGenClient := {
 cleanUI := {
   ybLog("Cleaning UI...")
   val status = Process("rm -rf node_modules", baseDirectory.value / "ui").!
+  status
+}
+
+cleanModules := {
+  ybLog("Cleaning Node Agent...")
+  val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -362,7 +396,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -380,31 +414,23 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "0.0.4"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  // We wont use swagger-ui jar since we want to change some of the assets:
-  //  "org.webjars" % "swagger-ui" % "3.43.0",
-  "io.swagger" %% "swagger-play2" % "1.6.1",
-  "io.swagger" %% "swagger-scala-module" % "1.0.5",
-  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
-  "io.netty" % "netty-handler" % "4.1.71.Final",
-  "io.netty" % "netty-codec-http" % "4.1.71.Final",
-  "io.netty" % "netty" % "3.10.6.Final",
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
+  // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
   "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
-// https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
-//libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
-
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+// TODO(Shashank): Remove these in Step 3:
 dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
@@ -426,7 +452,7 @@ def partitionTests(tests: Seq[TestDefinition], shardSize: Int) =
     case (tests, index) =>
       val options = ForkOptions().withRunJVMOptions(Vector(
         "-Xmx2g", "-XX:MaxMetaspaceSize=600m", "-XX:MetaspaceSize=200m",
-        "-Dconfig.file=src/main/resources/application.test.conf"
+        "-Dconfig.resource=application.test.conf"
       ))
       Group("testGroup" + index, tests, SubProcess(options))
   } toSeq
@@ -435,7 +461,7 @@ Test / parallelExecution := true
 Test / fork := true
 Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSize.value )
 
-javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
+javaOptions in Test += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now
@@ -446,7 +472,7 @@ topLevelDirectory := None
 
 // Skip auto-recompile of code in dev mode if AUTO_RELOAD=false
 lazy val autoReload = getBoolEnvVar("AUTO_RELOAD")
-playMonitoredFiles := { if (autoReload) (playMonitoredFiles.value: @sbtUnchecked) else Seq() }
+playMonitoredFiles := { if (autoReload) playMonitoredFiles.value: @sbtUnchecked else Seq() }
 
 consoleSetting := {
   object PlayConsoleInteractionModeNew extends PlayInteractionMode {
@@ -494,22 +520,42 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
   "generate swagger.json"
 )
 
-// in settings
+lazy val swagger = project
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(
+    Test / fork := true,
+    javaOptions in Test += "-Dconfig.resource=application.test.conf",
+    testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
+    libraryDependencies ++= Seq(
+      "io.swagger" %% "swagger-play2" % "1.6.1" % Test,
+      "io.swagger" %% "swagger-scala-module" % "1.0.5" % Test,
+    ),
+    dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10",
+    dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+
+    swaggerGen := Def.taskDyn {
+      // Consider generating this only in managedResources
+      val file = (resourceDirectory in Compile in root).value / "swagger.json"
+      Def.sequential(
+        (Test / runMain )
+          .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+      )
+    }.value
+  )
+
+test in Test := (test in Test).dependsOn(swagger / Test / test).value
+
 swaggerGen := Def.taskDyn {
-  // Consider generating this only in managedResources
-  val file = (resourceDirectory in Compile).value / "swagger.json"
   Def.sequential(
-    (runMain in Test)
-      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
-    (javagen / openApiGenerate),
+    swagger /swaggerGen,
+    javagen / openApiGenerate,
     compileJavaGenClient,
-    (pythongen / openApiGenerate),
-    (gogen / openApiGenerate)
+    pythongen / openApiGenerate,
+    gogen / openApiGenerate
   )
 }.value
-
-// TODO: Should we trigger swagger gen on compile??
-// swaggerGen := swaggerGen.triggeredBy(compile in Compile).value
 
 val grafanaGen: TaskKey[Unit] = taskKey[Unit](
   "generate dashboard.json"

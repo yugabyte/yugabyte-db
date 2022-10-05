@@ -26,6 +26,7 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 
 #include "yb/util/status_log.h"
+#include "yb/util/logging.h"
 
 namespace rocksdb {
 
@@ -425,8 +426,11 @@ void CompactionIterator::NextFromInput() {
       // have hit (A)
       // We encapsulate the merge related state machine in a different
       // object to minimize change to the existing flow.
-      WARN_NOT_OK(merge_helper_->MergeUntil(input_, prev_snapshot, bottommost_level_),
-                  "Merge until failed");
+      auto merge_until_result = merge_helper_->MergeUntil(input_, prev_snapshot, bottommost_level_);
+      if (PREDICT_FALSE(!merge_until_result.ok())) {
+        YB_LOG_EVERY_N_SECS(WARNING, 100) << "Merge until failed: "
+          << merge_until_result.ToString();
+      }
       merge_out_iter_.SeekToFirst();
 
       if (merge_out_iter_.Valid()) {

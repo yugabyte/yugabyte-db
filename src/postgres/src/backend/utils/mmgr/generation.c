@@ -303,9 +303,9 @@ GenerationReset(MemoryContext context)
 		wipe_mem(block, block->blksize);
 #endif
 
-		YbPgMemSubConsumption(block->endptr - ((char *) block));
-
+		size_t freed_sz = block->endptr - ((char *) block);
 		free(block);
+		YbPgMemSubConsumption(freed_sz);
 	}
 
 	set->block = NULL;
@@ -323,10 +323,9 @@ GenerationDelete(MemoryContext context)
 	/* Reset to release all the GenerationBlocks */
 	GenerationReset(context);
 
-	YbPgMemSubConsumption(Generation_CONTEXTSZ);
-
 	/* And free the context header */
 	free(context);
+	YbPgMemSubConsumption(Generation_CONTEXTSZ);
 }
 
 /*
@@ -533,8 +532,9 @@ GenerationFree(MemoryContext context, void *pointer)
 	if (set->block == block)
 		set->block = NULL;
 
-	YbPgMemSubConsumption(block->blksize);
+	size_t freed_sz = block->blksize;
 	free(block);
+	YbPgMemSubConsumption(freed_sz);
 }
 
 /*

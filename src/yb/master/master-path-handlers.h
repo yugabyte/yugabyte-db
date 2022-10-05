@@ -222,12 +222,18 @@ class MasterPathHandlers {
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
 
-  Status CalculateTServerTree(TServerTree* tserver_tree);
-
+  // Calculate tserver tree for ALL tables if max_table_count == -1.
+  // Otherwise, do not perform calculation if number of tables is less than max_table_count.
+  Status CalculateTServerTree(TServerTree* tserver_tree, int max_table_count);
+  void RenderLoadBalancerViewPanel(
+      const TServerTree& tserver_tree, const vector<std::shared_ptr<TSDescriptor>>& descs,
+      const std::vector<TableInfoPtr>& tables, std::stringstream* output);
+  TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
   std::vector<TabletInfoPtr> GetLeaderlessTablets();

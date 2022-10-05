@@ -32,11 +32,11 @@
 #ifndef YB_UTIL_STOPWATCH_H
 #define YB_UTIL_STOPWATCH_H
 
-#include <glog/logging.h>
 #include <sys/resource.h>
 #include <sys/time.h>
 #include <time.h>
 #include <string>
+#include <glog/logging.h>
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -93,6 +93,35 @@ namespace yb {
 #define LOG_SLOW_EXECUTION(severity, max_expected_millis, description) \
   for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, "", description, \
           max_expected_millis, true); !_l.HasRun(); _l.MarkHasRun())
+
+// Macro for logging 1 in every N slow executions of a block.
+//   LOG_SLOW_EXECUTION_EVERY_N(INFO, 100, 50, "doing some task") {
+//     ... some task which takes some time
+//   }
+// every 1 in 100 executions slower than 50 milliseconds yields a log like:
+// I1102 14:35:51.726186 23082 file.cc:167] Time spent doing some task:
+//   real 3.729s user 3.570s sys 0.150s
+#define LOG_SLOW_EXECUTION_EVERY_N(severity, n, max_expected_millis, description) \
+  static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
+  ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
+  ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
+  ++LOG_OCCURRENCES; \
+  if (++LOG_OCCURRENCES_MOD_N > n) LOG_OCCURRENCES_MOD_N -= n; \
+  for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, "", description, \
+          max_expected_millis, LOG_OCCURRENCES_MOD_N == 1); !_l.HasRun(); _l.MarkHasRun())
+
+// Macro for logging slow executions of a block at most once in every 'n_secs'.
+//   LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1, 50, "doing some task") {
+//     ... some task which takes some time
+//   }
+// at most one block execution slower than 50 milliseconds, in every 1 second, yields a log like:
+// I1102 14:35:51.726186 23082 file.cc:167] Time spent doing some task:
+//   real 3.729s user 3.570s sys 0.150s
+#define LOG_SLOW_EXECUTION_EVERY_N_SECS(severity, n_secs, max_expected_millis, description) \
+  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
+  for (yb::sw_internal::LogTiming _l(__FILE__, __LINE__, google::severity, "", description, \
+          max_expected_millis, BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs) >= 0); \
+          !_l.HasRun(); _l.MarkHasRun())
 
 // Macro for vlogging timing of a block. The execution happens regardless of the vlog_level,
 // it's only the logging that's affected.

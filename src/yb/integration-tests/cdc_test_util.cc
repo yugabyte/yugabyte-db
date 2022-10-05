@@ -27,9 +27,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace cdc {
@@ -105,7 +105,7 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
     size_t new_size = 0;
     auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
     tserver::enterprise::CDCConsumer* cdc_consumer;
-    if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+    if (tserver && (cdc_consumer = tserver->GetCDCConsumer()) && mini_tserver->is_started()) {
       auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
       new_size = tablets_running.size();
     }

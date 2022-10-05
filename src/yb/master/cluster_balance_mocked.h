@@ -48,17 +48,20 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const ReplicationInfoPB& GetClusterReplicationInfo() const override {
+  Result<ReplicationInfoPB> GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table) const override {
     return replication_info_;
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const override {
-    return state_->options_->type == LIVE ?
-        replication_info_.live_replicas() : replication_info_.read_replicas(0);
+  void SetBlacklistAndPendingDeleteTS() override {
+    for (const auto& ts_desc : global_state_->ts_descs_) {
+      AddTSIfBlacklisted(ts_desc, blacklist_, false);
+      AddTSIfBlacklisted(ts_desc, leader_blacklist_, true);
+      if (ts_desc->HasTabletDeletePending()) {
+        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
+      }
+    }
   }
-
-  const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
-  const BlacklistPB& GetLeaderBlacklist() const override { return leader_blacklist_; }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,

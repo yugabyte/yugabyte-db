@@ -13,7 +13,6 @@ package com.yugabyte.yw.common.certmgmt.providers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -38,17 +37,18 @@ import org.flywaydb.play.FileUtils;
 @Slf4j
 public class CertificateSelfSigned extends CertificateProviderBase {
 
-  @Inject Config appConfig;
+  private final Config appConfig;
 
   X509Certificate curCaCertificate;
   KeyPair curKeyPair;
 
-  public CertificateSelfSigned(UUID pCACertUUID) {
+  public CertificateSelfSigned(UUID pCACertUUID, Config config) {
     super(CertConfigType.SelfSigned, pCACertUUID);
+    this.appConfig = config;
   }
 
-  public CertificateSelfSigned(CertificateInfo rootCertConfigInfo) {
-    super(CertConfigType.SelfSigned, rootCertConfigInfo.uuid);
+  public CertificateSelfSigned(CertificateInfo rootCertConfigInfo, Config config) {
+    this(rootCertConfigInfo.uuid, config);
   }
 
   @Override
@@ -97,7 +97,13 @@ public class CertificateSelfSigned extends CertificateProviderBase {
 
       X509Certificate newCert =
           CertificateHelper.createAndSignCertificate(
-              username, subject, newCertKeyPair, cer, pk, subjectAltNames);
+              username,
+              subject,
+              newCertKeyPair,
+              cer,
+              pk,
+              subjectAltNames,
+              appConfig.getInt("yb.tlsCertificate.server.maxLifetimeInYears"));
       log.info(
           "Created a certificate for username {} signed by root CA {} - {}.",
           username,
@@ -133,9 +139,9 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     log.debug("Called generateCACertificate for: {}", certLabel);
     int timeInYears = 4;
     try {
-      timeInYears = appConfig.getInt("yb.tlsCertificate.expiryInYears");
+      timeInYears = appConfig.getInt("yb.tlsCertificate.root.expiryInYears");
     } catch (Exception e) {
-      log.error("Failed to get yb.tlsCertificate.expiryInYears");
+      log.error("Failed to get yb.tlsCertificate.root.expiryInYears");
     }
 
     curCaCertificate = CertificateHelper.generateCACertificate(certLabel, keyPair, timeInYears);

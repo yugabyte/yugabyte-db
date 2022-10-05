@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 import org.yb.CommonNet;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.master.MasterReplicationOuterClass;
@@ -44,7 +44,7 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
   }
 
   @Override
-  ChannelBuffer serialize(Message header) {
+  ByteBuf serialize(Message header) {
     assert header.isInitialized();
 
     // Add table IDs and bootstrap IDs.

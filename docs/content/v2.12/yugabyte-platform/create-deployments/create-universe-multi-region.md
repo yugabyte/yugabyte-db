@@ -123,7 +123,7 @@ You can find the region codes for each of the nodes by browsing to the **Nodes**
 Recall that we expect the app to have the following characteristics based on its deployment configuration:
 
 - Global consistency on writes, which would cause higher latencies in order to replicate data across multiple geographic regions.
-- Low latency reads from the nearest data center, which offers timeline consistency (similar to async replication).
+- Low latency reads from the nearest data center, which offers timeline consistency (similar to asynchronous replication).
 
 Let us verify this by browse to the **Metrics** tab of the universe in the Yugabyte Platform console to see the overall performance of the app. It should look similar to the screenshot below.
 

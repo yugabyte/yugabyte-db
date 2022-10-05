@@ -45,6 +45,7 @@ class Master : public yb::master::Master {
   void operator=(const Master&) = delete;
 
   Status ReloadKeysAndCertificates() override;
+  std::string GetCertificateDetails() override;
 
  protected:
   Status RegisterServices() override;

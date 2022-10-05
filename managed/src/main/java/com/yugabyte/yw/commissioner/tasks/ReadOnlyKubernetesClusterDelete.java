@@ -78,6 +78,8 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       UUID providerUUID = UUID.fromString(userIntent.provider);
 
       Map<String, String> universeConfig = universe.getConfig();
+      // True for all the new and v2 to v3 migrated universes
+      // i.e. everything which is using 2.1.8+.
       boolean runHelmDelete = universeConfig.containsKey(Universe.HELM2_LEGACY);
 
       PlacementInfo pi = cluster.placementInfo;
@@ -109,7 +111,10 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
                   executor);
       namespaceDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
-      boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+      // This value cannot be changed once set during the Universe
+      // creation, so we don't allow users to modify it later during
+      // edit, upgrade, etc.
+      boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
@@ -145,7 +150,10 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
 
         // Delete the namespaces of the deployments only if those were
         // created by us.
-        if (namespace == null) {
+        // We don't delete the namespace in case of new naming style,
+        // as it is shared by primary cluster deployments (Helm
+        // releases) and read replica deployments.
+        if (namespace == null && !newNamingStyle) {
           namespaceDeletes.addSubTask(
               createDestroyKubernetesTask(
                   universe.getUniverseDetails().nodePrefix,
@@ -202,12 +210,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       boolean isReadOnlyCluster) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.commandType = commandType;
-    params.nodePrefix = nodePrefix;
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
-    if (az != null) {
-      params.nodePrefix = String.format("%s-%s", nodePrefix, az);
-    }
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(nodePrefix, az, isReadOnlyCluster);
+
     if (config != null) {
       params.config = config;
       // This assumes that the config is az config. It is true in this

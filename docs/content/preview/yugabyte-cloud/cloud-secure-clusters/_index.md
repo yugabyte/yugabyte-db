@@ -4,7 +4,7 @@ headerTitle: Secure clusters in YugabyteDB Managed
 linkTitle: Secure clusters
 description: Secure clusters in YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
-headcontent: Configure the security features of your YugabyteDB Managed clusters.
+headcontent: Configure the security features of your YugabyteDB Managed clusters
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -20,6 +20,7 @@ YugabyteDB Managed clusters include the following security features:
 | **Network authorization** | Access to YugabyteDB Managed clusters is limited to IP addresses that you explicitly allow using [IP allow lists](add-connections/).<br>You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/). |
 | **Database authorization** | YugabyteDB uses [role-based access control](cloud-users/) for database authorization. Using the default admin user that is created when a cluster is deployed, you can [add additional roles and users](add-users/) to provide custom access to database resources to other team members and database clients. |
 | **Encryption in transit** | YugabyteDB Managed uses [encryption-in-transit](cloud-authentication/) for client-server and intra-node connectivity. |
+| **Encryption at rest** | Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. |
 | **Auditing** | YugabyteDB Managed provides detailed [tracking of activity](cloud-activity/) on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing. |
 
 <div class="row">

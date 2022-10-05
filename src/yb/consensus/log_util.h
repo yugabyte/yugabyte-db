@@ -317,11 +317,11 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   Status ParseFooterMagicAndFooterLength(const Slice &data, uint32_t *parsed_len);
 
   // Starting at 'offset', read the rest of the log file, looking for any
-  // valid log entry headers. If any are found, sets *has_valid_entries to true.
+  // valid log entry headers.
   //
-  // Returns a bad Status only in the case that some IO error occurred reading the
-  // file.
-  Status ScanForValidEntryHeaders(int64_t offset, bool* has_valid_entries);
+  // Returns true/false based on the valid entries found. In case of any IO error,
+  // a bad Status code is returned.
+  Result<bool> ScanForValidEntryHeaders(int64_t offset);
 
   // Format a nice error message to report on a corruption in a log file.
   Status MakeCorruptionStatus(
@@ -388,7 +388,12 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);
 };
 
-// A writable log segment where state data is stored.
+// A writable log segment where state data is stored. The class is not thread safe.
+// It is still okay to call ::Sync and ::WriteEntryBatch from two different threads
+// as long as write/append/truncate etc are being done by the same thread.
+// ::Sync ends up calling 'fsync' system call and resets 'pending_sync_' prior to that.
+// ::WriteEntryBatch results in a call to 'writev' and is followed by setting 'pending_sync_'.
+// Both these system calls are atomic and hence doing so is safe.
 class WritableLogSegment {
  public:
   WritableLogSegment(std::string path,

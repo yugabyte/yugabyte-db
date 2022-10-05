@@ -55,12 +55,22 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kVisibleToClient) // All tables visible to the client
                );
 
+YB_STRONGLY_TYPED_BOOL(HideOnly);
+YB_STRONGLY_TYPED_BOOL(KeepData);
+
 class CatalogManagerIf {
  public:
   virtual void CheckTableDeleted(const TableInfoPtr& table) = 0;
 
+  virtual void DeleteTabletReplicas(
+      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data) = 0;
+
+  virtual void NotifyPrepareDeleteTransactionTabletFinished(
+      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only) = 0;
+
   virtual void NotifyTabletDeleteFinished(
-      const TabletServerId& tserver_uuid, const TableId& table_id, const TableInfoPtr& table) = 0;
+      const TabletServerId& tserver_uuid, const TabletId& tablet_id,
+      const TableInfoPtr& table) = 0;
 
   virtual std::string GenerateId() = 0;
 
@@ -99,6 +109,8 @@ class CatalogManagerIf {
 
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
+  virtual Status GetYsqlAllDBCatalogVersions(
+      std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;

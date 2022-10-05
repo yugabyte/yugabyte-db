@@ -55,13 +55,17 @@ public class AuditService {
           "$..['config.config_file_contents.private_key']",
           "$..config.private_key_id",
           "$..config.private_key",
+          "$..GCP_CONFIG.private_key_id",
+          "$..GCP_CONFIG.private_key",
           // Azure client secret
           "$..['config.AZURE_CLIENT_SECRET']",
+          "$..CLIENT_SECRET",
           // Kubernetes secrets
           "$..KUBECONFIG_PULL_SECRET_CONTENT",
           "$..KUBECONFIG_CONTENT",
           // onprem and certificate private keys
           "$..keyContent",
+          "$..['customServerCertData.serverKeyContent']",
           // S3 storage credentials
           "$..AWS_ACCESS_KEY_ID",
           "$..AWS_SECRET_ACCESS_KEY",
@@ -184,6 +188,29 @@ public class AuditService {
     createAuditEntry(ctx, ctx.request(), target, targetID, action, params, taskUUID);
   }
 
+  public void createAuditEntryWithReqBody(
+      Http.Context ctx,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID,
+      JsonNode additionalDetails) {
+    createAuditEntry(
+        ctx, ctx.request(), target, targetID, action, params, taskUUID, additionalDetails);
+  }
+
+  public void createAuditEntry(
+      Http.Context ctx,
+      Http.Request request,
+      Audit.TargetType target,
+      String targetID,
+      Audit.ActionType action,
+      JsonNode params,
+      UUID taskUUID) {
+    createAuditEntry(ctx, request, target, targetID, action, params, taskUUID, null);
+  }
+
   // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
@@ -193,7 +220,8 @@ public class AuditService {
       String targetID,
       Audit.ActionType action,
       JsonNode params,
-      UUID taskUUID) {
+      UUID taskUUID,
+      JsonNode additionalDetails) {
     UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
     ctx.args.put("isAudited", true);
     String method = request.method();
@@ -201,7 +229,15 @@ public class AuditService {
     JsonNode redactedParams = filterSecretFields(params);
     Audit entry =
         Audit.create(
-            user.getUser(), path, method, target, targetID, action, redactedParams, taskUUID);
+            user.getUser(),
+            path,
+            method,
+            target,
+            targetID,
+            action,
+            redactedParams,
+            taskUUID,
+            additionalDetails);
     MDC.put("logType", "audit");
     LOG.info(Json.toJson(entry).toString());
     MDC.remove("logType");

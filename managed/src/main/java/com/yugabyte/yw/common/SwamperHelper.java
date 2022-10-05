@@ -13,35 +13,41 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.utils.FileUtils.writeFile;
 import static com.yugabyte.yw.common.utils.FileUtils.writeJsonFile;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.Getter;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.Environment;
 import play.libs.Json;
 
@@ -64,6 +70,12 @@ public class SwamperHelper {
   private static final Pattern TARGET_FILE_PATTERN =
       Pattern.compile("^(node|yugabyte)\\." + UUID_PATTERN + ".json$");
 
+  private static final String TARGET_PATH_PARAM = "yb.swamper.targetPath";
+  private static final String RULES_PATH_PARAM = "yb.swamper.rulesPath";
+  public static final String COLLECTION_LEVEL_PARAM = "yb.metrics.collection_level";
+
+  private static final String PARAMETER_LABEL_PREFIX = "__param_";
+
   /*
      Sample targets file
     [
@@ -82,23 +94,30 @@ public class SwamperHelper {
     ]
   */
 
-  private final play.Configuration appConfig;
+  private final RuntimeConfigFactory runtimeConfigFactory;
   private final Environment environment;
 
   @Inject
-  public SwamperHelper(Configuration appConfig, Environment environment) {
-    this.appConfig = appConfig;
+  public SwamperHelper(RuntimeConfigFactory runtimeConfigFactory, Environment environment) {
+    this.runtimeConfigFactory = runtimeConfigFactory;
     this.environment = environment;
   }
 
+  @Getter
   public enum TargetType {
-    INVALID_EXPORT,
-    NODE_EXPORT,
-    MASTER_EXPORT,
-    TSERVER_EXPORT,
-    REDIS_EXPORT,
-    CQL_EXPORT,
-    YSQL_EXPORT;
+    INVALID_EXPORT(false),
+    NODE_EXPORT(false),
+    MASTER_EXPORT(true),
+    TSERVER_EXPORT(true),
+    REDIS_EXPORT(true),
+    CQL_EXPORT(true),
+    YSQL_EXPORT(true);
+
+    private final boolean collectionLevelSupported;
+
+    TargetType(boolean collectionLevelSupported) {
+      this.collectionLevelSupported = collectionLevelSupported;
+    }
 
     public int getPort(NodeDetails nodeDetails) {
       switch (this) {
@@ -128,24 +147,24 @@ public class SwamperHelper {
     EXPORTED_INSTANCE
   }
 
-  private ObjectNode getIndividualConfig(
-      Universe universe, TargetType t, Collection<NodeDetails> nodes, String exportedInstance) {
+  private ObjectNode getIndividualConfig(Universe universe, TargetType t, NodeDetails nodeDetails) {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
-    nodes.forEach(
-        (node) -> {
-          int port = t.getPort(node);
-          if (node.isActive() && port > 0) {
-            targetNodes.add(node.cloudInfo.private_ip + ":" + port);
-          }
-        });
+    int port = t.getPort(nodeDetails);
+    if (nodeDetails.isActive() && port > 0) {
+      targetNodes.add(nodeDetails.cloudInfo.private_ip + ":" + port);
+    }
 
     ObjectNode labels = Json.newObject();
     labels.put(
         LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
     labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
-    if (exportedInstance != null) {
-      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), exportedInstance);
+    if (nodeDetails.nodeName != null) {
+      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
+    }
+    if (t.isCollectionLevelSupported()) {
+      MetricCollectionLevel level = getLevel(universe);
+      appendCollectionLevelLabels(level, labels);
     }
 
     target.set("targets", targetNodes);
@@ -154,7 +173,7 @@ public class SwamperHelper {
   }
 
   private File getSwamperTargetDirectory() {
-    return getOrCreateDirectory("yb.swamper.targetPath");
+    return getOrCreateDirectory(TARGET_PATH_PARAM);
   }
 
   private String getSwamperFile(UUID universeUUID, String prefix) {
@@ -168,10 +187,20 @@ public class SwamperHelper {
 
   public void writeUniverseTargetJson(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    writeUniverseTargetJson(universe);
+  }
+
+  public void writeUniverseTargetJson(Universe universe) {
+    MetricCollectionLevel level = getLevel(universe);
+
+    if (level.isDisableCollection()) {
+      removeUniverseTargetJson(universe.getUniverseUUID());
+      return;
+    }
 
     // Write out the node specific file.
     ArrayNode nodeTargets = Json.newArray();
-    String swamperFile = getSwamperFile(universeUUID, TARGET_FILE_NODE_PREFIX);
+    String swamperFile = getSwamperFile(universe.getUniverseUUID(), TARGET_FILE_NODE_PREFIX);
     if (swamperFile == null) {
       return;
     }
@@ -184,18 +213,13 @@ public class SwamperHelper {
                 // no node exporter on k8s pods
                 return;
               }
-              nodeTargets.add(
-                  getIndividualConfig(
-                      universe,
-                      TargetType.NODE_EXPORT,
-                      Collections.singletonList(node),
-                      node.nodeName));
+              nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));
             });
     writeJsonFile(swamperFile, nodeTargets);
 
     // Write out the yugabyte specific file.
     ArrayNode ybTargets = Json.newArray();
-    swamperFile = getSwamperFile(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
+    swamperFile = getSwamperFile(universe.getUniverseUUID(), TARGET_FILE_YUGABYTE_PREFIX);
     universe
         .getNodes()
         .forEach(
@@ -213,17 +237,26 @@ public class SwamperHelper {
                   continue;
                 }
 
-                if (!node.isTserver
-                    && (t.equals(TargetType.TSERVER_EXPORT)
-                        || t.equals(TargetType.CQL_EXPORT)
-                        || t.equals(TargetType.REDIS_EXPORT)
-                        || t.equals(TargetType.YSQL_EXPORT))) {
-                  continue;
+                if (node.isTserver) {
+                  if (!node.isYsqlServer && t.equals(TargetType.YSQL_EXPORT)) {
+                    continue;
+                  }
+                  if (!node.isYqlServer && t.equals(TargetType.CQL_EXPORT)) {
+                    continue;
+                  }
+                  if (!node.isRedisServer && t.equals(TargetType.REDIS_EXPORT)) {
+                    continue;
+                  }
+                } else {
+                  if (t.equals(TargetType.TSERVER_EXPORT)
+                      || t.equals(TargetType.CQL_EXPORT)
+                      || t.equals(TargetType.REDIS_EXPORT)
+                      || t.equals(TargetType.YSQL_EXPORT)) {
+                    continue;
+                  }
                 }
 
-                ybTargets.add(
-                    getIndividualConfig(
-                        universe, t, Collections.singletonList(node), node.nodeName));
+                ybTargets.add(getIndividualConfig(universe, t, node));
               }
             });
 
@@ -249,7 +282,7 @@ public class SwamperHelper {
   }
 
   private File getSwamperRuleDirectory() {
-    return getOrCreateDirectory("yb.swamper.rulesPath");
+    return getOrCreateDirectory(RULES_PATH_PARAM);
   }
 
   private String getAlertRuleFile(UUID ruleUUID) {
@@ -280,7 +313,10 @@ public class SwamperHelper {
     writeFile(rulesFile, fileContent);
   }
 
-  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
+  public void writeAlertDefinition(
+      AlertConfiguration configuration,
+      AlertDefinition definition,
+      AlertTemplateSettings templateSettings) {
     String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
@@ -310,7 +346,8 @@ public class SwamperHelper {
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
-                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
+                      new AlertRuleTemplateSubstitutor(
+                          configuration, definition, severity, templateSettings);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());
@@ -356,7 +393,7 @@ public class SwamperHelper {
   }
 
   private File getOrCreateDirectory(String configParam) {
-    String directoryPath = appConfig.getString(configParam);
+    String directoryPath = runtimeConfigFactory.staticApplicationConf().getString(configParam);
     if (StringUtils.isEmpty(directoryPath)) {
       return null;
     }
@@ -366,5 +403,41 @@ public class SwamperHelper {
       return directory;
     }
     return null;
+  }
+
+  private MetricCollectionLevel getLevel(Universe universe) {
+    return MetricCollectionLevel.fromString(
+        runtimeConfigFactory.forUniverse(universe).getString(COLLECTION_LEVEL_PARAM));
+  }
+
+  private void appendCollectionLevelLabels(MetricCollectionLevel level, ObjectNode labels) {
+    String paramsFile = level.getParamsFilePath();
+    if (StringUtils.isEmpty(paramsFile)) {
+      return;
+    }
+
+    try (InputStream templateStream = environment.resourceAsStream(paramsFile)) {
+      String paramsFileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      ObjectNode params = (ObjectNode) Json.parse(paramsFileContent);
+      Iterator<Entry<String, JsonNode>> fields = params.fields();
+      while (fields.hasNext()) {
+        Entry<String, JsonNode> field = fields.next();
+        String paramName = field.getKey();
+        JsonNode paramValue = field.getValue();
+        String paramStringValue;
+        if (paramValue.isArray()) {
+          List<String> parts = new ArrayList<>();
+          for (JsonNode part : paramValue) {
+            parts.add(part.textValue());
+          }
+          paramStringValue = String.join("", parts);
+        } else {
+          paramStringValue = paramValue.textValue();
+        }
+        labels.put(PARAMETER_LABEL_PREFIX + paramName, paramStringValue);
+      }
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to read or process params file " + paramsFile, e);
+    }
   }
 }

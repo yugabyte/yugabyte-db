@@ -441,8 +441,8 @@ static ObjectAddress ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *
 						  LOCKMODE lockmode);
 static void CloneFkReferencing(Relation pg_constraint, Relation parentRel,
 				   Relation partRel, List *clone, List **cloned);
-static void ATExecDropConstraint(Relation rel, const char *constrName,
-					 DropBehavior behavior,
+static void ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
+					 const char *constrName, DropBehavior behavior,
 					 bool recurse, bool recursing,
 					 bool missing_ok, LOCKMODE lockmode);
 static void ATPrepAlterColumnType(List **wqueue,
@@ -3928,6 +3928,17 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	tab = ATGetQueueEntry(wqueue, rel);
 
 	/*
+	 * Setting the flag for ADD PRIMARY KEY use case
+	 * at the index adding phase prior to copying the command.
+	 */
+	if (cmd->subtype == AT_AddIndex && IsA(cmd->def, IndexStmt))
+	{
+		IndexStmt *index = (IndexStmt *) cmd->def;
+		if (index->primary)
+			cmd->yb_is_add_primary_key = true;
+	}
+
+	/*
 	 * Copy the original subcommand for each table.  This avoids conflicts
 	 * when different child tables need to make different parse
 	 * transformations (for example, the same column may have different column
@@ -4241,13 +4252,11 @@ ATRewriteCatalogs(List **wqueue,
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
-	List *handles = NIL;
-	YBCPgStatement handle = YBCPrepareAlterTable(info->subcmds,
-												AT_NUM_PASSES,
-												main_relid,
-												&rollbackHandle,
-												false /* isPartitionOfAlteredTable */);
-	handles = lappend(handles, handle);
+	List *handles = YBCPrepareAlterTable(info->subcmds,
+										 AT_NUM_PASSES,
+										 main_relid,
+										 &rollbackHandle,
+										 false /* isPartitionOfAlteredTable */);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -4267,12 +4276,17 @@ ATRewriteCatalogs(List **wqueue,
 		if (childrelid == main_relid)
 			continue;
 		YBCPgStatement childRollbackHandle = NULL;
-		YBCPgStatement child_handle = YBCPrepareAlterTable(info->subcmds,
-														   AT_NUM_PASSES,
-														   childrelid,
-														   &childRollbackHandle,
-														   true /*isPartitionOfAlteredTable */);
-		handles = lappend(handles, child_handle);
+		List *child_handles = YBCPrepareAlterTable(info->subcmds,
+												   AT_NUM_PASSES,
+												   childrelid,
+												   &childRollbackHandle,
+												   true /*isPartitionOfAlteredTable */);
+		ListCell *listcell = NULL;
+		foreach(listcell, child_handles)
+		{
+			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
+			handles = lappend(handles, child);
+		}
 		if (childRollbackHandle)
 			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
 	}
@@ -4475,12 +4489,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 											   lockmode);
 			break;
 		case AT_DropConstraint: /* DROP CONSTRAINT */
-			ATExecDropConstraint(rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(tab, mutable_rel, cmd->name, cmd->behavior,
 								 false, false,
 								 cmd->missing_ok, lockmode);
 			break;
 		case AT_DropConstraintRecurse:	/* DROP CONSTRAINT with recursion */
-			ATExecDropConstraint(rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(tab, mutable_rel, cmd->name, cmd->behavior,
 								 true, false,
 								 cmd->missing_ok, lockmode);
 			break;
@@ -4742,8 +4756,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Rewriting of YB table is not yet implemented"),
-						 errhint("See https://github.com/YugaByte/yugabyte-db/issues/13278. "
-						         "Click '+' on the description to raise its priority")));
+						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
+						         "React with thumbs up to raise its priority")));
 
 			/*
 			 * Don't allow rewrite on temp tables of other backends ... their
@@ -5168,8 +5182,14 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 							 * So we must delete the relevant entries from the catalog tables. */
 							if (IsYugaByteEnabled())
 							{
-								ATExecDropConstraint(oldrel, con->name, DROP_RESTRICT, true, false,
-													 false, lockmode);
+								/*
+								 * Even though we pass oldrel as a reference, it won't change
+								 * for CHECK constraint.
+								 */
+								Relation oldrel_prev PG_USED_FOR_ASSERTS_ONLY = oldrel;
+								ATExecDropConstraint(tab, &oldrel, con->name, DROP_RESTRICT, true,
+													 false, false, lockmode);
+								Assert(oldrel == oldrel_prev);
 							}
 							ereport(ERROR,
 									(errcode(ERRCODE_CHECK_VIOLATION),
@@ -7669,13 +7689,18 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
 
 /*
  * Primary key is an inherent part of a DocDB table, we can't literally "add"
- * a primary key to an existing table.
+ * or "drop" a primary key of an existing table.
+ *
  * As a workaround, we create a new table with the desired schema and replace
  * the old table with it.
- * Returns an address of the new primary key (dummy) index.
+ *
+ * If result_addr is not NULL, it will contain an address of the new primary
+ * key (dummy) index, or InvalidObjectAddress if primary key has been dropped.
+ *
+ * Returns a new relation representing a recreated table.
  */
-static ObjectAddress
-YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
+static Relation
+YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* result_addr)
 {
 	CreateStmt*  create_stmt;
 	RenameStmt*  rename_stmt;
@@ -7695,27 +7720,27 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	HeapTuple    tuple;
 
 	MemoryContext oldcxt, per_tup_cxt;
-	ObjectAddress result = InvalidObjectAddress, address;
+	ObjectAddress local_result_addr = InvalidObjectAddress, address;
 
-	Assert(IsYBRelation(*mutable_rel));
+	Assert(IsYBRelation(old_rel));
 
-	old_relid = RelationGetRelid(*mutable_rel);
+	old_relid = RelationGetRelid(old_rel);
 
-	constr = RelationGetDescr(*mutable_rel)->constr;
+	constr = RelationGetDescr(old_rel)->constr;
 
 	/*
 	 * Recreating a table will change its OID, which is not tolerable
 	 * for system tables.
 	 */
-	if (IsCatalogRelation(*mutable_rel))
-		elog(ERROR, "cannot add a primary key to a system table");
+	if (IsCatalogRelation(old_rel))
+		elog(ERROR, "cannot change a primary key of a system table");
 
-	if ((*mutable_rel)->rd_partkey != NULL || (*mutable_rel)->rd_rel->relispartition)
-		elog(ERROR, "adding primary key to a partitioned table "
+	if (old_rel->rd_partkey != NULL || old_rel->rd_rel->relispartition)
+		elog(ERROR, "changing primary key of a partitioned table "
 		            "is not yet implemented");
 
-	if ((*mutable_rel)->rd_rel->relhasrules)
-		elog(ERROR, "adding primary key to a table with rules "
+	if (old_rel->rd_rel->relhasrules)
+		elog(ERROR, "changing primary key of a table with rules "
 		            "is not yet implemented");
 
 	/*
@@ -7725,28 +7750,30 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 *       issues with inherited constraints being recreated.
 	 *       Also note that partitioned tables have relhassubclass set as well.
 	 */
-	if ((*mutable_rel)->rd_rel->relhassubclass)
-		elog(ERROR, "adding primary key to a table having children tables "
+	if (old_rel->rd_rel->relhassubclass)
+		elog(ERROR, "changing primary key of a table having children tables "
 		            "is not yet implemented");
 
-	YbGetTableProperties(*mutable_rel); /* Force lazy loading */
+	YbGetTableProperties(old_rel); /* Force lazy loading */
 
 	/*
-	 * At this point we're already sure that the table has no explicit PK -
-	 * meaning it's PK has to be (ybctid HASH), or (ybctid ASC) for colocated table.
+	 * If we're adding a PK, at this point we're already sure that the table
+	 * has no explicit PK - meaning it's PK has to be (ybctid HASH),
+	 * or (ybctid ASC) for colocated table.
 	 */
-	Assert((*mutable_rel)->yb_table_properties->is_colocated ||
-		   (*mutable_rel)->yb_table_properties->num_hash_key_columns == 1);
+	Assert(!stmt ||
+		   old_rel->yb_table_properties->is_colocated ||
+		   old_rel->yb_table_properties->num_hash_key_columns == 1);
 
 	/* We should have at least one index parameter. */
-	Assert(stmt->indexParams->length > 0);
+	Assert(!stmt || stmt->indexParams->length > 0);
 
-	const Oid   namespace_oid   = RelationGetNamespace(*mutable_rel);
+	const Oid   namespace_oid   = RelationGetNamespace(old_rel);
 	const char* namespace_name  = get_namespace_name(namespace_oid);
 
 	const char* temp_old_suffix     = "temp_old";
 
-	const char* orig_table_name     = pstrdup(RelationGetRelationName(*mutable_rel));
+	const char* orig_table_name     = pstrdup(RelationGetRelationName(old_rel));
 	const char* temp_old_table_name = ChooseRelationName(orig_table_name,
 	                                                     NULL /* name2 */,
 	                                                     temp_old_suffix /* label */,
@@ -7782,16 +7809,16 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * Previous calls to CommandCounterIncrement have discarded
 	 * yb_table_properties, so we fetch it again.
 	 */
-	YbGetTableProperties(*mutable_rel);
+	YbGetTableProperties(old_rel);
 
 	create_stmt = makeNode(CreateStmt);
 	create_stmt->relation      = makeRangeVar(pstrdup(namespace_name),
                                               pstrdup(orig_table_name),
 	                                          -1 /* location */);
-	create_stmt->ofTypename    = (OidIsValid((*mutable_rel)->rd_rel->reloftype)
-	        ? makeTypeNameFromOid((*mutable_rel)->rd_rel->reloftype, -1 /* typmod */)
+	create_stmt->ofTypename    = (OidIsValid(old_rel->rd_rel->reloftype)
+	        ? makeTypeNameFromOid(old_rel->rd_rel->reloftype, -1 /* typmod */)
 	        : NULL);
-	create_stmt->tablespacename = get_tablespace_name((*mutable_rel)->rd_rel->reltablespace);
+	create_stmt->tablespacename = get_tablespace_name(old_rel->rd_rel->reltablespace);
 	create_stmt->tablegroupname = NULL;
 
 	/*
@@ -7806,45 +7833,48 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		create_stmt->options = untransformRelOptions(datum);
 	ReleaseSysCache(tuple);
 
-	const Oid tablegroup_oid = (*mutable_rel)->yb_table_properties->tablegroup_oid;
+	const Oid tablegroup_oid = old_rel->yb_table_properties->tablegroup_oid;
 	if (OidIsValid(tablegroup_oid))
 	{
 		create_stmt->tablegroupname = get_tablegroup_name(tablegroup_oid);
 		Assert(create_stmt->tablegroupname);
 	}
 
-	/* The only constraint we care about here is the PK constraint needed for YB. */
-	Constraint* pk_constr = makeNode(Constraint);
-	pk_constr->contype      = CONSTR_PRIMARY;
-	pk_constr->conname      = stmt->idxname;
-	pk_constr->options      = stmt->options;
-	pk_constr->indexspace   = stmt->tableSpace;
-	foreach(cell, stmt->indexParams)
+	if (stmt)
 	{
-		IndexElem* ielem = lfirst(cell);
-		pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
-		pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
+		/* The only constraint we care about here is the PK constraint needed for YB. */
+		Constraint* pk_constr = makeNode(Constraint);
+		pk_constr->contype      = CONSTR_PRIMARY;
+		pk_constr->conname      = stmt->idxname;
+		pk_constr->options      = stmt->options;
+		pk_constr->indexspace   = stmt->tableSpace;
+		foreach(cell, stmt->indexParams)
+		{
+			IndexElem* ielem = lfirst(cell);
+			pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
+			pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
+		}
+		switch (lfirst_node(IndexElem, stmt->indexParams->head)->ordering)
+		{
+			case SORTBY_HASH:
+				is_range_pk = false;
+				break;
+			case SORTBY_ASC:
+			case SORTBY_DESC:
+				is_range_pk = true;
+				break;
+			case SORTBY_DEFAULT:
+				/*
+				 * Default ordering for the first PK element is hash in
+				 * non-colocated case.
+				 */
+				is_range_pk = old_rel->yb_table_properties->is_colocated;
+				break;
+			case SORTBY_USING:
+				elog(ERROR, "USING is not allowed in primary key");
+		}
+		create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
 	}
-	switch (lfirst_node(IndexElem, stmt->indexParams->head)->ordering)
-	{
-		case SORTBY_HASH:
-			is_range_pk = false;
-			break;
-		case SORTBY_ASC:
-		case SORTBY_DESC:
-			is_range_pk = true;
-			break;
-		case SORTBY_DEFAULT:
-			/*
-			 * Default ordering for the first PK element is hash in
-			 * non-colocated case.
-			 */
-			is_range_pk = (*mutable_rel)->yb_table_properties->is_colocated;
-			break;
-		case SORTBY_USING:
-			elog(ERROR, "USING is not allowed in primary key");
-	}
-	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
 
 	/*
 	 * While there is little to no sense for a user to be doing
@@ -7853,11 +7883,11 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * It might come in handy if once we start supporting DROP PK as well.
 	 * In case we define a range primary key though, we discard this.
 	 */
-	if (!(*mutable_rel)->yb_table_properties->is_colocated && !is_range_pk)
+	if (!old_rel->yb_table_properties->is_colocated && !is_range_pk)
 	{
 		create_stmt->split_options = makeNode(OptSplit);
 		create_stmt->split_options->split_type   = NUM_TABLETS;
-		create_stmt->split_options->num_tablets  = (*mutable_rel)->yb_table_properties->num_tablets;
+		create_stmt->split_options->num_tablets  = old_rel->yb_table_properties->num_tablets;
 		create_stmt->split_options->split_points = NULL;
 	}
 
@@ -7865,9 +7895,9 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * Set attributes and their defaults.
 	 */
 	AttrDefault* attrdef = constr ? constr->defval : NULL;
-	for (int attno = 1; attno <= RelationGetDescr(*mutable_rel)->natts; attno++)
+	for (int attno = 1; attno <= RelationGetDescr(old_rel)->natts; attno++)
 	{
-		Form_pg_attribute attr_form = TupleDescAttr(RelationGetDescr(*mutable_rel), attno - 1);
+		Form_pg_attribute attr_form = TupleDescAttr(RelationGetDescr(old_rel), attno - 1);
 
 		if (attr_form->attisdropped)
 			continue;
@@ -7901,7 +7931,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		col_def->identity    = attr_form->attidentity;
 		col_def->is_not_null = attr_form->attnotnull;
 		/* If this is a PK column now, is should be made non-nullable */
-		foreach(cell, stmt->indexParams)
+		foreach(cell, stmt ? stmt->indexParams : NIL)
 		{
 			IndexElem* ielem = lfirst(cell);
 			if (strcmp(NameStr(attr_form->attname), ielem->name) == 0)
@@ -7932,21 +7962,21 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * Create an altered table and open it.
 	 */
 	address = DefineRelation(create_stmt,
-	                         RELKIND_RELATION,
-	                         (*mutable_rel)->rd_rel->relowner,
-	                         NULL /* typaddress */,
-	                         "" /* queryString */);
+                             RELKIND_RELATION,
+                             old_rel->rd_rel->relowner,
+                             NULL /* typaddress */,
+                             "" /* queryString */);
 	new_relid = address.objectId;
 	new_rel = heap_open(new_relid, AccessExclusiveLock);
 
 	old2new_attmap =
-	    convert_tuples_by_name_map(RelationGetDescr(*mutable_rel),
+	    convert_tuples_by_name_map(RelationGetDescr(old_rel),
 	                               RelationGetDescr(new_rel),
 	                               gettext_noop("could not convert row type"));
 
 	new2old_attmap =
 	    convert_tuples_by_name_map(RelationGetDescr(new_rel),
-	                               RelationGetDescr(*mutable_rel),
+	                               RelationGetDescr(old_rel),
 	                               gettext_noop("could not convert row type"));
 
 	/*
@@ -7966,7 +7996,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	                          NULL /* snapshot */,
 	                          1 /* nkeys */,
 	                          &key);
-	bool has_dummy_pk = false; /* Sanity check that dummy PK index is already defined. */
+	bool has_dummy_pk = false; /* Sanity check, whether dummy PK index has been found. */
 	List* checks_list = NIL;
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
@@ -8009,7 +8039,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				                                   1 /* fromrel_varno */,
 				                                   0 /* sublevels_up */,
 				                                   new2old_attmap,
-				                                   RelationGetDescr(*mutable_rel)->natts,
+				                                   RelationGetDescr(old_rel)->natts,
 				                                   RelationGetForm(new_rel)->reltype,
 				                                   &found_whole_row);
 				if (found_whole_row)
@@ -8062,8 +8092,12 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		}
 	}
 	systable_endscan(scan);
-	if (!has_dummy_pk)
+
+	if (stmt && !has_dummy_pk)
 		elog(ERROR, "expected dummy primary key index to be defined");
+	if (!stmt && has_dummy_pk)
+		elog(ERROR, "expected dummy primary key index to not be defined");
+
 	/* We don't close pg_constraint just yet. */
 	AddRelationNewConstraints(new_rel,
 	                          NULL /* newColDefaults - they are already in place */,
@@ -8083,7 +8117,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * Copy table content.
 	 */
 
-	YBCopyTableRowsUnchecked(*mutable_rel, new_rel, old2new_attmap);
+	YBCopyTableRowsUnchecked(old_rel, new_rel, old2new_attmap);
 
 	/*
 	 * PHASE 5
@@ -8098,7 +8132,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	pg_depend = heap_open(DependRelationId, RowExclusiveLock);
 
-	List* idx_list = RelationGetIndexList(*mutable_rel);
+	List* idx_list = RelationGetIndexList(old_rel);
 	foreach(cell, idx_list)
 	{
 		ObjectAddress idx_addr;
@@ -8109,7 +8143,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		                            new_relid,
 		                            idx_rel,
 		                            new2old_attmap,
-		                            RelationGetDescr(*mutable_rel)->natts,
+		                            RelationGetDescr(old_rel)->natts,
 		                            NULL /* parent constraint OID pointer */);
 
 		const char* idx_orig_name = pstrdup(RelationGetRelationName(idx_rel));
@@ -8142,12 +8176,12 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		                       true /* quiet */);
 
 		if (idx_rel->rd_index->indisprimary)
-			result = idx_addr;
+			local_result_addr = idx_addr;
 
 		index_close(idx_rel,  AccessExclusiveLock);
 	}
 	list_free(idx_list);
-	Assert(OidIsValid(result.objectId));
+	Assert((stmt == NULL) ^ OidIsValid(local_result_addr.objectId));
 
 	/*
 	 * PHASE 6
@@ -8158,7 +8192,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * as the results.
 	 */
 
-	YBMoveRelDependencies(*mutable_rel, new_rel, pg_depend, pg_constraint, new2old_attmap);
+	YBMoveRelDependencies(old_rel, new_rel, pg_depend, pg_constraint, new2old_attmap);
 	heap_close(pg_depend, RowExclusiveLock);
 	heap_close(pg_constraint, RowExclusiveLock);
 
@@ -8218,7 +8252,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				                                   fromrel_varno,
 				                                   0 /* sublevels_up */,
 				                                   new2old_attmap,
-				                                   RelationGetDescr(*mutable_rel)->natts,
+				                                   RelationGetDescr(old_rel)->natts,
 				                                   RelationGetForm(new_rel)->reltype,
 				                                   &found_whole_row);
 				if (found_whole_row)
@@ -8235,7 +8269,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		{
 			AttrNumber attnum = trig_form->tgattr.values[i];
 			Form_pg_attribute col_form =
-			    TupleDescAttr((*mutable_rel)->rd_att, attnum - 1);
+			    TupleDescAttr(old_rel->rd_att, attnum - 1);
 			cols = lappend(cols, makeString(pstrdup(NameStr(col_form->attname))));
 		}
 
@@ -8287,7 +8321,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 */
 
 	/* "Close" a relation (decrement the refcount) to allow removing it, and do so. */
-	RelationClose(*mutable_rel);
+	RelationClose(old_rel);
 
 	/* Drop the old table. */
 	drop_stmt = makeNode(DropStmt);
@@ -8300,10 +8334,10 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	drop_stmt->concurrent = false;
 	RemoveRelations(drop_stmt);
 
-	/* Re-target old relation to point to the new one. */
-	*mutable_rel = new_rel;
+	if (result_addr)
+		*result_addr = local_result_addr;
 
-	return result;
+	return new_rel;
 }
 
 /*
@@ -8358,7 +8392,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 	if (IsYBRelation(*mutable_rel) && stmt->primary)
 	{
 		/* Table will be re-created, along with the dummy PK index. */
-		address = YBCloneRelationSetPrimaryKey(mutable_rel, stmt);
+		*mutable_rel = YBCloneRelationSetPrimaryKey(*mutable_rel, stmt, &address);
 
 		/* Update the table relid so that further passes will operate on the new table. */
 		tab->relid = (*mutable_rel)->rd_id;
@@ -10761,8 +10795,8 @@ createForeignKeyTriggers(Relation rel, Oid refRelOid, Constraint *fkconstraint,
  * Like DROP COLUMN, we can't use the normal ALTER TABLE recursion mechanism.
  */
 static void
-ATExecDropConstraint(Relation rel, const char *constrName,
-					 DropBehavior behavior,
+ATExecDropConstraint(AlteredTableInfo *tab,  Relation *mutable_rel,
+					 const char *constrName, DropBehavior behavior,
 					 bool recurse, bool recursing,
 					 bool missing_ok, LOCKMODE lockmode)
 {
@@ -10779,7 +10813,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)
-		ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE);
+		ATSimplePermissions(*mutable_rel, ATT_TABLE | ATT_FOREIGN_TABLE);
 
 	conrel = heap_open(ConstraintRelationId, RowExclusiveLock);
 
@@ -10789,7 +10823,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 	ScanKeyInit(&skey[0],
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(rel)));
+				ObjectIdGetDatum(RelationGetRelid(*mutable_rel)));
 	ScanKeyInit(&skey[1],
 				Anum_pg_constraint_contypid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -10813,7 +10847,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("cannot drop inherited constraint \"%s\" of relation \"%s\"",
-							constrName, RelationGetRelationName(rel))));
+							constrName, RelationGetRelationName(*mutable_rel))));
 
 		is_no_inherit_constraint = con->connoinherit;
 		contype = con->contype;
@@ -10826,7 +10860,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 		 * self-referential case.
 		 */
 		if (contype == CONSTRAINT_FOREIGN &&
-			con->confrelid != RelationGetRelid(rel))
+			con->confrelid != RelationGetRelid(*mutable_rel))
 		{
 			Relation	frel;
 
@@ -10834,14 +10868,6 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			frel = heap_open(con->confrelid, AccessExclusiveLock);
 			CheckTableNotInUse(frel, "ALTER TABLE");
 			heap_close(frel, NoLock);
-		}
-
-		if (IsYugaByteEnabled() &&
-			contype == CONSTRAINT_PRIMARY)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("dropping a primary key constraint is not yet supported")));
 		}
 
 		/*
@@ -10865,16 +10891,27 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("constraint \"%s\" of relation \"%s\" does not exist",
-							constrName, RelationGetRelationName(rel))));
+							constrName, RelationGetRelationName(*mutable_rel))));
 		}
 		else
 		{
 			ereport(NOTICE,
 					(errmsg("constraint \"%s\" of relation \"%s\" does not exist, skipping",
-							constrName, RelationGetRelationName(rel))));
+							constrName, RelationGetRelationName(*mutable_rel))));
 			heap_close(conrel, RowExclusiveLock);
 			return;
 		}
+	}
+
+	if (IsYBRelation(*mutable_rel) && contype == CONSTRAINT_PRIMARY)
+	{
+		/* Table will be re-created without a dummy PK index. */
+		*mutable_rel =
+			YBCloneRelationSetPrimaryKey(*mutable_rel, NULL /* stmt */, NULL /* result */);
+
+		/* Update the table relid so that further passes will operate on the new table. */
+		if (tab)
+			tab->relid = RelationGetRelid(*mutable_rel);
 	}
 
 	/*
@@ -10882,7 +10919,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 	 * the dependency mechanism, so we're done here.
 	 */
 	if (contype != CONSTRAINT_CHECK &&
-		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		(*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		heap_close(conrel, RowExclusiveLock);
 		return;
@@ -10894,7 +10931,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 	 * use find_all_inheritors to do it in one pass.
 	 */
 	if (!is_no_inherit_constraint)
-		children = find_inheritance_children(RelationGetRelid(rel), lockmode);
+		children = find_inheritance_children(RelationGetRelid(*mutable_rel), lockmode);
 	else
 		children = NIL;
 
@@ -10903,7 +10940,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 	 * recurse, it's a user error.  It doesn't make sense to have a constraint
 	 * be defined only on the parent, especially if it's a partitioned table.
 	 */
-	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
+	if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
 		children != NIL && !recurse)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -10966,8 +11003,12 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 			if (con->coninhcount == 1 && !con->conislocal)
 			{
 				/* Time to delete this child constraint, too */
-				ATExecDropConstraint(childrel, constrName, behavior,
-									 true, true,
+				/*
+				 * YB note:
+				 * We don't want to update AlteredTableInfo for child constraints.
+				 */
+				ATExecDropConstraint(NULL /* tab */, &childrel, constrName,
+									 behavior, true, true,
 									 false, lockmode);
 			}
 			else

@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -26,6 +27,7 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.Transient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -86,6 +88,18 @@ public class Customer extends Model {
   @Column(nullable = true, columnDefinition = "TEXT")
   @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
+
+  @Transient
+  @JsonProperty
+  @ApiModelProperty(value = "Universe UUIDs", hidden = true, accessMode = READ_ONLY)
+  // Used for API response to calls made internally by cloud for resource tracking.
+  private Set<UUID> universeUuids;
+
+  // This sets the transient field which is used only for API response.
+  @JsonIgnore
+  public void setTransientUniverseUUIDs(Set<UUID> universeUuids) {
+    this.universeUuids = universeUuids;
+  }
 
   @JsonIgnore
   public Set<UUID> getUniverseUUIDs() {
