@@ -8,7 +8,6 @@ aliases:
   - /preview/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/linux/
   - /preview/explore/two-data-centers/macos/
-  - /preview/explore/multi-region-deployments/asynchronous-replication-ycql/
 menu:
   preview:
     identifier: explore-multi-region-deployments-async-replication-1-ysql
@@ -17,176 +16,140 @@ menu:
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../asynchronous-replication-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+  <li >
+    <a href="../asynchronous-replication-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+
+</ul>
+
 By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operation costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions.
 
-This document simulates a geo-distributed two-data-center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and another representing "Data Center - West", and shows how you can verify replication using YSQL and YCQL. Examples are based on the default database `yugabyte` and the default user `yugabyte`.
+This document simulates a geo-distributed two-data-center deployment using two local YugabyteDB clusters, one representing "Data Center - East" and another representing "Data Center - West". Examples are based on the default database `yugabyte` and the default user `yugabyte`.
 
 For more information, see the following:
 
 - [xCluster replication architecture](../../../architecture/docdb-replication/async-replication/)
 - [xCluster replication commands](../../../admin/yb-admin/#xcluster-replication-commands)
 - [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/)
-- [yugabyted](../../../reference/configuration/yugabyted/)
+- [yugabyted](../../../reference/configuration/yugabyted/) 
 - [yb-admin](../../../admin/yb-admin/)
 
 ## Create two data centers
 
 1. You can create and start your first local cluster that simulates "Data Center - East" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
-    ```sh
-    ./bin/yugabyted start --base_dir=datacenter-east --listen=127.0.0.1
-    ```
+   ```sh
+   ./bin/yugabyted start --base_dir=datacenter-east --listen=127.0.0.1
+   ```
+   
+   The preceding command starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory. Expect to see an output similar to the following:
 
-    The preceding command starts a one-node local cluster using the IP address of `127.0.0.1` and creates `datacenter-east` as the base directory. Expect to see an output similar to the following:
+   
 
-    ```output
-    Starting yugabyted...
-    ✅ System checks
-
-    +--------------------------------------------------------------------------------------------------+
-    |                                            yugabyted                                             |
-    +--------------------------------------------------------------------------------------------------+
-    | Status              : Running. Leader Master is present                                          |
-    | Web console         : http://127.0.0.1:7000                                                      |
-    | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-    | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-    | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-    | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
-    | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
-    | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
-    +--------------------------------------------------------------------------------------------------+
-    🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
-    🎉 Join us on Slack at https://www.yugabyte.com/slack
-    👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-    ```
-
+   ```output
+   Starting yugabyted...
+   ✅ System checks
+   
+   +--------------------------------------------------------------------------------------------------+
+   |                                            yugabyted                                             |
+   +--------------------------------------------------------------------------------------------------+
+   | Status              : Running. Leader Master is present                                          |
+   | Web console         : http://127.0.0.1:7000                                                      |
+   | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
+   | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
+   | YCQL                : bin/ycqlsh   -u cassandra                                                  |
+   | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
+   | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
+   | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
+   +--------------------------------------------------------------------------------------------------+
+   🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
+   🎉 Join us on Slack at https://www.yugabyte.com/slack
+   👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
+   ```
+   
 1. Create and start your second local cluster that simulates "Data Center = West" by running the following `yugabyted start` command from your YugabyteDB home directory:
 
-    ```sh
-    ./bin/yugabyted start --base_dir=datacenter-west --listen=127.0.0.2
-    ```
-
+     ```sh
+   ./bin/yugabyted start --base_dir=datacenter-west --listen=127.0.0.2
+   ```
+   
     The preceding command starts a one-node cluster using IP address of `127.0.0.2` and creates `datacenter-west` as the base directory. Expect to see an output similar to the following:
 
-    ```output
-    Starting yugabyted...
-    ✅ System checks
-    
-    +--------------------------------------------------------------------------------------------------+
-    |                                            yugabyted                                             |
-    +--------------------------------------------------------------------------------------------------+
-    | Status              : Running. Leader Master is present                                          |
-    | Web console         : http://127.0.0.2:7000                                                      |
-    | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
-    | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
-    | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-    | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/data                        |
-    | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/logs                        |
-    | Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
-    +--------------------------------------------------------------------------------------------------+
-    🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
-    🎉 Join us on Slack at https://www.yugabyte.com/slack
-    👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
-    ```
+   
+
+     ```output
+   Starting yugabyted...
+   ✅ System checks
+   
+   +--------------------------------------------------------------------------------------------------+
+   |                                            yugabyted                                             |
+   +--------------------------------------------------------------------------------------------------+
+   | Status              : Running. Leader Master is present                                          |
+   | Web console         : http://127.0.0.2:7000                                                      |
+   | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
+   | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
+   | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
+   | Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/data                        |
+   | Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/logs                        |
+   | Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
+   +--------------------------------------------------------------------------------------------------+
+   🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
+   🎉 Join us on Slack at https://www.yugabyte.com/slack
+   👕 Claim your free t-shirt at https://www.yugabyte.com/community-rewards/
+     ```
+
 
 ## Create tables
 
-{{< tabpane code=false >}}
-{{% tab header="YSQL" lang="ysql" %}}
 
 In the default `yugabyte` database, you can create the table `users` on the "Data Center - East" cluster:
 
 1. Open `ysqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
+     ```sh
+   ./bin/ysqlsh -h 127.0.0.1
+   ```
 
 1. Create the table `users`, as follows:
 
-    ```sql
-    CREATE TABLE users (
-        email varchar PRIMARY KEY,
-        username varchar
-        );
-    ```
+     ```sql
+   CREATE TABLE users (
+       email varchar PRIMARY KEY,
+       username varchar
+       );
+   ```
 
 Create an identical table on your second cluster:
 
 1. Open `ysqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.2
-    ```
+     ```sh
+   ./bin/ysqlsh -h 127.0.0.2
+   ```
 
-1. Create the table `users`, as follows:
+1. Create the table `users`, as follows
 
-    ```sql
-    CREATE TABLE users (
-        email varchar(35) PRIMARY KEY,
-        username varchar(20)
-        );
-    ```
-
-{{% /tab %}}
-{{% tab header="YCQL" lang="ycql" %}}
-
-Create the keyspace `customers` and table `users` on the "Data Center - East" cluster:
-
-1. Open `ycqlsh` by specifying the host IP address of `127.0.0.1`, as follows:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.1
-    ```
-
-1. Create the `customers` keyspace by executing the following:
-
-    ```sql
-    CREATE KEYSPACE customers;
-    ```
-
-1. Enter the keyspace by executing the following:
-
-    ```sql
-    USE customers;
-    ```
-
-1. Create the `users` table by executing the following:
-
-    ``` sql
-    CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
-    ```
-
-Create the identical database table on the second cluster:
-
-1. Open `ycqlsh` for "Data Center - West" by specifying the host IP address of `127.0.0.2`, as follows:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.2
-    ```
-
-1. Create the `customers` keyspace by executing the following:
-
-    ```sql
-    CREATE KEYSPACE customers;
-    ```
-
-1. Enter the keyspace by executing the following:
-
-    ```sql
-    USE customers;
-    ```
-
-1. Create the `users` table by executing the following:
-
-    ```sql
-    CREATE TABLE users ( email varchar PRIMARY KEY, username varchar );
-    ```
-
-{{% /tab %}}
-{{< /tabpane >}}
+     ```sql
+   CREATE TABLE users (
+       email varchar(35) PRIMARY KEY,
+       username varchar(20)
+       );
+   ```
 
 Having two identical tables on your clusters allows you to set up xCluster replication across two data centers.
+
 
 ## Configure unidirectional replication
 
@@ -223,77 +186,38 @@ Replication setup successfully
 
 To check replication, you can add data to the `users` table on one cluster and see that data appear in the `users` table on your second cluster.
 
-{{< tabpane code=false >}}
-{{% tab header="YSQL" lang="ysql" %}}
-
 1. Use the following commands to add data to the "Data Center - East" cluster, making sure you are pointing to the new source host:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
+     ```sh
+   ./bin/ysqlsh -h 127.0.0.1
+   ```
 
-    ```sql
-    INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
-    ```
+     ```sql
+   INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector'), ('steve@example.com', 'steve');
+     ```
 
 1. On the target "Data Center - West" cluster, run the following commands to see that data has been replicated between clusters:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.2
-    ```
+     ```sh
+   ./bin/ysqlsh -h 127.0.0.2
+   ```
 
-    ```sql
-    SELECT * FROM users;
-    ```
+     ```sql
+   SELECT * FROM users;
+     ```
 
-    Expect the following output:
+   Expect the following output:
 
-    ```output
-           email         | username
-    ---------------------+----------
-     hector@example.com  | hector
-     steve@example.com   | steve
-    (2 rows)
-    ```
-
-{{% /tab %}}
-{{% tab header="YCQL" lang="ycql" %}}
-
-1. Use the following commands to add data to the "Data Center - East" cluster, making sure you are pointing to the new source host:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.1
-    ```
-
-    ```sql
-    ycqlsh:customers> INSERT INTO users(email, username) VALUES ('hector@example.com', 'hector');
-    ycqlsh:customers> INSERT INTO users(email, username) VALUES ('steve@example.com', 'steve');
-    ```
-
-1. On the target "Data Center - West" cluster, run the following commands to see that data has been replicated between clusters:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.2
-    ```
-
-    ```sql
-    ycqlsh:customers> SELECT * FROM users;
-    ```
-
-    Expect the following output:
-
-    ```output
-           email         | username
-    ---------------------+----------
-     hector@example.com  | hector
-     steve@example.com   | steve
-    (2 rows)
-    ```
-
-{{% /tab %}}
-{{< /tabpane >}}
+     ```output
+          email         | username
+   ---------------------+----------
+    hector@example.com  | hector
+    steve@example.com   | steve
+   (2 rows)
+     ```
 
 ## Configure bidirectional replication
+
 
 Bidirectional xCluster replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
@@ -319,79 +243,37 @@ Replication setup successfully
 
 When the bidirectional replication has been configured, you can add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-{{< tabpane code=false >}}
-{{% tab header="YSQL" lang="ysql" %}}
-
 1. Use the following commands to add data to the "Data Center - West" cluster, making sure you are pointing to the new source host:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.2
-    ```
+   ```sh
+   ./bin/ysqlsh -h 127.0.0.2
+   ```
 
-    ```sql
-    INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
-    ```
+     ```sql
+   INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha'), ('mikhail@example.com', 'mikhail');
+     ```
 
 2. On the new target cluster, run the following commands to see that data has been replicated between clusters:
 
-    ```sh
-    ./bin/ysqlsh -h 127.0.0.1
-    ```
+   ```sh
+   ./bin/ysqlsh -h 127.0.0.1
+   ```
 
-    ```sql
-    SELECT * FROM users;
-    ```
+     ```sql
+   SELECT * FROM users;
+     ```
 
-    You should see the following output:
+     You should see the following output:
 
-    ```output
-           email         | username
-    ---------------------+----------
-     hector@example.com  | hector
-     steve@example.com   | steve
-     neha@example.com    | neha
-     mikhail@example.com | mikhail
-    (4 rows)
-    ```
-
-{{% /tab %}}
-{{% tab header="YCQL" lang="ycql" %}}
-
-1. Use the following commands to add data to the "Data Center - West" cluster, making sure you are pointing to the new source host:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.2
-    ```
-
-    ```sql
-    ycqlsh:customers> INSERT INTO users(email, username) VALUES ('neha@example.com', 'neha');
-    ycqlsh:customers> INSERT INTO users(email, username) VALUES ('mikhail@example.com', 'mikhail');
-    ```
-
-2. On the new target cluster, run the following commands to see that data has been replicated between clusters:
-
-    ```sh
-    ./bin/ycqlsh 127.0.0.1
-    ```
-
-    ```sql
-    ycqlsh:customers> SELECT * FROM users;
-    ```
-
-    You should see the following output:
-
-    ```output
-           email         | username
-    ---------------------+----------
-     hector@example.com  | hector
-     steve@example.com   | steve
-     neha@example.com    | neha
-     mikhail@example.com | mikhail
-    (4 rows)
-    ```
-
-{{% /tab %}}
-{{< /tabpane >}}
+     ```output
+          email         | username
+   ---------------------+----------
+    hector@example.com  | hector
+    steve@example.com   | steve
+    neha@example.com    | neha
+    mikhail@example.com | mikhail
+   (4 rows)
+     ```
 
 ## Add tables
 
@@ -411,6 +293,7 @@ alter_universe_replication 7acd6399-657d-42dc-a90a-646869898c2d add_table 000030
 For details, see [alter_universe_replication](../../../admin/yb-admin/#alter-universe-replication).
 
 ## Clean up
+
 
 You can choose to destroy and remove the clusters along with their associated directories.
 
