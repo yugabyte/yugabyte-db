@@ -1522,7 +1522,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardUpdateMultiColumn)) {
 // To test upadtes corresponding to a row packed into one CDC record. This verifies the generated
 // CDC record in case of subsequent updates Expected records: (DDL, 1 INSERT, 2 UPDATE).
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate)) {
-  uint32_t num_cols = 4;
+  uint32_t num_cols = 3;
   map<std::string, uint32_t> col_val_map1, col_val_map2;
 
   FLAGS_enable_single_record_update = true;
@@ -1554,12 +1554,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
   uint32_t count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   VaryingExpectedRecord expected_records[] = {
-      {0, {{"col2", 0}, {"col3", 0}, {"col4", 0}}},
-      {0, {{"col2", 0}, {"col3", 0}, {"col4", 0}}},
-      {1, {{"col2", 2}, {"col3", 3}, {"col4", 4}}},
-      {1, {{"col2", 9}, {"col3", 10}}},
-      {1, {{"col2", 10}, {"col3", 11}}},
-      {0, {{"col2", 0}, {"col3", 0}, {"col4", 0}}}};
+      {0, {{"col2", 0}, {"col3", 0}}},   {0, {{"col2", 0}, {"col3", 0}}},
+      {1, {{"col2", 2}, {"col3", 3}}},   {1, {{"col2", 9}, {"col3", 10}}},
+      {1, {{"col2", 10}, {"col3", 11}}}, {0, {{"col2", 0}, {"col3", 0}}}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 

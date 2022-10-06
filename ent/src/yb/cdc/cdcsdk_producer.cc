@@ -269,7 +269,7 @@ Status PopulateCDCSDKIntentRecord(
 
     if (new_cdc_record_needed) {
       if (FLAGS_enable_single_record_update) {
-        if (col_count >= schema.num_columns()) col_count = 0;
+        if (col_count > 0) col_count = 0;
 
         if (proto_record.IsInitialized() && row_message->IsInitialized() &&
             row_message->op() == RowMessage_Op_UPDATE) {
@@ -294,6 +294,9 @@ Status PopulateCDCSDKIntentRecord(
       // Check whether operation is WRITE or DELETE.
       if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
+        if (!FLAGS_enable_single_record_update) {
+          col_count = schema.num_columns();
+        }
       } else if (value_type == docdb::ValueEntryType::kPackedRow) {
         SetOperation(row_message, OpType::INSERT, schema);
         col_count = schema.num_key_columns();
@@ -304,6 +307,9 @@ Status PopulateCDCSDKIntentRecord(
           col_count = schema.num_key_columns() - 1;
         } else {
           SetOperation(row_message, OpType::UPDATE, schema);
+          if (!FLAGS_enable_single_record_update) {
+            col_count = schema.num_columns();
+          }
           *write_id = intent.write_id;
         }
       }
@@ -322,7 +328,13 @@ Status PopulateCDCSDKIntentRecord(
             schema_packing_storage, schema, tablet_peer, enum_oid_label_map, &value_slice,
             row_message));
       } else {
-        ++col_count;
+        if (FLAGS_enable_single_record_update) {
+          ++col_count;
+        } else {
+          if (IsInsertOperation(*row_message)) {
+            ++col_count;
+          }
+        }
 
         docdb::Value decoded_value;
         RETURN_NOT_OK(decoded_value.Decode(intent.value_buf));
