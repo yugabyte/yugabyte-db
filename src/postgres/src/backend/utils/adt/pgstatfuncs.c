@@ -1174,11 +1174,11 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 
 /*
  * For this function, there exists a corresponding entry in pg_proc which dictates the input and schema of the output row.
- * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually 
- * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the 
+ * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually
+ * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the
  * corresponding entry at the same index, it is an input if labeled i but output (represented by o) otherwise.
  */
-Datum 
+Datum
 yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 {
 	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
@@ -1217,7 +1217,8 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 	for (size_t i = 0; i < num_queries; i++)
 	{
 		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
-			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
+			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS) ||
+			IsYbDbAdminUser(GetUserId()))
 		{
 			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
 			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
