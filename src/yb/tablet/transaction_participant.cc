@@ -150,11 +150,13 @@ class TransactionParticipant::Impl
       return false;
     }
 
-    poller_.Shutdown();
-
     if (start_latch_.count()) {
       start_latch_.CountDown();
     }
+
+    shutdown_latch_.Wait();
+
+    poller_.Shutdown();
 
     LOG_WITH_PREFIX(INFO) << "Shutdown";
     return true;
@@ -1108,6 +1110,11 @@ class TransactionParticipant::Impl
   }
 
   void LoadFinished(const ApplyStatesMap& pending_applies) override {
+    // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
+    // sure that at the end of Load, we unblock shutdown.
+    auto se = ScopeExit([&] {
+      shutdown_latch_.CountDown();
+    });
     start_latch_.Wait();
     std::vector<ScopedRWOperation> operations;
     operations.reserve(pending_applies.size());
@@ -1692,6 +1699,7 @@ class TransactionParticipant::Impl
   TransactionLoader loader_;
   std::atomic<bool> closing_{false};
   CountDownLatch start_latch_{1};
+  CountDownLatch shutdown_latch_{1};
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
