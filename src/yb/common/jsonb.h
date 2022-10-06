@@ -98,6 +98,9 @@ class Jsonb {
 
   bool operator==(const Jsonb& other) const;
 
+  static std::string kSerializedJsonbEmpty;
+  static std::string kSerializedJsonbNull;
+
  private:
   std::string serialized_jsonb_;
 

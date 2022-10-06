@@ -66,6 +66,9 @@ DEFINE_test_flag(
 // Strings are usually not runtime safe but in our case its ok if we temporary read garbled data
 TAG_FLAG(TEST_xcluster_simulated_lag_tablet_filter, runtime);
 
+DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
+                 "If true, polling will be skipped.");
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 namespace yb {
@@ -162,6 +165,12 @@ void CDCPoller::Poll() {
 
 void CDCPoller::DoPoll() {
   RETURN_WHEN_OFFLINE();
+
+  if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
+    Poll();
+    return;
+  }
 
   auto retained = shared_from_this();
   std::lock_guard<std::mutex> l(data_mutex_);
@@ -277,6 +286,14 @@ void CDCPoller::HandlePoll(yb::Status status,
                                       << resp_->error().code()
                                       << ", status=" << resp->error().status().DebugString();
     failed = true;
+
+    if (resp_->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
+      cdc_consumer_->StoreReplicationError(
+        consumer_tablet_info_.tablet_id,
+        producer_tablet_info_.stream_id,
+        ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
+        "Unable to find expected op id on the producer");
+    }
   } else if (!resp_->has_checkpoint()) {
     LOG_WITH_PREFIX_UNLOCKED(ERROR) << "CDCPoller failure: no checkpoint";
     failed = true;

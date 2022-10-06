@@ -138,19 +138,16 @@ bool IsEqCaseInsensitive(const string& check, const string& expected) {
 }
 
 template <class Enum>
-Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
+Result<std::pair<std::optional<int>, EnumBitSet<Enum>>> GetValueAndFlags(
     const CLIArgumentsIterator& begin,
     const CLIArgumentsIterator& end,
     const AllEnumItemsIterable<Enum>& flags_list) {
-  std::pair<int, EnumBitSet<Enum>> result;
-  bool seen_value = false;
+  std::pair<std::optional<int>, EnumBitSet<Enum>> result;
   for (auto iter = begin; iter != end; iter = ++iter) {
     bool found_flag = false;
     for (auto flag : flags_list) {
       if (IsEqCaseInsensitive(*iter, ToString(flag))) {
-        if (result.second.Test(flag)) {
-          return STATUS_FORMAT(InvalidArgument, "Duplicate flag: $0", flag);
-        }
+        SCHECK(!result.second.Test(flag), InvalidArgument, Format("Duplicate flag: $0", flag));
         result.second.Set(flag);
         found_flag = true;
         break;
@@ -160,12 +157,11 @@ Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
       continue;
     }
 
-    if (seen_value) {
-      return STATUS_FORMAT(InvalidArgument, "Multiple values: $0 and $1", result.first, *iter);
-    }
+    SCHECK(!result.first,
+           InvalidArgument,
+           Format("Multiple values: $0 and $1", *result.first, *iter));
 
     result.first = VERIFY_RESULT(CheckedStoi(*iter));
-    seen_value = true;
   }
 
   return result;
@@ -173,14 +169,17 @@ Result<std::pair<int, EnumBitSet<Enum>>> GetValueAndFlags(
 
 YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
 
-Result<pair<int, bool>> GetTimeoutAndAddIndexesFlag(
-    CLIArgumentsIterator begin,
-    const CLIArgumentsIterator& end) {
+Result<pair<std::optional<int>, bool>> GetTimeoutAndAddIndexesFlag(
+    CLIArgumentsIterator begin, const CLIArgumentsIterator& end) {
   auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, AddIndexesList()));
   return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
 YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
+
+Status PrioritizedError(Status hi_pri_status, Status low_pri_status) {
+  return hi_pri_status.ok() ? std::move(low_pri_status) : std::move(hi_pri_status);
+}
 
 } // namespace
 
@@ -391,18 +390,21 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "list_tablets",
-      " <table> [<max_tablets>] (default 10, set 0 for max) [JSON] [include_followers]",
+      " <keyspace_type>.<keyspace_name> (keyspace_type is ysql or ycql) "
+      "<table> "
+      "[<max_tablets>] (default 10, set "
+      "0 for max) [JSON] [include_followers]",
       [client](const CLIArguments& args) -> Status {
-        std::pair<int, EnumBitSet<ListTabletsFlags>> arguments;
-        const auto table_name  = VERIFY_RESULT(ResolveSingleTableName(
-            client, args.begin(), args.end(),
-            [&arguments](auto i, const auto& end) -> Status {
+        std::pair<std::optional<int>, EnumBitSet<ListTabletsFlags>> arguments;
+        const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
+            client, args.begin(), args.end(), [&arguments](auto i, const auto& end) -> Status {
               arguments = VERIFY_RESULT(GetValueAndFlags(i, end, ListTabletsFlagsList()));
               return Status::OK();
             }));
         RETURN_NOT_OK_PREPEND(
             client->ListTablets(
-                table_name, arguments.first, arguments.second.Test(ListTabletsFlags::JSON),
+                table_name, arguments.first.value_or(10) /*max tablets*/,
+                arguments.second.Test(ListTabletsFlags::JSON),
                 arguments.second.Test(ListTabletsFlags::INCLUDE_FOLLOWERS)),
             Format("Unable to list tablets of table $0", table_name));
         return Status::OK();
@@ -573,7 +575,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
-        int timeout_secs = 20;
+        std::optional<int> timeout_secs;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
             [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
@@ -581,30 +583,29 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                   GetTimeoutAndAddIndexesFlag(i, end));
               return Status::OK();
             }));
-        RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
-                                                  add_indexes,
-                                                  timeout_secs,
-                                                  false /* is_compaction */),
-                              Substitute("Unable to flush table $0", table_name.ToString()));
+        RETURN_NOT_OK_PREPEND(
+            client->FlushTables(
+                {table_name}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+            Substitute("Unable to flush table $0", table_name.ToString()));
         return Status::OK();
       });
 
   Register(
-      "flush_table_by_id", " <table_id> [<timeout_in_seconds>] (default 20)"
+      "flush_table_by_id",
+      " <table_id> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
-        bool add_indexes = false;
-        int timeout_secs = 20;
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(
-          args.begin() + 1, args.end()));
-        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[0]},
-                                                      add_indexes,
-                                                      timeout_secs,
-                                                      false /* is_compaction */),
-                              Substitute("Unable to flush table $0", args[0]));
+        std::optional<int> timeout_secs;
+        bool add_indexes = false;
+        std::tie(timeout_secs, add_indexes) =
+            VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
+        RETURN_NOT_OK_PREPEND(
+            client->FlushTablesById(
+                {args[0]}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+            Substitute("Unable to flush table $0", args[0]));
         return Status::OK();
       });
 
@@ -628,7 +629,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
         bool add_indexes = false;
-        int timeout_secs = 20;
+        std::optional<int> timeout_secs;
         const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
             client, args.begin(), args.end(),
             [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
@@ -637,31 +638,28 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               return Status::OK();
             }));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTables({table_name},
-                                                  add_indexes,
-                                                  timeout_secs,
-                                                  true /* is_compaction */),
-                              Substitute("Unable to compact table $0", table_name.ToString()));
+        RETURN_NOT_OK_PREPEND(
+            client->FlushTables(
+                {table_name}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+            Substitute("Unable to compact table $0", table_name.ToString()));
         return Status::OK();
       });
 
   Register(
-      "compact_table_by_id", " <table_id> [<timeout_in_seconds>] (default 20)"
+      "compact_table_by_id",
+      " <table_id> [<timeout_in_seconds>] (default 20)"
       " [ADD_INDEXES] (default false)",
       [client](const CLIArguments& args) -> Status {
-        bool add_indexes = false;
-        int timeout_secs = 20;
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(
-            GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
+        const auto& [timeout_secs, add_indexes] =
+            VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
         // We use the same FlushTables RPC to trigger compaction.
-        RETURN_NOT_OK_PREPEND(client->FlushTablesById({args[0]},
-                                                      add_indexes,
-                                                      timeout_secs,
-                                                      true /* is_compaction */),
-                              Substitute("Unable to compact table $0", args[0]));
+        RETURN_NOT_OK_PREPEND(
+            client->FlushTablesById(
+                {args[0]}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+            Substitute("Unable to compact table $0", args[0]));
         return Status::OK();
       });
 
@@ -986,45 +984,46 @@ Result<std::vector<client::YBTableName>> ResolveTableNames(
     const CLIArgumentsIterator& end,
     const TailArgumentsProcessor& tail_processor,
     bool allow_namespace_only) {
-  auto resolver = VERIFY_RESULT(client->BuildTableNameResolver());
+  TableNameResolver::Values tables;
+  auto resolver = VERIFY_RESULT(client->BuildTableNameResolver(&tables));
   auto tail = i;
+  Status resolver_failure = Status::OK();
   // Greedy algorithm of taking as much tables as possible.
   for (; i != end; ++i) {
-    const auto result = resolver.Feed(*i);
+    auto result = resolver.Feed(*i);
     if (!result.ok()) {
       // If tail arguments were not processed suppose it is bad table
       // and return its parsing error instead.
-      if (tail_processor && tail_processor(tail, end).ok()) {
-        break;
-      }
-      return result.status();
+      resolver_failure = std::move(result.status());
+      break;
     }
     if (*result) {
       tail = std::next(i);
     }
   }
 
-  auto& tables = resolver.values();
-  // Handle case when no table name is followed keyspace.
-  if (tail != end) {
-    if (tail_processor) {
-      RETURN_NOT_OK(tail_processor(tail, end));
-    } else {
-      if (allow_namespace_only && tables.empty()) {
-        auto last_namespace = resolver.last_namespace();
-        if (!last_namespace.name().empty()) {
-          client::YBTableName table_name;
-          table_name.GetFromNamespaceIdentifierPB(last_namespace);
-          return std::vector<client::YBTableName>{table_name};
-        }
-      }
-      return STATUS(InvalidArgument, "Table name is missed");
+  if (tables.empty() && allow_namespace_only) {
+    const auto* last_namespace = resolver.last_namespace();
+    if (last_namespace && !last_namespace->name().empty()) {
+      client::YBTableName table_name;
+      table_name.GetFromNamespaceIdentifierPB(*last_namespace);
+      tables.push_back(std::move(table_name));
+      ++tail;
     }
   }
+
   if (tables.empty()) {
-    return STATUS(InvalidArgument, "Empty list of tables");
+    return PrioritizedError(
+        std::move(resolver_failure), STATUS(InvalidArgument, "Empty list of tables"));
   }
-  return std::move(tables);
+
+  if (tail != end && tail_processor) {
+    auto status = tail_processor(tail, end);
+    if (!status.ok()) {
+      return PrioritizedError(std::move(resolver_failure), std::move(status));
+    }
+  }
+  return tables;
 }
 
 Result<client::YBTableName> ResolveSingleTableName(ClusterAdminClientClass* client,

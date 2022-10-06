@@ -108,6 +108,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -9136,11 +9137,18 @@ Status CatalogManager::IsInitDbDone(
 
 Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
+  return GetYsqlDBCatalogVersion(kTemplate1Oid, catalog_version, last_breaking_version);
+}
+
+Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
+                                               uint64_t* catalog_version,
+                                               uint64_t* last_breaking_version) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
-                                                       catalog_version,
-                                                       last_breaking_version));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(kPgYbCatalogVersionTableId,
+                                                         db_oid,
+                                                         catalog_version,
+                                                         last_breaking_version));
     // If the version is properly initialized, we're done.
     if ((!catalog_version || *catalog_version > 0) &&
         (!last_breaking_version || *last_breaking_version > 0)) {
@@ -12004,6 +12012,41 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
+Status CatalogManager::GetXClusterEstimatedDataLoss(
+    const GetXClusterEstimatedDataLossRequestPB* req,
+    GetXClusterEstimatedDataLossResponsePB* resp) {
+  const auto result =
+      xcluster_safe_time_service_->GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  if (!result) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+  }
+
+  const auto per_namespace_data_loss_map = result.get();
+  for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
+    auto entry = resp->add_namespace_data_loss();
+    entry->set_namespace_id(namespace_id);
+    entry->set_data_loss_ns(data_loss);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetXClusterSafeTime(
+    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
+  const auto ns_safe_time_map =
+      xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap();
+  if (!ns_safe_time_map) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, ns_safe_time_map.status());
+  }
+
+  for (const auto& [namespace_id, safe_time] : ns_safe_time_map.get()) {
+    auto entry = resp->add_namespace_safe_times();
+    entry->set_namespace_id(namespace_id);
+    entry->set_safe_time_ht(safe_time.ToUint64());
+  }
+  return Status::OK();
+}
+
 AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     const string& ts_uuid) {
 
@@ -12028,6 +12071,36 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
   }
 
   return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
+}
+
+Status CatalogManager::ProcessTabletReplicationStatus(
+    const TabletReplicationStatusPB& replication_state) {
+  // Only implemented on the enterprise catalog manager.
+  return Status::OK();
+}
+
+void CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
+  operation->SetTablet(tablet_peer()->tablet());
+  tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
+}
+
+Status CatalogManager::PromoteAutoFlags(
+    const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
+  bool non_runtime_flags_promoted = false;
+  uint32_t new_config_version = 0;
+
+  const auto max_class = VERIFY_RESULT_PREPEND(
+      ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
+      "Invalid value provided for flag class");
+
+  RETURN_NOT_OK(master::PromoteAutoFlags(
+      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
+      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+
+  return Status::OK();
 }
 
 }  // namespace master

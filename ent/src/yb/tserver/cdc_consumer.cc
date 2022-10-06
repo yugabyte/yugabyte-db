@@ -619,6 +619,21 @@ Status CDCConsumer::PublishXClusterSafeTime() {
   return Status::OK();
 }
 
+void CDCConsumer::StoreReplicationError(
+    const TabletId& tablet_id,
+    const CDCStreamId& stream_id,
+    const ReplicationErrorPb error,
+    const std::string& detail) {
+
+  std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
+  tablet_replication_error_map_[tablet_id][stream_id][error] = detail;
+}
+
+cdc::TabletReplicationErrorMap CDCConsumer::GetReplicationErrors() const {
+  std::lock_guard<simple_spinlock> lock(tablet_replication_error_map_lock_);
+  return tablet_replication_error_map_;
+}
+
 } // namespace enterprise
 } // namespace tserver
 } // namespace yb

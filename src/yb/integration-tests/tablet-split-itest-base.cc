@@ -56,6 +56,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/tserver/tserver_types.pb.h"
 #include "yb/util/backoff_waiter.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -655,6 +656,7 @@ Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tabl
         case tserver::TabletServerErrorPB::NOT_THE_LEADER:
           not_the_leader_insert_error_count++;
           break;
+        case tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
         case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
           // In the case that the source tablet was just hidden instead of deleted.
           tablet_split_insert_error_count++;

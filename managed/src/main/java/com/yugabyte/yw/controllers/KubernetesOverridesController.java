@@ -116,8 +116,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();
           boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-          String azCode = isMultiAz ? AvailabilityZone.getOrBadRequest(azUUID).code : null;
-          placementAZSet.add(azCode);
+          String azName = AvailabilityZone.getOrBadRequest(azUUID).code;
+          String azCode = isMultiAz ? azName : null;
+          placementAZSet.add(azName);
           Map<String, String> config = entry.getValue();
           String azOverridesStr =
               azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
@@ -126,7 +127,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
             azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
           } catch (Exception e) {
             String errMsg =
-                String.format("Error in parsing %s overrides: %s", azCode, e.getMessage());
+                String.format("Error in parsing %s overrides: %s", azName, e.getMessage());
             LOG.error("Error in convertYamlToMap ", e);
             overrideErrorsSet.add(errMsg);
           }
@@ -142,12 +143,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
               kubernetesManagerFactory
                   .getManager()
                   .validateOverrides(
-                      ybSoftwareVersion,
-                      config,
-                      namespace,
-                      universeOverrides,
-                      azOverrides,
-                      AvailabilityZone.getOrBadRequest(azUUID).code);
+                      ybSoftwareVersion, config, namespace, universeOverrides, azOverrides, azName);
           overrideErrorsSet.addAll(partialErrorsSet);
         }
       }
