@@ -145,15 +145,24 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-      // Only process split tablets if we have plenty of time to process the work
-      // (> 50% of timeout).
+      // Only process storage metadata if we have plenty of time to process the work (> 50% of
+      // timeout).
       auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-
-      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
       if (rpc.GetClientDeadline() > safe_time_left) {
         for (const auto& storage_metadata : req->storage_metadata()) {
           server_->catalog_manager_impl()->ProcessTabletStorageMetadata(
                 ts_desc.get()->permanent_uuid(), storage_metadata);
+        }
+      }
+
+      // Only process the replication status if we have plenty of time to process the work (> 50% of
+      // timeout).
+      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
+      if (rpc.GetClientDeadline() > safe_time_left) {
+        for (const auto& replication_state : req->replication_state()) {
+          ERROR_NOT_OK(
+            server_->catalog_manager_impl()->ProcessTabletReplicationStatus(replication_state),
+            "Failed to process tablet replication status");
         }
       }
 

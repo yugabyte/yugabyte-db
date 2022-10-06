@@ -754,6 +754,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   const yb::OpId& last_op_id,
   int64_t* repl_index,
   const CoarseTimePoint deadline) {
+
   // The batch of messages read from cache.
 
   int64_t to_index;
@@ -782,9 +783,11 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
-    LOG_WITH_PREFIX(INFO) << Format(
-        "The logs from index $0 have been garbage collected and cannot be read ($1)",
-        after_op_index, result.status());
+    const std::string premature_gc_warning =
+      Format("The logs from index $0 have been garbage collected and cannot be read ($1)",
+             after_op_index, result.status());
+    LOG_WITH_PREFIX(INFO) << premature_gc_warning;
+    return STATUS(NotFound, premature_gc_warning);
   }
   if (result.ok()) {
     result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||

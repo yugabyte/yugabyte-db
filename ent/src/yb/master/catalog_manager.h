@@ -223,6 +223,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                     SetupNSUniverseReplicationResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
+  // Returns the replication status.
+  Status GetReplicationStatus(const GetReplicationStatusRequestPB* req,
+                                      GetReplicationStatusResponsePB* resp,
+                                      rpc::RpcContext* rpc);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -293,6 +298,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     std::lock_guard<MutexType> lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
+
+  Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) override EXCLUDES(mutex_);
 
  private:
   friend class SnapshotLoader;
@@ -630,6 +638,36 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status DoProcessXClusterParentTabletDeletion();
 
   void LoadXClusterRetainedParentTabletsSet() REQUIRES(mutex_);
+
+  void PopulateUniverseReplicationStatus(
+    const UniverseReplicationInfo& universe,
+    GetReplicationStatusResponsePB* resp) const REQUIRES_SHARED(mutex_);
+
+  Status StoreReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      EXCLUDES(mutex_);
+
+  Status StoreReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      REQUIRES_SHARED(mutex_);
+
+  Status ClearReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
+
+  Status ClearReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

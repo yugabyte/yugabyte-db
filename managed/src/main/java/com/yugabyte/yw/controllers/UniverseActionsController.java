@@ -15,6 +15,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -33,6 +34,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -74,7 +76,7 @@ public class UniverseActionsController extends AuthenticatedController {
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
     CloudType cloudType = cluster.userIntent.providerType;
-    Boolean isKubernetesCluster = (cloudType == CloudType.kubernetes);
+    boolean isKubernetesCluster = (cloudType == CloudType.kubernetes);
     for (Cluster readCluster : readOnlyClusters) {
       cloudType = readCluster.userIntent.providerType;
       isKubernetesCluster = isKubernetesCluster || cloudType == CloudType.kubernetes;
@@ -106,7 +108,13 @@ public class UniverseActionsController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    UUID taskUUID = universeActionsHandler.resume(customer, universe);
+    UUID taskUUID;
+    try {
+      taskUUID = universeActionsHandler.resume(customer, universe);
+    } catch (IOException e) {
+      log.error(e.getMessage(), e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
 
     auditService()
         .createAuditEntryWithReqBody(

@@ -390,6 +390,20 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
+typedef struct YbTserverCatalogVersion {
+  uint32_t db_oid;
+  uint64_t current_version;
+  int shm_index;
+} YbTserverCatalogVersion;
+
+// Used to map a database OID to its catalog version info fetched from the local tserver.
+typedef struct YbTserverCatalogInfoData {
+  uint32_t num_databases;
+  YbTserverCatalogVersion* versions;
+} YbTserverCatalogInfoData;
+
+typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
