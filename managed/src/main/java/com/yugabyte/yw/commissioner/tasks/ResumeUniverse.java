@@ -10,20 +10,27 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 
 @Slf4j
 public class ResumeUniverse extends UniverseDefinitionTaskBase {
@@ -33,8 +40,13 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
     super(baseTaskDependencies);
   }
 
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  @JsonDeserialize(converter = Params.Converter.class)
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID customerUUID;
+
+    public static class Converter
+        extends UniverseDefinitionTaskParams.BaseConverter<ResumeUniverse.Params> {}
   }
 
   public Params params() {
@@ -47,35 +59,52 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */, true);
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       Collection<NodeDetails> nodes = universe.getNodes();
 
-      if (!universe.getUniverseDetails().isImportedUniverse()) {
+      if (!universeDetails.isImportedUniverse()) {
         // Create tasks to resume the existing nodes.
         createResumeServerTasks(universe).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
       }
 
-      Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
-      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
+      List<NodeDetails> tserverNodeList = universe.getTServers();
+      List<NodeDetails> masterNodeList = universe.getMasters();
 
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-          == CloudType.azu) {
-        createServerInfoTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      // Optimistically rotate node-to-node server certificates before starting DB processes
+      // Also see CertsRotate
+      if (universeDetails.rootCA != null) {
+        CertificateInfo rootCert = CertificateInfo.get(universeDetails.rootCA);
+
+        if (rootCert == null) {
+          log.error("Root certificate not found for {}", universe.universeUUID);
+        } else if (rootCert.certType == CertConfigType.SelfSigned) {
+          SubTaskGroupType certRotate = RotatingCert;
+          taskParams().rootCA = universeDetails.rootCA;
+          taskParams().clientRootCA = universeDetails.clientRootCA;
+          createCertUpdateTasks(
+              masterNodeList,
+              tserverNodeList,
+              certRotate,
+              CertsRotateParams.CertRotationType.ServerCert,
+              CertsRotateParams.CertRotationType.None);
+          createUniverseSetTlsParamsTask(certRotate);
+        }
       }
 
-      createStartMasterTasks(masterNodes)
+      createStartMasterTasks(masterNodeList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-      createWaitForServersTasks(masterNodes, ServerType.MASTER)
+      createWaitForServersTasks(masterNodeList, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       if (EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      for (NodeDetails node : tserverNodes) {
+      for (NodeDetails node : tserverNodeList) {
         createTServerTaskForNode(node, "start")
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
-      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
+      createWaitForServersTasks(masterNodeList, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set the node state to live.
@@ -100,9 +129,9 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       saveUniverseDetails(
           u -> {
-            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-            universeDetails.universePaused = false;
-            u.setUniverseDetails(universeDetails);
+            UniverseDefinitionTaskParams details = u.getUniverseDetails();
+            details.universePaused = false;
+            u.setUniverseDetails(details);
           });
 
       metricService.markSourceActive(params().customerUUID, params().universeUUID);
