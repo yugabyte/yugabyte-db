@@ -108,6 +108,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -12014,8 +12015,7 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
 Status CatalogManager::GetXClusterEstimatedDataLoss(
     const GetXClusterEstimatedDataLossRequestPB* req,
     GetXClusterEstimatedDataLossResponsePB* resp) {
-  const auto result =
-      xcluster_safe_time_service_->GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
   if (!result) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
   }
@@ -12024,7 +12024,7 @@ Status CatalogManager::GetXClusterEstimatedDataLoss(
   for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
     auto entry = resp->add_namespace_data_loss();
     entry->set_namespace_id(namespace_id);
-    entry->set_data_loss_ns(data_loss);
+    entry->set_data_loss_us(data_loss);
   }
   return Status::OK();
 }
@@ -12075,6 +12075,30 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
 Status CatalogManager::ProcessTabletReplicationStatus(
     const TabletReplicationStatusPB& replication_state) {
   // Only implemented on the enterprise catalog manager.
+  return Status::OK();
+}
+
+void CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
+  operation->SetTablet(tablet_peer()->tablet());
+  tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
+}
+
+Status CatalogManager::PromoteAutoFlags(
+    const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
+  bool non_runtime_flags_promoted = false;
+  uint32_t new_config_version = 0;
+
+  const auto max_class = VERIFY_RESULT_PREPEND(
+      ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
+      "Invalid value provided for flag class");
+
+  RETURN_NOT_OK(master::PromoteAutoFlags(
+      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
+      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+
   return Status::OK();
 }
 

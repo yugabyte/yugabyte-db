@@ -158,6 +158,8 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::TRUNCATE_OP:
       FALLTHROUGH_INTENDED;
+    case consensus::OperationType::CHANGE_AUTO_FLAGS_CONFIG_OP:
+      FALLTHROUGH_INTENDED;
     case consensus::OperationType::UNKNOWN_OP:
       return false;
   }

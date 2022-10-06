@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
-
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import {
@@ -251,13 +251,12 @@ class GraphPanel extends Component {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
     const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
-    const metricsWithSettings = panelTypes[type].metrics.map((metric) =>
-     {
-        return {
-          metric: metric,
-          splitTopNodes: splitTopNodes
-        }
-     })
+    const metricsWithSettings = panelTypes[type].metrics.map((metric) => {
+      return {
+        metric: metric,
+        splitTopNodes: splitTopNodes
+      }
+    })
     const params = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
@@ -332,10 +331,11 @@ class GraphPanel extends Component {
         and group metrics by panel type and filter out anything that is empty.
         */
         const width = this.props.width;
+
         panelData = panelTypes[type].metrics
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
-              <MetricsPanel
+              <MetricsPanelOld
                 currentUser={currentUser}
                 metricKey={metricKey}
                 key={idx}
@@ -359,7 +359,7 @@ class GraphPanel extends Component {
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
         if (nodeName.match('yb-tserver-') != null) {
-          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced'){
+          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced') {
             return null;
           }
         }

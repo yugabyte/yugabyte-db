@@ -68,7 +68,8 @@ YB_DEFINE_ENUM(
     ((kTruncate, consensus::TRUNCATE_OP))
     ((kEmpty, consensus::UNKNOWN_OP))
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
-    ((kSplit, consensus::SPLIT_OP)));
+    ((kSplit, consensus::SPLIT_OP))
+    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
 

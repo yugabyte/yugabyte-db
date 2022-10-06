@@ -55,14 +55,14 @@ Dedicated clusters can have unlimited nodes and storage and are suitable for pro
 A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add as many Dedicated clusters as you need.
 
 | Feature | Sandbox | Dedicated |
-| :----------- | :---------- | :---------- |
+| :------ | :------ | :-------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
 | [Regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
-| [VPC Peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
-| Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
-| Connections | Up to 10 simultaneous connections | 10 per vCPU per node |
+| [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
+| [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |
+| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 10 simultaneous connections | 10 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
@@ -203,9 +203,15 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 #### Applications
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
 
-Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+
+For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
+
+Clusters have SSL ([encryption in-transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/)) enabled so make sure your driver details include SSL parameters.
+
+Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP allow list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect/).
 
