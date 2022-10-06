@@ -318,7 +318,7 @@ message GetXClusterEstimatedDataLossRequestPB {}
 message GetXClusterEstimatedDataLossResponsePB {
   message EstimatedDataLossPB {
     optional string namespace_id = 1;
-    optional uint64 data_loss_ns = 2;
+    optional uint64 data_loss_us = 2;
   }
 
   optional MasterErrorPB error = 1;
