@@ -440,6 +440,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
     req.set_ts_physical_time(0);
   }
 
+  req.set_auto_flags_config_version(server_->GetAutoFlagConfigVersion());
+
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     heartbeat_rtt_ = MonoDelta::kZero;
@@ -576,6 +578,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
+
+  if (last_hb_response_.has_auto_flags_config()) {
+    RETURN_NOT_OK(server_->SetAutoFlagConfig(last_hb_response_.auto_flags_config()));
+  }
 
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);

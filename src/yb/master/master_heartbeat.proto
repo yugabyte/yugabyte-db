@@ -204,6 +204,8 @@ message TSHeartbeatRequestPB {
 
   // Replication status. Only set in the metrics heartbeat.
   repeated TabletReplicationStatusPB replication_state = 16;
+
+  optional uint32 auto_flags_config_version = 17;
 }
 
 message TSHeartbeatResponsePB {
@@ -267,6 +269,8 @@ message TSHeartbeatResponsePB {
 
   // Map[Local NamespaceId]: xCluester safe read HybridTime
   map<string, fixed64> xcluster_namespace_to_safe_time = 21;
+
+  optional AutoFlagsConfigPB auto_flags_config = 22;
 }
 
 service MasterHeartbeat {
