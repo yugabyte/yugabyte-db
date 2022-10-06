@@ -518,6 +518,16 @@ class PgClient::Impl {
     return resp.is_pitr_active();
   }
 
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo() {
+    tserver::PgGetTserverCatalogVersionInfoRequestPB req;
+    tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTserverCatalogVersionInfo(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -704,6 +714,10 @@ void PgClient::PerformAsync(
 
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo() {
+  return impl_->GetTserverCatalogVersionInfo();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

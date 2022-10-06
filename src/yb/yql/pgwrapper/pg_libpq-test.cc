@@ -2808,6 +2808,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
   pg_ts = cluster_->tablet_server(0);
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_yugabyte.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
 
   // Get the initial catalog version map.
   auto map = GetMasterCatalogVersionMap(&conn_yugabyte);
@@ -2855,6 +2858,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
   auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
 
   LOG(INFO) << "Create a table";
   ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
@@ -2962,6 +2968,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
 
   // Use a new connection to re-create the table.
   auto new_conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(new_conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
   LOG(INFO) << "Re-create the table";
   ASSERT_OK(new_conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
@@ -2990,6 +2999,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
   conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+  if (VLOG_IS_ON(1)) {
+    ASSERT_OK(conn_test.Execute("SET yb_debug_log_catcache_events = ON"));
+  }
   ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
 }
 

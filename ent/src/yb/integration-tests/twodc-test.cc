@@ -113,6 +113,7 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -2528,6 +2529,10 @@ TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
+
+  // This test depends on the write op metrics from the tservers. If the load balancer changes the
+  // leader of a consumer tablet, it may re-write replication records and break the test.
+  FLAGS_enable_load_balancing = false;
 
   WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
   for (size_t i = 0; i < num_runs; i++) {

@@ -537,13 +537,18 @@ Result<PerformFuture> PgSession::Perform(
     global_transaction = !(*i)->is_region_local();
   }
   options.set_force_global_transaction(global_transaction);
+
+  // For DDLs we always read latest data.
   options.set_use_xcluster_database_consistency(
+      !pg_txn_manager_->IsDdlMode() &&
       yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
-  // If all operations belong to the same database then set the namespace
-  if (!ops.relations.empty()) {
+  // If all operations belong to the same database then set the namespace.
+  // DDLs are ignored as they have operations in both template1 and the user database.
+  // Ex: create database and create table
+  if (!pg_txn_manager_->IsDdlMode() && !ops.relations.empty()) {
     PgOid database_oid = ops.relations[0].database_oid;
     for (const auto& relation : ops.relations) {
       if (PREDICT_FALSE(database_oid != relation.database_oid)) {
@@ -589,6 +594,19 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }
+}
+
+Result<uint64_t> PgSession::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_db_catalog_version(db_oid_shm_index);
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgSession::GetTserverCatalogVersionInfo() {
+  return VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
 }
 
 Result<uint64_t> PgSession::GetSharedAuthKey() {
