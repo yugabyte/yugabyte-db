@@ -73,7 +73,7 @@ $ sudo python setup.py install
 
 ### Step 2: Set up the database connection
 
-The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
@@ -82,21 +82,21 @@ The following table describes the connection parameters required to connect, inc
 | database/dbname | Database name | yugabyte |
 | user | User connecting to the database | yugabyte |
 | password | User password | yugabyte |
-| load_balance | Enables uniform load balancing | false |
-| topology_keys | enables topology-aware load balancing | true
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 You can provide the connection details in one of the following ways:
 
 - Connection string:
 
   ```python
-  "dbname=database_name host=hostname port=port user=username  password=password load_balance=true"
+  "dbname=database_name host=hostname port=port user=username password=password load_balance=true topology_keys=cloud.region.zone1,cloud.region.zone2"
   ```
 
 - Connection dictionary:
 
   ```python
-  user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True'
+  user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True', topology_keys='cloud.region.zone1,cloud.region.zone2'
   ```
 
 The following is an example connection string for connecting to YugabyteDB.
@@ -117,7 +117,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example for connecting to a YugabyteDB cluster with SSL enabled:
 
 ```python
-conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/Users/my-user/Downloads/root.crt")
+conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<username> password=<password> load_balance=true sslmode=verify-full sslrootcert=/path/to/root.crt")
 ```
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
