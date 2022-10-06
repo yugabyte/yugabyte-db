@@ -101,7 +101,7 @@ You should be able to see that all of the data has been restored into the instan
 
 ## Check results
 
-During a high-availability backup, the entire database is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
+During a high-availability backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
 
 ## Upgrade instances
 
