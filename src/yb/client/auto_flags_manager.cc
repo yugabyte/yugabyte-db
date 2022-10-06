@@ -230,17 +230,14 @@ Status AutoFlagsManager::LoadFromConfig(
   {
     SharedLock<rw_spinlock> lock(config_mutex_);
 
-    RSTATUS_DCHECK_GE(
-        new_config.config_version(), current_config_.config_version(), InvalidArgument,
-        "New AutoFlags config version is not greater than the current version.");
-
     // First new config can be empty, and should still be written to disk.
-    // Else no-op if it is the same version.
+    // Else no-op if it is the same or lower version.
     if (current_config_.config_version() != 0 &&
-        new_config.config_version() == current_config_.config_version()) {
-      LOG(INFO) << "AutoFlags config update ignored as we are already on the same "
-                   "version. Current version: "
-                << current_config_.config_version();
+        new_config.config_version() <= current_config_.config_version()) {
+      LOG(INFO) << "AutoFlags config update ignored as we are already on the same"
+                   " or higher version. Current version: "
+                << current_config_.config_version()
+                << ", New version: " << new_config.config_version();
       return Status::OK();
     }
   }
@@ -307,12 +304,13 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
   if (!flags_to_promote.empty()) {
     // TODO(Hari): Its ok for this to be INFO level for now, as this is a new feature and we don't
     // have too many AutoFlags. Switch to VLOG when this assumption changes.
-    LOG(INFO) << "AutoFlags Promoted: " << JoinStrings(flags_to_promote, ",");
+    LOG(INFO) << "AutoFlags applied: " << JoinStrings(flags_to_promote, ",");
   }
 
   if (!non_runtime_flags_skipped.empty()) {
-    LOG(WARNING) << "Non-runtime AutoFlags skipped: " << JoinStrings(non_runtime_flags_skipped, ",")
-                 << ". Restart the process to promote these flags.";
+    LOG(WARNING) << "Non-runtime AutoFlags skipped apply: "
+                 << JoinStrings(non_runtime_flags_skipped, ",")
+                 << ". Restart the process to apply these flags.";
   }
 
   return Status::OK();

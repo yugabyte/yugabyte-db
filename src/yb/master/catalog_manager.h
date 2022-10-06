@@ -97,6 +97,8 @@ namespace yb {
 
 class Schema;
 class ThreadPool;
+class AddTransactionStatusTabletRequestPB;
+class AddTransactionStatusTabletResponsePB;
 
 template<class T>
 class AtomicGauge;
@@ -992,6 +994,10 @@ class CatalogManager :
 
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
+
+  void SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
+
+  Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
