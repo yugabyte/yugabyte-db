@@ -29,7 +29,7 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with libpq, refer to [Build a C application](../../../develop/build-apps/c/ysql/).
+For a tutorial on building a sample C application with libpq, refer to [Connect an application](../../../drivers-orms/c/ysql/).
 
 #### Install the libpq client library
 
@@ -49,7 +49,7 @@ The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ c
 
 For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with libpqxx, refer to [Build a C++ application](../../../develop/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with libpqxx, refer to [Connect an application](../../../drivers-orms/cpp/ysql/).
 
 #### Install the libpqxx driver
 
@@ -184,7 +184,7 @@ The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collec
 
 For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
 
-For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../develop/build-apps/php/ysql/).
+For a tutorial on building a sample PHP application with php-pgsql, see [Connect an application](../../../drivers-orms/php/ysql/).
 
 #### Install the php-pgsql driver
 
@@ -234,7 +234,7 @@ pip3 install aiopg
 
 [pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with pg, see [Build a Ruby application](../../../develop/build-apps/ruby/ysql-pg).
+For a tutorial on building a sample Ruby application with pg, see [Connect an application](../../../drivers-orms/ruby/ysql-pg/).
 
 #### Install the pg driver
 
