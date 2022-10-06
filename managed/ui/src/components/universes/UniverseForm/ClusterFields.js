@@ -144,7 +144,7 @@ const initialState = {
   enableNodeToNodeEncrypt: true,
   enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
-  useSystemd: false,
+  useSystemd: true,
   customizePorts: false,
   dedicatedNodes: false,
   // Geo-partitioning settings.
@@ -2960,7 +2960,7 @@ export default class ClusterFields extends Component {
                     <Field
                       name={`${clusterType}.useSystemd`}
                       component={YBToggle}
-                      defaultChecked={false}
+                      defaultChecked={true}
                       disableOnChange={disableToggleOnChange}
                       checkedVal={this.state.useSystemd}
                       onToggle={this.toggleUseSystemd}
