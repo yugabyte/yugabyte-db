@@ -34,6 +34,3 @@ To develop C applications for YugabyteDB, you need the following:
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
-## Next steps
-
-- Learn how to use [libpq C driver](ysql/) with YugabyteDB.

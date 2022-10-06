@@ -115,6 +115,8 @@ The following libraries are officially supported by YugabyteDB.
 | :--------- | :------------ | :----------- |
 | [Pg Gem Driver](ruby/ysql-pg/) | Full | [CRUD example](ruby/ysql-pg/) |
 | [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
+| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
+| [ActiveRecord ORM](ruby/activerecord/) | Full | [CRUD example](ruby/activerecord/) |
 
 ### PHP
 
