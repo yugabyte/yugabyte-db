@@ -5,6 +5,8 @@ import sbt.Tests._
 
 import scala.sys.process.Process
 
+historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -423,18 +425,10 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
-  // TODO(Shashank): Remove this in Step 3:
-  // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
-// TODO(Shashank): Remove these in Step 3:
-dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 
