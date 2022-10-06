@@ -222,6 +222,11 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     uint64_t transaction_tables_version = server_->catalog_manager()->GetTransactionTablesVersion();
     resp->set_transaction_tables_version(transaction_tables_version);
 
+    if (req->has_auto_flags_config_version() &&
+        req->auto_flags_config_version() < server_->GetAutoFlagConfigVersion()) {
+      *resp->mutable_auto_flags_config() = server_->GetAutoFlagsConfig();
+    }
+
     rpc.RespondSuccess();
   }
 

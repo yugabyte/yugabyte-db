@@ -30,6 +30,7 @@
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_int32(limit_auto_flag_promote_for_new_universe);
+DECLARE_int32(heartbeat_interval_ms);
 
 // Required for tests with AutoFlags management disabled
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
@@ -123,6 +124,26 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_EQ(follower_config.DebugString(), leader_config.DebugString());
     }
   }
+
+  void ValidateConfigOnTservers(uint32_t expected_config_version) {
+    auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    const auto master_config = leader_master->GetAutoFlagsConfig();
+    ASSERT_EQ(expected_config_version, master_config.config_version());
+    LOG(INFO) << leader_master->ToString() << " AutoFlag config: " << master_config.DebugString();
+
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      auto tserver = cluster_->mini_tablet_server(i);
+      ASSERT_OK(WaitFor(
+          [&]() {
+            const auto config = tserver->server()->TEST_GetAutoFlagConfig();
+            LOG(INFO) << tserver->server()->ToString()
+                      << " AutoFlag config: " << config.DebugString();
+            return config.DebugString() == master_config.DebugString();
+          },
+          FLAGS_heartbeat_interval_ms * 3ms * kTimeMultiplier,
+          "AutoFlags not propagated to all TServers"));
+    }
+  }
 };
 
 TEST_F(AutoFlagsMiniClusterTest, NewCluster) {
@@ -160,6 +181,7 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
 
   ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
+  ASSERT_NO_FATALS(ValidateConfigOnTservers(resp.new_config_version()));
   previous_config = leader_master->GetAutoFlagsConfig();
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
   ASSERT_GE(previous_config.promoted_flags_size(), 1);
@@ -178,6 +200,7 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   ASSERT_FALSE(resp.non_runtime_flags_promoted());
 
   ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
+  ASSERT_NO_FATALS(ValidateConfigOnTservers(resp.new_config_version()));
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
@@ -316,7 +339,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   // Restart the master
   new_master->Shutdown();
-  CHECK_OK(new_master->Restart());
+  ASSERT_OK(new_master->Restart());
   CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master);
   CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master);
   ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
@@ -326,7 +349,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
     RemoveFromVector(master->mutable_flags(), disable_auto_flag_management);
 
     master->Shutdown();
-    CHECK_OK(master->Restart());
+    ASSERT_OK(master->Restart());
     CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, master);
     const auto config_version = GetAutoFlagConfigVersion(master);
     if (master == new_master) {
@@ -340,14 +363,15 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
     RemoveFromVector(tserver->mutable_flags(), disable_auto_flag_management);
 
     tserver->Shutdown();
-    CHECK_OK(tserver->Restart());
+    ASSERT_OK(tserver->Restart());
     CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, tserver);
-    const auto config_version = GetAutoFlagConfigVersion(tserver);
-    if (tserver == new_tserver) {
-      ASSERT_EQ(config_version, 0);
-    } else {
-      ASSERT_EQ(config_version, 1);
-    }
+    ASSERT_OK(WaitFor(
+        [&]() {
+          const auto config_version = GetAutoFlagConfigVersion(tserver);
+          return config_version == 1;
+        },
+        FLAGS_heartbeat_interval_ms * 3ms * kTimeMultiplier,
+        Format("Wait for tserver $0 to reach config version 1", tserver->id())));
   }
 
   CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse);
