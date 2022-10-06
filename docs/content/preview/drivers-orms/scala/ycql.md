@@ -1,24 +1,31 @@
 ---
-title: Build a Scala application that uses YCQL
-headerTitle: Build a Scala application
-linkTitle: Scala
-description: Build a Scala application with the Yugabyte Java Driver for YCQL and sbt dependency.
+title: Connect an application
+linkTitle: Connect an app
+description: Scala drivers for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: build-apps
-    name: Scala
-    identifier: scala-1
-    weight: 950
-aliases:
-  - /preview/quick-start/build-apps/scala/
+    identifier: ycql-scala-driver
+    parent: scala-drivers
+    weight: 420
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
+   <li >
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB Java Driver for YCQL
     </a>
   </li>
 </ul>
@@ -27,9 +34,9 @@ type: docs
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../../quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../quick-start/).
 - installed Scala version 2.12 or later.
-- installed sbt 1.3.8  or later.
+- installed sbt 1.3.8 or later.
 
 ### sbt
 
