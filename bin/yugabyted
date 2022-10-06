@@ -140,6 +140,8 @@ PREFIX = {
     'version' : "",
     'collect_logs' : "",
     'configure' : "",
+    'configure data_placement': "",
+    'configure encrypt_at_rest': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -158,7 +160,9 @@ USAGE = {
     'status' : "yugabyted status [flags]",
     'version' : "yugabyted version [flags]",
     'collect_logs' : "yugabyted collect_logs [flags]",
-    'configure' : "yugabyted configure [flags]",
+    'configure' : "yugabyted configure [command] [flags]",
+    'configure data_placement': "yugabyted configure data_placement [flags]",
+    'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -182,9 +186,25 @@ EXAMPLE = {
     'status' : "",
     'version' : "",
     'collect_logs' : "",
-    'configure' : "",
     'cert' : "# Create node sever certificates:\n" +
              "yugabyted cert generate_server_certs --hostnames=<comma_seperated_hostnames>\n\n",
+    'configure' : "# Configure a multi-zone cluster:\n" +
+                  "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
+                  "# Enable encryption at rest:\n" +
+                  "yugabyted configure encrypt_at_rest --enable\n\n" +
+                  "For more examples use 'yugabyted configure [command] -h'",
+    'data_placement' : "# Configure a multi-zone cluster:\n" +
+                       "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
+                       "# Configure a multi-region cluster:\n" +
+                       "yugabyted configure --fault_tolerance=region\n\n" +
+                       "# Configure a multi-zone cluster with specified placemenrt info and rf:\n" +
+                       "yugabyted configure --fault_tolerance=zone " +
+                       "--constraint_value=cloud1.region1.zone1,cloud2.region2.zone2," +
+                       "cloud3.region3.zon3 --rf=3\n\n",
+    'encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
+                        "yugabyted configure encrypt_at_rest --enable\n\n" +
+                        "# Disable encryption at rest for a cluster:\n" +
+                        "yugabyted configure encrypt_at_rest --disable\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -596,7 +616,8 @@ class ControlScript(object):
         else:
             Output.print_and_log("Logs are packaged into {}".format(tarpath))
 
-    def configure(self):
+    # Configuring the data placement policy
+    def configure_data_placement(self):
 
         # to-do: can be removed after multi-region and geo-replicated feature is implemented
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
@@ -630,7 +651,7 @@ class ControlScript(object):
                 self.replace_master(master_addr, masters_to_remove[i], masters_to_add[i])
 
         current_masters = self.get_all_masters()
-        placement_info = self.configs.temp_data.get("data_placement_constraint")
+        placement_info = self.configs.temp_data.get("constraint_value")
         if not placement_info:
             placement_info = []
             for master in current_masters:
@@ -670,7 +691,7 @@ class ControlScript(object):
                 (Output.make_yellow("Fault Tolerance"), failure_status),
             ]
 
-        Output.print_out(self.get_status_string_for_configure(status_details))
+        Output.print_out(self.get_status_string_common(status_details))
 
     # Generate the node server certificates
     def cert_generate_server_certs(self):
@@ -686,7 +707,7 @@ class ControlScript(object):
             status_details = [
                 (Output.make_yellow("Status"), "Cert generation failed. Please check the logs."),
             ]
-            Output.print_out(self.get_status_string_for_cert_generation(status_details))
+            Output.print_out(self.get_status_string_common(status_details))
             sys.exit(1)
 
         hostnames = self.configs.temp_data.get("hostnames")
@@ -709,7 +730,7 @@ class ControlScript(object):
                         "Certs can be found at: {}".format(gen_certs_dir+"/<hostname>")),
             ]
 
-        Output.print_out(self.get_status_string_for_cert_generation(status_details))
+        Output.print_out(self.get_status_string_common(status_details))
 
     # Generate the root certificates
     def generate_ca_certs(self, root_certs_dir):
@@ -735,7 +756,7 @@ class ControlScript(object):
             if not os.path.isdir(root_certs_dir):
                 os.makedirs(root_certs_dir)
 
-            status = CertGenProxy.generate_root_ca_certs(root_certs_dir=root_certs_dir)
+            status = OpenSSLProxy.generate_root_ca_certs(root_certs_dir=root_certs_dir)
 
             if not status:
                 return False
@@ -764,7 +785,7 @@ class ControlScript(object):
                     "root-ca certs database. Removing...")
                 shutil.rmtree(node_certs_dir)
 
-            status = CertGenProxy.generate_node_server_certs(root_certs_dir=root_certs_dir,
+            status = OpenSSLProxy.generate_node_server_certs(root_certs_dir=root_certs_dir,
                 hostname=hostname, server_cert_dir=node_certs_dir)
 
             if not status:
@@ -772,7 +793,7 @@ class ControlScript(object):
                     (Output.make_yellow("Status"), "Server node cert generation failed for " +
                         "hostname {}. Please check the logs.".format(hostname)),
                 ]
-                Output.print_out(self.get_status_string_for_cert_generation(status_details))
+                Output.print_out(self.get_status_string_common(status_details))
                 exit(1)
             else:
                 generated_certs_hostnames.append(hostname)
@@ -804,13 +825,202 @@ class ControlScript(object):
 
         return False
 
-    #Check for openssl
+    # Use the masters to check if the masters has the key with <key_id>.
+    def is_key_in_all_masters(self, key_id):
+        masters = ",".join(self.get_all_masters())
+
+        # IPs of the masters which are currently in the cluster
+        master_ips = [master.split(':')[0] for master in masters.split(',')]
+
+        # Masters which have the key with id as key_id
+        masters_with_key = YBAdminProxy.check_key_in_masters(master_addrs=masters, key_id=key_id)
+        for i, master in enumerate(masters_with_key):
+            master = master.split(':')[0].split()[1]
+            masters_with_key[i] = master
+
+        ret = True
+        if masters_with_key < len(master_ips):
+            ret = False
+
+        for master in master_ips:
+            if master not in masters_with_key:
+                ret = False
+
+        return ret
+
+    # Use the masters to check if encryption at rest is enabled.
+    def is_encryption_at_rest_enabled(self):
+        masters = ",".join(self.get_all_masters())
+
+        result = YBAdminProxy.check_encryption(master_addrs=masters)
+
+        if result is None:
+            return None
+
+        if "ENABLED" in result:
+            return True
+        else:
+            return False
+
+    # Configuring encryption at rest
+    def configure_encrypt_at_rest(self):
+        status_details = []
+        has_errors = False
+
+        # Enable encryption at rest.
+        if self.configs.temp_data.get("enable"):
+            Output.log("Trying to enable encryption at rest.")
+
+            # Check whether the encryption at rest is already enabled.
+            encryption_enabled = self.is_encryption_at_rest_enabled()
+            if encryption_enabled is None:
+                Output.log_error_and_exit("Error checking status of encryption-at-rest.")
+            elif encryption_enabled:
+                Output.log("Encryption at rest already enabled.")
+                has_errors = True
+                status_details = [
+                    (Output.make_yellow("Status"), "Encryption at rest already enabled.")
+                ]
+
+            # Setting the key directory and name
+            key_dir = os.path.join(self.configs.saved_data.get("data_dir"), "encrypt-keys")
+            keyname = "encrypt_at_rest"
+
+            if not has_errors:
+                # Check openssl is installed in the machine or not.
+                if self.check_openssl():
+                    Output.log_error_and_exit(Output.make_red("Error") + ": openssl not " +
+                        "installed. Can't create universe key for encryption.")
+
+                # Generate the universe key.
+                status = OpenSSLProxy.generate_key(key_dir=key_dir, keyname=keyname)
+
+                if not status:
+                    Output.log(Output.make_red("Error") + ": Universe key generation failed for " +
+                            "encryption at rest.")
+                    has_errors = True
+                    status_details = [
+                        (Output.make_yellow("Status"), "Universe key generation failed for " +
+                            "enabling encryption at rest. Please check the logs.")
+                    ]
+                else:
+                    masters = ",".join(self.get_all_masters())
+                    key_id = str(uuid.uuid4())
+                    key_path = key_dir + "/" + keyname + ".key"
+
+                    # Copy the generated universe key to all the masters
+                    if not has_errors and not YBAdminProxy.copy_key_to_masters(
+                            master_addrs=masters, key_id=key_id, key_path=key_path):
+                        Output.log(Output.make_red("Error") + ": cannot copy the " +
+                            "generated key to the masters.")
+                        has_errors = True
+                        status_details = [
+                            (Output.make_yellow("Status"), "Encryption at rest failed. " +
+                                "Please check the logs."),
+                        ]
+
+                    # Check whether all masters have the key.
+                    if not has_errors:
+                        if not self.is_key_in_all_masters(key_id=key_id):
+                            Output.log(Output.make_red("Error") + ": Universe key " +
+                                "{} not found in all masters.".format(key_id))
+                            has_errors = True
+                            status_details = [
+                                (Output.make_yellow("Status"), "Encryption at rest failed. " +
+                                    "Please check the logs."),
+                            ]
+                        else:
+                            Output.log("Copied key {} to all the masters".format(key_id))
+
+                    # Enable encryption at rest.
+                    if not has_errors and not YBAdminProxy.enable_encryption_using_key(
+                            master_addrs=masters, key_id=key_id):
+                        Output.log(Output.make_red("Error") + ": cannot enable " +
+                            "encryption at rest.")
+                        has_errors = True
+                        status_details = [
+                            (Output.make_yellow("Status"), "Encryption at rest failed. " +
+                                "Please check the logs."),
+                        ]
+
+                    # Check whether the encryption at rest has been enabled or not.
+                    if not has_errors:
+                        encryption_enabled = self.is_encryption_at_rest_enabled()
+                        if encryption_enabled is None:
+                            Output.log_error_and_exit("Error checking status of " +
+                                "encryption-at-rest.")
+                        elif not encryption_enabled:
+                            Output.log(Output.make_red("Error") + ": cannot enable " +
+                                "encryption at rest.")
+                            has_errors = True
+                            status_details = [
+                                (Output.make_yellow("Status"), "Encryption at rest failed. " +
+                                    "Please check the logs."),
+                            ]
+                        else:
+                            out = "Encryption at rest enabled with key: {}".format(key_id)
+                            Output.log(out)
+                            status_details = [
+                                (Output.make_yellow("Status"), out),
+                            ]
+
+            Output.log("Deleting the universe key generated for encryption at rest.")
+            if os.path.isdir(key_dir):
+                shutil.rmtree(key_dir)
+        # Disabling encryption at rest
+        else:
+            Output.log("Trying to disable encryption at rest.")
+
+            # Check whether encryption at rest is already disabled.
+            encryption_enabled = self.is_encryption_at_rest_enabled()
+            if encryption_enabled is None:
+                Output.log_error_and_exit("Error checking status of encryption-at-rest.")
+            elif not encryption_enabled:
+                Output.log("Encryption at rest is already disabled.")
+                has_errors = True
+                status_details = [
+                    (Output.make_yellow("Status"), "Encryption at rest is already disabled.")
+                ]
+
+            masters = ",".join(self.get_all_masters())
+
+            # Disable encryption at rest
+            if not has_errors and not YBAdminProxy.disable_encryption(master_addrs=masters):
+                Output.log(Output.make_red("Error") + ": cannot disable encryption at rest.")
+                has_errors = True
+                status_details = [
+                    (Output.make_yellow("Status"), "Disabling encryption at rest failed. " +
+                        "Please check the logs."),
+                ]
+
+            # Check whether encryption at rest has been disabled or not.
+            if not has_errors:
+                encryption_enabled = self.is_encryption_at_rest_enabled()
+                if encryption_enabled is None:
+                    Output.log_error_and_exit("Error checking status of encryption-at-rest.")
+                elif encryption_enabled:
+                    Output.log(Output.make_red("Error") + ": cannot disable encryption at rest.")
+                    has_errors = True
+                    status_details = [
+                        (Output.make_yellow("Status"), "Disabling encryption at rest failed. " +
+                            "Please check the logs."),
+                    ]
+                else:
+                    out = "Encryption at rest disabled."
+                    Output.log(out)
+                    status_details = [
+                        (Output.make_yellow("Status"), out),
+                    ]
+
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # Check for openssl
     def check_openssl(self):
         openssl_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('openssl')))
         openssl_exit_code = openssl_check[2]
         return openssl_exit_code != 0
 
-    #All Pre-requisites check for Linux
+    # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
         prereqs_warn = set()
@@ -834,7 +1044,7 @@ class ControlScript(object):
 
         return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn)
 
-    #All Pre-requistes check for MacOS
+    # All Pre-requistes check for MacOS
     def mac_prereqs_check(self):
         prereqs_failed = set()
         prereqs_warn = set()
@@ -1921,6 +2131,8 @@ class ControlScript(object):
         advertise_ip = self.advertise_ip()
         master_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
                                       self.configs.saved_data.get("master_rpc_port"))
+        master_web_addrs = "{}:{}".format(join_ip if join_ip else advertise_ip,
+                                      self.configs.saved_data.get("master_webserver_port"))
 
         ycql_port = self.configs.saved_data.get("ycql_port")
         cql_hostname_param = ""
@@ -1957,11 +2169,30 @@ class ControlScript(object):
             else:
                 status = "Status command timed out as YugabyteDB \"yb-master\" " + \
                             "process is not responding."
+            enabled_security_features = []
+            encryption_enabled = self.is_encryption_at_rest_enabled()
+            if encryption_enabled is None:
+                Output.log_error_and_exit(Output.ANIMATION_FAIL + " Error checking status of " +
+                    "encryption-at-rest.")
+
+            if encryption_enabled:
+                enabled_security_features.append("Encryption-at-rest")
+            if self.is_leader_master_secure(master_web_addrs):
+                enabled_security_features.append("Encryption-in-transit")
+            if self.configs.saved_data.get("ysql_enable_auth") and \
+                    self.configs.saved_data.get("use_cassandra_authentication"):
+                enabled_security_features.append("Password Authentication")
+
             status_info = [
                 (Output.make_yellow("Status"), status),
                 (Output.make_yellow("Replication Factor"),
                         YBAdminProxy.get_cluster_rf(master_addrs)),
             ]
+
+            if enabled_security_features:
+                status_info += [
+                    (Output.make_yellow("Security Features"), ", ".join(enabled_security_features))
+                ]
 
 
         ysql_flags = " {} {} -U {} -d {}".format(ysql_hostname_param, ysql_port_param,
@@ -2013,25 +2244,8 @@ class ControlScript(object):
         status += div_line
         return status
 
-    # Returns pretty output table for configure command.
-    def get_status_string_for_configure(self, status_info):
-
-        title = Output.make_bold(Output.make_green(SCRIPT_NAME))
-        extra_len = len(Output.make_bold(Output.make_green("")))
-
-        div_line = "+" + "-" * 98 + "+" + "\n"
-        status = "\n" + div_line
-        status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
-        status += div_line
-        for k, v in status_info:
-            extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
-        status += div_line
-        return status
-
-    # Returns pretty output table for cert command.
-    def get_status_string_for_cert_generation(self, status_info):
-
+    # Returns pretty output table
+    def get_status_string_common(self, status_info):
         title = Output.make_bold(Output.make_green(SCRIPT_NAME))
         extra_len = len(Output.make_bold(Output.make_green("")))
 
@@ -2441,7 +2655,7 @@ class ControlScript(object):
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
 
-        if args.parser == "configure":
+        if args.parser == "data_placement":
             if args.fault_tolerance is not None:
                 if args.fault_tolerance.lower() in FAULT_TOLERANCE_CHOICES:
                     self.configs.temp_data["fault_tolerance"] = args.fault_tolerance.lower()
@@ -2452,8 +2666,8 @@ class ControlScript(object):
                         "Please specify one of the following - zone, region or cloud ".format(
                             args.fault_tolerance.lower()))
 
-            if args.data_placement_constraint is not None:
-                data_constraints = args.data_placement_constraint.split(",")
+            if args.constraint_value is not None:
+                data_constraints = args.constraint_value.split(",")
                 has_errors = False
                 for constraint in data_constraints:
                     cloud_info = constraint.split(".")
@@ -2466,13 +2680,13 @@ class ControlScript(object):
 
                 if has_errors:
                     Output.print_out(
-                        "Incorrect value specified for data_placement_constraint. " +
+                        "Incorrect value specified for constraint_value. " +
                         "Please specify comma sperated value with format " +
                         "- cloudprovider.region.zone".format(
-                            args.data_placement_constraint))
+                            args.constraint_value))
                 else:
                     self.configs.temp_data[
-                        "data_placement_constraint"] = args.data_placement_constraint
+                        "constraint_value"] = args.constraint_value
 
             if args.rf is not None:
                 self.configs.temp_data["replication_factor"] = str(args.rf)
@@ -2502,8 +2716,22 @@ class ControlScript(object):
 
             self.configs.temp_data["hostnames"] = args.hostnames
 
-        if args.parser == "start":
+        if args.parser == "encrypt_at_rest":
+            if not args.enable and not args.disable:
+                has_errors = True
+                Output.print_out(Output.make_red("ERROR") +
+                    ": Either --enable or --disable flag has to be provided.")
 
+            if args.enable and args.disable:
+                has_errors = True
+                Output.print_out(Output.make_red("ERROR") +
+                    ": --enable and --disable flags cannot be used together.")
+            elif args.enable:
+                self.configs.temp_data["enable"] = args.enable
+            elif args.disable:
+                self.configs.temp_data["disable"] = args.disable
+
+        if args.parser == "start":
             if args.cloud_location is not None:
                 cloud_location = args.cloud_location.split(".")
                 if len(cloud_location) == 3:
@@ -2709,8 +2937,7 @@ class ControlScript(object):
                 ("destroy", "Destroy YugabyteDB cluster and remove data."),
                 ("status", "Print status of YugabyteDB cluster."),
                 ("version", "Release version of YugabyteDB cluster."),
-                ("collect_logs", "Collect and package logs for troubleshooting."),
-                ("configure", "Configure multi-zone/multiregion cluster")):
+                ("collect_logs", "Collect and package logs for troubleshooting.")):
             example = ""
             if EXAMPLE[cmd]:
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -2779,20 +3006,55 @@ class ControlScript(object):
                 "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
 
-        # Commands that can change muti-zone/multi-region configuration.
-        for cmd in ("configure",):
+        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
+        configure_parser = subparsers.add_parser("configure", description=example,
+                                                help="Configure data placement or " +
+                                                "toggle encryption at rest for " +
+                                                "the cluster.", parents=[common_parser])
+        all_parsers["configure"] = configure_parser
+        configure_subparsers = configure_parser.add_subparsers(dest="parser", metavar="")
+        configure_subparsers.required = True
+        for cmd, description in (
+                ("data_placement", "Configure multi-zone/multi-region cluster."),
+                ("encrypt_at_rest", "Enable or disable encryption at rest."),):
+            example = ""
+            if EXAMPLE[cmd]:
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            subparser = configure_subparsers.add_parser(cmd, help=description, description=example,
+                                parents=[common_parser])
+            parser_name = "configure_" + cmd
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Flags for muti-zone/multi-region configuration.
+        for cmd in ("configure_data_placement",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
                 "--fault_tolerance", help="No more than 1 node in the same " +
                 "fault tolerance can be a master",
                 metavar="")
             cur_parser.add_argument(
-                "--data_placement_constraint", help="Data placement constriant to be applied " +
+                "--constraint_value", help="Data placement constriant to be applied " +
                 "on the YugabyteDB Cluster",
                 metavar="")
             cur_parser.add_argument(
                 "--rf", help="Set the replication factor for each tablet",
                 metavar="")
+
+        # Flags for encryption at rest
+        for cmd in ("configure_encrypt_at_rest",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--enable", help="Enable encryption at rest for the cluster. No need to set a " +
+                "value for the flag. Use --enable or --disable flag to toggle encryption " +
+                "features on a YugabyteDB cluster.",
+                action="store_true")
+            cur_parser.add_argument(
+                "--disable", help="Disable encryption at rest for the cluster. No need to set a " +
+                "value for the flag. Use --enable or --disable flag to toggle encryption " +
+                "features on a YugabyteDB cluster.",
+                action="store_true")
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -2891,8 +3153,8 @@ class ControlScript(object):
         Output.log("cmd = {} using config file: {} (args.config={})".format(
             args.parser, self.conf_file, args.config))
 
-        # Initialize the script path of gen_certs.sh
-        CertGenProxy.init()
+        # Initialize the script path of openssl_proxy.sh
+        OpenSSLProxy.init()
 
         # Initialize the binary path of ybadmin
         YBAdminProxy.init()
@@ -3016,10 +3278,12 @@ class Configs(object):
             "ui": True,
             "initial_scripts_dir": "",
             "collect_logs_stdout": False,
-            "data_placement_constraint": "",
+            "constraint_value": "",
             "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
             "replication_factor":"",
             "hostnames": "",
+            "enable": False,
+            "disable": False,
         }
         self.config_file = config_file
 
@@ -3504,7 +3768,6 @@ class YBAdminProxy(object):
     # Sets placement info
     @staticmethod
     def modify_placement_info(master_addrs, placement_locations, replication_factor, timeout=10):
-
         if not replication_factor:
             replication_factor = "3"
 
@@ -3512,6 +3775,50 @@ class YBAdminProxy(object):
                 placement_locations, replication_factor]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)
+
+    # Copy universe key to all masters for encryption at rest
+    @staticmethod
+    def copy_key_to_masters(master_addrs, key_id, key_path, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+            "add_universe_key_to_all_masters", key_id, key_path]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Check if universe key has been copied to all masters for encryption at rest
+    @staticmethod
+    def check_key_in_masters(master_addrs, key_id, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+            "all_masters_have_universe_key_in_memory", key_id]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code:
+            return []
+        out = out.splitlines()
+        return out
+
+    # Enable encryption at rest by start using the key in masters
+    @staticmethod
+    def enable_encryption_using_key(master_addrs, key_id, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+            "rotate_universe_key_in_memory", key_id]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Disable encryption at rest
+    @staticmethod
+    def disable_encryption(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "disable_encryption"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Check if universe key has been copied to all masters for encryption at rest
+    @staticmethod
+    def check_encryption(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "is_encryption_enabled"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if 0 != ret_code:
+            return None
+        return out
+
 
 # Proxy for ysqlsh commands.
 class YsqlProxy(object):
@@ -3733,21 +4040,21 @@ class YcqlProxy(object):
             return True
 
 
-# Proxy for creating ssl certificates using openssl
-class CertGenProxy(object):
+# Proxy for creating ssl certificates and keys using openssl
+class OpenSSLProxy(object):
     cmd_args = []
 
     @staticmethod
     def init(path=None):
         if path is None:
-            path = find_binary_location("gen_certs.sh")
+            path = find_binary_location("openssl_proxy.sh")
 
-        CertGenProxy.cmd_args = [path]
+        OpenSSLProxy.cmd_args = [path]
 
     # Generate root ca certificates
     @staticmethod
     def generate_root_ca_certs(root_certs_dir, timeout=60):
-        cmd = CertGenProxy.cmd_args + ['generate-ca', '-rcp', root_certs_dir]
+        cmd = OpenSSLProxy.cmd_args + ['generate-ca', '-rcp', root_certs_dir]
         out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
 
         return (0 == ret)
@@ -3755,8 +4062,16 @@ class CertGenProxy(object):
     # Generate node server certificates
     @staticmethod
     def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, timeout=60):
-        cmd = CertGenProxy.cmd_args + ['generate-server-cert', '-rcp', root_certs_dir,
+        cmd = OpenSSLProxy.cmd_args + ['generate-server-cert', '-rcp', root_certs_dir,
             '-scp', server_cert_dir, '-hn', hostname]
+        out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
+
+        return (0 == ret)
+
+    # Generate universe key for encryption-at-rest
+    @staticmethod
+    def generate_key(key_dir, keyname, timeout=60):
+        cmd = OpenSSLProxy.cmd_args + ['generate-key', '-kp', key_dir, '-kn', keyname]
         out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
 
         return (0 == ret)
