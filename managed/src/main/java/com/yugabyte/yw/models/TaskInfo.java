@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -301,6 +302,10 @@ public class TaskInfo extends Model {
     return sb.toString();
   }
 
+  public UserTaskDetails getUserTaskDetails() {
+    return getUserTaskDetails(null);
+  }
+
   /**
    * Retrieve the UserTaskDetails for the task mapped to this TaskInfo object. Should only be called
    * on the user-level parent task, since only that task will have subtasks. Nothing will break if
@@ -311,7 +316,7 @@ public class TaskInfo extends Model {
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
    *     subTaskGroups.
    */
-  public UserTaskDetails getUserTaskDetails() {
+  public UserTaskDetails getUserTaskDetails(TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
     List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
@@ -321,11 +326,22 @@ public class TaskInfo extends Model {
       if (subTaskGroupType == SubTaskGroupType.Invalid) {
         continue;
       }
+
       SubTaskDetails subTask = userTasksMap.get(subTaskGroupType);
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);
+        if (taskCache != null) {
+          // Populate extra details about task progress from Task Cache.
+          JsonNode cacheData = taskCache.get(taskInfo.getTaskUUID().toString());
+          subTask.populateDetails(cacheData);
+        }
         taskDetails.add(subTask);
       } else {
+        if (taskCache != null) {
+          // Populate extra details about task progress from Task Cache.
+          JsonNode cacheData = taskCache.get(taskInfo.getTaskUUID().toString());
+          subTask.populateDetails(cacheData);
+        }
         if (TaskInfo.ERROR_STATES.contains(subTask.getState())) {
           // If error is set, report the error.
           continue;
@@ -335,6 +351,7 @@ public class TaskInfo extends Model {
           continue;
         }
       }
+
       State subTaskState = taskInfo.getTaskState();
       if (State.Created.equals(subTaskState)) {
         subTask.setState(customerTaskFailure ? State.Unknown : State.Created);
