@@ -279,5 +279,32 @@ TEST_F(ResultTest, VerifyResultMacroMoveCount) {
   ASSERT_EQ(2, MoveCounter::counter());
 }
 
+namespace {
+
+template<typename T>
+void TestNotOk(T t) {
+  const auto LogPrefix = []() -> std::string { return "prefix"; };
+  WARN_NOT_OK(t, "boo");
+  WARN_WITH_PREFIX_NOT_OK(t, "foo");
+  ERROR_NOT_OK(t, "moo");
+}
+
+} // namespace
+
+TEST_F(ResultTest, NotOk) {
+  Result<std::string> good_result = "good";
+  Result<std::string> bad_result = STATUS(InternalError, "bad");
+
+  LOG(INFO) << "Checking OK because it's mandatory: " << bad_result.ok();
+
+  // Result
+  TestNotOk<Result<std::string>>(good_result);
+  TestNotOk<Result<std::string>>(bad_result);
+
+  // Status
+  TestNotOk<Status>(Status::OK());
+  TestNotOk<Status>(bad_result.status());
+}
+
 } // namespace test
 } // namespace yb
