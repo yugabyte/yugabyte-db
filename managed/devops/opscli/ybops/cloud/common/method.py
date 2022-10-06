@@ -101,6 +101,7 @@ class AbstractMethod(object):
         try:
             self.callback(args)
         except BaseException as e:
+            logging.exception(e)
             if self.error_handler:
                 self.error_handler(e, args)
             raise e
