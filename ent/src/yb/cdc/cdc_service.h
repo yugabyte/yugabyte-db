@@ -141,6 +141,11 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
 
+  void GetTabletListToPollForCDC(
+      const GetTabletListToPollForCDCRequestPB* req,
+      GetTabletListToPollForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
                            IsBootstrapRequiredResponsePB* resp,
                            rpc::RpcContext rpc) override;
@@ -301,6 +306,13 @@ class CDCServiceImpl : public CDCServiceIf {
   // tablet and then update the peers' log objects. Also used to update lag metrics.
   void UpdatePeersAndMetrics();
 
+  Status GetTabletIdsToPoll(
+      const CDCStreamId stream_id,
+      const std::set<TabletId>& active_or_hidden_tablets,
+      const std::set<TabletId>& parent_tablets,
+      const std::map<TabletId, TabletId>& child_to_parent_mapping,
+      std::vector<std::pair<TabletId, OpId>>* result);
+
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(const TabletIdStreamIdSet& cdc_state_entries_to_delete);
 
@@ -321,8 +333,8 @@ class CDCServiceImpl : public CDCServiceIf {
       std::vector<ProducerTabletInfo>* producer_entries_modified,
       std::vector<client::YBOperationPtr>* ops,
       const CDCStreamId& stream_id,
-      const TableId& table_id,
-      const TabletId& tablet_id);
+      const TabletId& tablet_id,
+      const OpId& op_id = OpId::Invalid());
 
   Status CreateCDCStreamForNamespace(
       const CreateCDCStreamRequestPB* req,
@@ -341,6 +353,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const ProducerTabletInfo& producer_tablet,
       std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
       const client::YBSessionPtr& session);
+
+  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(
+      const ProducerTabletInfo& info, const OpId& split_op_id);
 
   // Get enum map from the cache.
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);

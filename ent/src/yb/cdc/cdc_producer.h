@@ -71,6 +71,7 @@ Status GetChangesForCDCSDK(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const std::shared_ptr<MemTracker>& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
+    client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     std::string* commit_timestamp,
