@@ -59,6 +59,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -71,7 +72,6 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/xcluster_split_driver.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
@@ -156,12 +156,11 @@ constexpr int32_t kInvalidClusterConfigVersion = 0;
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager :
-    public tserver::TabletPeerLookupIf,
-    public TabletSplitCandidateFilterIf,
-    public TabletSplitDriverIf,
-    public CatalogManagerIf,
-    public XClusterSplitDriverIf {
+class CatalogManager : public tserver::TabletPeerLookupIf,
+                       public TabletSplitCandidateFilterIf,
+                       public TabletSplitDriverIf,
+                       public CatalogManagerIf,
+                       public CDCSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -538,7 +537,7 @@ class CatalogManager :
     return Status::OK();
   }
 
-  Status UpdateXClusterProducerOnTabletSplit(
+  Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override {
     // Default value.
     return Status::OK();
@@ -1539,6 +1538,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsTablePartOfCDCSDK(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+    // Default value.
+    return false;
+  }
+
   virtual Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
       const {
     return Status::OK();
@@ -1613,11 +1617,13 @@ class CatalogManager :
   };
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_xcluster_
       GUARDED_BY(mutex_);
+  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
+      GUARDED_BY(mutex_);
 
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
-  rpc::ScheduledTaskTracker xcluster_parent_tablet_deletion_task_;
-  std::atomic<bool> xcluster_parent_tablet_deletion_task_running_{false};
+  std::atomic<bool> cdc_parent_tablet_deletion_task_running_{false};
+  rpc::ScheduledTaskTracker cdc_parent_tablet_deletion_task_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);

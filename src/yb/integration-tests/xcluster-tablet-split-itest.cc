@@ -48,7 +48,7 @@ DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
-DECLARE_int32(xcluster_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
@@ -184,7 +184,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
     FLAGS_cdc_state_table_num_tablets = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
     // Lowering to 5s here to speed up tests.
-    FLAGS_xcluster_parent_tablet_deletion_task_retry_secs = 5;
+    FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 5;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
