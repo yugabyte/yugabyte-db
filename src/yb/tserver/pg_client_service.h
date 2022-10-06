@@ -60,11 +60,13 @@ namespace tserver {
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (CheckIfPitrActive) \
+    (GetTserverCatalogVersionInfo) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
+      TabletServerIf* const tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
@@ -76,6 +78,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+
+  void InvalidateTableCache();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \

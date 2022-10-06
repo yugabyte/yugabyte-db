@@ -97,6 +97,8 @@ namespace yb {
 
 class Schema;
 class ThreadPool;
+class AddTransactionStatusTabletRequestPB;
+class AddTransactionStatusTabletResponsePB;
 
 template<class T>
 class AtomicGauge;
@@ -555,6 +557,8 @@ class CatalogManager :
   Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
   Status GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) override;
+  Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
   Status InitializeTransactionTablesConfig(int64_t term);
 
@@ -990,6 +994,10 @@ class CatalogManager :
 
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
+
+  void SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
+
+  Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

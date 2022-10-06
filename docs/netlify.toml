@@ -401,29 +401,12 @@
 # Build an application redirects to Drivers and ORMs
 
 [[redirects]]
-  from = "/preview/develop/build-apps/java/ycql/"
-  to = "/preview/drivers-orms/java/ycql/"
+   from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
+   to = "/preview/drivers-orms/ruby/activerecord/"
 
 [[redirects]]
-  from = "preview/develop/build-apps/java/ycql-4.6/"
-  to = "/preview/drivers-orms/java/ycql-4.6/"
-
-[[redirects]]
-  from = "preview/develop/build-apps/go/ycql/"
-  to = "/preview//drivers-orms/go/ycql/"
-
-[[redirects]]
-  from = "preview/develop/build-apps/python/ycql/"
-  to = "/preview//drivers-orms/python/ycql/"
-
-[[redirects]]
-  from = "preview/develop/build-apps/nodejs/ycql/"
-  to = "/preview//drivers-orms/nodejs/ycql/"
-
-[[redirects]]
-  from = "preview/develop/build-apps/csharp/ycql/"
-  to = "/preview//drivers-orms/csharp/ycql/"
-
+   from = "/preview/develop/build-apps/:lang/:driver/"
+   to = "/preview/drivers-orms/:lang/:driver/"
 
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme

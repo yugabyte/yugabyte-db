@@ -72,6 +72,9 @@ DEFINE_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
 DEFINE_bool(transaction_disable_heartbeat_in_tests, false, "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
 
+DEFINE_bool(auto_promote_nonlocal_transactions_to_global, true,
+            "Automatically promote transactions touching data outside of region to global.");
+
 DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
                  "Inject delay before processing flushed operations by transaction.");
 
@@ -90,7 +93,7 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
 
 namespace yb {
 namespace client {
@@ -597,7 +600,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global ||
+        FLAGS_enable_wait_queue_based_pessimistic_locking) {
+      if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
+        YB_LOG_EVERY_N_SECS(WARNING, 100)
+            << "Cross-region transactions are disabled in clusters with pessimistic locking "
+            << "enabled. This will be supported in a future release. "
+            << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
+      }
       auto tablet_id = op->tablet->tablet_id();
       auto status = STATUS_FORMAT(
             IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);

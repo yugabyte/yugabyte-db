@@ -749,6 +749,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
+  // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
+  // critical failures.
+  Status ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1011,6 +1015,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
+
+  AutoFlagsManager* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

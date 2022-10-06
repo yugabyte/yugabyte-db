@@ -43,6 +43,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
@@ -222,6 +223,8 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
                            yb::MetricUnit::kOperations,
                            "Number of split operations added to the leader's Raft log.");
+
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -1822,20 +1825,43 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   // For postgres requests check that the syscatalog version matches.
   if (tablet.peer->tablet()->table_type() == TableType::PGSQL_TABLE_TYPE) {
     uint64_t last_breaking_catalog_version = 0; // unset.
+    uint32_t last_db_oid = kPgInvalidOid; // unset.
     for (const auto& pg_req : req->pgsql_write_batch()) {
+      bool invalidated = false;
       if (pg_req.has_ysql_catalog_version()) {
+        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
+        CHECK(!pg_req.has_ysql_db_catalog_version());
+        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
+        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
         if (last_breaking_catalog_version == 0) {
           // Initialize last breaking version if not yet set.
           server_->get_ysql_catalog_version(nullptr /* current_version */,
                                             &last_breaking_catalog_version);
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
-                                         "transaction has been invalidated."),
-              TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
-          return;
+          invalidated = true;
         }
+      } else if (pg_req.has_ysql_db_catalog_version()) {
+        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
+        if (last_db_oid == kPgInvalidOid) {
+          last_db_oid = pg_req.ysql_db_oid();
+          server_->get_ysql_db_catalog_version(
+              pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
+        } else {
+          // All the db oids should be identical because they all belong to a single request.
+          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
+        }
+        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
+          invalidated = true;
+        }
+      }
+      if (invalidated) {
+        SetupErrorAndRespond(resp->mutable_error(),
+            STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                       "transaction has been invalidated."),
+            TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
+        return;
       }
     }
   }
@@ -2521,17 +2547,6 @@ void TabletServiceAdminImpl::TestRetry(
 }
 
 void TabletServiceImpl::Shutdown() {
-}
-
-scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceRpcMethodIndexes metric) {
-  // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
-  // unchanged during the operation.
-  std::lock_guard<simple_spinlock> l(lock_);
-  if (tablet_server_service_) {
-    return tablet_server_service_->GetMetric(metric).handler_latency;
-  }
-  return nullptr;
 }
 
 }  // namespace tserver

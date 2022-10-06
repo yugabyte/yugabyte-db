@@ -66,8 +66,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
-#define NANOS_PER_SECOND 1000000000
-
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
 
@@ -1793,7 +1791,7 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
     AddStringField("namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
 
     // Use 1 second granularity.
-    auto data_loss_s = data_loss.data_loss_ns() / NANOS_PER_SECOND;
+    int64_t data_loss_s = MonoDelta::FromMicroseconds(data_loss.data_loss_us()).ToSeconds();
     AddStringField(
         "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
     document.PushBack(json_entry, document.GetAllocator());

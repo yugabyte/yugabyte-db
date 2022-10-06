@@ -1,8 +1,8 @@
 ---
-title: Build a Ruby application that uses YSQL
-headerTitle: Build a Ruby application
-linkTitle: More examples
-description: Build a Ruby application that uses Ruby PostgreSQL driver and YSQL.
+title: Connect an application
+linkTitle: Connect an app
+description: Ruby drivers for YSQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/ruby/
   - /preview/develop/client-drivers/ruby/
@@ -10,29 +10,32 @@ aliases:
   - /preview/quick-start/build-apps/ruby/
 menu:
   preview:
-    parent: cloud-ruby
-    identifier: ruby-1
-    weight: 553
+    identifier: ysql-pg-driver
+    parent: ruby-drivers
+    weight: 410
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../ysql-pg/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link active">
+    <a href="../ysql-pg/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Gem
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-rails-activerecord.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - ActiveRecord
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      Pg Gem Driver
     </a>
   </li>
 </ul>

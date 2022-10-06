@@ -38,6 +38,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -101,6 +102,11 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
+
+DEFINE_bool(ycql_enable_tracing_flag, true, "If enabled, setting TRACING ON in cqlsh will cause "
+  "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "
+  "to disable tracing if an errant application has TRACING enabled by mistake.");
+TAG_FLAG(ycql_enable_tracing_flag, runtime);
 
 // LDAP specific flags
 DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
@@ -246,7 +252,12 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
+  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+    call_->EnsureTraceCreated();
+    call_->trace()->set_end_to_end_traces_requested(true);
+  }
   call_->SetRequest(request_, service_impl_);
+  ADOPT_TRACE(call_->trace());
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);
