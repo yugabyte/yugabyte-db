@@ -23,13 +23,13 @@
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster_split_driver.h"
 
 #include "yb/server/monitored_task.h"
 
@@ -131,15 +131,14 @@ Status ValidateAgainstDisabledList(const IdType& id,
 
 } // namespace
 
-
 TabletSplitManager::TabletSplitManager(
     TabletSplitCandidateFilterIf* filter,
     TabletSplitDriverIf* driver,
-    XClusterSplitDriverIf* xcluster_split_driver,
+    CDCSplitDriverIf* cdcsdk_split_driver,
     const scoped_refptr<MetricEntity>& metric_entity):
     filter_(filter),
     driver_(driver),
-    xcluster_split_driver_(xcluster_split_driver),
+    cdc_split_driver_(cdcsdk_split_driver),
     is_running_(false),
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
@@ -853,19 +852,21 @@ Status TabletSplitManager::ProcessSplitTabletResult(
             << ", split tablet ids: " << split_tablet_ids.ToString();
 
   // Update the xCluster tablet mapping.
-  Status s = xcluster_split_driver_->UpdateXClusterConsumerOnTabletSplit(
-      split_table_id, split_tablet_ids);
-  RETURN_NOT_OK_PREPEND(s, Format(
-      "Encountered an error while updating the xCluster consumer tablet mapping. "
-      "Table id: $0, Split Tablets: $1",
-      split_table_id, split_tablet_ids.ToString()));
-  // Also process tablet splits for producer side splits.
-  s = xcluster_split_driver_->UpdateXClusterProducerOnTabletSplit(
-      split_table_id, split_tablet_ids);
-  RETURN_NOT_OK_PREPEND(s, Format(
-      "Encountered an error while updating the xCluster producer tablet mapping. "
-      "Table id: $0, Split Tablets: $1",
-      split_table_id, split_tablet_ids.ToString()));
+  Status s =
+      cdc_split_driver_->UpdateXClusterConsumerOnTabletSplit(split_table_id, split_tablet_ids);
+  RETURN_NOT_OK_PREPEND(
+      s, Format(
+             "Encountered an error while updating the xCluster consumer tablet mapping. "
+             "Table id: $0, Split Tablets: $1",
+             split_table_id, split_tablet_ids.ToString()));
+
+  // Update the CDCSDK and xCluster producer tablet mapping.
+  s = cdc_split_driver_->UpdateCDCProducerOnTabletSplit(split_table_id, split_tablet_ids);
+  RETURN_NOT_OK_PREPEND(
+      s, Format(
+             "Encountered an error while updating the CDC producer metadata. Table id: $0, Split "
+             "Tablets: $1",
+             split_table_id, split_tablet_ids.ToString()));
 
   return Status::OK();
 }

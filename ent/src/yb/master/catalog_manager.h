@@ -91,7 +91,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
-  Status UpdateXClusterProducerOnTabletSplit(
+  Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
   Status InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
@@ -287,11 +287,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Status RunXClusterBgTasks();
 
-  void StartXClusterParentTabletDeletionTaskIfStopped();
+  void StartCDCParentTabletDeletionTaskIfStopped();
 
-  void ScheduleXClusterParentTabletDeletionTask();
+  void ScheduleCDCParentTabletDeletionTask();
 
   void ScheduleXClusterNSReplicationAddTableTask();
+
   Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
 
   void AddPendingBackFill(const TableId& id) override {
@@ -487,8 +488,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(const TableId& table_id)
-      const REQUIRES_SHARED(mutex_);
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(
+      const TableId& table_id, const cdc::CDCRequestSource cdc_request_source) const
+      REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
@@ -564,6 +566,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableCdcConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
+  // Checks if table has at least one cdcsdk stream.
+  bool IsTablePartOfCDCSDK(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
+
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
 
@@ -587,6 +592,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
   std::unordered_set<CDCStreamId> GetCdcStreamsForProducerTable(const TableId& table_id) const;
+
+  std::unordered_set<CDCStreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
@@ -633,11 +640,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
     const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
-  void ProcessXClusterParentTabletDeletionPeriodically();
+  void ProcessCDCParentTabletDeletionPeriodically();
 
-  Status DoProcessXClusterParentTabletDeletion();
+  Status DoProcessCDCClusterTabletDeletion(const cdc::CDCRequestSource request_source);
 
-  void LoadXClusterRetainedParentTabletsSet() REQUIRES(mutex_);
+  void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
 
   void PopulateUniverseReplicationStatus(
     const UniverseReplicationInfo& universe,
@@ -691,6 +698,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>
       xcluster_consumer_tables_to_stream_map_ GUARDED_BY(mutex_);
+
+  std::unordered_map<TableId, std::unordered_set<CDCStreamId>> cdcsdk_tables_to_stream_map_
+      GUARDED_BY(mutex_);
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
