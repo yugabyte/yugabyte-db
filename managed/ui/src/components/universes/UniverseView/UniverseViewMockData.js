@@ -81,7 +81,7 @@ export const mockProps = {
                   enableExposingService: 'UNEXPOSED',
                   awsArnString: '',
                   useHostname: false,
-                  useSystemd: false,
+                  useSystemd: true,
                   masterGFlags: {},
                   tserverGFlags: {},
                   instanceTags: {}
