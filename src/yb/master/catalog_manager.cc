@@ -12015,8 +12015,7 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
 Status CatalogManager::GetXClusterEstimatedDataLoss(
     const GetXClusterEstimatedDataLossRequestPB* req,
     GetXClusterEstimatedDataLossResponsePB* resp) {
-  const auto result =
-      xcluster_safe_time_service_->GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
   if (!result) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
   }
@@ -12025,7 +12024,7 @@ Status CatalogManager::GetXClusterEstimatedDataLoss(
   for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
     auto entry = resp->add_namespace_data_loss();
     entry->set_namespace_id(namespace_id);
-    entry->set_data_loss_ns(data_loss);
+    entry->set_data_loss_us(data_loss);
   }
   return Status::OK();
 }
