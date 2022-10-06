@@ -107,6 +107,9 @@ public class NodeAgent extends Model {
   public String ip;
 
   @ApiModelProperty(accessMode = READ_ONLY)
+  public int port;
+
+  @ApiModelProperty(accessMode = READ_ONLY)
   public UUID customerUuid;
 
   @ApiModelProperty(accessMode = READ_ONLY)

@@ -243,6 +243,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaDriveInfo(const std::string& ts_uuid,
                               const TabletReplicaDriveInfo& drive_info);
 
+  // Returns the per-stream replication status bitmasks.
+  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
@@ -313,6 +316,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
+
+  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };

@@ -555,6 +555,8 @@ class CatalogManager :
   Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
   Status GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) override;
+  Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
   Status InitializeTransactionTablesConfig(int64_t term);
 
@@ -956,6 +958,9 @@ class CatalogManager :
       const std::string& ts_uuid,
       const TabletDriveStorageMetadataPB& storage_metadata);
 
+  virtual Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) EXCLUDES(mutex_);
+
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
   Status ShouldSplitValidCandidate(
@@ -980,6 +985,13 @@ class CatalogManager :
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
+
+  Status GetXClusterEstimatedDataLoss(
+      const GetXClusterEstimatedDataLossRequestPB* req,
+      GetXClusterEstimatedDataLossResponsePB* resp);
+
+  Status GetXClusterSafeTime(
+      const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

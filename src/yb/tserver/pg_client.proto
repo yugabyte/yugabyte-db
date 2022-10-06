@@ -68,6 +68,8 @@ service PgClientService {
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
+  rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
+      returns (PgGetTserverCatalogVersionInfoResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -515,4 +517,13 @@ message PgCheckIfPitrActiveRequestPB {}
 message PgCheckIfPitrActiveResponsePB {
   bool is_pitr_active = 1;
   AppStatusPB status = 2;
+}
+
+message PgGetTserverCatalogVersionInfoRequestPB {}
+
+message PgGetTserverCatalogVersionInfoResponsePB {
+  repeated uint32 db_oid = 2;
+  repeated int32 shm_index = 3;
+  repeated uint64 current_version = 4;
+  AppStatusPB status = 5;
 }

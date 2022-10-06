@@ -9136,11 +9136,18 @@ Status CatalogManager::IsInitDbDone(
 
 Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
+  return GetYsqlDBCatalogVersion(kTemplate1Oid, catalog_version, last_breaking_version);
+}
+
+Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
+                                               uint64_t* catalog_version,
+                                               uint64_t* last_breaking_version) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
-                                                       catalog_version,
-                                                       last_breaking_version));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(kPgYbCatalogVersionTableId,
+                                                         db_oid,
+                                                         catalog_version,
+                                                         last_breaking_version));
     // If the version is properly initialized, we're done.
     if ((!catalog_version || *catalog_version > 0) &&
         (!last_breaking_version || *last_breaking_version > 0)) {
@@ -12004,6 +12011,41 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
+Status CatalogManager::GetXClusterEstimatedDataLoss(
+    const GetXClusterEstimatedDataLossRequestPB* req,
+    GetXClusterEstimatedDataLossResponsePB* resp) {
+  const auto result =
+      xcluster_safe_time_service_->GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  if (!result) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+  }
+
+  const auto per_namespace_data_loss_map = result.get();
+  for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
+    auto entry = resp->add_namespace_data_loss();
+    entry->set_namespace_id(namespace_id);
+    entry->set_data_loss_ns(data_loss);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetXClusterSafeTime(
+    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
+  const auto ns_safe_time_map =
+      xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap();
+  if (!ns_safe_time_map) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, ns_safe_time_map.status());
+  }
+
+  for (const auto& [namespace_id, safe_time] : ns_safe_time_map.get()) {
+    auto entry = resp->add_namespace_safe_times();
+    entry->set_namespace_id(namespace_id);
+    entry->set_safe_time_ht(safe_time.ToUint64());
+  }
+  return Status::OK();
+}
+
 AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     const string& ts_uuid) {
 
@@ -12028,6 +12070,12 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
   }
 
   return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
+}
+
+Status CatalogManager::ProcessTabletReplicationStatus(
+    const TabletReplicationStatusPB& replication_state) {
+  // Only implemented on the enterprise catalog manager.
+  return Status::OK();
 }
 
 }  // namespace master

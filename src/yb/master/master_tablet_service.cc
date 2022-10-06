@@ -15,6 +15,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -32,6 +33,8 @@
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
                  "Reject specified percentage of writes to the YSQL catalog tables.");
 TAG_FLAG(TEST_ysql_catalog_write_rejection_percentage, runtime);
+
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 using namespace std::chrono_literals;
 
@@ -76,6 +79,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   }
 
   bool log_versions = false;
+  uint32_t db_oid = kPgInvalidOid;
   for (const auto& pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
@@ -85,6 +89,17 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
       }
     } else if (FLAGS_log_ysql_catalog_versions && pg_req.table_id() == kPgYbCatalogVersionTableId) {
       log_versions = true;
+      // The contents of req->pgsql_write_batch() are freed after the next call to
+      // tserver::TabletServiceImpl::Write, save db_oid to use for later debugging log.
+      if (FLAGS_TEST_enable_db_catalog_version_mode) {
+        for (const auto& pg_req : req->pgsql_write_batch()) {
+          if (db_oid == kPgInvalidOid) {
+            db_oid = pg_req.ysql_db_oid();
+          } else {
+            DCHECK_EQ(db_oid, pg_req.ysql_db_oid());
+          }
+        }
+      }
     }
   }
 
@@ -96,12 +111,24 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
     // The above Write is async, so delay a bit to hopefully read the newly written values.  If the
     // delay was not sufficient, it's not a big deal since this is just for logging.
     SleepFor(100ms);
-    if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
-                                                           &last_breaking_version).ok()) {
-      LOG_WITH_FUNC(ERROR) << "failed to get catalog version, ignoring";
+    if (FLAGS_TEST_enable_db_catalog_version_mode) {
+      if (!master_->catalog_manager()->GetYsqlDBCatalogVersion(db_oid, &catalog_version,
+                                                               &last_breaking_version).ok()) {
+        LOG_WITH_FUNC(ERROR) << "failed to get db catalog version for "
+                             << db_oid << ", ignoring";
+      } else {
+        LOG_WITH_FUNC(INFO) << "db catalog version for " << db_oid << ": "
+                            << catalog_version << ", breaking version: "
+                            << last_breaking_version;
+      }
     } else {
-      LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
-                          << last_breaking_version;
+      if (!master_->catalog_manager()->GetYsqlCatalogVersion(&catalog_version,
+                                                             &last_breaking_version).ok()) {
+        LOG_WITH_FUNC(ERROR) << "failed to get catalog version, ignoring";
+      } else {
+        LOG_WITH_FUNC(INFO) << "catalog version: " << catalog_version << ", breaking version: "
+                            << last_breaking_version;
+      }
     }
   }
 }
