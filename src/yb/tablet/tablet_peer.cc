@@ -58,6 +58,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rocksdb/db/memtable.h"
 
 #include "yb/rpc/messenger.h"
@@ -65,6 +67,7 @@
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
@@ -764,6 +767,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
+  status_pb_out->set_has_been_fully_compacted(meta_->has_been_fully_compacted());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -836,6 +840,9 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
 
     case OperationType::kSplit:
       return consensus::SPLIT_OP;
+
+    case OperationType::kChangeAutoFlagsConfig:
+      return consensus::CHANGE_AUTO_FLAGS_CONFIG_OP;
 
     case OperationType::kEmpty:
       LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
@@ -1047,27 +1054,69 @@ OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
   return meta_->cdc_sdk_min_checkpoint_op_id();
 }
 
+CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    return txn_participant->GetCheckpointExpirationTime();
+  }
+
+  return CoarseTimePoint();
+}
+
+OpId TabletPeer::GetLatestCheckPoint() {
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    return txn_participant->GetLatestCheckPoint();
+  }
+  return OpId();
+}
+
+Result<NamespaceId> TabletPeer::GetNamespaceId() {
+  auto namespace_id = tablet()->metadata()->namespace_id();
+  if (!namespace_id.empty()) {
+    return namespace_id;
+  }
+  // This is empty the first time we try to fetch the namespace id from the tablet metadata, so
+  // fetch it from the client and populate the tablet metadata.
+  auto* client = client_future().get();
+  master::GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
+                                         tablet()->metadata()->namespace_name(),
+                                         boost::none /* database_type */, &resp));
+  namespace_id = resp.namespace_().id();
+  if (namespace_id.empty()) {
+    return STATUS(IllegalState, Format("Could not get namespace id for $0",
+                                       tablet()->metadata()->namespace_name()));
+  }
+  RETURN_NOT_OK(tablet()->metadata()->set_namespace_id(namespace_id));
+  return namespace_id;
+}
+
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
   if (cdc_sdk_op_id == OpId::Invalid()) {
     return Status::OK();
   }
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
-  auto txn_participant = tablet()->transaction_participant();
-  if (txn_participant) {
-    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    RETURN_NOT_OK(CheckRunning());
+    auto txn_participant = tablet_->transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
   }
   return Status::OK();
 }
 
-Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
-    const CoarseTimePoint& cdc_sdk_latest_active_time) {
+Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time) {
   MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
   // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
   // It's mean that, no need to retain the intents. This can happen in below case:-
   //      a. Only XCluster streams are defined for the tablet.
   //      b. CDCSDK stream for the tablet is expired.
-  if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
+  if (cdc_sdk_latest_active_time == 0) {
     return cdc_sdk_intent_retention;
   }
 
@@ -1078,7 +1127,8 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
     // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
     MonoDelta max_retain_time =
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-    MonoDelta lastest_active_time(CoarseMonoClock::Now() - cdc_sdk_latest_active_time);
+    auto lastest_active_time =
+        MonoDelta::FromMicroseconds(GetCurrentTimeMicros() - cdc_sdk_latest_active_time);
     if (max_retain_time >= lastest_active_time) {
       cdc_sdk_intent_retention = max_retain_time - lastest_active_time;
     }
@@ -1123,6 +1173,13 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
       return std::make_unique<SplitOperation>(tablet(), tablet_splitter_);
+
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+      DCHECK(replicate_msg->has_auto_flags_config())
+          << "CHANGE_AUTO_FLAGS_CONFIG_OP replica"
+             " operation must receive an AutoFlagsConfigPB";
+      return std::make_unique<ChangeAutoFlagsConfigOperation>(
+          tablet(), replicate_msg->mutable_auto_flags_config());
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
@@ -1474,7 +1531,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
 void TabletPeer::PollWaitQueue() const {
   if (tablet()) {
     DCHECK_NOTNULL(tablet()->wait_queue());
-    tablet()->wait_queue()->PollBlockerStatus(clock_->Now());
+    tablet()->wait_queue()->Poll(clock_->Now());
   }
 }
 

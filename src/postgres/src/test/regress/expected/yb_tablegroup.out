@@ -189,7 +189,7 @@ ERROR:  Cannot use TABLEGROUP with SPLIT.
 --
 -- Test CREATE INDEX with hash columns
 --
-CREATE TABLEGROUP tgroup_hash_index_test; 
+CREATE TABLEGROUP tgroup_hash_index_test;
 CREATE TABLE tbl (r1 int, r2 int, v1 int, v2 int,
 PRIMARY KEY (r1, r2)) TABLEGROUP tgroup_hash_index_test;
 CREATE INDEX idx_tbl ON tbl (r1 hash);
@@ -279,17 +279,17 @@ List of tablegroups
 (8 rows)
 
 \dgrt+
-                                                                             List of tablegroup tables
- Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |         Name          | Type  |  Owner   | Rel Description |  Size
-------------+-------------+-------------------+--------------------------+------------------+---------------+-----------------------+-------+----------+-----------------+---------
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1          | table | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx | index | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2          | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3          | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3_col1_idx | index | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4          | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx | index | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx | index | yugabyte |                 | 0 bytes
+                                                                           List of tablegroup tables
+ Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |         Name          | Type  |  Owner   | Rel Description | Size
+------------+-------------+-------------------+--------------------------+------------------+---------------+-----------------------+-------+----------+-----------------+------
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1          | table | yugabyte |                 |
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx | index | yugabyte |                 |
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3_col1_idx | index | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4          | table | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx | index | yugabyte |                 |
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx | index | yugabyte |                 |
 (8 rows)
 
 COMMENT ON TABLEGROUP tgroup2 IS NULL;
@@ -405,17 +405,17 @@ CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
 (6 rows)
 
 \dgrt+
-                                                                              List of tablegroup tables
-    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description |  Size
-------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+---------
- grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 | 0 bytes
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 | 0 bytes
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 | 0 bytes
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 | 0 bytes
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 | 0 bytes
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 | 0 bytes
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 | 0 bytes
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 | 0 bytes
+                                                                            List of tablegroup tables
+    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size
+------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+------
+ grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 |
 (8 rows)
 
 --

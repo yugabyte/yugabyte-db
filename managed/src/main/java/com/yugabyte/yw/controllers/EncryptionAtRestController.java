@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
@@ -42,6 +43,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -87,6 +89,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @Inject CloudAPI.Factory cloudAPIFactory;
 
   @Inject GcpEARServiceUtil gcpEARServiceUtil;
+
+  @Inject AzuEARServiceUtil azuEARServiceUtil;
 
   private void checkIfKMSConfigExists(UUID customerUUID, ObjectNode formData) {
     String kmsConfigName = formData.get("name").asText();
@@ -149,6 +153,21 @@ public class EncryptionAtRestController extends AuthenticatedController {
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
         }
         break;
+      case AZU:
+        try {
+          azuEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          LOG.info(
+              "Finished validating AZU provider config form data for key vault = "
+                  + azuEARServiceUtil.getConfigFieldValue(
+                      formData, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME)
+                  + ", key name = "
+                  + azuEARServiceUtil.getConfigFieldValue(
+                      formData, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME));
+        } catch (Exception e) {
+          LOG.warn("Could not finish validating AZU provider config form data.");
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
       default:
         throw new PlatformServiceException(
             BAD_REQUEST, "Unrecognized key provider: " + keyProvider);
@@ -158,60 +177,161 @@ public class EncryptionAtRestController extends AuthenticatedController {
   private void checkEditableFields(ObjectNode formData, KeyProvider keyProvider, UUID configUUID) {
 
     KmsConfig config = KmsConfig.get(configUUID);
-    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
+    ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
 
-    if (keyProvider.equals(KeyProvider.AWS)) {
-      if (formData.get(AWS_REGION_FIELDNAME) != null
-          && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
-        throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
-      }
-    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
-      // NO checks required
-    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
-
-      if (formData.get(HC_ENGINE_FNAME) != null
-          && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
+    switch (keyProvider) {
+      case AWS:
+        if (formData.get(AWS_REGION_FIELDNAME) != null
+            && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
+          throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+        }
+        break;
+      case SMARTKEY:
+        // NO checks required
+        break;
+      case HASHICORP:
+        if (formData.get(HC_ENGINE_FNAME) != null
+            && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
+        }
+        if (formData.get(HC_MPATH_FNAME) != null
+            && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
+        }
+        break;
+      case GCP:
+        // All the below fields are non editable
+        List<String> nonEditableFields =
+            Arrays.asList(
+                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
+                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
+                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
+                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
+                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+        for (String field : nonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, String.format("GCP KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        LOG.info("Verified that all the fields in the request are editable");
+        break;
+      case AZU:
+        // All the below fields are non editable in AZU
+        List<String> nonEditableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+        for (String field : nonEditableFieldsAzu) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format("AZU Kms config field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        LOG.info("Verified that all the fields in the AZU edit request are editable");
+        break;
+      default:
         throw new PlatformServiceException(
-            BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
-      }
-      if (formData.get(HC_MPATH_FNAME) != null
-          && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
-      }
+            BAD_REQUEST, "Unrecognized key provider while editing kms config: " + keyProvider);
     }
   }
 
   private ObjectNode addNonEditableFieldsData(
       ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
-    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID, keyProvider);
-    if (keyProvider.equals(KeyProvider.AWS)) {
-      formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
-      if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
-          && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-        formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
-      }
-      if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
-          && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
-        formData.set(
-            AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
-      }
-    } else if (keyProvider.equals(KeyProvider.SMARTKEY)) {
-      if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
-          && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
-        formData.set(SMARTKEY_API_KEY_FIELDNAME, authConfig.get(SMARTKEY_API_KEY_FIELDNAME));
-      }
-    } else if (keyProvider.equals(KeyProvider.HASHICORP)) {
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    switch (keyProvider) {
+      case AWS:
+        formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
+        if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
+            && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
+          formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+        }
+        if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
+            && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
+          formData.set(
+              AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
+        }
+        break;
+      case SMARTKEY:
+        if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
+            && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
+          formData.set(SMARTKEY_API_KEY_FIELDNAME, authConfig.get(SMARTKEY_API_KEY_FIELDNAME));
+        }
+        break;
+      case HASHICORP:
+        formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
+        formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
 
-      formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
-      formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
-
-      if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
-        formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
-      }
+        if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
+          formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
+        }
+        break;
+      case GCP:
+        // All these fields must be kept the same from the old authConfig (if it has)
+        List<String> nonEditableFields =
+            Arrays.asList(
+                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
+                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
+                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
+                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
+                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+        for (String field : nonEditableFields) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        // GCP_CONFIG field can change. If no config is specified, use the same old one.
+        if (!formData.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)
+            && authConfig.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)) {
+          formData.set(
+              GcpEARServiceUtil.GCP_CONFIG_FIELDNAME,
+              authConfig.get(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME));
+        }
+        LOG.info("Added all required fields to the formData to be edited");
+        break;
+      case AZU:
+        // All these fields must be kept the same from the old authConfig (if it has)
+        List<String> nonEditableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
+                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+        for (String field : nonEditableFieldsAzu) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        // Below fields can change. If no new field is specified, use the same old one.
+        List<String> editableFieldsAzu =
+            Arrays.asList(
+                AzuEARServiceUtil.CLIENT_ID_FIELDNAME,
+                AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME,
+                AzuEARServiceUtil.TENANT_ID_FIELDNAME);
+        for (String field : editableFieldsAzu) {
+          if (!formData.has(field) && authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        break;
+      default:
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unrecognized key provider while adding non editable fields: " + keyProvider);
     }
     return formData;
   }
@@ -234,10 +354,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
-      // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
+      // Validating the KMS Provider config details.
+      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;

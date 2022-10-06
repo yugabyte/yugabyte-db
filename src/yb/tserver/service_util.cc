@@ -235,16 +235,20 @@ Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
-Result<TabletPeerTablet> LookupTabletPeer(
+namespace {
+
+template <class Key>
+Result<TabletPeerTablet> DoLookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const TabletId& tablet_id) {
+    const Key& tablet_id) {
   TabletPeerTablet result;
-  auto status = tablet_manager->GetTabletPeer(tablet_id, &result.tablet_peer);
-  if (PREDICT_FALSE(!status.ok())) {
-    auto code = status.IsServiceUnavailable() ? TabletServerErrorPB::UNKNOWN_ERROR
-                                              : TabletServerErrorPB::TABLET_NOT_FOUND;
-    return status.CloneAndAddErrorCode(TabletServerError(code));
+  auto tablet_peer_result = tablet_manager->GetServingTablet(tablet_id);
+  if (PREDICT_FALSE(!tablet_peer_result.ok())) {
+    auto code = tablet_peer_result.status().IsServiceUnavailable()
+        ? TabletServerErrorPB::UNKNOWN_ERROR : TabletServerErrorPB::TABLET_NOT_FOUND;
+    return tablet_peer_result.status().CloneAndAddErrorCode(TabletServerError(code));
   }
+  result.tablet_peer = std::move(*tablet_peer_result);
 
   // Check RUNNING state.
   tablet::RaftGroupStatePB state = result.tablet_peer->state();
@@ -263,6 +267,20 @@ Result<TabletPeerTablet> LookupTabletPeer(
     return s;
   }
   return result;
+}
+
+} // namespace
+
+Result<TabletPeerTablet> LookupTabletPeer(
+    TabletPeerLookupIf* tablet_manager,
+    const TabletId& tablet_id) {
+  return DoLookupTabletPeer(tablet_manager, tablet_id);
+}
+
+Result<TabletPeerTablet> LookupTabletPeer(
+    TabletPeerLookupIf* tablet_manager,
+    const Slice& tablet_id) {
+  return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
@@ -367,7 +385,8 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->leader_memory_pressure_rejections->Increment();
     string msg = StringPrintf(
-        "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
+        "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
+        soft_limit_exceeded_result.tracker_path.c_str(),
         soft_limit_exceeded_result.current_capacity_pct, score);
     if (soft_limit_exceeded_result.current_capacity_pct >=
             FLAGS_memory_limit_warn_threshold_percentage) {

@@ -839,8 +839,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			 */
 			if (!IsYugaByteEnabled() ||
 				!MyProcPort->yb_is_tserver_auth_method ||
-				IsBootstrapProcessingMode() ||
-				YBIsPreparingTemplates())
+				IsBootstrapProcessingMode())
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1347,7 +1346,6 @@ ProcessUtilitySlow(ParseState *pstate,
 						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
 							IsYugaByteEnabled() &&
 							!IsBootstrapProcessingMode() &&
-							!YBIsPreparingTemplates() &&
 							IsInTransactionBlock(isTopLevel))
 						{
 							ereport(NOTICE,
@@ -1427,8 +1425,7 @@ ProcessUtilitySlow(ParseState *pstate,
 						 */
 						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
 							IsYugaByteEnabled() &&
-							!IsBootstrapProcessingMode() &&
-							!YBIsPreparingTemplates())
+							!IsBootstrapProcessingMode())
 						{
 							ereport(DEBUG1,
 									(errmsg("making create index on "

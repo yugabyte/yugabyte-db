@@ -2,6 +2,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -45,7 +46,8 @@ public class RestoreBackup extends UniverseTaskBase {
               .getUniverseDetails()
               .ybcSoftwareVersion
               .equals(ybcManager.getStableYbcVersion())) {
-        createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true);
+        createUpgradeYbcTask(taskParams().universeUUID, ybcManager.getStableYbcVersion(), true)
+            .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
       }
 
       createAllRestoreSubtasks(

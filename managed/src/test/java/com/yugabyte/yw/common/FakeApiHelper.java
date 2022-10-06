@@ -147,7 +147,7 @@ public class FakeApiHelper {
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);
-          return YWErrorHandler.onServerError(null, throwable);
+          return YWErrorHandler.onServerError(requestBuilder.build(), throwable);
         };
 
     return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);

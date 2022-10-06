@@ -21,6 +21,7 @@
 
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"

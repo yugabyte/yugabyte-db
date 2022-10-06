@@ -16,12 +16,14 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.List;
@@ -77,9 +79,14 @@ public class AnsibleCreateServer extends NodeTaskBase {
     if (skipProvision) {
       log.info("Skipping ansible creation.");
     } else if (instanceExists(taskParams())) {
-      log.info("Skipping creation of already existing instance {}", taskParams().nodeName);
+      log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
+      getNodeManager()
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .processErrors();
+      setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {
-      //   Execute the ansible command.
+      // Execute the ansible command to create the node.
+      // It waits for SSH connection to work.
       ShellResponse response =
           getNodeManager()
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
@@ -112,6 +119,40 @@ public class AnsibleCreateServer extends NodeTaskBase {
             };
         // Save the updated universe object.
         saveUniverseDetails(updater);
+      }
+    }
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
+  @Override
+  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+    Params params = taskParams();
+
+    if (instanceExists(taskParams())) {
+      if (cause instanceof RecoverableException) {
+        super.onFailure(taskInfo, cause);
+      } else {
+        // TODO: retry in a different AZ?
+        log.warn("Instance creation in {} failed", params.getAZ().name);
+
+        AnsibleDestroyServer.Params destroyParams = new AnsibleDestroyServer.Params();
+        destroyParams.deviceInfo = params.deviceInfo;
+        destroyParams.azUuid = params.azUuid;
+        destroyParams.nodeName = params.nodeName;
+        destroyParams.nodeUuid = params.nodeUuid;
+        destroyParams.universeUUID = params.universeUUID;
+        destroyParams.isForceDelete = true;
+        destroyParams.deleteNode = false;
+        destroyParams.deleteRootVolumes = true;
+        destroyParams.instanceType = params.instanceType;
+        AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
+        task.initialize(destroyParams);
+        task.setUserTaskUUID(userTaskUUID);
+        task.run();
       }
     }
   }

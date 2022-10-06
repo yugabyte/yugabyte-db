@@ -51,8 +51,11 @@
 
     .yb-resource-count-size {
       font-weight: 400;
+      line-height: 36px;
       letter-spacing: -0.02em;
       font-family: 'Rubik', sans-serif;
+      text-overflow: ellipsis;
+      max-width: 500px;
     }
   }
 

@@ -287,6 +287,7 @@ index_check_primary_key(Relation heapRel,
 
 			cmd->subtype = AT_SetNotNull;
 			cmd->name = pstrdup(NameStr(attform->attname));
+			cmd->yb_is_add_primary_key = true;
 			cmds = lappend(cmds, cmd);
 		}
 

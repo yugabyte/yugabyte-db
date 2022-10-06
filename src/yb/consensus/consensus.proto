@@ -142,6 +142,7 @@ message ReplicateMsg {
   optional tablet.SplitTabletRequestPB split_request = 14;
   optional ChangeConfigRecordPB change_config_record = 7;
   optional HistoryCutoffPB history_cutoff = 13;
+  optional AutoFlagsConfigPB auto_flags_config = 15;
 
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
   // This is used during tablet bootstrap for RocksDB-backed tables.
@@ -557,6 +558,10 @@ message UnsafeChangeConfigRequestPB {
 
 // The unsafe change configuration response. 'error' field is set if operation failed.
 message UnsafeChangeConfigResponsePB {
+  optional tserver.TabletServerErrorPB error = 1;
+}
+
+message ChangeAutoFlagsConfigOpResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 }
 

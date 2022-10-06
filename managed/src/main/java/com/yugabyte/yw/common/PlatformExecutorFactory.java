@@ -15,15 +15,12 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
-import play.inject.ApplicationLifecycle;
 
 /** For easy and configurable creation of executor that will shutdown on app shutdown. */
 @Slf4j
@@ -33,14 +30,12 @@ public class PlatformExecutorFactory {
   public static final int SHUTDOWN_TIMEOUT_MINUTES = 5;
 
   private final Config config;
-  private final ApplicationLifecycle lifecycle;
-  private final ExecutorService shutdownExecutor;
+  private final ShutdownHookHandler shutdownHookHandler;
 
   @Inject
-  public PlatformExecutorFactory(Config config, ApplicationLifecycle lifecycle) {
+  public PlatformExecutorFactory(Config config, ShutdownHookHandler shutdownHookHandler) {
     this.config = config;
-    this.lifecycle = lifecycle;
-    this.shutdownExecutor = Executors.newCachedThreadPool();
+    this.shutdownHookHandler = shutdownHookHandler;
   }
 
   private int ybCorePoolSize(String poolName) {
@@ -99,20 +94,14 @@ public class PlatformExecutorFactory {
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(queueCapacity == 0 ? Integer.MAX_VALUE : queueCapacity),
             namedThreadFactory);
-    lifecycle.addStopHook(
+    shutdownHookHandler.addShutdownHook(
         () -> {
-          if (executor.isTerminated()) {
-            return CompletableFuture.completedFuture(true);
-          }
-          return CompletableFuture.supplyAsync(
-              () -> {
-                log.debug("Shutting down thread pool - {}", poolName);
-                return MoreExecutors.shutdownAndAwaitTermination(
-                    executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-              },
-              shutdownExecutor);
+          log.debug("Shutting down thread pool - {}", poolName);
+          boolean isTerminated =
+              MoreExecutors.shutdownAndAwaitTermination(
+                  executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+          log.debug("Shutdown status for thread pool- {} is {}", poolName, isTerminated);
         });
-
     return executor;
   }
 }

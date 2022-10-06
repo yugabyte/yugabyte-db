@@ -65,6 +65,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import play.api.Play;
 
+/** @deprecated Use separate tasks based on UpgradeTaskBase */
+@Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
@@ -671,14 +673,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Stop yb-master and yb-tserver on node
-      if (node.isMaster) {
-        createServerControlTasks(nodeList, ServerType.MASTER, "stop")
-            .setSubTaskGroupType(subGroupType);
-      }
-      if (node.isTserver) {
-        createServerControlTasks(nodeList, ServerType.TSERVER, "stop")
-            .setSubTaskGroupType(subGroupType);
-      }
+      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
       // Conditional Provisioning
       createSetupServerTasks(nodeList, p -> p.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -686,6 +681,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createConfigureServerTasks(nodeList, params -> params.isSystemdUpgrade = true)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       subGroupType = SubTaskGroupType.ConfigureUniverse;
+      // Start using systemd services.
+      createServerControlTask(node, processType, "start", params -> params.useSystemd = true)
+          .setSubTaskGroupType(subGroupType);
 
       // Wait for server to get ready
       createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
@@ -1164,12 +1162,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
-  }
-
   private int getNodeToNodeChangeForToggleTls(UserIntent userIntent, UpgradeParams params) {
     return userIntent.enableNodeToNodeEncrypt != params.enableNodeToNodeEncrypt
         ? (params.enableNodeToNodeEncrypt ? 1 : -1)
@@ -1186,7 +1178,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
-    params.deviceInfo = userIntent.deviceInfo;
+    params.deviceInfo = userIntent.getDeviceInfoForNode(node);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.

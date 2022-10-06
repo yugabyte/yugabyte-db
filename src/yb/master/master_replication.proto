@@ -22,6 +22,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/operations.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
@@ -252,6 +253,27 @@ message UpdateConsumerOnProducerSplitResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetReplicationStatusRequestPB {
+  // Filters by the universe uuid if non-empty.
+  optional string universe_id = 1;
+}
+
+message ReplicationStatusErrorPB {
+  required ReplicationErrorPb error = 1;
+  required string error_detail = 2;
+}
+
+message ReplicationStatusPB {
+  required bytes table_id = 1;
+  required bytes stream_id = 2;
+  repeated ReplicationStatusErrorPB errors = 3;
+}
+
+message GetReplicationStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated ReplicationStatusPB statuses = 2;
+}
+
 message WaitForReplicationDrainRequestPB {
   repeated bytes stream_ids = 1;
   optional uint64 target_time = 2;
@@ -277,6 +299,42 @@ message SetupNSUniverseReplicationRequestPB {
 
 message SetupNSUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message UpdateConsumerOnProducerMetadataRequestPB {
+  optional string producer_id = 1;
+  optional string stream_id = 2;
+  optional string consumer_tablet_id = 3;
+  optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+}
+
+message UpdateConsumerOnProducerMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool should_wait = 2 [default = true];
+}
+
+message GetXClusterEstimatedDataLossRequestPB {}
+
+message GetXClusterEstimatedDataLossResponsePB {
+  message EstimatedDataLossPB {
+    optional string namespace_id = 1;
+    optional uint64 data_loss_ns = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated EstimatedDataLossPB namespace_data_loss = 2;
+}
+
+message GetXClusterSafeTimeRequestPB{}
+
+message GetXClusterSafeTimeResponsePB {
+  message NamespaceSafeTimePB{
+    optional string namespace_id = 1;
+    optional fixed64 safe_time_ht = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated NamespaceSafeTimePB namespace_safe_times = 2;
 }
 
 service MasterReplication {
@@ -316,5 +374,14 @@ service MasterReplication {
 
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);
+  rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
+      returns (UpdateConsumerOnProducerMetadataResponsePB);
 
+  rpc GetReplicationStatus(GetReplicationStatusRequestPB)
+      returns (GetReplicationStatusResponsePB);
+
+  rpc GetXClusterEstimatedDataLoss(GetXClusterEstimatedDataLossRequestPB)
+      returns (GetXClusterEstimatedDataLossResponsePB);
+  rpc GetXClusterSafeTime(GetXClusterSafeTimeRequestPB)
+      returns (GetXClusterSafeTimeResponsePB);
 }

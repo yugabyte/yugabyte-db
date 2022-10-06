@@ -124,6 +124,7 @@ export const panelTypes = {
       'lsm_rocksdb_write_rejections',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
@@ -217,6 +218,7 @@ export const panelTypes = {
       'lsm_rocksdb_stalls',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction'
@@ -265,7 +267,7 @@ class GraphPanel extends Component {
       params.nodePrefix = nodePrefix;
     }
     if (isNonEmptyString(nodeName) && nodeName !== 'all' && nodeName !== 'top') {
-      params.nodeName = nodeName;
+      params.nodeNames = [nodeName];
     }
     // In case of universe metrics , nodePrefix comes from component itself
     if (isNonEmptyArray(this.props.nodePrefixes)) {

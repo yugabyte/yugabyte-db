@@ -25,12 +25,6 @@ type: docs
       YSQL - Entity Framework
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
 </ul>
 
 The following tutorial implements a REST API server using the [Entity Framework](https://docs.microsoft.com/en-us/ef/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/). It includes the following tables:
@@ -76,15 +70,15 @@ To change default port for REST API Server, go to `Properties/launchSettings.jso
 
 - Build the REST API server.
 
-```sh
-$ dotnet build
-```
+  ```sh
+  $ dotnet build
+  ```
 
 - Run the REST API server
 
-```sh
-$ dotnet run
-```
+  ```sh
+  $ dotnet run
+  ```
 
 The REST server will run at `http://localhost:8080` by default.
 
@@ -166,7 +160,7 @@ $ curl \
 
 ## Query results
 
-### Using the YSQL shell
+### Use the YSQL shell
 
 ```sql
 ysql_entityframework=# SELECT count(*) FROM users;
@@ -201,7 +195,7 @@ ysql_entityframework=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
-### Using the REST API
+### Use the REST API
 
 To use the REST API server to verify that the users, products, and orders were created in the `ysql_entityframework` database, enter the following commands. The results are output in JSON format.
 

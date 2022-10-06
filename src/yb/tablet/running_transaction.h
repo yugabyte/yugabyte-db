@@ -122,6 +122,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   std::string LogPrefix() const;
 
+  const TabletId& status_tablet() const;
+
  private:
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,

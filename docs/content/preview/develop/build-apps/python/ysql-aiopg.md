@@ -31,12 +31,6 @@ type: docs
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-  <li>
     <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Django

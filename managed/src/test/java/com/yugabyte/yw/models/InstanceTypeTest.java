@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.AllOf.allOf;
@@ -59,7 +60,6 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testCreate() {
     InstanceType i1 = InstanceType.upsert(defaultProvider.uuid, "foo", 3, 10.0, defaultDetails);
     assertNotNull(i1);
-    assertEquals("aws", i1.getProvider().code);
     assertEquals("foo", i1.getInstanceTypeCode());
   }
 
@@ -246,8 +246,8 @@ public class InstanceTypeTest extends FakeDBApplication {
     InstanceType it = InstanceType.createWithMetadata(defaultProvider.uuid, "it-1", metaData);
     assertNotNull(it);
     JsonNode itJson = Json.toJson(it);
-    assertValue(itJson, "providerUuid", defaultProvider.uuid.toString());
-    assertValue(itJson, "instanceTypeCode", "it-1");
+    assertValueAtPath(itJson, "/idKey/providerUuid", defaultProvider.uuid.toString());
+    assertValueAtPath(itJson, "/idKey/instanceTypeCode", "it-1");
     assertValue(itJson, "numCores", "4.0");
     assertValue(itJson, "memSizeGB", "300.0");
     JsonNode volumeDetailsList = itJson.get("instanceTypeDetails").get("volumeDetailsList");

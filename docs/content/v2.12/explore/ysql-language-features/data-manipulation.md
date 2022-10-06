@@ -283,8 +283,9 @@ DELETE FROM employees WHERE department = 'Sales' RETURNING *;
 ## Auto-Incrementing Column Values
 
 Using a special kind of database object called sequence, you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
-
+```sql
 CREATE TABLE employees2 (employee_no serial, name text, department text);
+```
 
 Typically, you add sequences using the `serial` pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence.
 

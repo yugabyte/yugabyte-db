@@ -111,11 +111,12 @@ class AzureCloud(AbstractCloud):
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         nicId = self.get_admin().create_or_update_nic(
             vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
-        self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
-                                             instanceType, adminSSH, nsg, image, volType,
-                                             args.type, region, nicId, tags, disk_iops,
-                                             disk_throughput)
+        output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
+                                                      volSize, instanceType, adminSSH, nsg, image,
+                                                      volType, args.type, region, nicId, tags,
+                                                      disk_iops, disk_throughput)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
+        return output
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -127,7 +128,7 @@ class AzureCloud(AbstractCloud):
             if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
                 logging.error("Host {} UUID does not match.".format(args.search_pattern))
                 return
-        elif host_info['private_ip'] != args.node_ip:
+        elif host_info.get('private_ip') != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
         self.get_admin().destroy_instance(args.search_pattern, args.node_uuid)

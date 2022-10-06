@@ -50,6 +50,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
 
+  @ApiModelProperty(value = "Disable multipart upload")
+  public boolean disableMultipart = false;
+
   @ApiModelProperty(value = "Backup type")
   public TableType backupType;
 
@@ -109,6 +112,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Customer UUID")
   public UUID customerUuid = null;
 
+  @ApiModelProperty(value = "Base backup UUID")
+  public UUID baseBackupUUID = null;
+
   @ApiModelProperty(value = "Backup UUID")
   public UUID backupUuid = null;
 
@@ -129,6 +135,9 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Backup size in bytes")
   public long backupSizeInBytes = 0L;
+
+  @ApiModelProperty(value = "Incremental backups chain size")
+  public long fullChainSizeInBytes = 0L;
 
   @ApiModelProperty(value = "Type of backup storage config")
   public StorageConfigType storageConfigType = null;
@@ -154,6 +163,7 @@ public class BackupTableParams extends TableManagerParams {
     this.disableChecksum = backupRequestParams.disableChecksum;
     this.useTablespaces = backupRequestParams.useTablespaces;
     this.disableParallelism = backupRequestParams.disableParallelism;
+    this.baseBackupUUID = backupRequestParams.baseBackupUUID;
   }
 
   @JsonIgnore

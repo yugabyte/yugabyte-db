@@ -1,10 +1,8 @@
 import React, { FC } from 'react';
 import { makeStyles } from '@material-ui/core';
-import { YBTooltip } from '@app/components';
 
 export interface ClusterDBVersionBadgeProps {
   text: string;
-  tooltipMsg?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -18,8 +16,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900],
     borderRadius: theme.spacing(0.5),
     border: `1px solid ${theme.palette.grey[300]}`,
-    backgroundColor: theme.palette.common.white,
-    cursor: 'pointer'
+    backgroundColor: theme.palette.common.white
   }
 }));
 
@@ -28,11 +25,7 @@ export const getHumanVersion = (version: string): string => {
   return [major, minor, fix].join('.');
 };
 
-export const ClusterDBVersionBadge: FC<ClusterDBVersionBadgeProps> = ({ text, tooltipMsg = '' }) => {
+export const ClusterDBVersionBadge: FC<ClusterDBVersionBadgeProps> = ({ text }) => {
   const classes = useStyles();
-  return (
-    <YBTooltip title={tooltipMsg}>
-      <span className={classes.badge}>{getHumanVersion(text)}</span>
-    </YBTooltip>
-  );
+  return <span className={classes.badge}>{getHumanVersion(text)}</span>
 };

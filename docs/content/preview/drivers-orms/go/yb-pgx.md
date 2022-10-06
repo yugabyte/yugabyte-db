@@ -1,5 +1,5 @@
 ---
-title: Connect an app
+title: Connect an application
 linkTitle: Connect an app
 description: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
@@ -11,24 +11,37 @@ menu:
 type: docs
 ---
 
-For Go applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yb-pgx/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link active">
+    <a href="../yb-pgx/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YugabyteDB PGX Driver
+      YugabyteDB PGX Smart Driver
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/go/pgx/" class="nav-link">
+    <a href="../pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/go/pq/" class="nav-link">
+    <a href="../pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PQ Driver
     </a>
@@ -36,13 +49,13 @@ For Go applications, most drivers provide database connectivity through the stan
 
 </ul>
 
-The [YugabyteDB PGX driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go driver based on [jackc/pgx](https://github.com/jackc/pgx/), with an additional feature of [Connection load balancing](https://github.com/yugabyte/pgx#connection-load-balancing).
+The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a distributed Go driver for [YSQL](/preview/api/ysql/) based on [jackc/pgx](https://github.com/jackc/pgx/), with a additional [connection load balancing](../../smart-drivers/) features.
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../develop/build-apps/go/ysql-yb-pgx) page.
+For Go applications, most drivers provide database connectivity through the standard `database/sql` API. Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/go/ysql-yb-pgx).
 
-The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
+The following sections break down the example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX smart driver.
 
 ### Step 1: Import the driver package
 
@@ -62,17 +75,17 @@ Go applications can connect to the YugabyteDB database using the `pgx.Connect()`
 
 Use the `pgx.Connect()` method or `pgxpool.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
 
-The following table describes the connection parameters required to connect to the YugabyteDB database with **Uniform load balancing**.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
+| :-------- | :---------- | :------ |
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
+| host | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
-| load_balance | enables uniform load balancing | true
-| topology_keys | enables topology-aware load balancing | true
+| dbname | Database name | yugabyte
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
 
@@ -89,12 +102,11 @@ url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-The following table describes the connection parameters required to connect to the YugabyteDB database with **Topology-aware load balancing**.
-
-The following is an example connection string for connecting to YugabyteDB with topology-aware load balancing.
+The following is an example connection string for connecting to YugabyteDB with topology-aware load balancing:
 
 ```sh
-postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
+postgres://username:password@localhost:5433/database_name?load_balance=true&
+    topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 
 The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing.
@@ -208,7 +220,8 @@ if err != nil {
 }
 ```
 
-## Next steps
+## Learn more
 
-- Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/yb-pgx-reference/#fundamentals) of the YugabyteDB PGX Driver.
+- Build Go applications using [GORM](../gorm)
+- [Go driver reference](../../../reference/drivers/go/yb-pgx-reference/#fundamentals)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

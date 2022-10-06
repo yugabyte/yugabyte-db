@@ -24,18 +24,30 @@ public class MetricSettings {
   @ApiModelProperty(value = "Metric name", required = true)
   String metric;
 
-  @ApiModelProperty(
-      value = "Way of metrics aggregation over time and across nodes",
-      required = true)
-  MetricAggregation aggregation = MetricAggregation.DEFAULT;
+  @ApiModelProperty(value = "Way of metrics aggregation across nodes")
+  NodeAggregation nodeAggregation = NodeAggregation.DEFAULT;
+
+  @ApiModelProperty(value = "Way of metrics aggregation over time")
+  TimeAggregation timeAggregation = TimeAggregation.DEFAULT;
 
   @ApiModelProperty(
-      value = "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
-      required = true)
-  int splitTopNodes;
+      value =
+          "Controls if we split nodes into own lines OR aggregate across nodes"
+              + " and how we select nodes in case of split query")
+  NodeSplitMode nodeSplitMode = NodeSplitMode.NONE;
+
+  @ApiModelProperty(value = "Defines how many node lines we return in case we split nodes")
+  int nodeSplitCount;
+
+  @ApiModelProperty(
+      value = "Defines if we return 'mean' line with node lines in case we split nodes")
+  boolean returnAggregatedValue = true;
 
   public static MetricSettings defaultSettings(String metricName) {
-    return new MetricSettings().setMetric(metricName).setAggregation(MetricAggregation.DEFAULT);
+    return new MetricSettings()
+        .setMetric(metricName)
+        .setNodeAggregation(NodeAggregation.DEFAULT)
+        .setTimeAggregation(TimeAggregation.DEFAULT);
   }
 
   public static List<MetricSettings> defaultSettings(Collection<String> metricNames) {
@@ -45,7 +57,10 @@ public class MetricSettings {
   public MetricSettings cloneWithName(String metricName) {
     return new MetricSettings()
         .setMetric(metricName)
-        .setAggregation(aggregation)
-        .setSplitTopNodes(splitTopNodes);
+        .setNodeAggregation(nodeAggregation)
+        .setTimeAggregation(timeAggregation)
+        .setNodeSplitMode(nodeSplitMode)
+        .setNodeSplitCount(nodeSplitCount)
+        .setReturnAggregatedValue(returnAggregatedValue);
   }
 }

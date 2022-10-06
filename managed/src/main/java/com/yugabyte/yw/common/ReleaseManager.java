@@ -3,9 +3,9 @@ package com.yugabyte.yw.common;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
@@ -47,6 +47,8 @@ public class ReleaseManager {
   @Inject ConfigHelper configHelper;
 
   @Inject Configuration appConfig;
+
+  @Inject GFlagsValidation gFlagsValidation;
 
   public enum ReleaseState {
     ACTIVE,
@@ -97,7 +99,9 @@ public class ReleaseManager {
     public static class PackagePaths {
       @ApiModelProperty(value = "Path to x86_64 package")
       @Constraints.Pattern(
-          message = "Must be prefixed with s3://, gs://, or http(s)://",
+          message =
+              "File path must be prefixed with s3://, gs://, or http(s)://,"
+                  + " and must contain path to package file, instead of a directory",
           value = "\\b(?:(https|s3|gs):\\/\\/).+\\b")
       public String x86_64;
 
@@ -238,12 +242,6 @@ public class ReleaseManager {
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseManager.class);
-  public static final Map<Architecture, String> ybcArchMap =
-      ImmutableMap.of(
-          Architecture.x86_64,
-          "glob:**ybc*{centos,alma,linux,el}*x86_64.tar.gz",
-          Architecture.arm64,
-          "glob:**ybc*{centos,alma,linux,el}*aarch64.tar.gz");
 
   private Predicate<Path> getPackageFilter(String pathMatchGlob) {
     return p -> Files.isRegularFile(p) && getPathMatcher(pathMatchGlob).matches(p);
@@ -267,9 +265,10 @@ public class ReleaseManager {
       Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
 
   private static final Pattern ybcPackagePattern =
-      Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|centos)(.*).tar.gz");
+      Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|el8)(.*).tar.gz");
 
-  public Map<String, String> getReleaseFiles(String releasesPath, Predicate<Path> fileFilter) {
+  public Map<String, String> getReleaseFiles(
+      String releasesPath, Predicate<Path> fileFilter, boolean ybcRelease) {
     Map<String, String> fileMap = new HashMap<>();
     Set<String> duplicateKeys = new HashSet<>();
     try {
@@ -277,7 +276,12 @@ public class ReleaseManager {
           .filter(fileFilter)
           .forEach(
               p -> {
-                String key = p.getName(p.getNameCount() - 2).toString();
+                // In case of ybc release, we want to store osType, archType in version key.
+                String key =
+                    ybcRelease
+                        ? StringUtils.removeEnd(
+                            p.getName(p.getNameCount() - 1).toString(), ".tar.gz")
+                        : p.getName(p.getNameCount() - 2).toString();
                 String value = p.toAbsolutePath().toString();
                 if (!fileMap.containsKey(key)) {
                   fileMap.put(key, value);
@@ -316,10 +320,10 @@ public class ReleaseManager {
 
   public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
     Map<String, String> releaseFiles;
-    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter);
+    Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter, false);
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
     for (Architecture arch : Architecture.values()) {
-      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getGlob()));
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getDBGlob()), false);
       updateLocalReleases(localReleases, releaseFiles, releaseCharts, arch);
     }
     return localReleases;
@@ -329,7 +333,7 @@ public class ReleaseManager {
     Map<String, String> releaseFiles;
     Map<String, ReleaseMetadata> localReleases = new HashMap<>();
     for (Architecture arch : Architecture.values()) {
-      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(ybcArchMap.get(arch)));
+      releaseFiles = getReleaseFiles(releasesPath, getPackageFilter(arch.getYbcGlob()), true);
       updateLocalReleases(localReleases, releaseFiles, new HashMap<>(), arch);
     }
     return localReleases;
@@ -665,7 +669,8 @@ public class ReleaseManager {
       File ybcReleasePathFile = new File(ybcReleasePath);
       File ybcReleasesPathFile = new File(ybcReleasesPath);
       if (ybcReleasePathFile.exists() && ybcReleasesPathFile.exists()) {
-        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, currentYbcReleases.keySet());
+        // No need to skip copying packages as we want to allow multiple arch type of a ybc-version.
+        copyFiles(ybcReleasePath, ybcReleasesPath, ybcPackagePattern, null);
         Map<String, ReleaseMetadata> localYbcReleases = getLocalYbcReleases(ybcReleasesPath);
         localYbcReleases.keySet().removeAll(currentYbcReleases.keySet());
         LOG.info("Current ybc releases: [ {} ]", currentYbcReleases.keySet().toString());
@@ -703,7 +708,7 @@ public class ReleaseManager {
             }
             if (fp != null) {
               for (Architecture arch : Architecture.values()) {
-                if (getPathMatcher(arch.getGlob()).matches(fp)) {
+                if (getPathMatcher(arch.getDBGlob()).matches(fp)) {
                   rm.packages = new ArrayList<>();
                   rm = rm.withPackage(rm.filePath, arch);
                 }
@@ -714,9 +719,42 @@ public class ReleaseManager {
                   "Could not match any available architectures to existing release {}", version);
             }
           }
+          // Add GFlags file if not present already for active and local releases.
+          if (rm.state.equals(ReleaseState.ACTIVE) && isLocalRelease(rm)) {
+            addGFlagsMetadataFiles(version, rm);
+          }
           updatedReleases.put(version, rm);
         });
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+  }
+
+  public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
+    List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
+    if (missingGFlagsFilesList.size() != 0) {
+      // fetch db tar package location.
+      String dbTarPackagePath = getDBTarPackagePath(releaseMetadata);
+      if (!StringUtils.isEmpty(dbTarPackagePath) && Files.exists(Paths.get(dbTarPackagePath))) {
+        gFlagsValidation.fetchGFlagsFromDBPackage(
+            dbTarPackagePath, version, missingGFlagsFilesList);
+      } else {
+        LOG.error(
+            "Could not add gFlags metadata as DB tar package is missing for the version: {}.",
+            version);
+      }
+    }
+  }
+
+  private String getDBTarPackagePath(ReleaseMetadata rm) {
+    if (rm.s3 != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else if (rm.gcs != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else if (rm.http != null) {
+      // TODO(@vipul-yb): download the package in tmp diretory and delete it after it's use
+    } else {
+      return rm.filePath;
+    }
+    return StringUtils.EMPTY;
   }
 
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
@@ -750,7 +788,7 @@ public class ReleaseManager {
           .forEach(
               match -> {
                 String version = match.group(1);
-                if (skipVersions.contains(version)) {
+                if (skipVersions != null && skipVersions.contains(version)) {
                   LOG.debug("Skipping re-copy of release files for {}", version);
                   return;
                 }
@@ -784,7 +822,8 @@ public class ReleaseManager {
     return metadataFromObject(metadata);
   }
 
-  public ReleaseMetadata getYbcReleaseByVersion(String version) {
+  public ReleaseMetadata getYbcReleaseByVersion(String version, String osType, String archType) {
+    version = String.format("ybc-%s-%s-%s", version, osType, archType);
     Object metadata = getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases).get(version);
     if (metadata == null) {
       return null;
@@ -802,5 +841,9 @@ public class ReleaseManager {
 
   public boolean getInUse(String version) {
     return Universe.existsRelease(version);
+  }
+
+  private boolean isLocalRelease(ReleaseMetadata rm) {
+    return !(rm.s3 != null || rm.gcs != null || rm.http != null);
   }
 }

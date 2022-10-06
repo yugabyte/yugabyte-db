@@ -29,9 +29,19 @@ extern RestrictInfo *make_restrictinfo(Expr *clause,
 				  Relids required_relids,
 				  Relids outer_relids,
 				  Relids nullable_relids);
+
+extern bool can_batch_rinfo(RestrictInfo *rinfo,
+					 		Relids outer_batched_relids,
+					 		Relids inner_relids);
+extern RestrictInfo *get_batched_restrictinfo(RestrictInfo *rinfo,
+											  Relids outer_batched_relids,
+											  Relids inner_relids);
 extern bool restriction_is_or_clause(RestrictInfo *restrictinfo);
 extern bool restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 								   RelOptInfo *rel);
+extern List * get_actual_batched_clauses(Relids batchedrelids,
+										 List *restrictinfo_list,
+						   				 IndexPath *inner_index);
 extern List *get_actual_clauses(List *restrictinfo_list);
 extern List *extract_actual_clauses(List *restrictinfo_list,
 					   bool pseudoconstant);

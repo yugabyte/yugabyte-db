@@ -224,6 +224,50 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 LIMIT 5;
  7947 | 7947
 (5 rows)
 
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: x
+   Sort Method: quicksort  Memory: 25kB
+   ->  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=3 loops=1)
+         Index Cond: ((x = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(x) < 50000))
+         Rows Removed by Index Recheck: 1
+(6 rows)
+
+SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
+ x | yb_hash_code
+---+--------------
+ 1 |         4624
+ 2 |        49348
+ 4 |        40623
+(3 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) < 9))
+(2 rows)
+
+SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
+ yb_hash_code
+--------------
+            3
+(1 row)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
+                                           QUERY PLAN
+------------------------------------------------------------------------------------------------
+ Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=0 loops=1)
+   Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) > 90))
+(2 rows)
+
+SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
+ yb_hash_code
+--------------
+(0 rows)
+
 -- this should not be pushed down as (x,y) is not a hash primary key yet
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512;
                          QUERY PLAN
@@ -278,6 +322,34 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;
  2430 | 2430
  8867 | 8867
 (2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=2 loops=1)
+   Index Cond: ((yb_hash_code(x, y) <= 20) AND (yb_hash_code(x, y) < 11))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
+ yb_hash_code
+--------------
+           10
+           10
+(2 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
+ Index Only Scan using test_secondary on test_table_one_primary (actual rows=0 loops=1)
+   Index Cond: ((yb_hash_code(x, y) <= 20) AND (yb_hash_code(x, y) > 110))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
+ yb_hash_code
+--------------
+(0 rows)
 
 -- testing with a qualification on yb_hash_code(x) and x
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
@@ -858,3 +930,24 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) > 600 AND
 (10 rows)
 
 DROP TABLE test_table_multi_col_key;
+-- test recheck of index only scan with yb_hash_code
+CREATE TABLE test_index_only_scan_recheck(k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
+CREATE INDEX ON test_index_only_scan_recheck(v4) INCLUDE (v1);
+INSERT INTO test_index_only_scan_recheck SELECT s, s, s, s, s FROM generate_series(1, 100) AS s;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using test_index_only_scan_recheck_v4_v1_idx on test_index_only_scan_recheck (actual rows=2 loops=1)
+   Index Cond: ((v4 = ANY ('{1,2,3}'::integer[])) AND (yb_hash_code(v4) < 50000))
+   Rows Removed by Index Recheck: 1
+   Heap Fetches: 0
+(4 rows)
+
+SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
+ v1 | yb_hash_code
+----+--------------
+  1 |         4624
+  2 |        49348
+(2 rows)
+
+DROP TABLE test_index_only_scan_recheck;

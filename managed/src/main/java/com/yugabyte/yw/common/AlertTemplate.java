@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -30,6 +31,7 @@ import lombok.Getter;
 import lombok.Value;
 
 @Getter
+@ApiModel
 public enum AlertTemplate {
 
   // @formatter:off

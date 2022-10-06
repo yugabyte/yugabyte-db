@@ -1,0 +1,23 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1u1 s2u s1u2 s1c
+step s1u1: select * from foo where k = 1 for share;
+k              v              
+
+1              0              
+step s2u: update foo set v=10 where k=1; <waiting ...>
+step s1u2: select * from foo where k=1 for update;
+k              v              
+
+1              0              
+step s1c: COMMIT;
+step s2u: <... completed>
+
+starting permutation: s1u2 s2u s1c
+step s1u2: select * from foo where k=1 for update;
+k              v              
+
+1              0              
+step s2u: update foo set v=10 where k=1; <waiting ...>
+step s1c: COMMIT;
+step s2u: <... completed>

@@ -1,7 +1,6 @@
 import React, { FC, useRef, useState } from 'react';
-import { Popover, Image, Row, Col, Button, Overlay } from 'react-bootstrap';
+import { Popover, Row, Col, Button, Overlay } from 'react-bootstrap';
 import './UniverseAlertBadge.scss';
-import BellIcon from './Bell-icon.png';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getAlertsCountForUniverse, getAlertsForUniverse } from '../../../actions/customers';
 import { YBLoading } from '../../common/indicators';
@@ -111,7 +110,7 @@ export const UniverseAlertBadge: FC<AlertBadgeProps> = ({ universeUUID, listView
       ref={popoverRef}
     >
       <div ref={iconRef} onClick={() => setShowPopover(!showPopover)} className="icon">
-        <AlertIcon />
+        <i className="fa fa-bell-o alert-bell-icon" />
         <span className="alert-count">{alerts?.data}</span>
       </div>
       <Overlay
@@ -128,5 +127,3 @@ export const UniverseAlertBadge: FC<AlertBadgeProps> = ({ universeUUID, listView
     </div>
   );
 };
-
-const AlertIcon = () => <Image src={BellIcon} className={'alert-bell-icon'} />;

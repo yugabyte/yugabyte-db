@@ -77,6 +77,8 @@ class PgWrapper {
 
   Status ReloadConfig();
 
+  Status UpdateAndReloadConfig();
+
   void Kill();
 
   // Calls initdb if the data directory does not exist. This is intended to use during tablet server
@@ -135,6 +137,8 @@ class PgSupervisor {
   }
 
   Status ReloadConfig();
+
+  Status UpdateAndReloadConfig();
 
  private:
   Status ExpectStateUnlocked(PgProcessState state);

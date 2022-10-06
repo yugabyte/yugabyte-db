@@ -2054,7 +2054,6 @@ AlterTableStmt:
 				}
 		|	ALTER MATERIALIZED VIEW qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $4;
 					n->cmds = $5;
@@ -2064,7 +2063,6 @@ AlterTableStmt:
 				}
 		|	ALTER MATERIALIZED VIEW IF_P EXISTS qualified_name alter_table_cmds
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					AlterTableStmt *n = makeNode(AlterTableStmt);
 					n->relation = $6;
 					n->cmds = $7;
@@ -3483,7 +3481,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
 			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec OptWith
-			OnCommitOption OptTableSpace OptSplit OptTableGroup
+			OnCommitOption OptTableSpace OptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->relpersistence = $2;
@@ -3499,32 +3497,15 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $13;
 					n->if_not_exists = false;
 					n->split_options = $14;
-					n->tablegroupname = $15;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
-					}
-					if ($15 && $2 == RELPERSISTENCE_TEMP)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
-					}
-					if ($13 && $15)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
-					}
-					if ($14 && $15)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
 			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			OptWith OnCommitOption OptTableSpace OptSplit OptTableGroup
+			OptWith OnCommitOption OptTableSpace OptSplit
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$7->relpersistence = $2;
@@ -3540,26 +3521,9 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $16;
 					n->if_not_exists = true;
 					n->split_options = $17;
-					n->tablegroupname = $18;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
-					}
-					if ($18 && $2 == RELPERSISTENCE_TEMP)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
-					}
-					if ($16 && $18)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
-					}
-					if ($17 && $18)
-					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
 					}
 					$$ = (Node *)n;
 				}
@@ -4798,17 +4762,19 @@ opt_procedural:
  *
  *****************************************************************************/
 
- CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
- 				{
- 					parser_ybc_beta_feature(@1, "tablegroup", true);
- 					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
- 					n->tablegroupname = $3;
- 					n->owner = $4;
- 					n->options = $5;
- 					n->tablespacename = $6;
- 					$$ = (Node *) n;
- 				}
- 		;
+CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
+				{
+					parser_ybc_not_support_in_templates(@1, "Tablegroup");
+					parser_ybc_beta_feature(@1, "tablegroup", true);
+
+					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
+					n->tablegroupname = $3;
+					n->owner = $4;
+					n->options = $5;
+					n->tablespacename = $6;
+					$$ = (Node *) n;
+				}
+		;
 
 OptTableGroupOwner: OWNER RoleSpec		{ $$ = $2; }
 			| /*EMPTY */				{ $$ = NULL; }
@@ -8006,6 +7972,7 @@ opt_unique:
 opt_concurrently:
 			CONCURRENTLY
 				{
+					parser_ybc_not_support_in_templates(@1, "Concurrent index creation");
 					$$ = YB_CONCURRENCY_EXPLICIT_ENABLED;
 				}
 			| NONCONCURRENTLY
@@ -8014,7 +7981,8 @@ opt_concurrently:
 				}
 			| /*EMPTY*/
 				{
-					$$ = *YBCGetGFlags()->ysql_disable_index_backfill
+					$$ = (*YBCGetGFlags()->ysql_disable_index_backfill ||
+						  YbIsConnectedToTemplateDb())
 						? YB_CONCURRENCY_DISABLED
 						: YB_CONCURRENCY_IMPLICIT_ENABLED;
 				}
@@ -8188,6 +8156,8 @@ BackfillIndexStmt:
 			BACKFILL INDEX oid_list opt_for_bfinstr
 				READ TIME read_time RowBounds
 				{
+					parser_ybc_not_support_in_templates(@1, "Index backfill");
+
 					BackfillIndexStmt *n = makeNode(BackfillIndexStmt);
 					n->oid_list = $3;
 
@@ -9495,7 +9465,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER MATERIALIZED VIEW qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_MATVIEW;
 					n->relation = $4;
@@ -9506,7 +9475,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER MATERIALIZED VIEW IF_P EXISTS qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_MATVIEW;
 					n->relation = $6;
@@ -9580,7 +9548,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER MATERIALIZED VIEW qualified_name RENAME opt_column name TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_COLUMN;
 					n->relationType = OBJECT_MATVIEW;
@@ -9592,7 +9559,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER MATERIALIZED VIEW IF_P EXISTS qualified_name RENAME opt_column name TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_COLUMN;
 					n->relationType = OBJECT_MATVIEW;
@@ -10919,7 +10885,6 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 		| CREATE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions
 				AS SelectStmt opt_check_option
 				{
-					parser_ybc_not_support(@1, "CREATE RECURSIVE VIEW");
 					ViewStmt *n = makeNode(ViewStmt);
 					n->view = $5;
 					n->view->relpersistence = $2;
@@ -10938,7 +10903,6 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 		| CREATE OR REPLACE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions
 				AS SelectStmt opt_check_option
 				{
-					parser_ybc_not_support(@1, "CREATE RECURSIVE VIEW");
 					ViewStmt *n = makeNode(ViewStmt);
 					n->view = $7;
 					n->view->relpersistence = $4;
@@ -17353,8 +17317,8 @@ raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char 
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue),
 				 parser_errposition(pos)));
 
 	}
@@ -17402,7 +17366,7 @@ ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg)
 	static int restricted = -1;
 	if (restricted == -1)
 	{
-		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
+		restricted = YBIsUsingYBParser() && YbIsConnectedToTemplateDb();
 	}
 
 	if (restricted && !IsYsqlUpgrade)

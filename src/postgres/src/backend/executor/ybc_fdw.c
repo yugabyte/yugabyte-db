@@ -350,7 +350,12 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	/* Set the current syscatalog version (will check that we are up to date) */
-	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_state->handle, yb_catalog_cache_version));
+	if (YBIsDBCatalogVersionMode())
+		HandleYBStatus(YBCPgSetDBCatalogCacheVersion(
+			ybc_state->handle, MyDatabaseId, yb_catalog_cache_version));
+	else
+		HandleYBStatus(YBCPgSetCatalogCacheVersion(
+			ybc_state->handle, yb_catalog_cache_version));
 }
 
 /*
@@ -566,7 +571,7 @@ ybSetupScanQual(ForeignScanState *node)
 		 * acccess the estate to get parameter values, so param references
 		 * are replaced with constant expressions.
 		 */
-		expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
+		expr = YbExprInstantiateParams(expr, estate);
 		/* Create new PgExpr wrapper for the expression */
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
 		/* Add the PgExpr to the statement */

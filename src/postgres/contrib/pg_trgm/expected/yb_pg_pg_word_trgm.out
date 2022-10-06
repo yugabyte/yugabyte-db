@@ -82,7 +82,7 @@ select t <->> 'Kabankala', t from test_trgm2 order by t <->> 'Kabankala' limit 7
 
 create index trgm_idx2 on test_trgm2 using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 create index trgm_idx2 on test_trgm2 using gin (t gin_trgm_ops);
 set enable_seqscan=off;
 select t,word_similarity('Baykal',t) as sml from test_trgm2 where 'Baykal' <% t order by sml desc, t;

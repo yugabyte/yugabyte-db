@@ -548,6 +548,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_SCALAR_FIELD(indexorderdir);
 	COPY_NODE_FIELD(remote.qual);
 	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_indexqual_for_recheck);
 
 	return newnode;
 }
@@ -883,6 +884,30 @@ _copyNestLoop(const NestLoop *from)
 	return newnode;
 }
 
+/*
+ * _copyYbBatchedNestLoop
+ */
+static YbBatchedNestLoop *
+_copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
+{
+	YbBatchedNestLoop   *newnode = makeNode(YbBatchedNestLoop);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyJoinFields((const Join *) from, (Join *) newnode);
+	COPY_NODE_FIELD(nl.nestParams);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(innerHashAttNos);
+	COPY_NODE_FIELD(outerParamNos);
+	COPY_NODE_FIELD(hashOps);
+
+	return newnode;
+}
+
 
 /*
  * _copyMergeJoin
@@ -1184,6 +1209,7 @@ _copyNestLoopParam(const NestLoopParam *from)
 
 	COPY_SCALAR_FIELD(paramno);
 	COPY_NODE_FIELD(paramval);
+	COPY_SCALAR_FIELD(yb_batch_size);
 
 	return newnode;
 }
@@ -3203,6 +3229,7 @@ _copyAlterTableCmd(const AlterTableCmd *from)
 	COPY_NODE_FIELD(def);
 	COPY_SCALAR_FIELD(behavior);
 	COPY_SCALAR_FIELD(missing_ok);
+	COPY_SCALAR_FIELD(yb_is_add_primary_key);
 
 	return newnode;
 }
@@ -4995,6 +5022,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_NestLoop:
 			retval = _copyNestLoop(from);
+			break;
+		case T_YbBatchedNestLoop:
+			retval = _copyYbBatchedNestLoop(from);
 			break;
 		case T_MergeJoin:
 			retval = _copyMergeJoin(from);

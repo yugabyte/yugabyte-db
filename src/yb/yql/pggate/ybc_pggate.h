@@ -57,9 +57,18 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
-// Set catalog_version to the local tserver's catalog version stored in shared memory.  Return error
-// if the shared memory has not been initialized (e.g. in initdb).
+// Set global catalog_version to the local tserver's catalog version stored in shared memory.
+// Return error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
+
+// Set per-db catalog_version to the local tserver's per-db catalog version stored in shared
+// memory. Return error if the shared memory has not been initialized (e.g. in initdb).
+YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version);
+
+// Get the tserver catalog version info that can be used to translate a database oid to the
+// index of its slot in the shared memory array db_catalog_versions_.
+YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info);
+
 // Set auth_key to the local tserver's postgres authentication key stored in shared memory.  Return
 // error if the shared memory has not been initialized (e.g. in initdb).
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
@@ -213,6 +222,8 @@ YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
 YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
                                      const char *newname);
 
+YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
@@ -244,9 +255,18 @@ YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
 
+YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
+                                        uint32_t db_oid,
+                                        uint64_t db_catalog_cache_version);
+
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,
                            bool *exists);
+
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+                                YBCPgOid database_oid,
+                                int64_t *size,
+                                int32_t *num_missing_tablets);
 
 YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
@@ -351,10 +371,9 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
     YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
-                                bool start_inclusive, uint64_t start_hash_val,
-                                bool end_valid, bool end_inclusive,
-                                uint64_t end_hash_val);
+YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
+                                YBCPgBoundType start_type, uint64_t start_value,
+                                YBCPgBoundType end_type, uint64_t end_value);
 
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle, int n_col_values,
                                     YBCPgExpr *col_values, bool is_inclusive);

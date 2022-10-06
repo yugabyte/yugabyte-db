@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.services.GcpEARService;
 import com.yugabyte.yw.common.kms.services.AwsEARService;
+import com.yugabyte.yw.common.kms.services.AzuEARService;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.services.HashicorpEARService;
 import io.ebean.annotation.EnumValue;
@@ -33,7 +34,10 @@ public enum KeyProvider {
   HASHICORP(HashicorpEARService.class),
 
   @EnumValue("GCP")
-  GCP(GcpEARService.class);
+  GCP(GcpEARService.class),
+
+  @EnumValue("AZU")
+  AZU(AzuEARService.class);
 
   private final Class<?> providerService;
 

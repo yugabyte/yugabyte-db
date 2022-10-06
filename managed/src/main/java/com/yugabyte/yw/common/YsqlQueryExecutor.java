@@ -301,6 +301,7 @@ public class YsqlQueryExecutor {
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.db_name = data.dbName;
     ysqlQuery.query = "SELECT 1";
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);

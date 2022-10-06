@@ -822,7 +822,7 @@ create table minmaxtest1() inherits (minmaxtest);
 ERROR:  INHERITS not supported yet
 LINE 1: create table minmaxtest1() inherits (minmaxtest);
                                    ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 -- create table minmaxtest2() inherits (minmaxtest);
 -- create table minmaxtest3() inherits (minmaxtest);
 create index minmaxtesti on minmaxtest(f1);

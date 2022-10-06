@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "yb/client/tablet_server.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -85,13 +86,20 @@ namespace {
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
 
-template<class T>
-YBCStatus ExtractValueFromResult(const Result<T>& result, T* value) {
+template<class T, class Functor>
+YBCStatus ExtractValueFromResult(Result<T> result, const Functor& functor) {
   if (result.ok()) {
-    *value = *result;
+    functor(std::move(*result));
     return YBCStatusOK();
   }
   return ToYBCStatus(result.status());
+}
+
+template<class T>
+YBCStatus ExtractValueFromResult(Result<T> result, T* value) {
+  return ExtractValueFromResult(std::move(result), [value](T src) {
+    *value = std::move(src);
+  });
 }
 
 YBCStatus ProcessYbctid(
@@ -109,7 +117,14 @@ Slice YbctidAsSlice(uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-} // anonymous namespace
+inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
+  if (type == YB_YQL_BOUND_INVALID) {
+    return std::nullopt;
+  }
+  return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // C API.
@@ -460,6 +475,10 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
   return ToYBCStatus(pgapi->AlterTableRenameTable(handle, db_name, newname));
 }
 
+YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableIncrementSchemaVersion(handle));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }
@@ -488,6 +507,12 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
                                       uint64_t catalog_cache_version) {
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
+}
+
+YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
+                                        uint32_t db_oid,
+                                        uint64_t db_catalog_cache_version) {
+  return ToYBCStatus(pgapi->SetDBCatalogCacheVersion(handle, db_oid, db_catalog_cache_version));
 }
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
@@ -626,6 +651,17 @@ YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
   }
 }
 
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+                                YBCPgOid database_oid,
+                                int64_t *size,
+                                int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(pgapi->GetTableDiskSize({database_oid, table_oid}),
+                                [size, num_missing_tablets](auto value) {
+     *size = value.table_size;
+     *num_missing_tablets = value.num_missing_tablets;
+  });
+}
+
 // Index Operations -------------------------------------------------------------------------------
 
 YBCStatus YBCPgNewCreateIndex(const char *database_name,
@@ -745,13 +781,12 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
-                                 bool start_inclusive, uint64_t start_hash_val,
-                                 bool end_valid, bool end_inclusive,
-                                 uint64_t end_hash_val) {
-  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start_valid,
-                      start_inclusive, start_hash_val, end_valid,
-                      end_inclusive, end_hash_val));
+YBCStatus YBCPgDmlBindHashCodes(
+  YBCPgStatement handle,
+  YBCPgBoundType start_type, uint64_t start_value,
+  YBCPgBoundType end_type, uint64_t end_value) {
+  return ToYBCStatus(pgapi->DmlBindHashCode(
+      handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
@@ -1196,6 +1231,45 @@ bool YBCGetDisableTransparentCacheRefreshRetry() {
 
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
+}
+
+YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version) {
+  return ExtractValueFromResult(pgapi->GetSharedDBCatalogVersion(db_oid_shm_index),
+                                                                 catalog_version);
+}
+
+YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info) {
+  const auto result = pgapi->GetTserverCatalogVersionInfo();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto& info = result.get();
+  VLOG(2) << "info: " << info.ShortDebugString();
+  DCHECK_EQ(info.db_oid_size(), info.shm_index_size());
+  YbTserverCatalogInfo info_data = static_cast<YbTserverCatalogInfo>(
+      YBCPAlloc(sizeof(YbTserverCatalogInfoData)));
+  const uint32_t num_databases = info.db_oid_size();
+  info_data->num_databases = num_databases;
+  if (info.db_oid_size() == 0) {
+    info_data->versions = nullptr;
+  } else {
+    info_data->versions = static_cast<YbTserverCatalogVersion*>(
+        YBCPAlloc(sizeof(YbTserverCatalogVersion) * num_databases));
+    for (uint i = 0; i < num_databases; i++) {
+      info_data->versions[i].db_oid = info.db_oid(i);
+      info_data->versions[i].current_version = info.current_version(i);
+      info_data->versions[i].shm_index = info.shm_index(i);
+    }
+  }
+  *tserver_catalog_info = info_data;
+#ifndef NDEBUG
+  // The db oids should be in ascending order.
+  for (uint i = 1; i < num_databases; i++) {
+    CHECK_LT(info_data->versions[i - 1].db_oid, info_data->versions[i].db_oid);
+  }
+#endif
+  return YBCStatusOK();
 }
 
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {

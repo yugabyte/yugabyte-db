@@ -35,6 +35,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
@@ -51,6 +52,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -68,6 +70,11 @@ class MaintenanceManager;
 class AutoFlagsManager;
 
 namespace tserver {
+
+namespace enterprise {
+class CDCConsumer;
+}
+class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -167,8 +174,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::string cluster_uuid() const;
 
-  TabletServiceImpl* tablet_server_service();
-
   scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceRpcMethodIndexes metric);
 
   const std::shared_ptr<MemTracker>& mem_tracker() const override;
@@ -192,6 +197,28 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       *last_breaking_version = ysql_last_breaking_catalog_version_;
     }
   }
+
+  void get_ysql_db_catalog_version(uint32_t db_oid,
+                                   uint64_t* current_version,
+                                   uint64_t* last_breaking_version) const override {
+    std::lock_guard<simple_spinlock> l(lock_);
+    auto it = ysql_db_catalog_version_map_.find(db_oid);
+    bool not_found = it == ysql_db_catalog_version_map_.end();
+    // If db_oid represents a newly created database, it may not yet exist in
+    // ysql_db_catalog_version_map_ because the latter is updated via tserver to master
+    // heartbeat response which has a delay. Return 0 as if it were a stale version.
+    // Note that even if db_oid is found in ysql_db_catalog_version_map_ the catalog version
+    // can also be stale due to the heartbeat delay.
+    if (current_version) {
+      *current_version = not_found ? 0UL : it->second.current_version;
+    }
+    if (last_breaking_version) {
+      *last_breaking_version = not_found ? 0UL : it->second.last_breaking_version;
+    }
+  }
+
+  Status get_ysql_db_oid_to_cat_version_info_map(
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -226,6 +253,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
+
+  const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
+
+  void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
+      const NamespaceId& namespace_id, HybridTime commit_ht) const;
 
  protected:
   virtual Status RegisterServices();
@@ -289,11 +323,24 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
-  master::DbOidToCatalogVersionMap ysql_db_catalog_version_map_;
+  tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+
+  // If shared memory array db_catalog_versions_ slot is used by a database OID, the
+  // corresponding slot in this boolean array is set to true.
+  std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
+    ysql_db_catalog_version_index_used_;
+
+  // When searching for a free slot in the shared memory array db_catalog_versions_, we start
+  // from this index.
+  int search_starting_index_ = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
-  TabletServiceImpl* tablet_server_service_;
+  std::weak_ptr<TabletServiceImpl> tablet_server_service_;
+
+  // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
+  // is shut down.
+  std::weak_ptr<PgClientServiceImpl> pg_client_service_;
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
@@ -303,6 +350,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Bind address of postgres proxy under this tserver.
   HostPort pgsql_proxy_bind_address_;
+
+  XClusterSafeTimeMap xcluster_safe_time_map_;
+
+  PgConfigReloader pg_config_reloader_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

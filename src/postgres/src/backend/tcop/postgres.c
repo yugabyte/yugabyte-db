@@ -3675,12 +3675,17 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void YBPreloadRelCacheHelper()
+static uint64_t
+YbPreloadRelCacheHelper()
 {
+	uint64_t catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	YBCPgResetCatalogReadTime();
 	YBCStartSysTablePrefetching();
 	PG_TRY();
 	{
+		YbTryRegisterCatalogVersionTableForPrefetching();
 		YBPreloadRelCache();
+		catalog_version = YbGetMasterCatalogVersion();
 	}
 	PG_CATCH();
 	{
@@ -3689,6 +3694,7 @@ static void YBPreloadRelCacheHelper()
 	}
 	PG_END_TRY();
 	YBCStopSysTablePrefetching();
+	return catalog_version;
 }
 
 /*
@@ -3721,8 +3727,6 @@ static void YBRefreshCache()
 		ereport(LOG,(errmsg("Refreshing catalog cache.")));
 	}
 
-	YBCPgResetCatalogReadTime();
-
 	/*
 	 * Get the latest syscatalog version from the master.
 	 * Reset the cached version type if needed to force reading catalog version
@@ -3730,11 +3734,6 @@ static void YBRefreshCache()
 	 */
 	if (yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 		yb_catalog_version_type = CATALOG_VERSION_UNSET;
-	const uint64_t catalog_master_version = YbGetMasterCatalogVersion();
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
-		ereport(LOG,
-				(errmsg("%s: got master catalog version: %" PRIu64,
-						__func__, catalog_master_version)));
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3742,7 +3741,7 @@ static void YBRefreshCache()
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
 	CallSystemCacheCallbacks();
-	YBPreloadRelCacheHelper();
+	const uint64_t catalog_master_version = YbPreloadRelCacheHelper();
 
 	/* Also invalidate the pggate cache. */
 	HandleYBStatus(YBCPgInvalidateCache());
@@ -4030,7 +4029,11 @@ static void YBCheckSharedCatalogCacheVersion() {
 		return;
 
 	uint64_t shared_catalog_version;
-	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+	if (YBIsDBCatalogVersionMode())
+		HandleYBStatus(YBCGetSharedDBCatalogVersion(yb_my_database_id_shm_index,
+													&shared_catalog_version));
+	else
+		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 	const bool need_global_cache_refresh =
 		yb_catalog_cache_version < shared_catalog_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
@@ -4684,23 +4687,6 @@ PostgresMain(int argc, char *argv[],
 			 const char *dbname,
 			 const char *username)
 {
-	// TODO(neil) Once we have our system DB, remove the following code.
-	// It is a hack to help us getting by for now.
-	for (int i = 0; i < argc; i++) {
-		if (strcmp(argv[i], "template0") == 0 || strcmp(argv[i], "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-	if (dbname) {
-		if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	} else if (username) {
-		if (strcmp(username, "template0") == 0 || strcmp(username, "template1") == 0) {
-			YBSetPreparingTemplates();
-		}
-	}
-
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
@@ -4734,6 +4720,11 @@ PostgresMain(int argc, char *argv[],
 					 errmsg("%s: no database nor user name specified",
 							progname)));
 	}
+
+	// TODO(neil) Once we have our system DB, remove the following code.
+	// It is a hack to help us getting by for now.
+	if (strcmp(dbname, "template0") == 0 || strcmp(dbname, "template1") == 0)
+		YbSetConnectedToTemplateDb();
 
 	/* Acquire configuration parameters, unless inherited from postmaster */
 	if (!IsUnderPostmaster)

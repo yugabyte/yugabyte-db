@@ -493,6 +493,21 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<client::TableSizeInfo> GetTableDiskSize(
+      const PgObjectId& table_oid) {
+    tserver::PgGetTableDiskSizeResponsePB resp;
+
+    tserver::PgGetTableDiskSizeRequestPB req;
+    table_oid.ToPB(req.mutable_table_id());
+
+    RETURN_NOT_OK(proxy_->GetTableDiskSize(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+
+    return client::TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+  }
+
   Result<bool> CheckIfPitrActive() {
     tserver::PgCheckIfPitrActiveRequestPB req;
     tserver::PgCheckIfPitrActiveResponsePB resp;
@@ -501,6 +516,16 @@ class PgClient::Impl {
       return StatusFromPB(resp.status());
     }
     return resp.is_pitr_active();
+  }
+
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo() {
+    tserver::PgGetTserverCatalogVersionInfoRequestPB req;
+    tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTserverCatalogVersionInfo(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
   }
 
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
@@ -641,6 +666,11 @@ Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* 
   return impl_->ValidatePlacement(req);
 }
 
+Result<client::TableSizeInfo> PgClient::GetTableDiskSize(
+    const PgObjectId& table_oid) {
+  return impl_->GetTableDiskSize(table_oid);
+}
+
 Status PgClient::InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
@@ -684,6 +714,10 @@ void PgClient::PerformAsync(
 
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo() {
+  return impl_->GetTserverCatalogVersionInfo();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

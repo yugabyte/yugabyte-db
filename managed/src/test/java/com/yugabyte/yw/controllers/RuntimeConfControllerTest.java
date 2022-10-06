@@ -13,9 +13,12 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CONTENT_CONF_PATH;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
@@ -29,12 +32,16 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
+import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -94,6 +101,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
         ImmutableSet.of(
+            "yb.universe_boot_script",
             "yb.taskGC.gc_check_interval",
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
@@ -181,6 +189,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Duration duration =
         runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(EXT_SCRIPT_SCHEDULE_KEY);
     assertEquals(24 * 60 * 2, duration.toMinutes());
+    String content =
+        runtimeConfigFactory.forUniverse(defaultUniverse).getString(EXT_SCRIPT_CONTENT_CONF_PATH);
+    assertEquals("the script", content);
+    String params =
+        runtimeConfigFactory.forUniverse(defaultUniverse).getString(EXT_SCRIPT_PARAMS_CONF_PATH);
+    assertEquals(newRetention, params);
 
     // Fetching internal key through API should not work
     assertEquals(
@@ -369,12 +383,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void configResolution() {
+  @Parameters({"yb.upgrade.vmImage", "yb.health.trigger_api.enabled"})
+  public void configResolution(String key) {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
-    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
     setCloudEnabled(defaultUniverse.universeUUID);
-    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
   private void setCloudEnabled(UUID scopeUUID) {
@@ -383,5 +398,35 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             .header("X-AUTH-TOKEN", authToken)
             .bodyText("true");
     route(app, request);
+  }
+
+  @Test
+  public void testFailingListener() {
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
+    String newInterval = "2 days";
+    RuntimeConfigChangeNotifier runtimeConfigChangeNotifier =
+        getApp().injector().instanceOf(RuntimeConfigChangeNotifier.class);
+    runtimeConfigChangeNotifier.addListener(
+        new RuntimeConfigChangeListener() {
+          @Override
+          public String getKeyPath() {
+            return GC_CHECK_INTERVAL_KEY;
+          }
+
+          public void processUniverse(Universe universe) {
+            throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Some error");
+          }
+        });
+    assertEquals(
+        INTERNAL_SERVER_ERROR,
+        assertPlatformException(() -> setGCInterval(newInterval, defaultUniverse.universeUUID))
+            .status());
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
   }
 }

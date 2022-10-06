@@ -1,0 +1,190 @@
+-- SETUP
+CREATE OR REPLACE FUNCTION do_explain(stmt text) RETURNS table(a text) AS
+$_$
+DECLARE
+    ret text;
+BEGIN
+    FOR ret IN EXECUTE format('EXPLAIN (FORMAT text) %s', stmt) LOOP
+        a := ret;
+        RETURN next ;
+    END LOOP;
+END;
+$_$
+LANGUAGE plpgsql;
+CREATE EXTENSION hypopg;
+CREATE TABLE hypo (id integer, val text);
+INSERT INTO hypo SELECT i, 'line ' || i
+FROM generate_series(1,100000) f(i);
+ANALYZE hypo;
+-- TESTS
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('SELECT 1;CREATE INDEX ON hypo(id); SELECT 2');
+WARNING:  hypopg: SQL order #1 is not a CREATE INDEX statement
+WARNING:  hypopg: SQL order #3 is not a CREATE INDEX statement
+ nb 
+----
+  1
+(1 row)
+
+SELECT schema_name, table_name, am_name FROM public.hypopg_list_indexes;
+ schema_name | table_name | am_name 
+-------------+------------+---------
+ public      | hypo       | btree
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo ORDER BY id') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Should not use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+-- Add predicate index
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WHERE id < 5');
+ nb 
+----
+  1
+(1 row)
+
+-- This specific index should be used
+WITH ind AS (
+    SELECT indexrelid, row_number() OVER (ORDER BY indexrelid) AS num
+    FROM public.hypopg()
+),
+regexp AS (
+    SELECT regexp_replace(e, '.*<(\d+)>.*', E'\\1', 'g') AS r
+    FROM do_explain('SELECT * FROM hypo WHERE id < 3') AS e
+)
+SELECT num
+FROM ind
+JOIN regexp ON ind.indexrelid::text = regexp.r;
+ num 
+-----
+   2
+(1 row)
+
+-- Specify fillfactor
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 10)');
+ nb 
+----
+  1
+(1 row)
+
+-- Specify an incorrect fillfactor
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 1)');
+ERROR:  value 1 out of bounds for option "fillfactor"
+DETAIL:  Valid values are between "10" and "100".
+-- Index size estimation
+SELECT hypopg_relation_size(indexrelid) = current_setting('block_size')::bigint AS one_block
+FROM hypopg()
+ORDER BY indexrelid;
+ one_block 
+-----------
+ f
+ t
+ f
+(3 rows)
+
+-- locally disable hypoopg
+SET hypopg.enabled to false;
+-- no hypothetical index should be used
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+-- locally re-enable hypoopg
+SET hypopg.enabled to true;
+-- hypothetical index should be used
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Remove one hypothetical index
+SELECT hypopg_drop_index(indexrelid) FROM hypopg() ORDER BY indexrelid LIMIT 1;
+ hypopg_drop_index 
+-------------------
+ t
+(1 row)
+
+-- Remove all the hypothetical indexes
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
+(1 row)
+
+-- index on expression
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo (md5(val))');
+ nb 
+----
+  1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE md5(val) = md5(''line 1'')') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Deparse an index DDL, with almost every possible pathcode
+SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, id desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');
+                                                                                     hypopg_get_indexdef                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX ON public.hypo USING btree (id DESC, id DESC, id DESC NULLS LAST, ((md5(val))::bpchar) bpchar_pattern_ops) WITH (fillfactor = 10) WHERE ((id < 1000) AND ((id + (1 % 2)) = 3))
+(1 row)
+
+-- Make sure the old Oid generator still works.  Test it while keeping existing
+-- entries, as both should be able to coexist.
+SET hypopg.use_real_oids = on;
+-- Should not use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id);');
+ nb 
+----
+  1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+

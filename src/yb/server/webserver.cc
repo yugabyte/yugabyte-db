@@ -702,7 +702,7 @@ void Webserver::Impl::BootstrapPageHeader(stringstream* output) {
                 << "<a href='" << handler.first << "'>"
                 << "<div><i class='" << handler.second->icon() << "'aria-hidden='true'></i></div>"
                 << handler.second->alias()
-                << "</a></li>" << "\n";
+                << "</a></li>\n";
     }
   }
   (*output) << NAVIGATION_BAR_SUFFIX;
@@ -731,7 +731,7 @@ void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
     *output << footer_html_;
     *output << "</div></footer>";
   }
-  *output << "</body></html>";
+  *output << "</body></html>\n";
 }
 
 int Webserver::Impl::EnterWorkerThreadCallbackStatic() {

@@ -8,6 +8,7 @@ import sys
 import uuid
 import warnings
 import logging
+import json
 from ybops.utils.ssh import SSHClient
 
 warnings.filterwarnings("ignore")
@@ -18,8 +19,8 @@ ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
 
 def add_k8s_subparser(subparsers, command, parent):
     k8s_parser = subparsers.add_parser(command, help='is k8s universe', parents=[parent])
-    k8s_parser.add_argument('--pod_fqdn', type=str, help='k8s pod FQDN', required=True)
-    k8s_parser.add_argument('--kubeconfig', type=str, help='k8s kubeconfig', required=True)
+    k8s_parser.add_argument('--k8s_config', type=str, help='k8s configuration of a pod',
+                            required=True)
     return k8s_parser
 
 
@@ -264,6 +265,9 @@ def main():
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
     elif args.node_type != 'ssh':
+        args.k8s_config = json.loads(args.k8s_config)
+        if args.k8s_config is None:
+            sys.exit("Failed to load k8s configs")
         client = KubernetesClient(args)
 
     try:

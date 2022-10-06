@@ -145,6 +145,7 @@ using master::TSInfoPB;
 namespace {
 
 static constexpr const char* kRpcHostPortHeading = "RPC Host/Port";
+static constexpr const char* kBroadcastHeading = "Broadcast Host/Port";
 static constexpr const char* kDBTypePrefixUnknown = "unknown";
 static constexpr const char* kDBTypePrefixCql = "ycql";
 static constexpr const char* kDBTypePrefixYsql = "ysql";
@@ -306,10 +307,12 @@ class TableNameResolver::Impl {
  public:
   struct TableIdTag;
   struct TableNameTag;
-  using Values = std::vector<client::YBTableName>;
 
-  Impl(std::vector<YBTableName> tables, vector<master::NamespaceIdentifierPB> namespaces)
-      : current_namespace_(nullptr) {
+  Impl(
+      TableNameResolver::Values* values,
+      std::vector<YBTableName>&& tables,
+      vector<master::NamespaceIdentifierPB>&& namespaces)
+      : current_namespace_(nullptr), values_(values) {
     std::move(tables.begin(), tables.end(), std::inserter(tables_, tables_.end()));
     std::move(namespaces.begin(), namespaces.end(), std::inserter(namespaces_, namespaces_.end()));
   }
@@ -322,16 +325,7 @@ class TableNameResolver::Impl {
     return result;
   }
 
-  Values& values() {
-    return values_;
-  }
-
-  master::NamespaceIdentifierPB last_namespace() {
-    if (!current_namespace_) {
-      return master::NamespaceIdentifierPB();
-    }
-    return *current_namespace_;
-  }
+  const master::NamespaceIdentifierPB* last_namespace() const { return current_namespace_; }
 
  private:
   Result<bool> FeedImpl(const std::string& str) {
@@ -405,7 +399,7 @@ class TableNameResolver::Impl {
 
   void AppendTable(const YBTableName& table) {
     current_namespace_ = nullptr;
-    values_.push_back(table);
+    values_->push_back(table);
   }
 
   using TableContainer = boost::multi_index_container<YBTableName,
@@ -433,13 +427,14 @@ class TableNameResolver::Impl {
   TableContainer tables_;
   std::set<master::NamespaceIdentifierPB, NamespaceComparator> namespaces_;
   const master::NamespaceIdentifierPB* current_namespace_;
-  Values values_;
+  TableNameResolver::Values* values_;
 };
 
-TableNameResolver::TableNameResolver(std::vector<client::YBTableName> tables,
-                                     std::vector<master::NamespaceIdentifierPB> namespaces)
-    : impl_(new Impl(std::move(tables), std::move(namespaces))) {
-}
+TableNameResolver::TableNameResolver(
+    std::vector<client::YBTableName>* container,
+    std::vector<client::YBTableName>&& tables,
+    std::vector<master::NamespaceIdentifierPB>&& namespaces)
+    : impl_(new Impl(container, std::move(tables), std::move(namespaces))) {}
 
 TableNameResolver::TableNameResolver(TableNameResolver&&) = default;
 
@@ -449,11 +444,7 @@ Result<bool> TableNameResolver::Feed(const std::string& value) {
   return impl_->Feed(value);
 }
 
-std::vector<client::YBTableName>& TableNameResolver::values() {
-  return impl_->values();
-}
-
-master::NamespaceIdentifierPB TableNameResolver::last_namespace() {
+const master::NamespaceIdentifierPB* TableNameResolver::last_namespace() const {
   return impl_->last_namespace();
 }
 
@@ -1125,6 +1116,7 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
         << RightPadToWidth("SST uncomp size", kLongColWidth) << kSpaceSep
         << RightPadToWidth("SST #files", kLongColWidth) << kSpaceSep
         << RightPadToWidth("Memory", kSmallColWidth) << kSpaceSep
+        << kBroadcastHeading << kSpaceSep
         << endl;
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     if (exclude_dead && server.has_alive() && !server.alive()) {
@@ -1153,6 +1145,7 @@ Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
          << RightPadToWidth(server.metrics().num_sst_files(), kLongColWidth) << kSpaceSep
          << RightPadToWidth(HumanizeBytes(server.metrics().total_ram_usage()), kSmallColWidth)
          << kSpaceSep
+         << FormatFirstHostPort(server.registration().common().broadcast_addresses())
          << endl;
   }
 
@@ -1173,7 +1166,7 @@ Status ClusterAdminClient::ListAllMasters() {
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
         << RightPadToWidth("State", kSmallColWidth) << kColumnSep
-        << "Role" << endl;
+        << "Role" << kColumnSep << RightPadToWidth(kBroadcastHeading, kHostPortColWidth) << endl;
 
   for (const auto& master : lresp.masters()) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
@@ -1187,7 +1180,10 @@ Status ClusterAdminClient::ListAllMasters() {
                                 PBEnumToString(master.error().code()) : "ALIVE"),
                               kSmallColWidth)
             << kColumnSep;
-      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << endl;
+      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << kColumnSep;
+      cout << RightPadToWidth(
+        master_reg ? FormatFirstHostPort(master_reg->broadcast_addresses()) : "UNKNOWN",
+        kHostPortColWidth) << endl;
   }
 
   return Status::OK();
@@ -1992,7 +1988,7 @@ Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
   return result;
 }
 
-Status ClusterAdminClient::UpgradeYsql() {
+Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
   {
     master::IsInitDbDoneRequestPB req;
     auto res = InvokeRpc(
@@ -2036,6 +2032,7 @@ Status ClusterAdminClient::UpgradeYsql() {
   TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
 
   UpgradeYsqlRequestPB req;
+  req.set_use_single_connection(use_single_connection);
   const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
                                      ts_admin_proxy, req);
   if (!resp_result.ok()) {
@@ -2143,6 +2140,10 @@ Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& tabl
   return yb_client_->CreateTransactionsStatusTable(table_name);
 }
 
+Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
+  return yb_client_->AddTransactionStatusTablet(table_id);
+}
+
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
@@ -2177,9 +2178,10 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
   return const_cast<const ClusterAdminClient::NamespaceMap&>(namespace_map_);
 }
 
-Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver() {
-  return TableNameResolver(VERIFY_RESULT(yb_client_->ListTables()),
-                           VERIFY_RESULT(yb_client_->ListNamespaces()));
+Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver(
+    TableNameResolver::Values* tables) {
+  return TableNameResolver(
+      tables, VERIFY_RESULT(yb_client_->ListTables()), VERIFY_RESULT(yb_client_->ListNamespaces()));
 }
 
 string RightPadToUuidWidth(const string &s) {

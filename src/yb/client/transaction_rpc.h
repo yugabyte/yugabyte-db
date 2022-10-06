@@ -38,7 +38,9 @@ class HybridTime;
     ((GetTransactionStatus, WITHOUT_REQUEST)) \
     ((GetTransactionStatusAtParticipant, WITHOUT_REQUEST)) \
     ((AbortTransaction, WITHOUT_REQUEST)) \
-    ((UpdateTransactionStatusLocation, WITHOUT_REQUEST))
+    ((UpdateTransactionStatusLocation, WITHOUT_REQUEST)) \
+    ((UpdateTransactionWaitingForStatus, WITHOUT_REQUEST)) \
+    ((ProbeTransactionDeadlock, WITH_REQUEST))
 
 #define TRANSACTION_RPC_NAME(entry) BOOST_PP_TUPLE_ELEM(2, 0, entry)
 

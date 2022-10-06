@@ -48,7 +48,7 @@ CentOS 7 is the recommended Linux distribution for development and production pl
 
 ## Install necessary packages
 
-First, install [Homebrew](https://brew.sh/), if you do not already have it. Homebrew will be used to install the other required packages.
+First, install [Homebrew](https://brew.sh/), if you do not already have it. Homebrew is used to install the other required packages.
 
 ```sh
 /usr/bin/ruby -e "$(
@@ -68,6 +68,19 @@ YugabyteDB build scripts rely on Bash 4. Make sure that `which bash` outputs `/u
 
 {{< /note >}}
 
+### Java
+
+YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
+
+* Java Development Kit (JDK) 1.8. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/). Homebrew users on macOS can install using `brew install openjdk`.
+* [Apache Maven](https://maven.apache.org/) 3.3 or later.
+
+Also make sure Maven's `bin` directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). For example, if you've installed Maven into `~/tools/apache-maven-3.6.3`:
+
+```sh
+export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
+```
+
 ## Build the code
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, run the following:
@@ -77,30 +90,12 @@ cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
 
-The command above builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
+The command builds the release configuration, puts the C++ binaries in `build/release-clang-dynamic-ninja`, and creates the `build/latest` symlink to that directory.
 
-{{< tip title="Tip" >}}
-
-You can find the binaries you just built in `build/latest` directory.
-
-{{< /tip >}}
-
-## Build Java code
-
-YugabyteDB core is written in C++, but the repository contains Java code needed to run sample applications. To build the Java part, you need:
-
-* JDK 8
-* [Apache Maven](https://maven.apache.org/).
-
-Also make sure Maven's `bin` directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
-
-```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
-```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
+You can find the binaries you just built in the `build/latest` directory.
 
 ## Build release package
+
 You can build a release package by executing:
 
 ```shell

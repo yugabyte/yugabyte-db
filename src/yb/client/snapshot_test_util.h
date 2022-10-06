@@ -95,6 +95,10 @@ class SnapshotTestUtil {
       const TableHandle& table, YQLDatabase db_type, const std::string& db_name,
       WaitSnapshot wait_snapshot, MonoDelta interval = kSnapshotInterval,
       MonoDelta retention = kSnapshotRetention);
+  Result<SnapshotScheduleId> CreateSchedule(
+      const YBTablePtr table, YQLDatabase db_type, const std::string& db_name,
+      WaitSnapshot wait_snapshot, MonoDelta interval = kSnapshotInterval,
+      MonoDelta retention = kSnapshotRetention);
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil());
 

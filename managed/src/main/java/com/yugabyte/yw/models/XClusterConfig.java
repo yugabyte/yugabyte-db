@@ -7,6 +7,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.ImmutableBiMap;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import io.ebean.Finder;
@@ -34,11 +36,21 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonTypes;
+import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
 @Entity
 @ApiModel(description = "xcluster config object")
 public class XClusterConfig extends Model {
+
+  public static final BiMap<TableType, CommonTypes.TableType>
+      XClusterConfigTableTypeCommonTypesTableTypeBiMap =
+          ImmutableBiMap.of(
+              TableType.YSQL,
+              CommonTypes.TableType.PGSQL_TABLE_TYPE,
+              TableType.YCQL,
+              CommonTypes.TableType.YQL_TABLE_TYPE);
 
   private static final Finder<UUID, XClusterConfig> find =
       new Finder<UUID, XClusterConfig>(XClusterConfig.class) {};
@@ -61,18 +73,17 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Target Universe UUID")
   public UUID targetUniverseUUID;
 
-  @Column(name = "status")
   @ApiModelProperty(
       value = "Status",
-      allowableValues = "Init, Bootstrapping, Running, Updating, Paused, Failed")
+      allowableValues = "Initialized, Running, Updating, DeletedUniverse, DeletionFailed, Failed")
   public XClusterConfigStatusType status;
 
   public enum XClusterConfigStatusType {
-    Init("Init"),
+    Initialized("Initialized"),
     Running("Running"),
     Updating("Updating"),
     DeletedUniverse("DeletedUniverse"),
-    Deleted("Deleted"),
+    DeletionFailed("DeletionFailed"),
     Failed("Failed");
 
     private final String status;
@@ -87,6 +98,21 @@ public class XClusterConfig extends Model {
       return this.status;
     }
   }
+
+  public enum TableType {
+    UNKNOWN,
+    YSQL,
+    YCQL;
+
+    @Override
+    @DbEnumValue
+    public String toString() {
+      return super.toString();
+    }
+  }
+
+  @ApiModelProperty(value = "tableType", allowableValues = "UNKNOWN, YSQL, YCQL")
+  public TableType tableType;
 
   @ApiModelProperty(value = "Whether this xCluster replication config is paused")
   public boolean paused;
@@ -122,6 +148,8 @@ public class XClusterConfig extends Model {
         + this.status
         + ",paused="
         + this.paused
+        + ",tableType="
+        + this.tableType
         + ")";
   }
 
@@ -131,6 +159,44 @@ public class XClusterConfig extends Model {
         .stream()
         .filter(tableConfig -> tableConfig.tableId.equals(tableId))
         .findAny();
+  }
+
+  @JsonIgnore
+  public CommonTypes.TableType getTableTypeAsCommonType() {
+    if (tableType.equals(TableType.UNKNOWN)) {
+      throw new RuntimeException(
+          "Table type is UNKNOWN, and cannot be mapped to CommonTypes.TableType");
+    }
+    return XClusterConfigTableTypeCommonTypesTableTypeBiMap.get(tableType);
+  }
+
+  @JsonIgnore
+  public CommonTypes.TableType setTableType(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    if (!this.tableType.equals(TableType.UNKNOWN)) {
+      log.warn("tableType for {} is already set; skip setting it", this);
+      return getTableTypeAsCommonType();
+    }
+    CommonTypes.TableType typeAsCommonType = tableInfoList.get(0).getTableType();
+    // All tables have the same type.
+    if (!tableInfoList
+        .stream()
+        .allMatch(tableInfo -> tableInfo.getTableType().equals(typeAsCommonType))) {
+      throw new IllegalArgumentException(
+          "At least one table has a different type from others. "
+              + "All tables in an xCluster config must have the same type. Please create separate "
+              + "xCluster configs for different table types.");
+    }
+    if (!XClusterConfigTableTypeCommonTypesTableTypeBiMap.containsValue(typeAsCommonType)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Only %s supported as CommonTypes.TableType for xCluster replication; got %s",
+              XClusterConfigTableTypeCommonTypesTableTypeBiMap.values(), typeAsCommonType));
+    }
+    this.tableType =
+        XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse().get(typeAsCommonType);
+    update();
+    return typeAsCommonType;
   }
 
   public XClusterTableConfig getTableById(String tableId) {
@@ -173,12 +239,16 @@ public class XClusterConfig extends Model {
   }
 
   @JsonIgnore
-  public Set<String> getTableIdsWithReplicationSetup() {
+  public Set<String> getTableIdsWithReplicationSetup(boolean done) {
     return this.tables
         .stream()
-        .filter(table -> table.replicationSetupDone)
+        .filter(table -> table.replicationSetupDone == done)
         .map(table -> table.tableId)
         .collect(Collectors.toSet());
+  }
+
+  public Set<String> getTableIdsWithReplicationSetup() {
+    return getTableIdsWithReplicationSetup(true /* done */);
   }
 
   public void setTables(Set<String> tableIds) {
@@ -216,6 +286,32 @@ public class XClusterConfig extends Model {
           addTableConfig(tableConfig);
         });
     update();
+  }
+
+  @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
+    Set<String> nonExistingTableIds =
+        tableIds
+            .stream()
+            .filter(tableId -> !this.getTables().contains(tableId))
+            .collect(Collectors.toSet());
+    Set<String> nonExistingTableIdsNeedBootstrap = null;
+    if (tableIdsNeedBootstrap != null) {
+      nonExistingTableIdsNeedBootstrap =
+          tableIdsNeedBootstrap
+              .stream()
+              .filter(nonExistingTableIds::contains)
+              .collect(Collectors.toSet());
+    }
+    addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+  }
+
+  @Transactional
+  public void addTablesIfNotExist(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds, null /* tableIdsNeedBootstrap */);
   }
 
   @Transactional
@@ -331,6 +427,16 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void setIndexTableForTables(Collection<String> tableIds, boolean indexTable) {
+    ensureTableIdsExist(tableIds);
+    this.tables
+        .stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .forEach(tableConfig -> tableConfig.indexTable = indexTable);
+    update();
+  }
+
+  @Transactional
   public void setBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
     this.tables
@@ -388,6 +494,14 @@ public class XClusterConfig extends Model {
     }
   }
 
+  public void reset() {
+    this.status = XClusterConfigStatusType.Initialized;
+    this.paused = false;
+    this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
+    this.tableType = TableType.UNKNOWN;
+    this.update();
+  }
+
   @Transactional
   public static XClusterConfig create(
       String name,
@@ -403,6 +517,7 @@ public class XClusterConfig extends Model {
     xClusterConfig.paused = false;
     xClusterConfig.createTime = new Date();
     xClusterConfig.modifyTime = new Date();
+    xClusterConfig.tableType = TableType.UNKNOWN;
     xClusterConfig.setReplicationGroupName();
     xClusterConfig.save();
     return xClusterConfig;
@@ -411,7 +526,8 @@ public class XClusterConfig extends Model {
   @Transactional
   public static XClusterConfig create(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    return create(name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Init);
+    return create(
+        name, sourceUniverseUUID, targetUniverseUUID, XClusterConfigStatusType.Initialized);
   }
 
   @Transactional
@@ -541,6 +657,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Set<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdsInXClusterConfig = getTables();
     tableIds.forEach(
         tableId -> {
@@ -554,6 +673,9 @@ public class XClusterConfig extends Model {
   }
 
   public void ensureTableIdsExist(Collection<String> tableIds) {
+    if (tableIds.isEmpty()) {
+      return;
+    }
     Set<String> tableIdSet = new HashSet<>(tableIds);
     // Ensure there is no duplicate in the tableIds collection.
     if (tableIds.size() != tableIdSet.size()) {

@@ -5,9 +5,9 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +63,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           ycqlQueryExecutor.validateAdminPassword(universe, dbData);
           log.info("YCQL password is already updated");
         } catch (PlatformServiceException e) {
-          if (e.getResult().status() == Http.Status.UNAUTHORIZED) {
+          if (e.getHttpStatus() == Http.Status.UNAUTHORIZED) {
             log.info("Updating YCQL password");
             ycqlQueryExecutor.updateAdminPassword(universe, dbData);
           } else {
@@ -82,7 +82,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           ysqlQueryExecutor.validateAdminPassword(universe, dbData);
           log.info("YSQL password is already updated");
         } catch (PlatformServiceException e) {
-          if (e.getResult().status() == Http.Status.UNAUTHORIZED) {
+          if (e.getHttpStatus() == Http.Status.UNAUTHORIZED) {
             log.info("Updating YSQL password");
             ysqlQueryExecutor.updateAdminPassword(universe, dbData);
           } else {

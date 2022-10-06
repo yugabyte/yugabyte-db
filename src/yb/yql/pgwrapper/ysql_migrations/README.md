@@ -12,7 +12,7 @@ Migration scripts should be designed idempotent - i.e. in such a way so that re-
 multiple times would be okay.
 
 The script will be run in the scope of a single transaction, unless you explicitly start a migration
-with `BEGIN`. Unfortunately, according to Yugabyte limitations, DDLs are executed in their own
+with `BEGIN`. Unfortunately, according to YugabyteDB limitations, DDLs are executed in their own
 separate transactions. This should be handled as follows:
 
 * When combining DDLs and DMLs, start with DDLs and follow them with DMLs.
@@ -96,7 +96,7 @@ You should use modifications other than `CREATE TABLE`, `CREATE VIEW`, `CREATE E
 and `UPDATE` with great care, as they weren't tested to work as expected. Also, don't forget to
 explicitly specify `pg_catalog` schema everywhere where it's appropriate.
 
-Note that Yugabyte doesn't support nested transactions, and DDL are performed outside of the current
+Note that YugabyteDB doesn't support nested transactions, and DDL are performed outside of the current
 transaction. If you want to mix and match DDLs and DML statements, you have to separate them and use
 explicit `BEGIN`/`COMMIT`s - this will disable automatic transaction wrapping by libpq and will make
 DDL changes visible to DML.

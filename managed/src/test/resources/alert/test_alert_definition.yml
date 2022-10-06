@@ -6,6 +6,8 @@ groups:
         expr: query > 1
         for: 0s
         labels:
+          foo: bar
+          one: two
           configuration_uuid: <configuration_uuid>
           configuration_type: UNIVERSE
           definition_uuid: <definition_uuid>

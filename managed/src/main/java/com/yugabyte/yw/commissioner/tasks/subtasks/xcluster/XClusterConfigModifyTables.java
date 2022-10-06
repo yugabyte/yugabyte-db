@@ -166,10 +166,34 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         // Sync the state for the tables to be removed.
         CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
             getClusterConfig(client, targetUniverse.universeUUID);
-        Set<String> tableIdsToRemoveWithReplication =
+        boolean replicationGroupExists =
             syncReplicationSetUpStateForTables(clusterConfig, xClusterConfig, tableIdsToRemove);
+        if (!replicationGroupExists) {
+          throw new RuntimeException(
+              String.format(
+                  "No replication group found with name (%s) in universe (%s) cluster config",
+                  xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID));
+        }
+        Set<String> tableIdsToRemoveWithReplication =
+            xClusterConfig
+                .getTableIdsWithReplicationSetup()
+                .stream()
+                .filter(tableIdsToRemove::contains)
+                .collect(Collectors.toSet());
         log.debug(
             "Table IDs to remove with replication set up: {}", tableIdsToRemoveWithReplication);
+
+        // Removing all tables from a replication config is not allowed.
+        if (tableIdsToRemoveWithReplication.size()
+                + xClusterConfig.getTableIdsWithReplicationSetup(false /* done */).size()
+            == xClusterConfig.getTables().size()) {
+          throw new RuntimeException(
+              String.format(
+                  "The operation to remove tables from replication config will remove all the "
+                      + "tables in replication which is not allowed; if you want to delete "
+                      + "replication for all of them, please delete the replication config: %s",
+                  xClusterConfig));
+        }
 
         // Remove the tables from the replication group if there is any.
         if (!tableIdsToRemoveWithReplication.isEmpty()) {
@@ -177,11 +201,10 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
               client.alterUniverseReplicationRemoveTables(
                   xClusterConfig.getReplicationGroupName(), tableIdsToRemoveWithReplication);
           if (resp.hasError()) {
-            String errMsg =
+            throw new RuntimeException(
                 String.format(
                     "Failed to remove tables from XClusterConfig(%s): %s",
-                    xClusterConfig.uuid, resp.errorMessage());
-            throw new RuntimeException(errMsg);
+                    xClusterConfig.uuid, resp.errorMessage()));
           }
 
           if (HighAvailabilityConfig.get().isPresent()) {
@@ -198,49 +221,5 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
     }
 
     log.info("Completed {}", getName());
-  }
-
-  /**
-   * It synchronizes whether the replication is set up for each table in the Platform DB with what
-   * state it has in the target universe cluster config.
-   *
-   * @param config The cluster config of the target universe
-   * @param xClusterConfig The xClusterConfig object that {@code tableIds} belong to
-   * @param tableIds The IDs of the table to synchronize
-   * @return A subset of {@code tableIds} that the replication is set up for
-   */
-  private Set<String> syncReplicationSetUpStateForTables(
-      CatalogEntityInfo.SysClusterConfigEntryPB config,
-      XClusterConfig xClusterConfig,
-      Set<String> tableIds) {
-    CdcConsumer.ProducerEntryPB replicationGroup =
-        config
-            .getConsumerRegistry()
-            .getProducerMapMap()
-            .get(xClusterConfig.getReplicationGroupName());
-    if (replicationGroup == null) {
-      String errMsg =
-          String.format(
-              "No replication group found with name (%s) in universe (%s) cluster config",
-              xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID);
-      throw new RuntimeException(errMsg);
-    }
-
-    Set<String> tableIdsWithReplication =
-        replicationGroup
-            .getStreamMapMap()
-            .values()
-            .stream()
-            .map(CdcConsumer.StreamEntryPB::getProducerTableId)
-            .collect(Collectors.toSet());
-    log.debug("Table ids found in the target universe cluster config: {}", tableIdsWithReplication);
-    Map<Boolean, List<String>> tableIdsPartitionedByReplicationSetupDone =
-        tableIds.stream().collect(Collectors.partitioningBy(tableIdsWithReplication::contains));
-    xClusterConfig.setReplicationSetupDone(
-        tableIdsPartitionedByReplicationSetupDone.get(true), true /* replicationSetupDone */);
-    xClusterConfig.setReplicationSetupDone(
-        tableIdsPartitionedByReplicationSetupDone.get(false), false /* replicationSetupDone */);
-
-    return new HashSet<>(tableIdsPartitionedByReplicationSetupDone.get(true));
   }
 }

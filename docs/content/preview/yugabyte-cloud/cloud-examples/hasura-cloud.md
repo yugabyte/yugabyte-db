@@ -51,31 +51,31 @@ To create a project in Hasura Cloud:
 
 1. From the Hasura Cloud Dashboard, under **Projects**, click **New Project**.
 
-1. Select **Free Tier**, leave the default region, and enter a name for your project.
-
-    <br/><br/>
+1. Select **Free Tier**.
 
     ![Create Hasura project](/images/deploy/yugabyte-cloud/hasura-create-project.png)
 
-    <br/><br/>
+1. Click **Create Free Project**.
 
-1. Click **Create project**.
+    The project details are displayed. These include the **GraphQL API** endpoint URL and **Admin Secret**, which are used for connecting applications.
 
-    The project details are displayed. These include the GpaphQL API endpoint URL and Admin Secret, which is used for connecting applications.
+1. Copy the endpoint URL and **Admin Secret**. You will need these to connect applications.
 
 1. Note the **Hasura Cloud IP**. You will need to add this to your cluster IP allow list in YugabyteDB Managed.
 
 ## Add the Hasura Cloud project to your Yugabyte cluster IP allow list
 
-YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to your clusters IP allow list.
+YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to the  cluster IP allow list.
 
-1. In YugabyteDB Managed, on the **Settings** tab for your cluster, under **IP Allow lists**, click **Add List**.
+1. In YugabyteDB Managed, select your cluster, click **Actions**, and choose **Edit IP Allow List**.
 
 1. Click **Create New List and Add to Cluster**.
 
 1. Enter a name for the allow list (such as the name of your Hasura project) and the project IP address, and click **Save**.
 
 ## Connect the cluster to your Hasura Cloud project
+
+To connect your cluster:
 
 1. In the Hasura Cloud Dashboard, click **Launch Console**.
 
@@ -97,9 +97,10 @@ YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in I
     postgresql://admin:qwerty@1234%20.cloud.yugabyte.com:5433/yugabyte?ssl=true&sslmode=require
     ```
 
-    \
     ![Connect Hasura database](/images/yb-cloud/hasura-cloud-connect-database.png)
 
 1. Click **Connect Database** and wait for confirmation that the database has connected.
 
-1. Click **View Database**. The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).
+1. Click **View Database**.
+
+The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).

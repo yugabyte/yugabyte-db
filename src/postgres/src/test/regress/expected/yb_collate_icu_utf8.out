@@ -42,7 +42,7 @@ CREATE TABLE collate_test_like (
 ERROR:  LIKE clause not supported yet
 LINE 2:     LIKE collate_test1
             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 \d collate_test_like
 CREATE TABLE collate_test2 (
     a int,
@@ -1018,7 +1018,7 @@ DROP COLLATION test0, test_schema.test11, test5; -- fail in YB
 ERROR:  DROP multiple objects not supported yet
 LINE 1: DROP COLLATION test0, test_schema.test11, test5;
                        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/880. Click '+' on the description to raise its priority
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/880. React with thumbs up to raise its priority
 DROP COLLATION test0;
 DROP COLLATION test_schema.test11;
 DROP COLLATION test5;

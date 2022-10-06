@@ -6,8 +6,8 @@ aliases:
 menu:
   preview:
     identifier: apache-spark-4-sql
-    parent: integrations
-    weight: 572
+    parent: apache-spark
+    weight: 579
 type: docs
 ---
 

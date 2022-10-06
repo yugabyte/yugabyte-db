@@ -597,6 +597,25 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Name:   metric,
                 Values: metricValues,
             })
+        case "TOTAL_LIVE_NODES":
+            rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList, hostToUuid,
+                startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            reducedMetric := reduceGranularityForAllNodes(startTime, endTime, rawMetricValues,
+                GRANULARITY_NUM_INTERVALS, true)
+            metricValues := calculateCombinedMetric(reducedMetric, false)
+            // In cases where there is no data, set to 0
+            for i, metric := range metricValues {
+                if len(metric) < 2 {
+                    metricValues[i] = append(metricValues[i], 0)
+                }
+            }
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name: metric,
+                Values: metricValues,
+            })
         }
     }
     return ctx.JSON(http.StatusOK, metricResponse)
@@ -613,14 +632,27 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
     if tabletServersResponse.Error != nil {
         return ctx.String(http.StatusInternalServerError, tabletServersResponse.Error.Error())
     }
+    nodeList := helpers.GetNodesList(tabletServersResponse)
+    versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
+    for _, nodeHost := range nodeList {
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoFutures[nodeHost] = versionInfoFuture
+        go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
+    }
     for _, obj := range tabletServersResponse.Tablets {
         for hostport, nodeData := range obj {
             host, _, err := net.SplitHostPort(hostport)
             // If we can split hostport, just use host as name.
             // Otherwise, use hostport as name.
+            // However, we can only get version information if we can get the host
             hostName := hostport
+            versionNumber := ""
             if err == nil {
                 hostName = host
+                versionInfo := <-versionInfoFutures[hostName]
+                if versionInfo.Error == nil {
+                    versionNumber = versionInfo.VersionInfo.VersionNumber
+                }
             }
             totalSstFileSizeBytes := int64(nodeData.TotalSstFileSizeBytes)
             uncompressedSstFileSizeBytes :=
@@ -640,9 +672,11 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                     WriteOpsPerSec:               nodeData.WriteOpsPerSec,
                 },
                 CloudInfo: models.NodeDataCloudInfo{
+                    Cloud:  nodeData.Cloud,
                     Region: nodeData.Region,
                     Zone:   nodeData.Zone,
                 },
+                SoftwareVersion: versionNumber,
             })
         }
     }

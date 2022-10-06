@@ -55,6 +55,9 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
                  "Whether GetChanges should indicate that it has more records for safe time "
                  "calculation.");
 
+DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
+                 "Whether GetChanges should skip processing meta operations ");
+
 namespace yb {
 namespace cdc {
 
@@ -137,10 +140,15 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
       records->emplace_back(msg->hybrid_time(), index);
       return true;  // Don't need to process any records after a SPLIT_OP.
     }
-
+    case consensus::OperationType::CHANGE_METADATA_OP: {
+      if (FLAGS_TEST_xcluster_skip_meta_ops) {
+        FALLTHROUGH_INTENDED;
+      } else {
+        records->emplace_back(msg->hybrid_time(), index);
+        return true;  // Stop processing records after a CHANGE_METADATA_OP, wait for the Consumer.
+      }
+    }
     case consensus::OperationType::CHANGE_CONFIG_OP:
-      FALLTHROUGH_INTENDED;
-    case consensus::OperationType::CHANGE_METADATA_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::HISTORY_CUTOFF_OP:
       FALLTHROUGH_INTENDED;
@@ -149,6 +157,8 @@ Result<bool> SetCommittedRecordIndexForReplicateMsg(
     case consensus::OperationType::SNAPSHOT_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::TRUNCATE_OP:
+      FALLTHROUGH_INTENDED;
+    case consensus::OperationType::CHANGE_AUTO_FLAGS_CONFIG_OP:
       FALLTHROUGH_INTENDED;
     case consensus::OperationType::UNKNOWN_OP:
       return false;
@@ -416,13 +426,30 @@ Status PopulateSplitOpRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
   return Status::OK();
 }
 
-Result<HybridTime> GetSafeTimeForTarget(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                        HybridTime ht_of_last_returned_message,
-                                        HaveMoreMessages have_more_messages) {
-  if (ht_of_last_returned_message != HybridTime::kInvalid && have_more_messages) {
+Status PopulateChangeMetadataRecord(const ReplicateMsgPtr& msg, CDCRecordPB* record) {
+  SCHECK(msg->has_change_metadata_request(), InvalidArgument,
+      Format("METADATA message requires change_metadata_request: $0", msg->ShortDebugString()));
+  record->set_operation(CDCRecordPB::CHANGE_METADATA);
+  record->set_time(msg->hybrid_time());
+  record->mutable_change_metadata_request()->CopyFrom(msg->change_metadata_request());
+  return Status::OK();
+}
+
+HybridTime GetSafeTimeForTarget(
+    const HybridTime leader_safe_time,
+    HybridTime ht_of_last_returned_message,
+    HaveMoreMessages have_more_messages) {
+  if (have_more_messages) {
     return ht_of_last_returned_message;
   }
-  return tablet_peer->LeaderSafeTime();
+
+  if (ht_of_last_returned_message.is_valid()) {
+    if (!leader_safe_time.is_valid() || ht_of_last_returned_message > leader_safe_time) {
+      return ht_of_last_returned_message;
+    }
+  }
+
+  return leader_safe_time;
 }
 
 Status GetChangesForXCluster(const std::string& stream_id,
@@ -454,17 +481,28 @@ Status GetChangesForXCluster(const std::string& stream_id,
   if (!replicate_intents) {
     auto txn_participant = tablet_peer->tablet()->transaction_participant();
     if (txn_participant) {
-      request_scope = RequestScope(txn_participant);
+      request_scope = VERIFY_RESULT(RequestScope::Create(txn_participant));
     }
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
   }
+  auto leader_safe_time = tablet_peer->LeaderSafeTime();
+  if (!leader_safe_time.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 10)
+        << "Could not compute safe time: " << leader_safe_time.status();
+    leader_safe_time = HybridTime::kInvalid;
+  }
+
   ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
       read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
-  auto first_unreplicated_index = messages.size();
-  bool exit_early = false;
+  HaveMoreMessages have_more_messages =
+      PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ? HaveMoreMessages::kTrue
+                                                                    : read_ops.have_more_messages;
+  auto ht_of_last_returned_message = HybridTime::kInvalid;
+
   for (size_t i = 0; i < messages.size(); ++i) {
+    bool exit_early = false;
     const auto msg = messages[i];
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
@@ -479,6 +517,13 @@ Status GetChangesForXCluster(const std::string& stream_id,
           txn_state->set_transaction_id(msg->transaction_state().transaction_id());
           txn_state->set_commit_hybrid_time(msg->transaction_state().commit_hybrid_time());
           tablet_peer->tablet()->metadata()->partition()->ToPB(record->mutable_partition());
+        } else if (msg->transaction_state().status() == TransactionStatus::COMMITTED) {
+          auto* record = resp->add_records();
+          record->set_operation(CDCRecordPB::COMMITTED);
+          record->set_time(msg->hybrid_time());
+          auto* txn_state = record->mutable_transaction_state();
+          txn_state->set_transaction_id(msg->transaction_state().transaction_id());
+          *txn_state->mutable_tablets() = msg->transaction_state().tablets();
         }
         break;
       case consensus::OperationType::WRITE_OP:
@@ -504,37 +549,43 @@ Status GetChangesForXCluster(const std::string& stream_id,
             } else {
               checkpoint = from_op_id;
             }
-            first_unreplicated_index = i;
             exit_early = true;
           }
         }
         break;
-
+      case consensus::OperationType::CHANGE_METADATA_OP:
+        if (FLAGS_TEST_xcluster_skip_meta_ops) {
+          break;
+        }
+        SCHECK(msg->has_change_metadata_request(), InvalidArgument,
+               Format("Change Meta op message requires payload $0", msg->ShortDebugString()));
+        if (msg->change_metadata_request().tablet_id() == tablet_id) {
+          RETURN_NOT_OK(PopulateChangeMetadataRecord(msg, resp->add_records()));
+          // This should be the last record we send to the Consumer.
+          checkpoint = OpId::FromPB(msg->id());
+          exit_early = true;
+        }
+        break;
       default:
         // Nothing to do for other operation types.
         break;
     }
     if (exit_early) {
+      have_more_messages = HaveMoreMessages::kTrue;
       break;
     }
+
+    ht_of_last_returned_message = HybridTime(msg->hybrid_time());
   }
 
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
   }
-  auto ht_of_last_returned_message = first_unreplicated_index == 0 ?
-      HybridTime::kInvalid : HybridTime(messages[first_unreplicated_index - 1]->hybrid_time());
-  auto have_more_messages =
-      exit_early || PREDICT_FALSE(FLAGS_TEST_xcluster_simulate_have_more_records) ?
-          HaveMoreMessages::kTrue : read_ops.have_more_messages;
-  auto safe_time_result = GetSafeTimeForTarget(
-      tablet_peer, ht_of_last_returned_message, have_more_messages);
-  if (safe_time_result.ok()) {
-    resp->set_safe_hybrid_time((*safe_time_result).ToUint64());
-  } else {
-    YB_LOG_EVERY_N_SECS(WARNING, 10) <<
-        "Could not compute safe time: " << safe_time_result.status();
-  }
+
+  auto safe_time =
+      GetSafeTimeForTarget(leader_safe_time.get(), ht_of_last_returned_message, have_more_messages);
+  resp->set_safe_hybrid_time(safe_time.ToUint64());
+
   *msgs_holder = consensus::ReplicateMsgsHolder(
       nullptr, std::move(messages), std::move(consumption));
   (checkpoint.index > 0 ? checkpoint : from_op_id).ToPB(

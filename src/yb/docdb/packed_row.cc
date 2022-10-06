@@ -40,6 +40,12 @@ bool IsNull(const Slice& slice) {
   return slice.empty();
 }
 
+using ValuePair = std::pair<Slice, Slice>;
+
+bool IsNull(const ValuePair& value) {
+  return value.first.empty() && value.second.empty();
+}
+
 void PackValue(const QLValuePB& value, ValueBuffer* result) {
   AppendEncodedValue(value, result);
 }
@@ -54,6 +60,16 @@ void PackValue(const Slice& value, ValueBuffer* result) {
 
 size_t PackedValueSize(const Slice& value) {
   return value.size();
+}
+
+size_t PackedValueSize(const ValuePair& value) {
+  return value.first.size() + value.second.size();
+}
+
+void PackValue(const ValuePair& value, ValueBuffer* result) {
+  result->Reserve(result->size() + PackedValueSize(value));
+  result->Append(value.first);
+  result->Append(value.second);
 }
 
 size_t PackedSizeLimit(size_t value) {
@@ -108,6 +124,11 @@ Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
 
 Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
   return DoAddValue(column_id, value, tail_size);
+}
+
+Result<bool> RowPacker::AddValue(
+    ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size) {
+  return DoAddValue(column_id, ValuePair(value_prefix, value_suffix), tail_size);
 }
 
 template <class Value>

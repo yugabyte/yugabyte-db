@@ -212,13 +212,13 @@ public class TableManagerTest extends FakeDBApplication {
   private List<String> getExpectedBackupTableCommand(
       BackupTableParams backupTableParams, String storageType, boolean isDelete) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
-    Map<String, String> podFQDNToConfig = new HashMap<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       for (Cluster cluster : testUniverse.getUniverseDetails().clusters) {
-        podFQDNToConfig.putAll(
+        podAddrToConfig.putAll(
             PlacementInfoUtil.getKubernetesConfigPerPod(
                 pi, testUniverse.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
@@ -267,7 +267,7 @@ public class TableManagerTest extends FakeDBApplication {
     }
     if (testProvider.code.equals("kubernetes")) {
       cmd.add("--k8s_config");
-      cmd.add(Json.stringify(Json.toJson(podFQDNToConfig)));
+      cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       cmd.add("--ssh_port");
       cmd.add(accessKey.getKeyInfo().sshPort.toString());
@@ -298,7 +298,9 @@ public class TableManagerTest extends FakeDBApplication {
               : testProvider.getYbHome() + VM_CERT_DIR);
     }
     cmd.add(backupTableParams.actionType.name().toLowerCase());
-    if (backupTableParams.enableVerboseLogs) {
+    boolean verboseLogsEnabled =
+        mockruntimeConfigFactory.forUniverse(testUniverse).getBoolean("yb.backup.log.verbose");
+    if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       cmd.add("--verbose");
     }
     return cmd;

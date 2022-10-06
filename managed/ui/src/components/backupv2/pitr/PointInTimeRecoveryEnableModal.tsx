@@ -1,0 +1,189 @@
+/*
+ * Created on Tue Jun 07 2022
+ *
+ * Copyright 2021 YugaByte, Inc. and Contributors
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
+ * You may not use this file except in compliance with the License. You may obtain a copy of the License at
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
+
+import React, { FC } from 'react';
+import * as Yup from 'yup';
+import { Field, FormikProps } from 'formik';
+import { toast } from 'react-toastify';
+import { uniqBy } from 'lodash';
+import { Col, Row } from 'react-bootstrap';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { YBModalForm } from '../../common/forms';
+import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
+import { YBLoading } from '../../common/indicators';
+import { BACKUP_API_TYPES } from '../common/IBackup';
+import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { createPITRConfig } from '../common/PitrAPI';
+import './PointInTimeRecoveryEnableModal.scss';
+
+interface PointInTimeRecoveryEnableModalProps {
+  universeUUID: string;
+  visible: boolean;
+  onHide: () => void;
+}
+
+const PITR_SUPPORTED_APIS = [
+  TABLE_TYPE_MAP[BACKUP_API_TYPES.YSQL],
+  TABLE_TYPE_MAP[BACKUP_API_TYPES.YCQL]
+];
+
+interface Form_Values {
+  api_type: Record<string, string>;
+  database: string | null;
+  retention_interval: number;
+}
+
+const initialValues: Form_Values = {
+  api_type: { value: BACKUP_API_TYPES.YSQL, label: TABLE_TYPE_MAP[BACKUP_API_TYPES.YSQL] },
+  database: null,
+  retention_interval: 1
+};
+
+export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalProps> = ({
+  universeUUID,
+  visible,
+  onHide
+}) => {
+  const queryClient = useQueryClient();
+
+  const { data: tablesInUniverse, isLoading: isTableListLoading } = useQuery(
+    [universeUUID, 'tables'],
+    () => fetchTablesInUniverse(universeUUID!),
+    {
+      enabled: visible
+    }
+  );
+
+  const createPITR = useMutation((values: any) => createPITRConfig(universeUUID, values), {
+    onSuccess: (_, variables) => {
+      toast.success(`Point-in-time recovery enabled successfully for ${variables.keyspaceName}`);
+      queryClient.invalidateQueries(['scheduled_sanpshots']);
+      onHide();
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error ?? 'An Error occurred');
+      onHide();
+    }
+  });
+
+  const handleSubmit = async (
+    values: any,
+    { setSubmitting }: { setSubmitting: any; setFieldError: any }
+  ) => {
+    setSubmitting(false);
+    const payload = {
+      tableType: values.api_type.value,
+      keyspaceName: values.database.value,
+      retentionPeriodInSeconds: Number(values.retention_interval) * 24 * 60 * 60
+    };
+    createPITR.mutateAsync(payload);
+  };
+
+  const validationSchema = Yup.object().shape({
+    database: Yup.object().nullable().required('Select a database to proceed')
+  });
+
+  if (!visible) return null;
+
+  if (isTableListLoading) return <YBLoading />;
+
+  return (
+    <YBModalForm
+      title="Enable Point-in-time Recovery"
+      visible={visible}
+      onHide={onHide}
+      submitLabel="Enable"
+      onFormSubmit={handleSubmit}
+      showCancelButton
+      dialogClassName="pitr-enable-modal"
+      initialValues={initialValues}
+      validationSchema={validationSchema}
+      render={({ values, setFieldValue, errors }: FormikProps<Form_Values>) => {
+        const tablesByAPI = tablesInUniverse?.data.filter(
+          (t: any) => t.tableType === values['api_type'].value
+        );
+
+        const uniqueKeyspaces = uniqBy(tablesByAPI, 'keySpace').map((t: any) => {
+          return {
+            label: t.keySpace,
+            value: t.keySpace
+          };
+        });
+
+        return (
+          <>
+            <Row>
+              <Col lg={2} className="no-padding">
+                <Field
+                  name="api_type"
+                  component={YBFormSelect}
+                  label="Select API type"
+                  options={PITR_SUPPORTED_APIS.map((t) => {
+                    return { value: BACKUP_API_TYPES[t], label: t };
+                  })}
+                  onChange={(_: any, val: any) => {
+                    setFieldValue('api_type', val);
+                    setFieldValue('database', null);
+                  }}
+                  components={{
+                    IndicatorSeparator: null
+                  }}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col lg={6} className="no-padding">
+                <Field
+                  name="database"
+                  component={YBFormSelect}
+                  label="Select the Database you want to enable point-in-time recovery for"
+                  options={uniqueKeyspaces}
+                  onChange={(_: any, val: any) => {
+                    setFieldValue('database', val);
+                  }}
+                  components={{
+                    IndicatorSeparator: null
+                  }}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <div>Select the retention period</div>
+              <Col lg={12} className="no-padding">
+                <Row className="duration-options">
+                  <Col lg={1} className="no-padding">
+                    <Field
+                      name="retention_interval"
+                      component={YBNumericInput}
+                      input={{
+                        onChange: (val: number) => setFieldValue('retention_interval', val),
+                        value: values['retention_interval']
+                      }}
+                      minVal={1}
+                    />
+                  </Col>
+                  <Col lg={3}>Day(s)</Col>
+                </Row>
+              </Col>
+              {errors['retention_interval'] && (
+                <Col lg={12} className="no-padding help-block standard-error">
+                  {errors['retention_interval']}
+                </Col>
+              )}
+            </Row>
+            <div className="notice">
+              <b>Note:</b> the default backup interval is 24 hours
+            </div>
+          </>
+        );
+      }}
+    />
+  );
+};

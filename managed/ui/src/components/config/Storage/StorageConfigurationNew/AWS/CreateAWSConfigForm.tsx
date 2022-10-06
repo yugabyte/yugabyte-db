@@ -40,7 +40,7 @@ interface CreateAWSConfigFormProps {
 type configs = {
   region: OptionTypeBase;
   host_base: OptionTypeBase[];
-  bucket: OptionTypeBase[];
+  bucket: OptionTypeBase;
   folder: string;
 };
 
@@ -55,7 +55,7 @@ interface InitialValuesTypes {
 }
 
 const MUTLI_REGION_DEFAULT_VALUES = {
-  bucket: [],
+  bucket: { value: null, label: null },
   host_base: [],
   folder: '',
   region: { value: null, label: null }
@@ -200,7 +200,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
 
           return {
             region: { value: r.REGION, label: r.REGION },
-            bucket: [{ value: bucketAndFolder.bucket, label: bucketAndFolder.bucket }],
+            bucket: { value: bucketAndFolder.bucket, label: bucketAndFolder.bucket },
             folder: bucketAndFolder.folder,
             host_base: r.AWS_HOST_BASE ? [{ value: r.AWS_HOST_BASE, label: r.AWS_HOST_BASE }] : []
           };
@@ -221,7 +221,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
               ]
             : [],
           region: [{ value: null, label: null }],
-          bucket: [{ label: bucketAndFolder.bucket, value: bucketAndFolder.bucket }],
+          bucket: { label: bucketAndFolder.bucket, value: bucketAndFolder.bucket },
           folder: bucketAndFolder.folder ?? ''
         }
       ];
@@ -271,7 +271,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       payload['data']['REGION_LOCATIONS'] = values['multi_regions'].map((r: configs) => {
         const regionValues = {
           REGION: r.region.value,
-          LOCATION: `${S3_PREFIX}${r.bucket[0].value}/${r.folder ?? ''}`
+          LOCATION: `${S3_PREFIX}${r.bucket.value}/${r.folder ?? ''}`
         };
         if (r.host_base?.[0]?.value) {
           regionValues['AWS_HOST_BASE'] = r.host_base[0].value;
@@ -284,7 +284,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       : 0;
 
     payload['data']['BACKUP_LOCATION'] = `${S3_PREFIX}${
-      values['multi_regions'][default_bucket_index]?.bucket[0]?.value
+      values['multi_regions'][default_bucket_index]?.bucket?.value
     }/${values['multi_regions'][default_bucket_index].folder ?? ''}`;
 
     if (isEditMode) {
@@ -306,11 +306,12 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
             region: Yup.object().shape({
               value: Yup.string().required('Region is required').typeError('Region is required')
             }),
-            bucket: Yup.array(
-              Yup.object().shape({
-                value: Yup.string().required('Bucket is required').nullable(false)
-              })
-            ).required('Bucket is required'),
+            bucket:
+              Yup.object()
+                .shape({
+                  value: Yup.string().required('Bucket is required').typeError('Bucket is required')
+                })
+                .typeError('Bucket is required'),
             folder: Yup.string()
           })
         )
@@ -326,11 +327,12 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
         is: (enabled) => !enabled,
         then: Yup.array(
           Yup.object().shape({
-            bucket: Yup.array(
-              Yup.object().shape({
-                value: Yup.string().required('Bucket is required').nullable(false)
-              })
-            ).required('Bucket is required'),
+            bucket:
+              Yup.object()
+                .shape({
+                  value: Yup.string().required('Bucket is required').nullable()
+                })
+                .typeError('Bucket is required'),
             folder: Yup.string()
           })
         )
@@ -345,7 +347,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       type="CREATE"
       onSubmit={onSubmit}
       components={({ setFieldValue, values, errors }) => {
-        const updateFieldValue = (fieldName: string, val: any) => {
+        const updateFieldValue = (fieldName: keyof InitialValuesTypes, val: any) => {
           setFieldValue(fieldName, val);
         };
 
@@ -412,7 +414,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                   />
                 </Col>
               </Row>
-              <div className="divider" />
+              <div className="form-divider" />
               <Row className="config-provider-row">
                 <Col lg={2} className="form-item-custom-label">
                   <div>Multi Region Support</div>
@@ -422,6 +424,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                     name="MULTI_REGION_AWS_ENABLED"
                     component={YBFormToggle}
                     isReadOnly={isEditMode}
+                    subLabel="Specify a bucket for each region"
                   />
                 </Col>
               </Row>
@@ -462,7 +465,7 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
                           isEditMode || !isCredentialsFilled,
                           isBucketListLoading
                         )}
-                        <span className="field-error">{errors?.multi_regions?.[0].bucket}</span>
+                        {/* <span className="field-error">{errors?.multi_regions?.[0].bucket?.value}</span> */}
                       </div>
                       <div className="divider lean" />
                       {getFolder(
@@ -566,11 +569,11 @@ const MultiRegionControls = (
           updateFieldVal(`multi_regions.${index}.region`, val);
         }}
       />
-      <span className="field-error">{errors?.region?.value}</span>
+      {/* <span className="field-error">{errors?.region?.value}</span> */}
     </div>
 
     {getHostBaseField(index, field?.host_base, hostBaseList, updateFieldVal, isDisabled, true)}
-    <div className="form-divider" />
+    <div className="divider" />
     <div>
       {getBucket(
         index,
@@ -580,7 +583,6 @@ const MultiRegionControls = (
         isDisabled,
         isBucketListLoading
       )}
-      <span className="field-error">{errors?.bucket}</span>
     </div>
     <div className="divider lean" />
     <div className="folder">
@@ -613,13 +615,14 @@ const getBucket = (
     name={`multi_regions.${index}.bucket`}
     component={YBLabelledMultiEntryInput}
     additionalProps={{
-      className: 'field-bucket'
+      className: 'field-bucket',
+      isMulti: false
     }}
     className="field-bucket"
     defaultOptions={bucketList}
     label="Bucket"
     placeholder="Select Bucket"
-    onChange={(val: OptionTypeBase[]) => {
+    onChange={(val: OptionTypeBase) => {
       updateFieldVal(`multi_regions.${index}.bucket`, val);
     }}
     isLoading={isBucketListLoading}

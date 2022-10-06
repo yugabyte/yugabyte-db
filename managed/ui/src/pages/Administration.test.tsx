@@ -8,6 +8,7 @@ import { render } from '../test-utils';
 
 jest.mock('../components/alerts/AlertConfiguration/AlertConfigurationContainer.js');
 jest.mock('../components/users/Users/UsersListContainer.js');
+// jest.mock('react-router');
 
 const setup = (storeState = {}) => {
   const history = createMemoryHistory();

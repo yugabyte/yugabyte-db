@@ -4411,7 +4411,7 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (needNewCacheFile && IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && (needNewCacheFile || YBCIsInitDbModeEnvVarSet()))
 	{
 		YBPreloadRelCache();
 	}
@@ -4662,7 +4662,7 @@ RelationCacheInitializePhase3(void)
 	 * During initdb also preload catalog caches (not just relation cache) as
 	 * they will be used heavily.
 	 */
-	if (IsYugaByteEnabled() && YBIsPreparingTemplates())
+	if (IsYugaByteEnabled() && YBCIsInitDbModeEnvVarSet())
 		YBPreloadCatalogCaches();
 }
 

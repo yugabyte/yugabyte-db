@@ -145,7 +145,7 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
 
       output.emplace_back(
           flag[kNameMember].GetString(), flag_class,
-          flag[kRuntimeMember].GetBool() ? RuntimeAutoFlag::kTrue : RuntimeAutoFlag::kFalse);
+          RuntimeAutoFlag(flag[kRuntimeMember].GetBool()));
     }
   }
 

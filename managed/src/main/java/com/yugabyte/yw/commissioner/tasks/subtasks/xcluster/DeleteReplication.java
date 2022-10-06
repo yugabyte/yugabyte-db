@@ -15,6 +15,7 @@ import org.yb.WireProtocol;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.MasterErrorException;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
 public class DeleteReplication extends XClusterConfigTaskBase {
@@ -50,6 +51,8 @@ public class DeleteReplication extends XClusterConfigTaskBase {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     if (xClusterConfig.targetUniverseUUID == null) {
+      xClusterConfig.setReplicationSetupDone(
+          xClusterConfig.getTables(), false /* replicationSetupDone */);
       log.info("Skipped {}: the target universe is destroyed", getName());
       return;
     }
@@ -62,9 +65,15 @@ public class DeleteReplication extends XClusterConfigTaskBase {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
-      // Catch the `Universe replication NOT_FOUND` exception, and because it already does not
-      // exist, the exception will be ignored.
-      try {
+      // Sync the state for the tables in the xCluster config.
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+          getClusterConfig(client, targetUniverse.universeUUID);
+      boolean replicationGroupExists =
+          syncReplicationSetUpStateForTables(
+              clusterConfig, xClusterConfig, xClusterConfig.getTables());
+
+      // If replication group exists, delete it from the cluster config of the target universe.
+      if (replicationGroupExists) {
         DeleteUniverseReplicationResponse resp =
             client.deleteUniverseReplication(
                 xClusterConfig.getReplicationGroupName(), ignoreErrors);
@@ -81,22 +90,26 @@ public class DeleteReplication extends XClusterConfigTaskBase {
                   "Failed to delete replication for XClusterConfig(%s): %s",
                   xClusterConfig.uuid, resp.errorMessage()));
         }
-      } catch (MasterErrorException e) {
-        // If it is not `Universe replication NOT_FOUND` exception, rethrow the exception.
-        if (!e.getMessage().contains("NOT_FOUND[code 1]: Universe replication")) {
-          throw new RuntimeException(e);
-        }
+
+        // After the RPC call, the corresponding stream ids on the source universe will be deleted
+        // as well.
+        xClusterConfig
+            .getTablesById(xClusterConfig.getTableIdsWithReplicationSetup())
+            .forEach(
+                tableConfig -> {
+                  tableConfig.streamId = null;
+                });
+        xClusterConfig.update();
+      } else {
         log.warn(
-            "XCluster config {} does not exist on the target universe, NOT_FOUND exception "
-                + "occurred in deleteUniverseReplication RPC call is ignored: {}",
-            xClusterConfig.uuid,
-            e.getMessage());
+            "XCluster config {} does not exist on the target universe, RPC to delete the "
+                + "replication group will not be called",
+            xClusterConfig.uuid);
       }
 
-      // Set status of the xCluster config to `Deleted` if required.
-      if (!isInMustDeleteStatus(xClusterConfig)) {
-        xClusterConfig.setStatus(XClusterConfig.XClusterConfigStatusType.Deleted);
-      }
+      // Update DB to reflect this change.
+      xClusterConfig.setReplicationSetupDone(
+          xClusterConfig.getTables(), false /* replicationSetupDone */);
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();

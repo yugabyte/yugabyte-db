@@ -111,6 +111,13 @@ class TableHandle {
   // E.g. Add <EXISTS> under "... AND <EXISTS>".
   void AddCondition(QLConditionPB *const condition, const QLOperator op) const;
 
+  QLMapValuePB* AddMapColumnValue(
+      QLWriteRequestPB* req, const int32_t& column_id, const string& entry_key,
+      const string& entry_value) const;
+
+  void AddMapEntryToColumn(
+      QLMapValuePB* map_value_pb, const string& entry_key, const string& entry_value) const;
+
   void AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const;
 
   const YBTablePtr& table() const {

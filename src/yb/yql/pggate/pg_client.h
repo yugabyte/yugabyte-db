@@ -37,6 +37,7 @@
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -101,6 +102,8 @@ class PgClient {
 
   Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
+  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
+
   Status InsertSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
@@ -129,6 +132,8 @@ class PgClient {
       const PerformCallback& callback);
 
   Result<bool> CheckIfPitrActive();
+
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

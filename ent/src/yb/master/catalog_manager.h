@@ -80,6 +80,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       EditSnapshotScheduleResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status RestoreSnapshotSchedule(
+      const RestoreSnapshotScheduleRequestPB* req,
+      RestoreSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                               ChangeEncryptionInfoResponsePB* resp) override;
 
@@ -201,6 +206,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                UpdateConsumerOnProducerSplitResponsePB* resp,
                                                rpc::RpcContext* rpc);
 
+  // On a producer side metadata change, halts replication until Consumer applies the Meta change.
+  Status UpdateConsumerOnProducerMetadata(const UpdateConsumerOnProducerMetadataRequestPB* req,
+                                          UpdateConsumerOnProducerMetadataResponsePB* resp,
+                                          rpc::RpcContext* rpc);
+  //
   // Wait for replication to drain on CDC streams.
   typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
@@ -212,6 +222,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status SetupNSUniverseReplication(const SetupNSUniverseReplicationRequestPB* req,
                                     SetupNSUniverseReplicationResponsePB* resp,
                                     rpc::RpcContext* rpc);
+
+  // Returns the replication status.
+  Status GetReplicationStatus(const GetReplicationStatusRequestPB* req,
+                                      GetReplicationStatusResponsePB* resp,
+                                      rpc::RpcContext* rpc);
 
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
@@ -247,7 +262,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
+  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
+
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
+
+  Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
+      const override;
+
+  Status ResumeCdcAfterNewSchema(const TableInfo& table_info) override;
 
   tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
@@ -263,11 +285,22 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void EnableTabletSplitting(const std::string& feature) override;
 
+  Status RunXClusterBgTasks();
+
   void StartXClusterParentTabletDeletionTaskIfStopped();
 
   void ScheduleXClusterParentTabletDeletionTask();
 
   void ScheduleXClusterNSReplicationAddTableTask();
+  Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
+
+  void AddPendingBackFill(const TableId& id) override {
+    std::lock_guard<MutexType> lock(backfill_mutex_);
+    pending_backfill_tables_.emplace(id);
+  }
+
+  Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) override EXCLUDES(mutex_);
 
  private:
   friend class SnapshotLoader;
@@ -426,6 +459,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   int64_t LeaderTerm() override;
 
+  Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info) override;
+
   Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override;
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
@@ -527,7 +562,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
-  bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTableCdcConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
@@ -603,6 +638,36 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status DoProcessXClusterParentTabletDeletion();
 
   void LoadXClusterRetainedParentTabletsSet() REQUIRES(mutex_);
+
+  void PopulateUniverseReplicationStatus(
+    const UniverseReplicationInfo& universe,
+    GetReplicationStatusResponsePB* resp) const REQUIRES_SHARED(mutex_);
+
+  Status StoreReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      EXCLUDES(mutex_);
+
+  Status StoreReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      REQUIRES_SHARED(mutex_);
+
+  Status ClearReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
+
+  Status ClearReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;

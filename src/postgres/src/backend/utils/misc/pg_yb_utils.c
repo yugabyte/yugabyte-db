@@ -61,6 +61,7 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_type.h"
@@ -89,6 +90,14 @@
 #endif
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+
+YbTserverCatalogInfo yb_tserver_catalog_info = NULL;
+
+/*
+ * Shared memory array db_catalog_versions_ index of the slot allocated for the
+ * MyDatabaseId.
+ */
+int yb_my_database_id_shm_index = -1;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
@@ -609,15 +618,18 @@ YBIsPgLockingEnabled()
 	return !YBTransactionsEnabled();
 }
 
-static bool yb_preparing_templates = false;
+static bool yb_connected_to_template_db = false;
+
 void
-YBSetPreparingTemplates() {
-	yb_preparing_templates = true;
+YbSetConnectedToTemplateDb()
+{
+	yb_connected_to_template_db = true;
 }
 
 bool
-YBIsPreparingTemplates() {
-	return yb_preparing_templates;
+YbIsConnectedToTemplateDb()
+{
+	return yb_connected_to_template_db;
 }
 
 Oid
@@ -914,8 +926,8 @@ YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level)
 		ereport(signal_level,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s", msg),
-				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-						 "Click '+' on the description to raise its priority", issue_no)));
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+						 "React with thumbs up to raise its priority", issue_no)));
 	}
 	else
 	{
@@ -1376,12 +1388,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 
 		case T_AlterTableStmt:
 		{
-			AlterTableStmt *stmt = castNode(AlterTableStmt, parsetree);
-			ListCell *lcmd = stmt->cmds->head;
-			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-			if (cmd->subtype == AT_AddColumn || cmd->subtype == AT_DropColumn) {
-				*is_breaking_catalog_change = false;
-			}
+			*is_breaking_catalog_change = false;
 			break;
 		}
 
@@ -1732,6 +1739,15 @@ YbGetTableProperties(Relation rel)
 {
 	HandleYBStatus(YbGetTablePropertiesCommon(rel));
 	return rel->yb_table_properties;
+}
+
+YbTableProperties
+YbGetTablePropertiesById(Oid relid)
+{
+	Relation relation     = RelationIdGetRelation(relid);
+	HandleYBStatus(YbGetTablePropertiesCommon(relation));
+	RelationClose(relation);
+	return relation->yb_table_properties;
 }
 
 YbTableProperties
@@ -2718,6 +2734,10 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case PartitionedRelationId: switch_fallthrough(); // pg_partitioned_table
 		case ProcedureRelationId:   break;                // pg_proc
 
+		case YBCatalogVersionRelationId:                  // pg_yb_catalog_version
+			db_id = YbMasterCatalogVersionTableDBOid();
+			break;
+
 		default:
 		{
 			ereport(FATAL,
@@ -2729,10 +2749,37 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id);
 }
 
+void YbTryRegisterCatalogVersionTableForPrefetching()
+{
+	if (YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
+		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
+}
+
 bool YBCIsRegionLocal(Relation rel) {
 	double cost = 0.0;
 	return IsNormalProcessingMode() &&
 			!IsSystemRelation(rel) &&
 			get_yb_tablespace_cost(rel->rd_rel->reltablespace, &cost) &&
 			cost <= yb_interzone_cost;
+}
+
+bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource source) {
+  int newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  if (strcmp(*newval, "tablet") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_TABLET;
+  } else if (strcmp(*newval, "database") == 0) {
+    newConsistency = XCLUSTER_CONSISTENCY_DATABASE;
+  } else {
+    return false;
+  }
+
+  *extra = malloc(sizeof(int));
+  if (!*extra) return false;
+  *((int*)*extra) = newConsistency;
+
+  return true;
+}
+
+void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
+  yb_xcluster_consistency_level = *((int*)extra);
 }

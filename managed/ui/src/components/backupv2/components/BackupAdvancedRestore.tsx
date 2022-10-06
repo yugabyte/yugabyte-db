@@ -437,6 +437,7 @@ function RestoreForm({
               component={YBFormSelect}
               label={'KMS Configuration (Optional)'}
               options={kmsConfigList}
+              isClearable
             />
           </Col>
         </Row>

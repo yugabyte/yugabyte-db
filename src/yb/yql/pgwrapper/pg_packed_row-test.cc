@@ -103,6 +103,62 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 6);
 }
 
+// Alter 2 tables and performs compactions concurrently. See #13846 for details.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
+  FLAGS_timestamp_history_retention_interval_sec = 1 * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != 2; ++i) {
+    thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
+      auto table_name = Format("test_$0", i);
+      auto conn = ASSERT_RESULT(Connect());
+      std::vector<int> columns;
+      int column_idx = 0;
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name));
+      while (!stop.load()) {
+        if (columns.empty() || RandomUniformBool()) {
+          auto status = conn.ExecuteFormat(
+              "ALTER TABLE $0 ADD COLUMN column_$1 INT", table_name, column_idx);
+          if (status.ok()) {
+            LOG(INFO) << table_name << ", added column: " << column_idx;
+            columns.push_back(column_idx);
+          } else {
+            LOG(INFO) << table_name << ", failed to add column " << column_idx << ": " << status;
+            auto msg = status.ToString();
+            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
+                        msg.find("Snapshot too old") != std::string::npos ||
+                        msg.find("Network error") != std::string::npos) << msg;
+          }
+          ++column_idx;
+        } else {
+          size_t idx = RandomUniformInt<size_t>(0, columns.size() - 1);
+          auto status = conn.ExecuteFormat(
+              "ALTER TABLE $0 DROP COLUMN column_$1", table_name, columns[idx]);
+          if (status.ok() || status.ToString().find("The specified column does not exist")) {
+            LOG(INFO) << table_name << ", dropped column: " << columns[idx] << ", " << status;
+            columns[idx] = columns.back();
+            columns.pop_back();
+          } else {
+            LOG(INFO) << table_name << ", failed to drop column " << columns[idx] << ": " << status;
+            ASSERT_STR_CONTAINS(status.ToString(), "Try again");
+          }
+        }
+      }
+    });
+  }
+
+  auto deadline = CoarseMonoClock::now() + 90s;
+
+  while (!thread_holder.stop_flag().load() && CoarseMonoClock::now() < deadline) {
+    cluster_->mini_master()->tablet_peer()->tablet()->TEST_ForceRocksDBCompact();
+  }
+
+  thread_holder.Stop();
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateReturning)) {
   // Test UPDATE...RETURNING with packed row enabled.
 

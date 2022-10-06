@@ -90,6 +90,9 @@ class RowPacker {
   // tail_size is added to proposed encoded size, to make decision whether encoded value fits
   // into bounds or not.
   Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
+  // Add value consisting of 2 parts - value_prefix+value_suffix.
+  Result<bool> AddValue(
+      ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
 
   Result<Slice> Complete();

@@ -32,9 +32,10 @@
 
 #include "yb/consensus/consensus_queue.h"
 
+#include <shared_mutex>
+
 #include <algorithm>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
 #include <utility>
 
@@ -393,25 +394,37 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id, const Status& sta
   if (context_) {
     fake_response.set_num_sst_files(context_->NumSSTFiles());
   }
+  int64_t evict_index = -1;
+  bool is_leader;
   {
     LockGuard lock(queue_lock_);
+    if (PREDICT_FALSE(queue_state_.state != State::kQueueOpen)) {
+      LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Queue is closed, disregarding appender finished. "
+          "OpId: " << id;
+      return;
+    }
 
     // TODO This ugly fix is required because we unlock queue_lock_ while doing AppendOperations.
     // So LocalPeerAppendFinished could be invoked before rest of AppendOperations.
     if (queue_state_.last_appended.index < id.index) {
       queue_state_.last_appended = id;
     }
-    fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index);
-    queue_state_.last_applied_op_id.ToPB(fake_response.mutable_status()->mutable_last_applied());
 
-    if (queue_state_.mode != Mode::LEADER) {
-      log_cache_.EvictThroughOp(id.index);
-
+    is_leader = (queue_state_.mode == Mode::LEADER);
+    if (is_leader) {  // fake_response is only used in Leader case
+      fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_op_id.index);
+      queue_state_.last_applied_op_id.ToPB(fake_response.mutable_status()->mutable_last_applied());
+    } else {
+      evict_index = id.index;
       UpdateMetrics();
-      return;
     }
   }
-  ResponseFromPeer(local_peer_uuid_, fake_response);
+
+  if (is_leader) {
+    ResponseFromPeer(local_peer_uuid_, fake_response);
+  } else {
+    log_cache_.EvictThroughOp(evict_index);
+  }
 }
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
@@ -425,15 +438,15 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
-
     last_id = OpId::FromPB(msgs.back()->id());
+
+    LockGuard lock(queue_lock_);
 
     if (last_id.term > queue_state_.current_term) {
       queue_state_.current_term = last_id.term;
     }
   } else {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     last_id = queue_state_.last_appended;
   }
 
@@ -448,9 +461,11 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
       Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id)));
 
   if (!msgs.empty()) {
-    std::unique_lock<simple_spinlock> lock(queue_lock_);
-    queue_state_.last_appended = last_id;
-    UpdateMetrics();
+    {
+      LockGuard lock(queue_lock_);
+      queue_state_.last_appended = last_id;
+      UpdateMetrics();
+    }
   }
 
   return Status::OK();
@@ -482,6 +497,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     propagated_safe_time = VERIFY_RESULT(context_->PreparePeerRequest());
   }
 
+  int64 current_term;
+  RaftConfigPB active_config;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -580,24 +597,26 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (peer->member_type == PeerMemberType::VOTER) {
       is_voter = true;
     }
+    current_term = queue_state_.current_term;
+    active_config = *queue_state_.active_config;
   }
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
-    if (!is_voter || CountVoters(*queue_state_.active_config) > 2) {
+    if (!is_voter || CountVoters(active_config) > 2) {
       // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
       // want to revisit this later, we're just being cautious with this.
-      // We remove unconditionally any failed non-voter replica (PRE_VOTER, PRE_OBSERVER, OBSERVER).
+      // We remove unconditionally any failed non-voter replica (PRE_VOTER,PRE_OBSERVER,OBSERVER).
       string msg = Substitute("Leader has been unable to successfully communicate "
                               "with Peer $0 for more than $1 seconds ($2)",
                               uuid,
                               FLAGS_follower_unavailable_considered_failed_sec,
                               unreachable_time.ToString());
-      NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
+      NotifyObserversOfFailedFollower(uuid, current_term, msg);
     }
   }
 
   if (PREDICT_FALSE(*needs_remote_bootstrap)) {
-      YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30)
           << "Peer needs remote bootstrap: " << uuid;
     return Status::OK();
   }
@@ -621,7 +640,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         std::string msg = Format("The logs necessary to catch up peer $0 have been "
                                  "garbage collected. The follower will never be able "
                                  "to catch up ($1)", uuid, result.status());
-        NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
+        NotifyObserversOfFailedFollower(uuid, current_term, msg);
       }
       return result.status();
     }
@@ -681,13 +700,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
   if (PREDICT_FALSE(VLOG_IS_ON(2))) {
     if (request->ops_size() > 0) {
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Sending request with operations to Peer: " << uuid
+      VLOG_WITH_PREFIX(2) << "Sending request with operations to Peer: " << uuid
           << ". Size: " << request->ops_size()
           << ". From: " << request->ops(0).id().ShortDebugString() << ". To: "
           << request->ops(request->ops_size() - 1).id().ShortDebugString();
-      VLOG_WITH_PREFIX_UNLOCKED(3) << "Operations: " << yb::ToString(request->ops());
+      VLOG_WITH_PREFIX(3) << "Operations: " << yb::ToString(request->ops());
     } else {
-      VLOG_WITH_PREFIX_UNLOCKED(2)
+      VLOG_WITH_PREFIX(2)
           << "Sending " << (is_new ? "new " : "") << "status only request to Peer: " << uuid
           << ": " << request->ShortDebugString();
     }
@@ -714,13 +733,13 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
       // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
       // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
       // happen under normal circumstances.
-      LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
+      LOG_WITH_PREFIX(ERROR) << "Error trying to read ahead of the log "
                                       << "while preparing peer request: "
                                       << s.ToString() << ". Destination peer: "
                                       << peer_uuid;
       return s;
     } else {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
+      LOG_WITH_PREFIX(FATAL) << "Error reading the log while preparing peer request: "
                                       << s.ToString() << ". Destination peer: "
                                       << peer_uuid;
       return s;
@@ -735,6 +754,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   const yb::OpId& last_op_id,
   int64_t* repl_index,
   const CoarseTimePoint deadline) {
+
   // The batch of messages read from cache.
 
   int64_t to_index;
@@ -763,9 +783,11 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
-        "The logs from index $0 have been garbage collected and cannot be read ($1)",
-        after_op_index, result.status());
+    const std::string premature_gc_warning =
+      Format("The logs from index $0 have been garbage collected and cannot be read ($1)",
+             after_op_index, result.status());
+    LOG_WITH_PREFIX(INFO) << premature_gc_warning;
+    return STATUS(NotFound, premature_gc_warning);
   }
   if (result.ok()) {
     result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||
@@ -814,6 +836,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
   TrackedPeer* peer = nullptr;
   const TrackedPeer* rbs_source = nullptr;
+  int64_t current_term;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
@@ -839,6 +862,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                          peer->bootstrap_attempts_from_non_leader < 5
                      ? FindClosestPeerForBootstrap(peer)
                      : local_peer_;
+    current_term = queue_state_.current_term;
   }
 
   LOG(INFO) << "Remote bootstrapping peer " << uuid << " from closest peer " << rbs_source->uuid;
@@ -848,7 +872,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   req->set_tablet_id(tablet_id_);
   // can use leader's current term as the bootstrap request is served by the leader or any other
   // closest peer that is in the same term (when FLAGS_remote_bootstrap_from_leader_only is false).
-  req->set_caller_term(queue_state_.current_term);
+  req->set_caller_term(current_term);
   // populate req with the closest peer's info for remote bootstrapping the tracked peer
   req->set_bootstrap_source_peer_uuid(rbs_source->uuid);
   *req->mutable_bootstrap_source_private_addr() = {
@@ -1193,6 +1217,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   MajorityReplicatedData majority_replicated;
   Mode mode_copy;
   bool result = false;
+  int64_t evict_index = -1;
   {
     LockGuard scoped_lock(queue_lock_);
     DCHECK_NE(State::kQueueConstructed, queue_state_.state);
@@ -1364,7 +1389,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     UpdateAllReplicatedOpId(&queue_state_.all_replicated_op_id);
     UpdateAllAppliedOpId(&queue_state_.all_applied_op_id);
 
-    auto evict_index = GetCDCConsumerOpIdToEvict().index;
+    evict_index = GetCDCConsumerOpIdToEvict().index;
 
     int32_t lagging_follower_threshold = FLAGS_consensus_lagging_follower_threshold;
     if (lagging_follower_threshold > 0) {
@@ -1374,9 +1399,11 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       evict_index = std::min(evict_index, queue_state_.all_replicated_op_id.index);
     }
 
-    log_cache_.EvictThroughOp(evict_index);
-
     UpdateMetrics();
+  }
+
+  if (evict_index != -1) {
+    log_cache_.EvictThroughOp(evict_index);
   }
 
   if (mode_copy == Mode::LEADER) {
@@ -1424,10 +1451,10 @@ OpId PeerMessageQueue::TEST_GetLastAppliedOpId() const {
 
 void PeerMessageQueue::UpdateMetrics() {
   // Since operations have consecutive indices we can update the metrics based on simple index math.
-  metrics_.num_majority_done_ops->set_value(
-      queue_state_.committed_op_id.index - queue_state_.all_replicated_op_id.index);
-  metrics_.num_in_progress_ops->set_value(
-      queue_state_.last_appended.index - queue_state_.committed_op_id.index);
+  metrics_.num_majority_done_ops->set_value(queue_state_.committed_op_id.index
+          - queue_state_.all_replicated_op_id.index);
+  metrics_.num_in_progress_ops->set_value(queue_state_.last_appended.index
+          - queue_state_.committed_op_id.index);
 }
 
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
@@ -1523,7 +1550,7 @@ bool PeerMessageQueue::IsOpInLog(const yb::OpId& desired_op) const {
   if (PREDICT_TRUE(result.status().IsNotFound() || result.status().IsIncomplete())) {
     return false;
   }
-  LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error while reading the log: " << result.status();
+  LOG_WITH_PREFIX(FATAL) << "Error while reading the log: " << result.status();
   return false; // Unreachable; here to squelch GCC warning.
 }
 
@@ -1533,7 +1560,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
       Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
            Unretained(this),
            majority_replicated_data)),
-      LogPrefixUnlocked() + "Unable to notify RaftConsensus of "
+      LogPrefix() + "Unable to notify RaftConsensus of "
                            "majority replicated op change.");
 }
 
@@ -1553,7 +1580,7 @@ void PeerMessageQueue::NotifyObservers(const char* title, Func&& func) {
           func(observer);
         }
       }),
-      Format("$0Unable to notify observers for $1.", LogPrefixUnlocked(), title));
+      Format("$0Unable to notify observers for $1.", LogPrefix(), title));
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
@@ -1679,6 +1706,11 @@ string PeerMessageQueue::GetUpToDatePeer() const {
 
 PeerMessageQueue::~PeerMessageQueue() {
   Close();
+}
+
+string PeerMessageQueue::LogPrefix() const {
+  LockGuard lock(queue_lock_);
+  return LogPrefixUnlocked();
 }
 
 string PeerMessageQueue::LogPrefixUnlocked() const {

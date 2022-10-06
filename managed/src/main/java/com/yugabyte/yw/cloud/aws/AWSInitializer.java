@@ -529,8 +529,8 @@ public class AWSInitializer extends AbstractInitializer {
           productAttrs.get("memory").replaceAll("(?i) gib", "").replaceAll(",", "");
       Double memSizeGB = Double.parseDouble(memSizeStrGB);
 
-      Integer volumeCount;
-      Integer volumeSizeGB;
+      int volumeCount;
+      int volumeSizeGB;
       VolumeType volumeType;
       // Parse the local instance store details. Format of the raw data is one of the following:
       // 1 x 75 NVMe SSD
@@ -605,9 +605,9 @@ public class AWSInitializer extends AbstractInitializer {
       if (enableVerboseLogging) {
         instanceType = InstanceType.get(provider.uuid, instanceTypeCode);
         LOG.debug(
-            "Saving {}:{} ({} cores, {}GB) with details {}",
-            instanceType.getProviderUuid(),
-            instanceType.getInstanceTypeCode(),
+            "Saved {}:{} ({} cores, {}GB) with details {}",
+            provider.uuid,
+            instanceTypeCode,
             instanceType.numCores,
             instanceType.memSizeGB,
             Json.stringify(Json.toJson(details)));

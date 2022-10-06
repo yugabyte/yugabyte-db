@@ -20,16 +20,21 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.PlacementIndexes;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -67,6 +72,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -76,6 +82,8 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -136,7 +144,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
 
-      PlacementInfoUtil.selectMasters(null, nodes, replFactor);
+      selectMasters(null, nodes, replFactor);
       UniverseUpdater updater =
           universe -> {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -332,6 +340,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void setUp() {
     testData.add(new TestData(Common.CloudType.aws));
     testData.add(new TestData(onprem));
+    YBClient mockYbClient = Mockito.mock(YBClient.class);
+    when(mockService.getClient(Mockito.any(), Mockito.any())).thenReturn(mockYbClient);
+    when(mockYbClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromString("some").withDefaultPort(11));
   }
 
   @Test
@@ -1254,9 +1266,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     az2.updateConfig(config);
     az3.updateConfig(config);
     Map<UUID, String> expectedDomains = new HashMap<>();
-    expectedDomains.put(az1.uuid, "svc.test");
-    expectedDomains.put(az2.uuid, "svc.test");
-    expectedDomains.put(az3.uuid, "svc.test");
+    expectedDomains.put(az1.uuid, "test");
+    expectedDomains.put(az2.uuid, "test");
+    expectedDomains.put(az3.uuid, "test");
     assertEquals(expectedDomains, PlacementInfoUtil.getDomainPerAZ(pi));
   }
 
@@ -1500,7 +1512,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
 
-    PlacementInfoUtil.selectMasters(null, nodes, rf);
+    selectMasters(null, nodes, rf);
     int numMasters = 0;
     Set<String> regions = new HashSet<>();
     Set<String> zones = new HashSet<>();
@@ -1692,11 +1704,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1, az2.uuid, 1, az3.uuid, 1);
     String nodePrefix = "demo-universe";
+    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     // New naming style
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, true, podAddressTemplate);
     String masterAddressFormat =
         "%s-%s-yb-master-0.%1$s-%2$s-yb-masters.%1$s.svc.cluster.local:1234";
     String expectedMasterAddresses =
@@ -1710,7 +1723,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Old naming style
     masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false);
+            pi, azToNumMasters, nodePrefix, k8sProvider, 1234, false, podAddressTemplate);
     masterAddressFormat = "yb-master-0.yb-masters.%s-%s.svc.cluster.local:1234";
     expectedMasterAddresses =
         String.format(masterAddressFormat, nodePrefix, az1.code)
@@ -1732,10 +1745,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);
     Map<UUID, Integer> azToNumMasters = ImmutableMap.of(az1.uuid, 1);
+    String podAddressTemplate = "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
-            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
+            pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true, podAddressTemplate);
     assertEquals(
         "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
         masterAddresses);
@@ -1754,11 +1768,19 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
       NodeDetails node = ApiUtils.getDummyNodeDetails(idx);
       node.azUuid = az.uuid;
+      node.cloudInfo.kubernetesNamespace = "ns" + idx;
+      node.cloudInfo.kubernetesPodName = "pod" + idx;
       nodeDetailsSet.add(node);
       idx++;
     }
-    Map<String, String> expectedConfigPerPod =
-        ImmutableMap.of("10.0.0.1", "az-1", "10.0.0.2", "az-2", "10.0.0.3", "az-3");
+    Map<String, Map<String, String>> expectedConfigPerPod =
+        ImmutableMap.of(
+            "10.0.0.1",
+            ImmutableMap.of("podName", "pod1", "namespace", "ns1", "KUBECONFIG", "az-1"),
+            "10.0.0.2",
+            ImmutableMap.of("podName", "pod2", "namespace", "ns2", "KUBECONFIG", "az-2"),
+            "10.0.0.3",
+            ImmutableMap.of("podName", "pod3", "namespace", "ns3", "KUBECONFIG", "az-3"));
 
     assertEquals(
         expectedConfigPerPod, PlacementInfoUtil.getKubernetesConfigPerPod(pi, nodeDetailsSet));
@@ -1867,10 +1889,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 null));
       }
     }
-
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
     SelectMastersResult selection =
         PlacementInfoUtil.selectMasters(
-            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code, true);
+            null, nodes, defaultRegion == null ? null : defaultRegion.code, true, userIntent);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     List<NodeDetails> masters =
@@ -1960,11 +1983,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
 
     String defaultRegionCode = defaultRegion == null ? null : defaultRegion.code;
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
     String errorMessage =
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode, true);
+                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegionCode, true, userIntent);
                 })
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
@@ -2028,7 +2053,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
 
-    PlacementInfoUtil.selectMasters(null, nodes, rf);
+    selectMasters(null, nodes, rf);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     // Updating node with state ToBeAdded.
@@ -2154,7 +2179,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             6, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 1);
+    selectMasters("10.0.0.1", nodes, 1);
     PlacementInfoUtil.verifyMastersSelection(nodes, 1);
   }
 
@@ -2193,7 +2218,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         ApiUtils.getDummyNodeDetails(
             7, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
 
-    PlacementInfoUtil.selectMasters("10.0.0.1", nodes, 3);
+    selectMasters("10.0.0.1", nodes, 3);
     PlacementInfoUtil.verifyMastersSelection(nodes, 3);
 
     // Master-leader (host-n1) should be left as the leader, the second master
@@ -2923,5 +2948,170 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(11 + nodesToRemove, udtp.nodeDetailsSet.size());
     assertEquals(
         11 - nodesToRemove, getNodesInCluster(primaryClusterUUID, udtp.nodeDetailsSet).size());
+  }
+
+  private SelectMastersResult selectMasters(
+      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = replicationFactor;
+    return PlacementInfoUtil.selectMasters(masterLeader, nodes, null, true, userIntent);
+  }
+
+  @Test
+  public void testConfigureNodesToggleDedicated() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = UUID.randomUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet =
+        existing
+            .getUniverseDetails()
+            .nodeDetailsSet
+            .stream()
+            .peek(
+                node -> {
+                  node.isMaster = false;
+                  node.state = ToBeAdded;
+                })
+            .collect(Collectors.toSet());
+    JsonNode paramsJson = Json.toJson(params);
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+    assertEquals(
+        6, // Starting 3 new masters.
+        params.nodeDetailsSet.size());
+    params.nodeDetailsSet.forEach(
+        node -> {
+          assertNotNull(node.dedicatedTo);
+        });
+
+    // Changing back.
+    params.getPrimaryCluster().userIntent.dedicatedNodes = false;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+
+    assertEquals(3, params.nodeDetailsSet.size());
+    params.nodeDetailsSet.forEach(
+        node -> {
+          assertNull(node.dedicatedTo);
+        });
+    // Check that params are reverted back.
+    assertEquals(paramsJson.toString(), Json.toJson(params).toString());
+  }
+
+  @Test
+  public void testConfigureNodesEditToggleDedicatedOn() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-2-1;r1-az2-1-1;r1-az3-1-1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = existing.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    long cnt =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.isTserver)
+            .mapToInt(
+                node -> {
+                  assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                  if (node.isMaster) {
+                    assertEquals(NodeDetails.MasterState.ToStop, node.masterState);
+                    return 1;
+                  }
+                  return 0;
+                })
+            .sum();
+    assertEquals(3, cnt); // 3 masters marked to stop.
+    cnt =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.state == NodeState.ToBeAdded)
+            .peek(
+                node -> {
+                  assertTrue(node.isMaster);
+                  assertFalse(node.isTserver);
+                  assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
+                  assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                })
+            .count();
+
+    assertEquals(3, cnt); // 3 new masters to start.
+    params.nodeDetailsSet.forEach(
+        node -> {
+          assertNotNull(node.dedicatedTo);
+        });
+  }
+
+  @Test
+  public void testConfigureNodesDedicatedToggleAndExpand() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-2-1;r1-az2-1-1;r1-az3-1-1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.universeUUID = existing.getUniverseUUID();
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    PlacementAZ placementAZ =
+        params
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .filter(az -> az.name.equals("az2"))
+            .findFirst()
+            .get();
+    placementAZ.numNodesInAZ++;
+    params.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+
+    AtomicInteger addedMasters = new AtomicInteger();
+    AtomicInteger addedTservers = new AtomicInteger();
+    params
+        .nodeDetailsSet
+        .stream()
+        .filter(n -> n.state == NodeState.ToBeAdded)
+        .forEach(
+            node -> {
+              if (node.isMaster) {
+                assertFalse(node.isTserver);
+                assertEquals(NodeDetails.MasterState.ToStart, node.masterState);
+                assertEquals(UniverseDefinitionTaskBase.ServerType.MASTER, node.dedicatedTo);
+                addedMasters.incrementAndGet();
+              } else {
+                assertTrue(node.isTserver);
+                assertEquals(UniverseDefinitionTaskBase.ServerType.TSERVER, node.dedicatedTo);
+                addedTservers.incrementAndGet();
+                assertEquals(placementAZ.uuid, node.azUuid);
+              }
+            });
+    assertEquals(3, addedMasters.get()); // 3 new masters to start.
+    assertEquals(1, addedTservers.get()); // 1 new tserver to start.
   }
 }

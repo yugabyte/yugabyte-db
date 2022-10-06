@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: apache-spark-2-java-ycql
     parent: apache-spark
-    weight: 580
+    weight: 574
 type: docs
 ---
 

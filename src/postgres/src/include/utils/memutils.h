@@ -266,13 +266,6 @@ typedef struct YbPgMemTracker
 extern YbPgMemTracker PgMemTracker;
 
 /*
- * Update current memory usage in MemTracker, when there is no PG
- * memory allocation activities. This is currently supposed to be
- * used by the MemTracker in pggate as a callback.
- */
-extern void YbPgMemUpdateMax();
-
-/*
  * Add memory consumption to PgMemTracker in bytes.
  * sz can be negative. In this case, the max values are not
  * updated.

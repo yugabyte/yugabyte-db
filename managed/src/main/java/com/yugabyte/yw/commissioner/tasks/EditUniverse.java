@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
-
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -60,7 +58,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     try {
       checkUniverseVersion();
-      if (isFirstTryForTask(taskParams())) {
+      if (isFirstTry()) {
         // Verify the task params.
         verifyParams(UniverseOpType.EDIT);
       }
@@ -80,7 +78,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                     tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
                   }
                 }
-                if (isFirstTryForTask(taskParams())) {
+                if (isFirstTry()) {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
                   fetchTaskDetailsFromDB();
@@ -352,6 +350,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Start tservers on all nodes.
       createStartTserverProcessTasks(newTservers);
+
+      if (universe.isYbcEnabled()) {
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+      }
     }
     if (!nodesToProvision.isEmpty()) {
       // Set the new nodes' state to live.
@@ -468,6 +471,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

@@ -92,6 +92,11 @@ YBTableAlterer* YBTableAlterer::part_of_transaction(const TransactionMetadata* t
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::set_increment_schema_version() {
+  increment_schema_version_ = true;
+  return this;
+}
+
 Status YBTableAlterer::Alter() {
   master::AlterTableRequestPB req;
   RETURN_NOT_OK(ToRequest(&req));
@@ -115,8 +120,8 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     return status_;
   }
 
-  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_ &&
-      !replication_info_) {
+  if (!rename_to_ && steps_.empty() && !increment_schema_version_ &&
+      !table_properties_ && !wal_retention_secs_ && !replication_info_) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
@@ -195,6 +200,10 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (txn_) {
     txn_->ToPB(req->mutable_transaction());
+  }
+
+  if (increment_schema_version_) {
+    req->set_increment_schema_version(true);
   }
 
   return Status::OK();

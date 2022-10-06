@@ -639,7 +639,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
               doc_path, value_ref, data.read_time,
-              data.deadline, redis_query_id(), ttl, ValueControlFields::kInvalidUserTimestamp,
+              data.deadline, redis_query_id(), ttl, ValueControlFields::kInvalidTimestamp,
               false /* init_marker_ttl */));
         } else {
           RETURN_NOT_OK(data.doc_write_batch->ExtendSubDocument(

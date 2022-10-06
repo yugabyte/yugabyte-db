@@ -224,6 +224,9 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 
   buffer.Release();
   ReleaseStoreCurrent(component);
+  if (!second_) {
+    second_ = component;
+  }
   arena_footprint_ += component->full_size();
   if (PREDICT_FALSE(arena_footprint_ > FLAGS_arena_warn_threshold_bytes) && !warned_) {
     LOG(WARNING) << "Arena " << reinterpret_cast<const void *>(this)
@@ -235,12 +238,19 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 }
 
 template <class Traits>
-void ArenaBase<Traits>::Reset() {
+void ArenaBase<Traits>::Reset(ResetMode mode) {
   std::lock_guard<mutex_type> lock(component_lock_);
 
-  auto* current = CHECK_NOTNULL(AcquireLoadCurrent());
+  Component* current = CHECK_NOTNULL(AcquireLoadCurrent());
+  if (mode == ResetMode::kKeepFirst && second_) {
+    auto* first = second_->SetNext(nullptr);
+    current->Destroy(buffer_allocator_);
+    current = first;
+    ReleaseStoreCurrent(first);
+    second_ = nullptr;
+  }
+
   current->Reset(buffer_allocator_);
-  arena_footprint_ = current->full_size();
   warned_ = false;
 
 #ifndef NDEBUG
@@ -251,6 +261,8 @@ void ArenaBase<Traits>::Reset() {
   arena_footprint_ = 0;
   ReleaseStoreCurrent(nullptr);
   AddComponentUnlocked(NewBuffer(last_size, 0));
+#else
+  arena_footprint_ = current->full_size();
 #endif
 }
 
@@ -265,4 +277,14 @@ template class ArenaBase<ThreadSafeArenaTraits>;
 template class ArenaBase<ArenaTraits>;
 
 }  // namespace internal
+
+char* AllocatedBuffer::Allocate(size_t bytes, size_t alignment) {
+  auto allocation_size = Arena::kStartBlockSize;
+  auto* allocated = static_cast<char*>(malloc(allocation_size));
+  auto* result = align_up(allocated, alignment);
+  address = align_up(pointer_cast<char*>(result + bytes), 16);
+  size = allocated + allocation_size - address;
+  return result;
+}
+
 }  // namespace yb

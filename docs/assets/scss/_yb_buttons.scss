@@ -1,0 +1,54 @@
+body {
+  a.gradient-link {
+    border-radius: 8px !important;
+    color: #fff !important;
+    padding: 10px 25px !important;
+    font-weight: 700 !important;
+    line-height: 16px !important;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    display: inline-flex !important;
+    border: 1px solid #fff !important;
+    align-items: center !important;
+
+    &::before {
+      content: "";
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      z-index: -1;
+      top: 0;
+      left: 0;
+      transition: 250ms;
+      background: linear-gradient(90deg, #ff6e42 14.06%, #d847c0 55.73%, #9867f9 92.71%);
+    }
+
+    &::after {
+      content: "";
+      height: 100%;
+      position: absolute;
+      z-index: -1;
+      top: 0;
+      left: 0;
+      transition: 250ms;
+      width: 0;
+      background: #ff6e42;
+    }
+
+    &:hover {
+      background-color: transparent;
+      text-decoration: none !important;
+
+      &::after {
+        width: 100%;
+      }
+    }
+
+    &:focus {
+      &::after {
+        width: 100%;
+      }
+    }
+  }
+}

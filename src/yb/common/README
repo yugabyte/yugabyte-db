@@ -12,5 +12,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 This module contains utilities and protobuf message definitions
-related to the YugaByte data model and the YugaByte wire protocol that are to
+related to the YugabyteDB data model and the YugabyteDB wire protocol that are to
 be shared between client, tserver, and master.

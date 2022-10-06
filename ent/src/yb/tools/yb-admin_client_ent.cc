@@ -66,6 +66,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
+#define NANOS_PER_SECOND 1000000000
+
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
 
@@ -188,135 +190,27 @@ Result<rapidjson::Value> SnapshotScheduleInfoToJson(
 
 }  // namespace
 
-Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
+Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   ListSnapshotsResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListSnapshotsRequestPB req;
     req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
+    auto* flags_pb = req.mutable_detail_options();
+    // Explicitly set all boolean fields as the defaults of this proto are inconsistent.
+    if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
+      flags_pb->set_show_namespace_details(true);
+      flags_pb->set_show_udtype_details(true);
+      flags_pb->set_show_table_details(true);
+      flags_pb->set_show_tablet_details(false);
+    } else {
+      flags_pb->set_show_namespace_details(false);
+      flags_pb->set_show_udtype_details(false);
+      flags_pb->set_show_table_details(false);
+      flags_pb->set_show_tablet_details(false);
+    }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
-
-  rapidjson::Document document(rapidjson::kObjectType);
-  bool json = flags.Test(ListSnapshotsFlag::JSON);
-
-  if (resp.has_current_snapshot_id()) {
-    if (json) {
-      AddStringField("current_snapshot_id",
-                     SnapshotIdToString(resp.current_snapshot_id()),
-                     &document, &document.GetAllocator());
-    } else {
-      cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
-    }
-  }
-
-  rapidjson::Value json_snapshots(rapidjson::kArrayType);
-  if (!json) {
-    if (resp.snapshots_size()) {
-      // Using 2 tabs so that the header can be aligned to the time.
-      cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep
-           << "State" << kColumnSep << kColumnSep << "Creation Time" << endl;
-    } else {
-      cout << "No snapshots" << endl;
-    }
-  }
-
-  for (SnapshotInfoPB& snapshot : *resp.mutable_snapshots()) {
-    rapidjson::Value json_snapshot(rapidjson::kObjectType);
-    if (json) {
-      AddStringField(
-          "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
-      const auto& entry = snapshot.entry();
-      AddStringField(
-          "state", SysSnapshotEntryPB::State_Name(entry.state()), &json_snapshot,
-          &document.GetAllocator());
-      AddStringField(
-          "snapshot_time", HybridTimeToString(HybridTime::FromPB(entry.snapshot_hybrid_time())),
-          &json_snapshot, &document.GetAllocator());
-      AddStringField(
-          "previous_snapshot_time",
-          HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
-          &json_snapshot, &document.GetAllocator());
-    } else {
-      cout << SnapshotIdToString(snapshot.id()) << kColumnSep
-           << snapshot.entry().state() << kColumnSep
-           << HybridTimeToString(HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time()))
-           << endl;
-    }
-
-    // Not implemented in json mode.
-    if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
-      for (SysRowEntry& entry : *snapshot.mutable_entry()->mutable_entries()) {
-        string decoded_data;
-        switch (entry.type()) {
-          case SysRowEntryType::NAMESPACE: {
-            auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
-            meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
-            break;
-          }
-          case SysRowEntryType::UDTYPE: {
-            auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
-            break;
-          }
-          case SysRowEntryType::TABLE: {
-            auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
-            meta.clear_schema();
-            meta.clear_partition_schema();
-            meta.clear_index_info();
-            meta.clear_indexes();
-            meta.clear_transaction();
-            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
-            break;
-          }
-          default:
-            break;
-        }
-
-        if (!decoded_data.empty()) {
-          entry.set_data("DATA");
-          cout << kColumnSep << StringReplace(JsonWriter::ToJson(entry, JsonWriter::COMPACT),
-                                              "\"DATA\"", decoded_data, false) << endl;
-        }
-      }
-    }
-    if (json) {
-      json_snapshots.PushBack(json_snapshot, document.GetAllocator());
-    }
-  }
-
-  ListSnapshotRestorationsResponsePB rest_resp;
-  RETURN_NOT_OK(RequestMasterLeader(&rest_resp, [&](RpcController* rpc) {
-    ListSnapshotRestorationsRequestPB rest_req;
-    return master_backup_proxy_->ListSnapshotRestorations(rest_req, &rest_resp, rpc);
-  }));
-
-  if (json) {
-    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
-    std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
-    return Status::OK();
-  }
-
-  if (rest_resp.restorations_size() == 0) {
-    cout << "No snapshot restorations" << endl;
-  } else if (flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED)) {
-    cout << "Not show fully RESTORED entries" << endl;
-  }
-
-  bool title_printed = false;
-  for (const auto& restoration : rest_resp.restorations()) {
-    if (!flags.Test(ListSnapshotsFlag::NOT_SHOW_RESTORED) ||
-        restoration.entry().state() != SysSnapshotEntryPB::RESTORED) {
-      if (!title_printed) {
-        cout << RightPadToUuidWidth("Restoration UUID") << kColumnSep << "State" << endl;
-        title_printed = true;
-      }
-      cout << TryFullyDecodeTxnSnapshotRestorationId(restoration.id()) << kColumnSep
-           << restoration.entry().state() << endl;
-    }
-  }
-
-  return Status::OK();
+  return resp;
 }
 
 Status ClusterAdminClient::CreateSnapshot(
@@ -388,7 +282,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
   return CreateSnapshot(tables, /* add_indexes */ false);
 }
 
-Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
+Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(
     const TxnSnapshotRestorationId& restoration_id) {
   master::ListSnapshotRestorationsResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
@@ -398,27 +292,7 @@ Result<rapidjson::Document> ClusterAdminClient::ListSnapshotRestorations(
     }
     return master_backup_proxy_->ListSnapshotRestorations(req, &resp, rpc);
   }));
-
-  rapidjson::Document result;
-  result.SetObject();
-  rapidjson::Value json_restorations(rapidjson::kArrayType);
-  for (const auto& restoration : resp.restorations()) {
-    rapidjson::Value json_restoration(rapidjson::kObjectType);
-    AddStringField("id",
-                   VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(restoration.id())).ToString(),
-                   &json_restoration, &result.GetAllocator());
-    AddStringField(
-        "snapshot_id",
-        VERIFY_RESULT(FullyDecodeTxnSnapshotId(restoration.entry().snapshot_id())).ToString(),
-        &json_restoration, &result.GetAllocator());
-    AddStringField(
-        "state",
-        master::SysSnapshotEntryPB_State_Name(restoration.entry().state()),
-        &json_restoration, &result.GetAllocator());
-    json_restorations.PushBack(json_restoration, result.GetAllocator());
-  }
-  result.AddMember("restorations", json_restorations, result.GetAllocator());
-  return result;
+  return resp;
 }
 
 Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
@@ -592,7 +466,7 @@ Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint dead
   return Status::OK();
 }
 
-Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotScheduleDeprecated(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
   auto deadline = CoarseMonoClock::now() + timeout_;
 
@@ -645,6 +519,44 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     return StatusFromPB(resp.error().status());
   }
 
+  auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
+  AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  master::RestoreSnapshotScheduleRequestPB req;
+  master::RestoreSnapshotScheduleResponsePB resp;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_restore_ht(restore_at.ToUint64());
+
+  Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
+  if (!s.ok()) {
+    if (s.IsRemoteError() &&
+        rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      cout << "WARNING: fallback to RestoreSnapshotScheduleDeprecated." << endl;
+      return RestoreSnapshotScheduleDeprecated(schedule_id, restore_at);
+    }
+    RETURN_NOT_OK_PREPEND(s, Format("Failed to restore snapshot from schedule: $0",
+        schedule_id.ToString()));
+  }
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
   auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
 
   rapidjson::Document document;
@@ -1836,6 +1748,86 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::GetReplicationInfo(
+    const std::string& universe_uuid) {
+
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  if (!universe_uuid.empty()) {
+    req.set_universe_id(universe_uuid);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetReplicationStatus(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting replication status: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << resp.DebugString();
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
+  master::GetXClusterEstimatedDataLossRequestPB req;
+  master::GetXClusterEstimatedDataLossResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster estimated data loss values: " << resp.error().status().message()
+         << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& data_loss : resp.namespace_data_loss()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
+
+    // Use 1 second granularity.
+    auto data_loss_s = data_loss.data_loss_ns() / NANOS_PER_SECOND;
+    AddStringField(
+        "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
+  master::GetXClusterSafeTimeRequestPB req;
+  master::GetXClusterSafeTimeResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& safe_time : resp.namespace_safe_times()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    const auto& st = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField("safe_time", HybridTimeToString(st), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(st.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
 }
 
 }  // namespace enterprise

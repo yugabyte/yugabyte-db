@@ -16,6 +16,55 @@ INSERT INTO pg_temp__123 values (1);
 SELECT * from pg_temp__123;
 DROP TABLE test_yb CASCADE;
 
+-- Alter materialized view - rename matview and rename columns
+CREATE TABLE test_yb (id int NOT NULL PRIMARY KEY, type text NOT NULL, val numeric NOT NULL);
+INSERT INTO test_yb VALUES (1, 'xyz', 2);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
+CREATE UNIQUE INDEX unique_IDX ON mtest_YB(id);
+ALTER MATERIALIZED VIEW mtest_yb RENAME TO mtest_yb1;
+SELECT * FROM mtest_yb; -- error
+SELECT * from mtest_yb1; -- ok
+REFRESH MATERIALIZED VIEW mtest_yb1;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb1;
+ALTER MATERIALIZED VIEW mtest_yb1 RENAME TO mtest_yb2;
+SELECT * from mtest_yb2;
+REFRESH MATERIALIZED VIEW mtest_yb2;
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb2;
+ALTER MATERIALIZED VIEW mtest_yb2 RENAME val TO total; -- test Alter Rename Column
+SELECT * FROM mtest_yb2;
+DROP TABLE test_yb CASCADE;
+
+-- Alter materialized view - change owner
+CREATE TABLE test_yb (id int NOT NULL PRIMARY KEY, type text NOT NULL, val numeric NOT NULL);
+INSERT INTO test_yb VALUES (1, 'xyz', 2);
+CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
+CREATE UNIQUE INDEX unique_IDX ON mtest_yb(id);
+CREATE ROLE test_mv_user;
+SET ROLE test_mv_user;
+REFRESH MATERIALIZED VIEW mtest_yb; -- error
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- error
+SET ROLE yugabyte;
+ALTER MATERIALIZED VIEW mtest_yb OWNER TO test_mv_user;
+REFRESH MATERIALIZED VIEW mtest_yb; -- error
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- error
+ALTER TABLE test_yb OWNER TO test_mv_user;
+REFRESH MATERIALIZED VIEW mtest_yb; -- ok
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- ok
+ALTER MATERIALIZED VIEW mtest_yb OWNER TO SESSION_USER;
+ALTER TABLE test_yb OWNER TO SESSION_USER;
+REFRESH MATERIALIZED VIEW mtest_yb; -- ok
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- ok
+ALTER MATERIALIZED VIEW mtest_yb RENAME val TO amt;
+ALTER MATERIALIZED VIEW mtest_yb RENAME TO mtest_yb1;
+CREATE ROLE test_mv_superuser SUPERUSER;
+ALTER MATERIALIZED VIEW mtest_yb1 OWNER TO test_mv_superuser;
+REFRESH MATERIALIZED VIEW mtest_yb1; -- ok
+REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb1; -- ok
+ALTER MATERIALIZED VIEW mtest_yb1 OWNER TO CURRENT_USER;
+DROP ROLE test_mv_user;
+DROP ROLE test_mv_superuser;
+DROP TABLE test_yb CASCADE;
+
 -- Test special characters in an attribute's name
 CREATE TABLE test_yb ("xyzID''\\b" int NOT NULL, "y" int);
 INSERT INTO test_yb VALUES (1);
