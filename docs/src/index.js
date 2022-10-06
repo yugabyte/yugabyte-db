@@ -188,7 +188,7 @@ $(document).ready(() => {
     if (versionDir !== '') {
       $('.dropdown-menu a').each((index, element) => {
         if ($(element).attr('href').indexOf(`/${versionDir}/`) !== -1) {
-          $('#navbarDropdown').text($(element).text());
+          $('#navbarDropdown').html($(element).html());
           return false;
         }
       });

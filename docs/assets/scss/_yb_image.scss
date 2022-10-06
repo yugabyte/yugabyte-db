@@ -12,3 +12,16 @@
     }
   }
 }
+
+.td-content {
+  p > img {
+    margin-bottom: 0;
+  }
+
+  img:not(.icon) {
+    max-width: 100%;
+    border: 1px solid #e9eef2;
+    border-radius: 8px;
+    margin: 0 0 20px 0;
+  }
+}

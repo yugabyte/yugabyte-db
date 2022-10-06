@@ -58,6 +58,7 @@ ol.breadcrumb {
 
     a {
       color: $yb-font-blue;
+      line-height: 18px;
 
       &:hover {
         color: #21313c;
@@ -283,11 +284,7 @@ body.td-homepage {
 
         .title {
           margin-left: 78px;
-          font-weight: 600;
-          font-size: 24px;
-          line-height: 1.5;
           letter-spacing: -0.02em;
-          color: $YB_DARK_MILD;
           text-overflow: ellipsis;
           overflow: hidden;
           white-space: nowrap;
@@ -303,12 +300,9 @@ body.td-homepage {
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 3; /* number of lines to show */
-        line-height: 23px; /* fallback */
         max-height: 59px;
         position: relative;
-        font-weight: 300;
         z-index: 2;
-        text-shadow: 0.15px 0.15px #2e3135, 0.15px -0.15px #2e3135;
 
         @media only screen and (min-width: 768px) and (max-width: 1024px) {
           max-height: 84px;
@@ -403,7 +397,8 @@ body:not(.td-home) .td-main main {
   p a,
   li:not(.nav-item) a,
   .note a {
-    color: #3176d9;
+    color: #507ce1;
+    font-weight: 500;
 
     i {
       margin-left: 5px;
@@ -462,7 +457,6 @@ svg.rrdiagram {
 
   .td-sidebar:not(.close-bar) {
     padding: 0 0 0 11px !important;
-    //flex: none;
     background: rgba(247, 250, 252, 0.5);
     border-right: 1px solid #e9eef2;
   }
@@ -473,21 +467,15 @@ svg.rrdiagram {
   }
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 1380px) {
   .td-main {
-    max-width: calc(1490px);
     border-top: 1px solid #e9eef2;
-    //padding:0 30px;
     margin: 0 auto;
     background: #fff;
 
-    .row {
-      margin: 0;
-    }
-
     .td-sidebar:not(.close-bar) {
       width: 300px;
-      margin-right: 110px;
+      margin-right: 40px;
       padding: 0 0 0 11px !important;
       flex: none;
       max-width: none !important;
@@ -498,7 +486,7 @@ svg.rrdiagram {
       + {
         main {
           flex: none;
-          max-width: calc(100% - calc(300px + 110px)) !important;
+          max-width: calc(100% - calc(300px + 60px)) !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
@@ -517,19 +505,38 @@ svg.rrdiagram {
       + {
         main {
           flex: none;
-          max-width: calc(100% - calc(300px + 110px + 252px)) !important;
+          max-width: calc(100% - calc(300px + 60px + 252px)) !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
       }
     }
+  }
+}
 
-    .no-right-sidebar {
-      main {
-        flex: none;
-        max-width: calc(100% - calc(300px + 110px)) !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+@media (min-width: 1500px) {
+  .td-main {
+    max-width: calc(1490px);
+
+    .row {
+      margin: 0;
+    }
+
+    .td-sidebar:not(.close-bar) {
+      margin-right: 110px;
+
+      + {
+        main {
+          max-width: calc(100% - calc(300px + 110px)) !important;
+        }
+      }
+    }
+
+    .td-sidebar-toc {
+      + {
+        main {
+          max-width: calc(100% - calc(300px + 110px + 252px)) !important;
+        }
       }
     }
   }

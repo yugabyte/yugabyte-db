@@ -76,16 +76,18 @@ main {
         }
 
         code {
-          background: #f2f6ff !important;
+          font-size: inherit !important;
+          display: inline-block;
+          vertical-align: middle;
+          margin: 0 0;
+          line-height: 1;
+          max-width: 100%;
+          overflow: auto;
+          background: #f2f6ff;
           border: 1px solid #cbdbff;
           border-radius: 4px;
-          font-family: 'Menlo';
-          font-style: normal;
-          font-weight: 400;
-          font-size: 14px !important;
-          line-height: 16px;
-          color: #4e5f6d !important;
-          margin: 0 3px;
+          color: $yb-font-gray;
+          padding: 2px 6px;
         }
       }
     }
