@@ -1,36 +1,15 @@
 ---
-title: Build a Ruby application that uses ActiveRecord and YSQL
-headerTitle: Build a Ruby application
-linkTitle: More examples
-description: Build a Ruby application that uses Rails ActiveRecord and the YSQL API
+title: Use an ORM
+linkTitle: Use an ORM
+description: ActiveRecord ORM support for YugabyteDB
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-ruby
-    identifier: ruby-2
-    weight: 553
+    identifier: activerecord-orm
+    parent: ruby-drivers
+    weight: 410
 type: docs
 ---
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Gem
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-rails-activerecord.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - ActiveRecord
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
 
 ## Clone the orm-examples repository
 

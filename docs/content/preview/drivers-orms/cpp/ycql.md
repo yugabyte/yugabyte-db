@@ -1,32 +1,38 @@
 ---
-title: Build a C++ application that uses YCQL
-headerTitle: Build a C++ application
-linkTitle: More examples
-description: Build a sample C++ application that uses the YCQL API.
+title: Connect an application
+linkTitle: Connect an app
+description: C++ drivers for YSQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    identifier: build-apps-cpp-2-ycql
-    parent: cloud-cpp
-    weight: 556
+    identifier: cpp-ycql-driver
+    parent: cpp-drivers
+    weight: 420
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../ysql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
-    <a href="../ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li>
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+       YugabyteDB C++ driver
     </a>
   </li>
-
 </ul>
 
 ## Prerequisites
@@ -34,7 +40,7 @@ type: docs
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If
-  not, follow the steps in [Quick Start](../../../../quick-start/).
+  not, follow the steps in [Quick start](../../../quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2 or later, Clang 3.4 or later installed.
 
