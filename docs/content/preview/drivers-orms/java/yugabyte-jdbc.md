@@ -101,8 +101,8 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| `load-balance` | Uniform load balancing | Defaults to upstream driver behavior unless set to 'true'
-| `topology-keys` | Topology-aware load balancing | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB.
 

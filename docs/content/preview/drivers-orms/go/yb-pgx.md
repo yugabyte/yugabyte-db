@@ -84,8 +84,8 @@ The following table describes the connection parameters required to connect, inc
 | host | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | dbname | Database name | yugabyte
-| `load_balance` | Uniform load balancing | Defaults to upstream driver behavior unless set to 'true'
-| `topology_keys` | Topology-aware load balancing | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
 
