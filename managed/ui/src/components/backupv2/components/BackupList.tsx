@@ -42,6 +42,7 @@ import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { BackupThrottleParameters } from './BackupThrottleParameters';
+import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 
 const reactWidgets = require('react-widgets');
 const momentLocalizer = require('react-widgets-moment');
@@ -185,7 +186,17 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         storage_config_uuid
       ),
     {
-      refetchInterval: 1000 * 20
+      refetchInterval: 1000 * 20,
+      onSuccess(resp) {
+        if (showDetails) {
+          setShowDetails(
+            resp.data.entities.find(
+              (e: IBackup) =>
+                e.commonBackupInfo.backupUUID === showDetails.commonBackupInfo.backupUUID
+            ) ?? null
+          );
+        }
+      }
     }
   );
 
@@ -226,10 +237,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   };
 
   const getActions = (row: IBackup) => {
-    if (row.state === Backup_States.DELETED) {
+    if (row.commonBackupInfo.state === Backup_States.DELETED) {
       return '';
     }
-    if (row.state === Backup_States.IN_PROGRESS) {
+    if (row.commonBackupInfo.state === Backup_States.IN_PROGRESS) {
       return (
         <YBButton
           onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
@@ -251,10 +262,15 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onClick={(e) => e.stopPropagation()}
       >
         <MenuItem
-          disabled={row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent}
+          disabled={
+            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent
+          }
           onClick={(e) => {
             e.stopPropagation();
-            if (row.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent) {
+            if (
+              row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+              !row.isStorageConfigPresent
+            ) {
               return;
             }
             setRestoreDetails(row);
@@ -494,12 +510,14 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           }}
           selectRow={{
             mode: 'checkbox',
-            selected: selectedBackups.map((b) => b.backupUUID),
+            selected: selectedBackups.map((b) => b.commonBackupInfo.backupUUID),
             onSelect: (row, isSelected) => {
               if (isSelected) {
                 setSelectedBackups([...selectedBackups, row]);
               } else {
-                setSelectedBackups(selectedBackups.filter((b) => b.backupUUID !== row.backupUUID));
+                setSelectedBackups(
+                  selectedBackups.filter((b) => b.commonBackupInfo.backupUUID !== row.backupUUID)
+                );
               }
             },
             onSelectAll: (isSelected, row) => {
@@ -539,8 +557,26 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             Backup Type
           </TableHeaderColumn>
           <TableHeaderColumn
+            dataField="hasIncrementalBackups"
+            dataFormat={(hasIncrementalBackups) =>
+              hasIncrementalBackups ? 'Present' : 'Not Present'
+            }
+            width="20%"
+          >
+            Incremental Backups
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="backupType"
+            dataFormat={(backupType) => TABLE_TYPE_MAP[backupType]}
+            width="10%"
+          >
+            API Type
+          </TableHeaderColumn>
+          <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+            dataFormat={(_, row: IBackup) => (
+              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
+            )}
             width="20%"
             dataSort
           >
@@ -557,28 +593,23 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="totalBackupSizeInBytes"
-            dataFormat={(_, row) => {
-              return row.totalBackupSizeInBytes ? formatBytes(row.totalBackupSizeInBytes) : '-';
+            dataFormat={(_, row: IBackup) => {
+              return formatBytes(
+                row.fullChainSizeInBytes || row.commonBackupInfo.totalBackupSizeInBytes
+              );
             }}
             width="20%"
           >
             Size
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="storageConfigUUID"
-            dataFormat={(name) => storageConfigsMap[name] ?? ENTITY_NOT_AVAILABLE}
-            width="20%"
-          >
-            Storage Config
-          </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="state"
-            dataFormat={(state) => {
-              return <StatusBadge statusType={state} />;
+            dataField="lastBackupState"
+            dataFormat={(lastBackupState) => {
+              return <StatusBadge statusType={lastBackupState} />;
             }}
             width="15%"
           >
-            Status
+            Last Status
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="actions"
@@ -590,9 +621,11 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         </YBTable>
       </Row>
       <BackupDetails
-        backup_details={showDetails}
+        backupDetails={showDetails}
         onHide={() => setShowDetails(null)}
-        storageConfigName={showDetails ? storageConfigsMap?.[showDetails?.storageConfigUUID] : '-'}
+        storageConfigName={
+          showDetails ? storageConfigsMap?.[showDetails?.commonBackupInfo.storageConfigUUID] : '-'
+        }
         onDelete={() => {
           setSelectedBackups([showDetails] as IBackup[]);
           setShowDeleteModal(true);
@@ -605,6 +638,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         onAssignStorageConfig={() => {
           setShowAssignConfigModal(true);
         }}
+        currentUniverseUUID={universeUUID}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
