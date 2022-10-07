@@ -76,7 +76,7 @@ For a list of supported regions, refer to [Cloud provider regions](../../release
 
 An instance in cloud computing is a server resource provided by third-party cloud services. An instance abstracts physical computing infrastructure using virtual machines. It's similar to having your own server machine in the cloud.
 
-Cloud providers provide a variety of instance types across the regions where they offer services. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
+Cloud providers offer a variety of instance types across the regions where they have data centers. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
 
 - AWS - m5
 - GCP - n2-standard
