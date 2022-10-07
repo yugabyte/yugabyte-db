@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/cdc/cdc_consumer.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
@@ -201,6 +202,14 @@ message AlterUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message ChangeXClusterRoleRequestPB {
+  optional cdc.XClusterRole role = 1;
+}
+
+message ChangeXClusterRoleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message SetUniverseReplicationEnabledRequestPB {
   optional string producer_id = 1;
   optional bool is_enabled = 2;
@@ -371,6 +380,8 @@ service MasterReplication {
       returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
       returns (SetupNSUniverseReplicationResponsePB);
+  rpc ChangeXClusterRole(ChangeXClusterRoleRequestPB)
+      returns (ChangeXClusterRoleResponsePB);
 
   rpc UpdateConsumerOnProducerSplit(UpdateConsumerOnProducerSplitRequestPB)
       returns (UpdateConsumerOnProducerSplitResponsePB);

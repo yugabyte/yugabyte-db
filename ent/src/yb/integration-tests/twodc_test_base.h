@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include "yb/cdc/cdc_consumer.pb.h"
+
 #include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
@@ -153,6 +155,8 @@ class TwoDCTestBase : public YBTest {
   Status VerifyNSUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
+
+  Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
