@@ -41,8 +41,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 
-DECLARE_bool(cdc_enable_replicate_intents);
-
 namespace yb {
 namespace cdc {
 
@@ -101,29 +99,25 @@ void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_
   ASSERT_EQ(value->second.int32_value(), expected_value);
 }
 
-void CheckIntentRecord(const CDCRecordPB& record, int expected_value, bool replicate_intents) {
+void CheckIntentRecord(const CDCRecordPB& record, int expected_value) {
   ASSERT_EQ(record.changes_size(), 1);
   // Check the key.
   ASSERT_NO_FATALS(AssertIntKey(record.key(), expected_value));
   // Make sure transaction metadata is set.
-  if (replicate_intents) {
-    ASSERT_TRUE(record.has_transaction_state());
-    ASSERT_TRUE(record.has_time());
-    const auto& transaction_state = record.transaction_state();
-    ASSERT_TRUE(transaction_state.has_transaction_id());
-  }
+  ASSERT_TRUE(record.has_transaction_state());
+  ASSERT_TRUE(record.has_time());
+  const auto& transaction_state = record.transaction_state();
+  ASSERT_TRUE(transaction_state.has_transaction_id());
 }
 
-void CheckApplyRecord(const CDCRecordPB& apply_record, bool replicate_intents) {
+void CheckApplyRecord(const CDCRecordPB& apply_record) {
   ASSERT_EQ(apply_record.changes_size(), 0);
-  if (replicate_intents) {
-    ASSERT_TRUE(apply_record.has_transaction_state());
-    ASSERT_TRUE(apply_record.has_partition());
-    const auto& txn_state = apply_record.transaction_state();
-    ASSERT_TRUE(txn_state.has_transaction_id());
-    ASSERT_EQ(apply_record.operation(), cdc::CDCRecordPB::APPLY);
-    ASSERT_TRUE(apply_record.has_time());
-  }
+  ASSERT_TRUE(apply_record.has_transaction_state());
+  ASSERT_TRUE(apply_record.has_partition());
+  const auto& txn_state = apply_record.transaction_state();
+  ASSERT_TRUE(txn_state.has_transaction_id());
+  ASSERT_EQ(apply_record.operation(), cdc::CDCRecordPB::APPLY);
+  ASSERT_TRUE(apply_record.has_time());
 }
 
 void CheckRegularRecord(const CDCRecordPB& record, int expected_value) {
@@ -140,7 +134,6 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   // T4: APPLYING TXN2
   // T5: APPLYING TXN1
   // T6: WRITE K4
-  bool replicate_intents = true;
   auto session = CreateSession();
   ASSERT_RESULT(WriteRow(session, 10000 /* key */, 10000 /* value */, WriteOpType::INSERT,
                          Flush::kTrue));
@@ -198,31 +191,34 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
       bool is_intent; // Differentiate between intent and regular record.
     };
 
-    Record expected_records_in_order[7] =
-        {{10000, false}, {10001, true}, {10002, true}, {10003, false}, {0, false}, {0, false},
-        {10004, false}};
-    Record expected_records_out_of_order[7] =
-        {{10000, false}, {10003, false}, {10002, true}, {0, false}, {10001, true}, {0, false},
-        {10004, false}};
+    // We expect a order of records: we will receive intents at write time and not commit time.
+    Record expected_write_records_order[5] =
+            {{10000, false}, {10001, true}, {10002, true}, {10003, false}, {10004, false}};
+    int write_count = 0;
+    int apply_count = 0;
 
-    // We expect a different order of records based on whether we replicate intents, since with the
-    // feature enabled, we will receive intents at write time and not commit time.
-    const Record* expected_order = replicate_intents ?
-        expected_records_in_order : expected_records_out_of_order;
-
-    for (int i = 0; i < 7; i++) {
-      const auto& record = expected_order[i];
-      if (record.value == 0) {
-        // This contains the record for APPLYING transaction.
-        ASSERT_NO_FATALS(CheckApplyRecord(change_resp.records(i), replicate_intents));
-      } else if (record.is_intent) {
-        ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), record.value,
-                                           replicate_intents));
+    for (int i = 0; i < change_resp.records_size(); i++) {
+      auto& record = change_resp.records(i);
+      if (record.operation() == CDCRecordPB::APPLY) {
+        apply_count++;
+        ASSERT_NO_FATALS(CheckApplyRecord(record));
+      } else if (record.operation() == CDCRecordPB::WRITE) {
+        ASSERT_LT(write_count, 5);
+        auto& expected_record = expected_write_records_order[write_count++];
+        if (expected_record.is_intent) {
+          ASSERT_NO_FATALS(CheckIntentRecord(record, expected_record.value));
+        } else {
+          ASSERT_NO_FATALS(CheckRegularRecord(record, expected_record.value));
+        }
+      } else if (record.operation() == CDCRecordPB::CHANGE_METADATA) {
+        ASSERT_EQ(record.change_metadata_request().schema_version(), 0);
       } else {
-        ASSERT_NO_FATALS(CheckRegularRecord(change_resp.records(i), record.value));
+        FAIL() << "Unexpected record: " << record.DebugString();
       }
     }
-  }
+    ASSERT_EQ(write_count, 5);
+    ASSERT_EQ(apply_count, 2);
+}
 }
 
 TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
@@ -234,7 +230,6 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   static const int32_t kNumIntentsToWrite = 3;
   static const int32_t kStartKey = 10000;
   // Get tablet ID.
-  bool replicate_intents = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(
       client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
@@ -269,15 +264,14 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
     SCOPED_TRACE(change_resp.DebugString());
     ASSERT_FALSE(change_resp.has_error());
 
-    // Expect 3 records for the 3 intents if we replicate intents but 0 if we don't.
-    ASSERT_EQ(change_resp.records_size(), replicate_intents ? kNumIntentsToWrite : 0);
+    // Expect 3 records for the 3 intents.
+    ASSERT_EQ(change_resp.records_size(), kNumIntentsToWrite);
   }
 
   int32_t expected_order[kNumIntentsToWrite] = {kStartKey, kStartKey + 1, kStartKey + 2};
 
   for (int i = 0; i < change_resp.records_size(); i++) {
-    ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i],
-                                       replicate_intents));
+    ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i]));
   }
 
   // Commit transaction.
@@ -289,21 +283,19 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // Get CDC changes.
   {
     // Need to poll because Flush returns on majority_replicated and CDC waits for fully committed.
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
       RpcController rpc;
       *change_req.mutable_from_checkpoint() = checkpoint;
       change_resp.Clear();
       RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
       if (change_resp.has_error()) return Result<bool>(StatusFromPB(change_resp.error().status()));
-      // Expect 1 new record if we replicate intents and 4 if we don't.
-      return change_resp.records_size() == (replicate_intents ? 1 : kNumIntentsToWrite + 1);
+      // Expect 1 new record since we've already replicated the intents.
+      return change_resp.records_size() == 1;
     }, MonoDelta::FromSeconds(30), "Wait for Transaction to be committed."));
     for (int i = 0; i < change_resp.records_size() - 1; i++) {
-      ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i],
-                                         replicate_intents));
+      ASSERT_NO_FATALS(CheckIntentRecord(change_resp.records(i), expected_order[i]));
     }
-    ASSERT_NO_FATALS(CheckApplyRecord(change_resp.records(change_resp.records_size() - 1),
-                                      replicate_intents));
+    ASSERT_NO_FATALS(CheckApplyRecord(change_resp.records(change_resp.records_size() - 1)));
   }
 }
 
