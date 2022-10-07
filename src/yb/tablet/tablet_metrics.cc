@@ -59,12 +59,9 @@ METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
   "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
 
 METRIC_DEFINE_coarse_histogram(
-    table, redis_read_latency, "HandleRedisReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a RedisReadRequest");
-
-METRIC_DEFINE_coarse_histogram(
-    table, ql_read_latency, "HandleQLReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a QLReadRequest");
+    table, ql_read_latency, "Handle ReadRequest latency at tserver layer",
+    yb::MetricUnit::kMicroseconds,
+    "Time taken to handle the read request at the tserver layer.");
 
 METRIC_DEFINE_coarse_histogram(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
@@ -139,7 +136,6 @@ namespace tablet {
 TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
                              const scoped_refptr<MetricEntity>& tablet_entity)
   : MINIT(table_entity, snapshot_read_inflight_wait_duration),
-    MINIT(table_entity, redis_read_latency),
     MINIT(table_entity, ql_read_latency),
     MINIT(table_entity, write_lock_latency),
     MINIT(table_entity, write_op_duration_client_propagated_consistency),
