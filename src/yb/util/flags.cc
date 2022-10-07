@@ -30,10 +30,10 @@
 // under the License.
 //
 
-
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <boost/algorithm/string/replace.hpp>
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/split.h"
 
@@ -246,7 +246,31 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
+DEFINE_string(
+    dynamically_linked_exe_suffix, "",
+    "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
+    "generation of Link Time Optimized builds.");
+TAG_FLAG(dynamically_linked_exe_suffix, advanced);
+TAG_FLAG(dynamically_linked_exe_suffix, hidden);
+TAG_FLAG(dynamically_linked_exe_suffix, unsafe);
+
 namespace yb {
+
+// In LTO builds we first generate executable like yb-master and yb-tserver with a suffix
+// ("-dynamic") added to their names. These executables are then optimized to produce the
+// final executable without the suffix. Certain build targets like gen_flags_metadata and
+// gen_auto_flags are run using the dynamic executables to generate metadata files which should
+// contain final the program name.
+string GetStaticProgramName() {
+  auto program_name = BaseName(google::ProgramInvocationShortName());
+  if (PREDICT_FALSE(
+          !FLAGS_dynamically_linked_exe_suffix.empty() &&
+          program_name.ends_with(FLAGS_dynamically_linked_exe_suffix))) {
+    boost::replace_last(program_name, FLAGS_dynamically_linked_exe_suffix, "");
+  }
+  return program_name;
+}
+
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
@@ -322,8 +346,8 @@ void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values
   cout << "<?xml version=\"1.0\"?>" << endl;
   cout << "<AllFlags>" << endl;
   cout << strings::Substitute(
-      "<program>$0</program>",
-      EscapeForHtmlToString(BaseName(google::ProgramInvocationShortName()))) << endl;
+              "<program>$0</program>", EscapeForHtmlToString(GetStaticProgramName()))
+       << endl;
   cout << strings::Substitute(
       "<usage>$0</usage>",
       EscapeForHtmlToString(google::ProgramUsage())) << endl;
@@ -383,7 +407,7 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   } else if (FLAGS_dump_flags_xml) {
     DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue::kTrue);
   } else if (FLAGS_help_auto_flag_json) {
-    cout << AutoFlagsUtil::DumpAutoFlagsToJSON();
+    cout << AutoFlagsUtil::DumpAutoFlagsToJSON(GetStaticProgramName());
     exit(0);
   } else if (FLAGS_dump_metrics_json) {
     std::stringstream s;
