@@ -154,24 +154,31 @@ bool IsInsertOperation(const RowMessage& row_message) {
 
 bool IsInsertOrUpdate(const RowMessage& row_message) {
   return row_message.IsInitialized()  &&
-      (row_message.op() == RowMessage_Op_INSERT
-       || row_message.op() == RowMessage_Op_UPDATE);
+         (row_message.op() == RowMessage_Op_INSERT
+          || row_message.op() == RowMessage_Op_UPDATE);
 }
 
 void MakeNewProtoRecord(
     const docdb::IntentKeyValueForCDC& intent, const OpId& op_id, const RowMessage& row_message,
     const Schema& schema, size_t col_count, CDCSDKProtoRecordPB* proto_record,
     GetChangesResponsePB* resp, IntraTxnWriteId* write_id, std::string* reverse_index_key) {
-    CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
-    SetCDCSDKOpId(
-        op_id.term, op_id.index, intent.write_id, intent.reverse_index_key, cdc_sdk_op_id_pb);
+  CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
+  SetCDCSDKOpId(
+      op_id.term, op_id.index, intent.write_id, intent.reverse_index_key, cdc_sdk_op_id_pb);
 
-    CDCSDKProtoRecordPB* record_to_be_added = resp->add_cdc_sdk_proto_records();
-    record_to_be_added->CopyFrom(*proto_record);
-    record_to_be_added->mutable_row_message()->CopyFrom(row_message);
+  Slice doc_ht(intent.ht_buf);
 
-    *write_id = intent.write_id;
-    *reverse_index_key = intent.reverse_index_key;
+  CDCSDKProtoRecordPB* record_to_be_added = resp->add_cdc_sdk_proto_records();
+  record_to_be_added->CopyFrom(*proto_record);
+  record_to_be_added->mutable_row_message()->CopyFrom(row_message);
+  auto result = DocHybridTime::DecodeFromEnd(&doc_ht);
+  if (result.ok()) {
+    record_to_be_added->mutable_row_message()->set_commit_time((*result).hybrid_time().value());
+  } else {
+    LOG(WARNING) << "Failed to get commit hybrid time for intent key: " << intent.key_buf.c_str();
+  }
+  *write_id = intent.write_id;
+  *reverse_index_key = intent.reverse_index_key;
 }
 
 Result<size_t> PopulatePackedRows(
@@ -533,6 +540,7 @@ Status PopulateCDCSDKDDLRecord(
   row_message = proto_record->mutable_row_message();
   row_message->set_op(RowMessage_Op_DDL);
   row_message->set_table(table_name);
+  row_message->set_commit_time(msg->hybrid_time());
 
   CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
   SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
@@ -1087,7 +1095,7 @@ Status GetChangesForCDCSDK(
   }
 
   checkpoint_updated ? resp->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint)
-                       : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
+                     : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
 
   if (last_streamed_op_id->index > 0) {
     last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());

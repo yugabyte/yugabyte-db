@@ -89,6 +89,25 @@ class CDCTabletMetrics {
   scoped_refptr<MetricEntity> entity_;
 };
 
+class CDCSDKTabletMetrics {
+ public:
+  explicit CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& metric_entity_cdcsdk);
+
+  // Lag between last committed record in the producer and last sent record.
+  scoped_refptr<AtomicGauge<int64_t>> cdcsdk_sent_lag_micros;
+  // Total traffic sent in bytes.
+  scoped_refptr<Counter> cdcsdk_traffic_sent;
+  // Total change events sent.
+  scoped_refptr<Counter> cdcsdk_change_event_count;
+  // Remaining expiry time of stream in milli seconds.
+  scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_expiry_time_ms;
+  // Last sent physical time is used for calculating sent lag micros
+  scoped_refptr<AtomicGauge<uint64_t>> cdcsdk_last_sent_physicaltime;
+
+ private:
+  scoped_refptr<MetricEntity> entity_;
+};
+
 class CDCServerMetrics {
  public:
   explicit CDCServerMetrics(const scoped_refptr<MetricEntity>& metric_entity_server);
