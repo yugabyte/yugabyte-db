@@ -9,7 +9,7 @@
 
 import { IBackup } from './IBackup';
 
-interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'storageConfigUUID'> {
+interface ScheduleTaskParams {
   firstTry: boolean;
   encryptionAtRestConfig: {
     encryptionAtRestEnabled: boolean;
@@ -22,7 +22,10 @@ interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'sto
   tableUUIDList: string[];
   universeUUID: string;
   fullBackup: boolean;
-  keyspaceList: IBackup['responseList'];
+  backupType: IBackup['backupType'];
+  sse: IBackup['commonBackupInfo']['sse'];
+  storageConfigUUID: IBackup['commonBackupInfo']['storageConfigUUID'];
+  keyspaceList: IBackup['commonBackupInfo']['responseList'];
   expiryTimeUnit: string;
 }
 
@@ -34,9 +37,11 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   runningState: boolean;
   cronExpression: string;
   status: 'Active' | 'Stopped' | 'Paused';
-  backupInfo: Schedule_Task_Params;
+  backupInfo: ScheduleTaskParams;
   scheduleName: string;
   prevCompletedTask: number;
   nextExpectedTask: number;
   frequencyTimeUnit: string;
+  incrementalBackupFrequency: number;
+  incrementalBackupFrequencyTimeUnit: string;
 }
