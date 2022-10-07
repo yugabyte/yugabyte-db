@@ -1,43 +1,49 @@
 ---
-title: Build a C++ application that uses YSQL
-headerTitle: Build a C++ application
-linkTitle: More examples
-description: Build a C++ application that uses the YSQL API.
+title: Connect an application
+linkTitle: Connect an app
+description: C++ drivers for YSQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/cpp/
   - /preview/develop/client-drivers/cpp/
   - /preview/quick-start/build-apps/cpp/
 menu:
   preview:
-    identifier: build-apps-cpp-1-ysql
-    parent: cloud-cpp
-    weight: 556
+    identifier: cpp-ysql-driver
+    parent: cpp-drivers
+    weight: 410
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../ysql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
+      libpqxx C++ Driver
     </a>
   </li>
-
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
 </ul>
 
 ## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](../../../../quick-start/).
+- installed YugabyteDB, and created a universe with YSQL enabled. If not, please follow the steps in [Quick start](../../../quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have `gcc` 4.1.2 or later, clang 3.4 or later installed.
 

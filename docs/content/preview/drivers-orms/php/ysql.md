@@ -1,29 +1,36 @@
 ---
-title: Build a PHP application that uses YSQL
-headerTitle: Build a PHP application
-linkTitle: More examples
-description: Build a PHP application that uses YSQL to perform basic database operations.
+title: Connect an application
+linkTitle: Connect an app
+description: PHP drivers for YSQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/php/
   - /preview/develop/client-drivers/php/
   - /preview/quick-start/build-apps/php/
 menu:
   preview:
-    identifier: build-apps-php-1-ysql
-    parent: cloud-php
-    weight: 555
+    identifier: php-ysql-driver
+    parent: php-drivers
+    weight: 410
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../ysql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+</div>
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
+      php-pgsql Driver
     </a>
   </li>
-
 </ul>
 
 ## Install the php-pgsql driver

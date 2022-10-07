@@ -247,7 +247,8 @@ bool ShouldApplySeparately(OperationType operation_type) {
     case OperationType::kTruncate: FALLTHROUGH_INTENDED;
     case OperationType::kSplit: FALLTHROUGH_INTENDED;
     case OperationType::kEmpty: FALLTHROUGH_INTENDED;
-    case OperationType::kHistoryCutoff:
+    case OperationType::kHistoryCutoff: FALLTHROUGH_INTENDED;
+    case OperationType::kChangeAutoFlagsConfig:
       return true;
 
     case OperationType::kWrite: FALLTHROUGH_INTENDED;

@@ -15,7 +15,6 @@
 #define YB_MASTER_CATALOG_MANAGER_IF_H
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
 
@@ -111,6 +110,8 @@ class CatalogManagerIf {
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
       std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
+  virtual Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;

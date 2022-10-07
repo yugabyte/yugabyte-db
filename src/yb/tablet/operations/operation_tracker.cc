@@ -101,6 +101,11 @@ METRIC_DEFINE_counter(tablet, operation_memory_pressure_rejections,
                       "Number of operations rejected because the tablet's "
                       "operation memory limit was reached.");
 
+METRIC_DEFINE_gauge_uint64(tablet, change_auto_flags_config_operations_inflight,
+                           "AutoFlags config change",
+                           yb::MetricUnit::kOperations,
+                           "Number of AutoFlags config change operations currently in-flight");
+
 using namespace std::literals;
 using std::shared_ptr;
 using std::vector;
@@ -126,7 +131,8 @@ OperationTracker::Metrics::Metrics(const scoped_refptr<MetricEntity>& entity)
   INSTANTIATE(Truncate, truncate);
   INSTANTIATE(Empty, empty);
   INSTANTIATE(HistoryCutoff, history_cutoff);
-  static_assert(8 == kElementsInOperationType, "Init metrics for all operation types");
+  INSTANTIATE(ChangeAutoFlagsConfig, change_auto_flags_config);
+  static_assert(9== kElementsInOperationType, "Init metrics for all operation types");
 }
 #undef INSTANTIATE
 #undef GINIT

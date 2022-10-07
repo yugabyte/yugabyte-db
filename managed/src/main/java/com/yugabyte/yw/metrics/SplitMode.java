@@ -12,7 +12,7 @@ package com.yugabyte.yw.metrics;
 import lombok.Getter;
 
 @Getter
-public enum NodeSplitMode {
+public enum SplitMode {
   NONE,
   TOP,
   BOTTOM

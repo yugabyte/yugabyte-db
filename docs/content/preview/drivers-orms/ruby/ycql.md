@@ -1,33 +1,36 @@
 ---
-title: Build a Ruby application that uses YCQL
-headerTitle: Build a Ruby application
-linkTitle: More examples
-description: Build a sample Ruby application with the Yugabyte Ruby Driver for YCQL.
+title: Connect an application
+linkTitle: Connect an app
+description: Ruby drivers for YCQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    parent: cloud-ruby
-    identifier: ruby-3
-    weight: 553
+    identifier: ycql-ruby-driver
+    parent: ruby-drivers
+    weight: 420
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li>
+      <a href="../ysql-pg/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li class="active">
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Gem
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-rails-activerecord.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - ActiveRecord
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
+   <li >
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
+      YugabyteDB Ruby Driver
     </a>
   </li>
 </ul>

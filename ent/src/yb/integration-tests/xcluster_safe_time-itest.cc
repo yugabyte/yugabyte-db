@@ -510,7 +510,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+              std::static_pointer_cast<cdc::CDCTabletMetrics>(
+                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
 
           if (metrics && metrics->last_read_hybridtime->value()) {
             producer_tablet_read_time_[tablet_id] = metrics->last_read_hybridtime->value();
@@ -534,7 +535,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+              std::static_pointer_cast<cdc::CDCTabletMetrics>(
+                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
 
           if (metrics &&
               metrics->last_read_hybridtime->value() > producer_tablet_read_time_[tablet_id]) {
@@ -560,7 +562,7 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
 
     for (const auto& namespace_data_loss : resp.namespace_data_loss()) {
       if (namespace_id == namespace_data_loss.namespace_id()) {
-        return namespace_data_loss.data_loss_ns();
+        return namespace_data_loss.data_loss_us();
       }
     }
 
@@ -629,7 +631,7 @@ TEST_F(XClusterSafeTimeYsqlTest, ConsistentReads) {
   const auto high_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
   LOG(INFO) << "High RPO is " << high_rpo;
   // RPO only gets updated every second, so only checking for at least one timeout.
-  ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToNanoseconds());
+  ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMicroseconds());
 
   // Resume replication and verify all data is written on the consumer.
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);

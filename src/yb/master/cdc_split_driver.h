@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_XCLUSTER_SPLIT_DRIVER_H
-#define YB_MASTER_XCLUSTER_SPLIT_DRIVER_H
+#ifndef YB_MASTER_CDC_SPLIT_DRIVER_H
+#define YB_MASTER_CDC_SPLIT_DRIVER_H
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/tablet_split_fwd.h"
@@ -20,16 +20,16 @@
 namespace yb {
 namespace master {
 
-class XClusterSplitDriverIf {
+class CDCSplitDriverIf {
  public:
-  virtual ~XClusterSplitDriverIf() {}
+  virtual ~CDCSplitDriverIf() {}
   virtual Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 
-  virtual Status UpdateXClusterProducerOnTabletSplit(
+  virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 };
 
 } // namespace master
 } // namespace yb
-#endif // YB_MASTER_XCLUSTER_SPLIT_DRIVER_H
+#endif // YB_MASTER_CDC_SPLIT_DRIVER_H

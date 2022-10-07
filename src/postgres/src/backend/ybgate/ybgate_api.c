@@ -14,8 +14,6 @@
 
 #include "postgres.h"
 
-#include <setjmp.h>
-
 #include "ybgate/ybgate_api.h"
 
 #include "catalog/pg_type.h"
@@ -24,6 +22,7 @@
 #include "common/int.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
+#include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -34,6 +33,15 @@
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "funcapi.h"
+
+YbgStatus YbgInit()
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	SetDatabaseEncoding(PG_UTF8);
+
+	return PG_STATUS_OK;
+}
 
 //-----------------------------------------------------------------------------
 // Memory Context
