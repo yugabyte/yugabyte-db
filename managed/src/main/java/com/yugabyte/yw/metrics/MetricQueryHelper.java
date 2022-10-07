@@ -71,6 +71,9 @@ public class MetricQueryHelper {
   private static final String NODE_PREFIX = "node_prefix";
   private static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
+  public static final String TABLE_ID = "table_id";
+  public static final String TABLE_NAME = "table_name";
+  public static final String NAMESPACE_NAME = "namespace_name";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";

@@ -102,6 +102,8 @@ class Master : public tserver::DbServerBase {
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
 
+  AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
+
   PermissionsManager& permissions_manager();
 
   EncryptionManager& encryption_manager();
@@ -155,7 +157,7 @@ class Master : public tserver::DbServerBase {
   SysCatalogTable& sys_catalog() const;
 
   uint32_t GetAutoFlagConfigVersion() const override;
-  AutoFlagsConfigPB GetAutoFlagConfig() const;
+  AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
   yb::client::AsyncClientInitialiser& async_client_initializer() {
     return *async_client_init_;

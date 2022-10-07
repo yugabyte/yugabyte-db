@@ -1640,21 +1640,12 @@
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
           "type" : "string"
         },
-        "backupUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "category" : {
           "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
           "type" : "string"
         },
-        "completionTime" : {
-          "format" : "date-time",
-          "type" : "string"
-        },
-        "createTime" : {
-          "format" : "date-time",
-          "type" : "string"
+        "commonBackupInfo" : {
+          "$ref" : "#/definitions/CommonBackupInfo"
         },
         "customerUUID" : {
           "format" : "uuid",
@@ -1663,6 +1654,13 @@
         "expiryTime" : {
           "format" : "date-time",
           "type" : "string"
+        },
+        "fullChainSizeInBytes" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "hasIncrementalBackups" : {
+          "type" : "boolean"
         },
         "isFullBackup" : {
           "type" : "boolean"
@@ -1673,46 +1671,24 @@
         "isUniversePresent" : {
           "type" : "boolean"
         },
-        "kmsConfigUUID" : {
-          "format" : "uuid",
+        "lastBackupState" : {
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "type" : "string"
+        },
+        "lastIncrementalBackupTime" : {
+          "format" : "date-time",
           "type" : "string"
         },
         "onDemand" : {
           "type" : "boolean"
         },
-        "responseList" : {
-          "items" : {
-            "$ref" : "#/definitions/KeyspaceTablesList"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
         "scheduleUUID" : {
           "format" : "uuid",
-          "type" : "string"
-        },
-        "sse" : {
-          "type" : "boolean"
-        },
-        "state" : {
-          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
           "type" : "string"
         },
         "storageConfigType" : {
           "enum" : [ "S3", "NFS", "AZ", "GCS", "FILE" ],
           "type" : "string"
-        },
-        "storageConfigUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "taskUUID" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "totalBackupSizeInBytes" : {
-          "format" : "int64",
-          "type" : "integer"
         },
         "universeName" : {
           "type" : "string"
@@ -1720,13 +1696,9 @@
         "universeUUID" : {
           "format" : "uuid",
           "type" : "string"
-        },
-        "updateTime" : {
-          "format" : "date-time",
-          "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "category", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "kmsConfigUUID", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTime", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "lastIncrementalBackupTime", "onDemand", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -2558,7 +2530,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "clientRootCA", "clusters", "creatingUser", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "rootCA", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
+      "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "rootAndClientRootCASame", "selfSignedClientCertRotate", "selfSignedServerCertRotate", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
     "ClientCertParams" : {
@@ -2728,6 +2700,62 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "CommonBackupInfo" : {
+      "properties" : {
+        "backupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "basebackupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "completionTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "createTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "kmsConfigUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "responseList" : {
+          "items" : {
+            "$ref" : "#/definitions/KeyspaceTablesList"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "sse" : {
+          "type" : "boolean"
+        },
+        "state" : {
+          "enum" : [ "InProgress", "Completed", "Failed", "Deleted", "Skipped", "FailedToDelete", "Stopping", "Stopped", "DeleteInProgress", "QueuedForDeletion" ],
+          "type" : "string"
+        },
+        "storageConfigUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "taskUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "totalBackupSizeInBytes" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "updateTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupUUID", "basebackupUUID", "completionTime", "createTime", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "updateTime" ],
       "type" : "object"
     },
     "CommunicationPorts" : {
@@ -4586,19 +4614,24 @@
           "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
           "type" : "string"
         },
-        "nodeSplitCount" : {
-          "description" : "Defines how many node lines we return in case we split nodes",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "nodeSplitMode" : {
-          "description" : "Controls if we split nodes into own lines OR aggregate across nodes and how we select nodes in case of split query",
-          "enum" : [ "NONE", "TOP", "BOTTOM" ],
-          "type" : "string"
-        },
         "returnAggregatedValue" : {
           "description" : "Defines if we return 'mean' line with node lines in case we split nodes",
           "type" : "boolean"
+        },
+        "splitCount" : {
+          "description" : "Defines how many node lines we return in case we split by nodes/tables/etc.",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "splitMode" : {
+          "description" : "Controls if we split nodes, tables, etc. into own lines OR aggregate  and how we select lines in case of split query",
+          "enum" : [ "NONE", "TOP", "BOTTOM" ],
+          "type" : "string"
+        },
+        "splitType" : {
+          "description" : "Defines set of labels, which we use for a split query",
+          "enum" : [ "NONE", "NODE", "TABLE", "NAMESPACE" ],
+          "type" : "string"
         },
         "timeAggregation" : {
           "description" : "Way of metrics aggregation over time",
@@ -11427,6 +11460,41 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit a backup V2",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/backups/{backupUUID}/list_increments" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listIncrementalBackups",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "backupUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CommonBackupInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Incremental backups",
         "tags" : [ "Backups" ]
       }
     },

@@ -1,36 +1,43 @@
 ---
-title: Build a C application that uses YSQL
-headerTitle: Build a C application
-linkTitle: More examples
-description: Build a sample C application with libpq.
+title: Connect an application
+linkTitle: Connect an app
+description: C drivers for YSQL
+image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/c/
   - /preview/develop/client-drivers/c/
   - /preview/quick-start/build-apps/c/
 menu:
   preview:
-    identifier: build-apps-c-1-ysql
-    parent: cloud-c
-    weight: 557
+    identifier: libpq-c-driver
+    parent: c-drivers
+    weight: 410
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../ysql/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+</div>
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
+      libpq C Driver
     </a>
   </li>
-
 </ul>
 
 ## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](../../../../quick-start/).
+- installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](../../../quick-start/).
 - a 32-bit (x86) or 64-bit (x64) architecture machine.
 - gcc 4.1.2 or later, clang 3.4 or later installed.
 

@@ -1459,7 +1459,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
             if (status.ok()) {
               return;
             }
-            if (status.IsTryAgain()) {
+            if (action.is_external && status.IsTryAgain()) {
               // We are trying to apply an external transaction on a tablet that is not caught up
               // to commit_ht, keep retrying until it succeeds.
               SendUpdateTransactionRequest(

@@ -211,7 +211,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
     values['targetUniverseUUID'] = { value: currentUniverseUUID };
 
-    const backup: Partial<IBackup> = {
+    const backup: Partial<IBackup & Record<string, any>> = {
       backupType: (values['api_type'].value as unknown) as TableType,
       storageConfigUUID: values['storage_config'].value,
       sse: values['storage_config'].name === 'S3',

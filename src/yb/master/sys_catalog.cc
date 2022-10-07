@@ -574,6 +574,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
+      .auto_flags_manager = master_->auto_flags_manager(),
       // We don't support splitting the catalog tablet, these fields are unneeded.
       .post_split_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr
@@ -786,18 +787,29 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t* last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
   return ReadYsqlDBCatalogVersionImpl(
-      ysql_catalog_table_id, catalog_version, last_breaking_version, nullptr);
+      ysql_catalog_table_id, kInvalidOid, catalog_version, last_breaking_version, nullptr);
+}
+
+Status SysCatalogTable::ReadYsqlDBCatalogVersion(TableId ysql_catalog_table_id,
+                                                 uint32_t db_oid,
+                                                 uint64_t* catalog_version,
+                                                 uint64_t* last_breaking_version) {
+  TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
+  return ReadYsqlDBCatalogVersionImpl(
+      ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, nullptr);
 }
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
     TableId ysql_catalog_table_id,
     DbOidToCatalogVersionMap* versions) {
   TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
-  return ReadYsqlDBCatalogVersionImpl(ysql_catalog_table_id, nullptr, nullptr, versions);
+  return ReadYsqlDBCatalogVersionImpl(
+      ysql_catalog_table_id, kInvalidOid, nullptr, nullptr, versions);
 }
 
 Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     TableId ysql_catalog_table_id,
+    uint32_t db_oid,
     uint64_t* catalog_version,
     uint64_t* last_breaking_version,
     DbOidToCatalogVersionMap* versions) {
@@ -809,14 +821,10 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
-  QLTableRow source_row;
-  ColumnId db_oid_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName));
-  ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
-  ColumnId last_breaking_version_col_id =
-      VERIFY_RESULT(schema.ColumnIdByName(kLastBreakingVersionColumnName));
 
   // If 'versions' is set we read all rows. If 'catalog_version/last_breaking_version' are set,
-  // we only read the global catalog version.
+  // we only read the global catalog version if db_oid is kInvalidOid, or read the per-db catalog
+  // version if db_oid is valid.
   if (versions) {
     DCHECK(!catalog_version);
     DCHECK(!last_breaking_version);
@@ -829,6 +837,27 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     if (last_breaking_version) {
       *last_breaking_version = 0;
     }
+  }
+
+  QLTableRow source_row;
+  ColumnId db_oid_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName));
+  ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
+  ColumnId last_breaking_version_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kLastBreakingVersionColumnName));
+
+  // We set up a QL_OP_EQUAL filter to read per-db catalog version. We don't need to set
+  // up this filter to read the global catalog version.
+  if (!versions && db_oid != kInvalidOid) {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(db_oid_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(db_oid);
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
   }
 
   while (VERIFY_RESULT(iter->HasNext())) {
@@ -854,17 +883,19 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
       // There should not be any duplicate db_oid because it is a primary key.
       DCHECK(insert_result.second);
     } else {
-      // Otherwise, we only read the global catalog version.
+      // Otherwise, we only read the global catalog version or per-db catalog version.
       if (catalog_version) {
         *catalog_version = version_col_value->int64_value();
       }
       if (last_breaking_version) {
         *last_breaking_version = last_breaking_version_col_value->int64_value();
       }
-      // The table pg_yb_catalog_version has db_oid as primary key in ASC order and we use the
-      // row for template1 to store global catalog version. The db_oid of template1 is 1, which
-      // is the smallest db_oid. Therefore we only need to read the first row to retrieve the
-      // global catalog version.
+      // If db_oid is valid, we have used QL_OP_EQUAL filter to select the matching row and
+      // therefore have got the per-db catalog version for database db_oid. If db_oid is
+      // kInvalidOid, we want to get the global catalog version. The table pg_yb_catalog_version
+      // has db_oid column as primary key in ASC order and we use the row for template1 to store
+      // global catalog version. The db_oid of template1 is 1, which is the smallest db_oid.
+      // Therefore we only need to read the first row to retrieve the global catalog version.
       return Status::OK();
     }
   }

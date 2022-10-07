@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
-
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import {
@@ -93,7 +93,7 @@ export const panelTypes = {
       'master_log_bytes_read',
       'master_tc_malloc_stats',
       'master_glog_info_messages',
-      'master_lsm_rocksdb_num_seek_or_next',
+      'master_lsm_rocksdb_seek_next_prev',
       'master_lsm_rocksdb_num_seeks_per_node',
       'master_lsm_rocksdb_total_sst_per_node',
       'master_lsm_rocksdb_avg_num_sst_per_node',
@@ -109,8 +109,7 @@ export const panelTypes = {
   lsmdb: {
     title: 'DocDB',
     metrics: [
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
@@ -122,6 +121,7 @@ export const panelTypes = {
       'lsm_rocksdb_blooms_checked_and_useful',
       'lsm_rocksdb_stalls',
       'lsm_rocksdb_write_rejections',
+      'lsm_rocksdb_memory_rejections',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_tasks',
@@ -172,6 +172,23 @@ export const panelTypes = {
     ]
   },
 
+  top_tables: {
+    title: 'Top tables',
+    metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_log_latency',
+      'table_log_ops_second',
+      'table_log_bytes_written',
+      'table_seek_next_prev',
+      'table_ops_in_flight',
+      'table_write_rejections',
+      'table_memory_rejections',
+      'table_compaction',
+      'table_block_cache_hit_miss'
+    ]
+  },
+
   sql: {
     title: 'YSQL Advanced',
     metrics: ['ysql_server_advanced_rpc_per_second', 'ysql_sql_advanced_latency']
@@ -206,8 +223,7 @@ export const panelTypes = {
   lsmdb_table: {
     title: 'DocDB',
     metrics: [
-      'lsm_rocksdb_num_seek_or_next',
-      'lsm_rocksdb_num_seeks_per_node',
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_total_sst_per_node',
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
@@ -218,7 +234,6 @@ export const panelTypes = {
       'lsm_rocksdb_stalls',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
-      'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction'
@@ -251,13 +266,12 @@ class GraphPanel extends Component {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
     const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
-    const metricsWithSettings = panelTypes[type].metrics.map((metric) =>
-     {
-        return {
-          metric: metric,
-          splitTopNodes: splitTopNodes
-        }
-     })
+    const metricsWithSettings = panelTypes[type].metrics.map((metric) => {
+      return {
+        metric: metric,
+        splitTopNodes: splitTopNodes
+      }
+    })
     const params = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
@@ -332,10 +346,11 @@ class GraphPanel extends Component {
         and group metrics by panel type and filter out anything that is empty.
         */
         const width = this.props.width;
+
         panelData = panelTypes[type].metrics
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
-              <MetricsPanel
+              <MetricsPanelOld
                 currentUser={currentUser}
                 metricKey={metricKey}
                 key={idx}
@@ -359,7 +374,7 @@ class GraphPanel extends Component {
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
         if (nodeName.match('yb-tserver-') != null) {
-          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced'){
+          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced') {
             return null;
           }
         }

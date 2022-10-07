@@ -3,6 +3,7 @@
 export { default as GraphPanel } from './GraphPanel/GraphPanel';
 export { default as GraphPanelHeader } from './GraphPanelHeader/GraphPanelHeader';
 export { default as MetricsPanel } from './MetricsPanel/MetricsPanel';
+export { default as MetricsPanelOld } from './MetricsPanel/MetricsPanelOld';
 export { default as OverviewMetrics } from './OverviewMetrics/OverviewMetrics';
 export { default as OverviewMetricsContainer } from './OverviewMetrics/OverviewMetricsContainer';
 export { default as MetricsPanelOverview } from './MetricsPanel/MetricsPanelOverview';
