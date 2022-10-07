@@ -22,7 +22,9 @@ import com.yugabyte.yw.metrics.MetricLabelFilters;
 import com.yugabyte.yw.metrics.MetricQueryContext;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricSettings;
-import com.yugabyte.yw.metrics.NodeSplitMode;
+import com.yugabyte.yw.metrics.SplitMode;
+import com.yugabyte.yw.metrics.SplitType;
+import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -44,9 +46,10 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig.loadConfig(configs);
     for (MetricConfig config : MetricConfig.find.all()) {
       assertThat(
-          config.getLayout(),
-          allOf(notNullValue(), IsInstanceOf.instanceOf(MetricConfig.Layout.class)));
-      assertThat(config.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS), allOf(notNullValue()));
+          config.getConfig().getLayout(),
+          allOf(notNullValue(), IsInstanceOf.instanceOf(Layout.class)));
+      assertThat(
+          config.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS), allOf(notNullValue()));
     }
   }
 
@@ -62,7 +65,7 @@ public class MetricConfigTest extends FakeDBApplication {
       configJson.set("filters", filterJson);
       MetricConfig metricConfig = MetricConfig.create("metric-" + pattern, configJson);
       metricConfig.save();
-      String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+      String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
       assertThat(query, allOf(notNullValue(), equalTo("sample{filter=~\"" + filterString + "\"}")));
     }
   }
@@ -76,7 +79,7 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"filters\": {\"export_type\":\"tserver_export\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query,
         allOf(
@@ -106,7 +109,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig request = MetricConfig.create("test_request", containerRequest);
     usage.save();
     request.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query,
         allOf(
@@ -123,16 +126,21 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"function\": \"avg\", \"range\": true}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    Map<String, String> queries = metricConfig.getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
+    Map<String, String> queries =
+        metricConfig.getConfig().getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertEquals(queries.size(), 3);
     for (Map.Entry<String, String> e : queries.entrySet()) {
       assertThat(
           e.getValue(),
           allOf(
               equalTo(
-                  metricConfig.getQuery(
-                      MetricSettings.defaultSettings(e.getKey()),
-                      MetricQueryContext.builder().queryRangeSecs(DEFAULT_RANGE_SECS).build()))));
+                  metricConfig
+                      .getConfig()
+                      .getQuery(
+                          MetricSettings.defaultSettings(e.getKey()),
+                          MetricQueryContext.builder()
+                              .queryRangeSecs(DEFAULT_RANGE_SECS)
+                              .build()))));
     }
   }
 
@@ -148,7 +156,7 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"group_by\": \"service_method\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query,
         allOf(
@@ -172,15 +180,18 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     String query =
-        metricConfig.getSingleMetricQuery(
-            MetricSettings.defaultSettings("rpc_latency.avg")
-                .setNodeSplitMode(NodeSplitMode.TOP)
-                .setNodeSplitCount(2),
-            MetricQueryContext.builder()
-                .topKQuery(true)
-                .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
-                .queryRangeSecs(DEFAULT_RANGE_SECS)
-                .build());
+        metricConfig
+            .getConfig()
+            .getSingleMetricQuery(
+                MetricSettings.defaultSettings("rpc_latency.avg")
+                    .setSplitType(SplitType.NODE)
+                    .setSplitMode(SplitMode.TOP)
+                    .setSplitCount(2),
+                MetricQueryContext.builder()
+                    .topKQuery(true)
+                    .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
+                    .queryRangeSecs(DEFAULT_RANGE_SECS)
+                    .build());
     assertThat(
         query,
         allOf(
@@ -223,14 +234,17 @@ public class MetricConfigTest extends FakeDBApplication {
                         MetricQueryHelper.EXPORTED_INSTANCE, "instance3|instance4")))
             .build();
     String query =
-        metricConfig.getSingleMetricQuery(
-            MetricSettings.defaultSettings("rpc_latency.avg").setNodeSplitCount(2),
-            MetricQueryContext.builder()
-                .metricOrFilters(
-                    ImmutableMap.of("rpc_latency.avg", ImmutableList.of(readFilters, writeFilters)))
-                .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
-                .queryRangeSecs(DEFAULT_RANGE_SECS)
-                .build());
+        metricConfig
+            .getConfig()
+            .getSingleMetricQuery(
+                MetricSettings.defaultSettings("rpc_latency.avg").setSplitCount(2),
+                MetricQueryContext.builder()
+                    .metricOrFilters(
+                        ImmutableMap.of(
+                            "rpc_latency.avg", ImmutableList.of(readFilters, writeFilters)))
+                    .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
+                    .queryRangeSecs(DEFAULT_RANGE_SECS)
+                    .build());
     assertThat(
         query,
         allOf(
@@ -259,16 +273,21 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"function\": \"avg\", \"filters\": {\"node_prefix\": \"foo|bar\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    Map<String, String> queries = metricConfig.getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
+    Map<String, String> queries =
+        metricConfig.getConfig().getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertEquals(queries.size(), 3);
     for (Map.Entry<String, String> e : queries.entrySet()) {
       assertThat(
           e.getValue(),
           allOf(
               equalTo(
-                  metricConfig.getQuery(
-                      MetricSettings.defaultSettings(e.getKey()),
-                      MetricQueryContext.builder().queryRangeSecs(DEFAULT_RANGE_SECS).build()))));
+                  metricConfig
+                      .getConfig()
+                      .getQuery(
+                          MetricSettings.defaultSettings(e.getKey()),
+                          MetricQueryContext.builder()
+                              .queryRangeSecs(DEFAULT_RANGE_SECS)
+                              .build()))));
     }
   }
 
@@ -277,7 +296,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", Json.newObject());
     metricConfig.save();
     try {
-      metricConfig.getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
+      metricConfig.getConfig().getQueries(new HashMap<>(), DEFAULT_RANGE_SECS);
     } catch (RuntimeException re) {
       assertThat(
           re.getMessage(),
@@ -290,7 +309,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig =
         MetricConfig.create("metric", Json.parse("{\"metric\": \"metric\"}"));
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(query, allOf(notNullValue(), equalTo("metric")));
   }
 
@@ -300,7 +319,7 @@ public class MetricConfigTest extends FakeDBApplication {
         Json.parse("{\"metric\": \"metric\", \"range\": true, " + "\"function\": \"rate\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), 30);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), 30);
     assertThat(query, allOf(notNullValue(), equalTo("rate(metric[30s])")));
   }
 
@@ -309,7 +328,7 @@ public class MetricConfigTest extends FakeDBApplication {
     JsonNode configJson = Json.parse("{\"metric\": \"metric\", \"range\": true}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), 30);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), 30);
     assertThat(query, allOf(notNullValue(), equalTo("metric")));
   }
 
@@ -322,7 +341,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(query, allOf(notNullValue(), equalTo("rate(metric{memory=\"used\"}[60s])")));
   }
 
@@ -333,7 +352,8 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(ImmutableMap.of("extra", "1"), DEFAULT_RANGE_SECS);
+    String query =
+        metricConfig.getConfig().getQuery(ImmutableMap.of("extra", "1"), DEFAULT_RANGE_SECS);
     assertThat(query, allOf(notNullValue(), equalTo("rate(metric{extra=\"1\"}[60s])")));
   }
 
@@ -346,7 +366,8 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(ImmutableMap.of("extra", "1"), DEFAULT_RANGE_SECS);
+    String query =
+        metricConfig.getConfig().getQuery(ImmutableMap.of("extra", "1"), DEFAULT_RANGE_SECS);
     assertThat(
         query, allOf(notNullValue(), equalTo("rate(metric{memory=\"used\", extra=\"1\"}[60s])")));
   }
@@ -359,7 +380,7 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"function\": \"rate\", \"filters\": {\"memory\": \"used|buffered|free\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query, allOf(notNullValue(), equalTo("rate(metric{memory=~\"used|buffered|free\"}[60s])")));
   }
@@ -373,7 +394,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[60s]))")));
   }
 
@@ -386,7 +407,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[60s])) /10")));
   }
@@ -402,7 +423,7 @@ public class MetricConfigTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query,
         allOf(
@@ -421,7 +442,7 @@ public class MetricConfigTest extends FakeDBApplication {
                 + "\"range\": true}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
-    String query = metricConfig.getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
     assertThat(
         query,
         allOf(

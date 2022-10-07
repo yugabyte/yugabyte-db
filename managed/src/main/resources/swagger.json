@@ -4614,19 +4614,24 @@
           "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
           "type" : "string"
         },
-        "nodeSplitCount" : {
-          "description" : "Defines how many node lines we return in case we split nodes",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "nodeSplitMode" : {
-          "description" : "Controls if we split nodes into own lines OR aggregate across nodes and how we select nodes in case of split query",
-          "enum" : [ "NONE", "TOP", "BOTTOM" ],
-          "type" : "string"
-        },
         "returnAggregatedValue" : {
           "description" : "Defines if we return 'mean' line with node lines in case we split nodes",
           "type" : "boolean"
+        },
+        "splitCount" : {
+          "description" : "Defines how many node lines we return in case we split by nodes/tables/etc.",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "splitMode" : {
+          "description" : "Controls if we split nodes, tables, etc. into own lines OR aggregate  and how we select lines in case of split query",
+          "enum" : [ "NONE", "TOP", "BOTTOM" ],
+          "type" : "string"
+        },
+        "splitType" : {
+          "description" : "Defines set of labels, which we use for a split query",
+          "enum" : [ "NONE", "NODE", "TABLE", "NAMESPACE" ],
+          "type" : "string"
         },
         "timeAggregation" : {
           "description" : "Way of metrics aggregation over time",
