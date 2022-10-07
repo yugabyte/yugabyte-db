@@ -1041,7 +1041,7 @@ class TabletBootstrap {
     if (!replicate.has_write())
       return;
 
-    if (data_.retryable_requests) {
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
       data_.retryable_requests->Bootstrap(replicate, entry_time);
     }
 
@@ -1170,8 +1170,9 @@ class TabletBootstrap {
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    const RestartSafeCoarseDuration min_seconds_to_retain_logs =
-        std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    const RestartSafeCoarseDuration min_seconds_to_retain_logs = data_.bootstrap_retryable_requests
+        ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+        : 0s;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
