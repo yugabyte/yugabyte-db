@@ -8,11 +8,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.models.MetricConfig;
+import com.yugabyte.yw.models.MetricConfigDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -103,11 +105,12 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     if (config == null) {
       responseJson.put("error", "Invalid Query Key");
     } else {
-      Map<String, List<MetricLabelFilters>> topNodeFilters;
+      MetricConfigDefinition configDefinition = config.getConfig();
+      Map<String, List<MetricLabelFilters>> splitQueryFilters;
       try {
-        topNodeFilters = getTopNodesFilters(config, responseJson);
+        splitQueryFilters = getSplitQueryFilters(configDefinition, responseJson);
       } catch (Exception e) {
-        log.error("Error occurred getting top nodes list for metric" + metricName, e);
+        log.error("Error occurred split query filters list for metric" + metricName, e);
         responseJson.put("error", e.getMessage());
         return responseJson;
       }
@@ -116,14 +119,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           MetricQueryContext.builder()
               .queryRangeSecs(queryRangeSecs)
               .additionalFilters(additionalFilters)
-              .metricOrFilters(topNodeFilters)
-              .additionalGroupBy(
-                  metricSettings.getNodeSplitMode() != NodeSplitMode.NONE
-                      ? ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE)
-                      : Collections.emptySet())
+              .metricOrFilters(splitQueryFilters)
+              .additionalGroupBy(getAdditionalGroupBy(metricSettings))
               .build();
-      Map<String, String> queries = config.getQueries(this.metricSettings, context);
-      responseJson.set("layout", Json.toJson(config.getLayout()));
+      Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
+      responseJson.set("layout", Json.toJson(configDefinition.getLayout()));
       MetricRechartsGraphData rechartsOutput = new MetricRechartsGraphData();
       List<MetricGraphData> output = new ArrayList<>();
       ArrayNode directURLs = responseJson.putArray("directURLs");
@@ -148,7 +148,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           responseJson.put("error", queryResponse.error);
           break;
         } else {
-          output.addAll(queryResponse.getGraphData(metric, config.getLayout(), metricSettings));
+          output.addAll(queryResponse.getGraphData(metric, configDefinition, metricSettings));
         }
       }
       if (isRecharts) {
@@ -161,9 +161,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     return responseJson;
   }
 
-  private Map<String, List<MetricLabelFilters>> getTopNodesFilters(
-      MetricConfig config, ObjectNode responseJson) {
-    if (metricSettings.getNodeSplitMode() == NodeSplitMode.NONE) {
+  private Map<String, List<MetricLabelFilters>> getSplitQueryFilters(
+      MetricConfigDefinition configDefinition, ObjectNode responseJson) {
+    if (metricSettings.getSplitMode() == SplitMode.NONE) {
       return Collections.emptyMap();
     }
     int range = Integer.parseInt(queryParam.get("range"));
@@ -172,9 +172,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
             .topKQuery(true)
             .queryRangeSecs(range)
             .additionalFilters(additionalFilters)
-            .additionalGroupBy(ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE))
+            .additionalGroupBy(getAdditionalGroupBy(metricSettings))
             .build();
-    Map<String, String> queries = config.getQueries(this.metricSettings, context);
+    Map<String, String> queries = configDefinition.getQueries(this.metricSettings, context);
     Map<String, String> topKQueryParams = new HashMap<>(queryParam);
     String endTime = topKQueryParams.remove("end");
     if (StringUtils.isNotBlank(endTime)) {
@@ -182,7 +182,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       topKQueryParams.put("time", endTime);
     }
     Map<String, List<MetricLabelFilters>> results = new HashMap<>();
-    ArrayNode topNodesQueryURLs = responseJson.putArray("topNodesQueryURLs");
+    ArrayNode topKQueryURLs = responseJson.putArray("topKQueryURLs");
     for (Map.Entry<String, String> e : queries.entrySet()) {
       String metric = e.getKey();
       String queryExpr = e.getValue();
@@ -193,7 +193,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           Json.fromJson(queryResponseJson, MetricQueryResponse.class);
 
       try {
-        topNodesQueryURLs.add(getDirectURL(queryExpr));
+        topKQueryURLs.add(getDirectURL(queryExpr));
       } catch (Exception de) {
         log.trace("Error getting direct url", de);
       }
@@ -222,5 +222,18 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       results.put(metric, metricLabelFilters);
     }
     return results;
+  }
+
+  private Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
+    switch (metricSettings.getSplitType()) {
+      case NODE:
+        return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);
+      case TABLE:
+        return ImmutableSet.of(MetricQueryHelper.TABLE_ID, MetricQueryHelper.TABLE_NAME);
+      case NAMESPACE:
+        return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME);
+      default:
+        return Collections.emptySet();
+    }
   }
 }

@@ -237,6 +237,17 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
   return Status::OK();
 }
 
+void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
+  EntityMap entities;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    entities = entities_;
+  }
+  for (const EntityMap::value_type& e : entities) {
+    prototypes.insert(e.second->prototype().name());
+  }
+}
+
 void MetricRegistry::RetireOldMetrics() {
   std::lock_guard<simple_spinlock> l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {

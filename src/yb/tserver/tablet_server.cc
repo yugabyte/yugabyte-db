@@ -358,6 +358,11 @@ uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
+Status TabletServer::SetAutoFlagConfig(const AutoFlagsConfigPB new_config) {
+  return auto_flags_manager_->LoadFromConfig(
+      std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
+}
+
 AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
   return auto_flags_manager_->GetConfig();
 }

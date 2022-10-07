@@ -670,26 +670,32 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
 
   auto cdc_service = CDCService(tserver);
   // Assert that leader lag > 0.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
-    return metrics->async_replication_sent_lag_micros->value() > 0 &&
-        metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
+        return metrics->async_replication_sent_lag_micros->value() > 0 &&
+               metrics->async_replication_committed_lag_micros->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
   // Now, delete the replication stream and assert that lag is 0.
   ASSERT_OK(client_->DeleteCDCStream(stream_id_));
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
-    return metrics->async_replication_sent_lag_micros->value() == 0 &&
-        metrics->async_replication_committed_lag_micros->value() == 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
+        return metrics->async_replication_sent_lag_micros->value() == 0 &&
+               metrics->async_replication_committed_lag_micros->value() == 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
 
   // Now check that UpdateLagMetrics deletes the metric.
-  cdc_service->UpdateLagMetrics();
-  auto metrics = cdc_service->GetCDCTabletMetrics(
+  cdc_service->UpdateCDCMetrics();
+  auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
       {"" /* UUID */, stream_id_, tablet_id},
-      /* tablet_peer */ nullptr,
-      CreateCDCMetricsEntity::kFalse);
+      /* tablet_peer */ nullptr, XCLUSTER,
+      CreateCDCMetricsEntity::kFalse));
   ASSERT_EQ(metrics, nullptr);
 }
 
@@ -752,7 +758,8 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 
     // Verify the CDC Service-level metrics match what we just did.
     auto cdc_service = CDCService(tserver);
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
+    auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+        {"" /* UUID */, stream_id_, tablet_id}));
     ASSERT_EQ(metrics->last_read_opid_index->value(), metrics->last_readable_opid_index->value());
     ASSERT_EQ(metrics->last_read_opid_index->value(), change_resp.records_size() + 1 /* checkpt */);
     ASSERT_EQ(metrics->rpc_payload_bytes_responded->TotalCount(), 2);
@@ -973,8 +980,9 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
   auto cdc_service = CDCService(leader_tserver);
-  cdc_service->UpdateLagMetrics();
-  auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
+  cdc_service->UpdateCDCMetrics();
+  auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+      {"" /* UUID */, stream_id_, tablet_id}));
   auto timestamp_after_write = GetCurrentTimeMicros();
   auto lag_after_write = metrics->async_replication_committed_lag_micros->value();
   ASSERT_GE(lag_after_write, 0);
@@ -1029,7 +1037,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     {
       // Leader metrics
-      auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
+      auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, stream_id_, tablet_id}));
       if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
           metrics->async_replication_committed_lag_micros->value() == 0)) {
         return false;
@@ -1038,7 +1047,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     {
       // Follower metrics
       auto follower_metrics =
-          cdc_service_follower->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
+          std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
+              {"" /* UUID */, stream_id_, tablet_id}));
       return follower_metrics->async_replication_sent_lag_micros->value() == 0 &&
           follower_metrics->async_replication_committed_lag_micros->value() == 0;
     }
@@ -1086,19 +1096,23 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   }
 
   // Assert that leader lag > 0.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
-    return metrics->async_replication_sent_lag_micros->value() > 0 &&
-        metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
+        return metrics->async_replication_sent_lag_micros->value() > 0 &&
+               metrics->async_replication_committed_lag_micros->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
   {
     // Make sure we wait for follower update thread to run at least once.
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_update_metrics_interval_ms));
     // On the follower, we shouldn't create metrics for tablets that we're not leader for, so these
     // should be 0 even if there are un-polled for records.
-    auto metrics_follower = cdc_service_follower->
-        GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
+    auto metrics_follower =
+        std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
     ASSERT_TRUE(metrics_follower->async_replication_sent_lag_micros->value() == 0 &&
                 metrics_follower->async_replication_committed_lag_micros->value() == 0);
   }
@@ -1112,11 +1126,14 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   }
 
   // When we GetChanges the first time, only the read lag metric should be 0.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
-    return metrics->async_replication_sent_lag_micros->value() == 0 &&
-        metrics->async_replication_committed_lag_micros->value() > 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Read Lag = 0"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
+        return metrics->async_replication_sent_lag_micros->value() == 0 &&
+               metrics->async_replication_committed_lag_micros->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Read Lag = 0"));
 
   change_req.mutable_from_checkpoint()->CopyFrom(change_resp.checkpoint());
   change_resp.Clear();
@@ -1127,11 +1144,14 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   }
 
   // When we GetChanges the second time, both the lag metrics should be 0.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id_, tablet_id});
-    return metrics->async_replication_sent_lag_micros->value() == 0 &&
-        metrics->async_replication_committed_lag_micros->value() == 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for All Lag = 0"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id_, tablet_id}));
+        return metrics->async_replication_sent_lag_micros->value() == 0 &&
+               metrics->async_replication_committed_lag_micros->value() == 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for All Lag = 0"));
 }
 
 class CDCServiceTestMultipleServers : public CDCServiceTest {

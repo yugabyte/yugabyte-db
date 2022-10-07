@@ -329,6 +329,8 @@ void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
+          // rpcs with an invalid request may have a null request_
+          || (trace_ && request_ && request_->trace_requested())
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
       LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
