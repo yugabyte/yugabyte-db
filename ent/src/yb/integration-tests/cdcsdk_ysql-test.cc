@@ -377,14 +377,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
-  Status WriteRowsHelper(uint32_t start, uint32_t end, Cluster* cluster, bool flag) {
+  Status WriteRowsHelper(
+      uint32_t start, uint32_t end, Cluster* cluster, bool flag,
+      const char* const table_name = kTableName) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
     RETURN_NOT_OK(conn.Execute("BEGIN"));
     for (uint32_t i = start; i < end; ++i) {
       RETURN_NOT_OK(conn.ExecuteFormat(
-          "INSERT INTO $0($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName, i,
+          "INSERT INTO $0($1, $2) VALUES ($3, $4)", table_name, kKeyColumnName, kValueColumnName, i,
           i + 1));
     }
     if (flag) {
@@ -1200,26 +1202,26 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                           const IntentCountCompareOption intentCountCompareOption,
                           int64* num_intents) {
     ASSERT_OK(WaitFor(
-      [this, &num_intents, &min_expected_num_intents, &tserver_index,
-       &intentCountCompareOption]() -> Result<bool> {
-        auto status = GetIntentCounts(tserver_index, num_intents);
-        if (!status.ok()) {
+        [this, &num_intents, &min_expected_num_intents, &tserver_index,
+         &intentCountCompareOption]() -> Result<bool> {
+          auto status = GetIntentCounts(tserver_index, num_intents);
+          if (!status.ok()) {
+            return false;
+          }
+
+          switch (intentCountCompareOption) {
+            case IntentCountCompareOption::GreaterThan:
+              return (*num_intents > min_expected_num_intents);
+            case IntentCountCompareOption::GreaterThanOrEqualTo:
+              return (*num_intents >= min_expected_num_intents);
+            case IntentCountCompareOption::EqualTo:
+              return (*num_intents == min_expected_num_intents);
+          }
+
           return false;
-        }
-
-        switch (intentCountCompareOption) {
-          case IntentCountCompareOption::GreaterThan:
-            return (*num_intents > min_expected_num_intents);
-          case IntentCountCompareOption::GreaterThanOrEqualTo:
-            return (*num_intents >= min_expected_num_intents);
-          case IntentCountCompareOption::EqualTo:
-            return (*num_intents == min_expected_num_intents);
-        }
-
-        return false;
-      },
-      MonoDelta::FromSeconds(120),
-      "Getting Number of intents"));
+        },
+        MonoDelta::FromSeconds(120),
+        "Getting Number of intents"));
   }
 
   Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const CDCStreamId db_stream_id) {
@@ -2285,14 +2287,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDropTableBeforeXClusterStream
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
   ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    for (const auto& row : client::TableRange(table_handle_cdc)) {
-      auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-      if (stream_id == create_resp.stream_id()) {
-        return false;
-      }
-    }
-    return true;
-  }, MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+        for (const auto& row : client::TableRange(table_handle_cdc)) {
+          auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+          if (stream_id == create_resp.stream_id()) {
+            return false;
+          }
+        }
+        return true;
+      }, MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 
   // This should fail now as the stream is deleted.
   ASSERT_EQ(DeleteCDCStream(create_resp.stream_id()), false);
@@ -3037,7 +3039,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
       /* is_compaction = */ false));
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   change_resp_1 =
-    ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
   size_t first_leader_index = -1;
   size_t first_follower_index = -1;
@@ -5406,6 +5408,535 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsInColocation)) {
 
   ASSERT_EQ(insert_count, expected_key1);
   ASSERT_EQ(insert_count, expected_key2);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetrics)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  vector<CDCStreamId> stream_id(2);
+  for (int idx = 0; idx < 2; idx++) {
+    stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  }
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[0], tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+
+  ASSERT_OK(WaitFor(
+      [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return metrics->cdcsdk_sent_lag_micros->value() == 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
+  // Insert test rows, one at a time so they have different hybrid times.
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id[0], tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 2);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return metrics->cdcsdk_sent_lag_micros->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
+
+  // Now, delete the CDC stream and check the metrics information for the tablet_id and stream_id
+  // combination should be deleted from the cdc metrics map.
+  ASSERT_EQ(DeleteCDCStream(stream_id[0]), true);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id[0], tablets.Get(0).tablet_id());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id[0], tablets[0].tablet_id()},
+                /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+        return metrics == nullptr;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for tablet metrics entry remove."));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKExpiryMetric)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id;
+  stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+  auto metrics =
+      std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+  uint64_t current_stream_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
+  LOG(INFO) << "stream expiry time in milli seconds after GetChanges call: "
+            << current_stream_expiry_time;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return current_stream_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKTrafficSentMetric)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id;
+  stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+  auto metrics =
+      std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+  int64_t current_traffic_sent_bytes = metrics->cdcsdk_traffic_sent->value();
+
+  // Isnert few more records
+  ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB new_change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  record_size = new_change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+
+  LOG(INFO) << "Traffic sent in bytes after GetChanges call: " << current_traffic_sent_bytes;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return current_traffic_sent_bytes < metrics->cdcsdk_traffic_sent->value();
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier,
+      "Wait for CDCSDK traffic sent attribute update."));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKChangeEventCountMetric)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id;
+  stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+  auto metrics =
+      std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+  LOG(INFO) << "Total event counts after GetChanges call: "
+            << metrics->cdcsdk_change_event_count->value();
+  ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 100);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesSingleStream)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  vector<string> table_suffix = {"_1", "_2"};
+
+  vector<YBTableName> table(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+  vector<TableId> table_id(num_tables);
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    table[idx] = ASSERT_RESULT(
+        CreateTable(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx], num_tablets));
+
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx],
+        /* partition_list_version =*/nullptr));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+
+    table_id[idx] =
+        ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName + table_suffix[idx]));
+  }
+
+  CDCStreamId stream_id;
+  stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  for (auto tablet : tablets) {
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablet));
+    ASSERT_FALSE(resp.has_error());
+  }
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+
+  int64_t current_traffic_sent_bytes = 0;
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    ASSERT_OK(
+        WriteRowsHelper(1, 50, &test_cluster_, true, (kTableName + table_suffix[idx]).c_str()));
+    ASSERT_OK(test_client()->FlushTables(
+        {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ false));
+  }
+
+  vector<GetChangesResponsePB> change_resp(num_tables);
+  vector<std::shared_ptr<cdc::CDCSDKTabletMetrics>> metrics(num_tables);
+  uint32_t total_record_size = 0;
+  int64_t total_traffic_sent = 0;
+  uint64_t total_change_event_count = 0;
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    change_resp[idx] = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[idx]));
+    total_record_size += change_resp[idx].cdc_sdk_proto_records_size();
+
+    metrics[idx] =
+        std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id, tablets[idx][0].tablet_id()},
+            /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+    total_traffic_sent += metrics[idx]->cdcsdk_traffic_sent->value();
+    total_change_event_count += metrics[idx]->cdcsdk_change_event_count->value();
+
+    auto current_expiry_time = metrics[idx]->cdcsdk_expiry_time_ms->value();
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto metrics =
+              std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                  {"" /* UUID */, stream_id, tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+          return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+        },
+        MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+  }
+
+  ASSERT_GT(total_record_size, 100);
+  ASSERT_GT(total_change_event_count, 100);
+  ASSERT_TRUE(current_traffic_sent_bytes < total_traffic_sent);
+}
+
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesTwoStreamsOnIndividualTables)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  const uint32_t num_streams = 2;
+  string underscore = "_";
+
+  vector<YBTableName> table(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+  vector<TableId> table_id(num_tables);
+  vector<CDCStreamId> stream_id(num_streams);
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx),
+        num_tablets));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version =*/nullptr));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+
+    table_id[idx] = ASSERT_RESULT(
+        GetTableId(&test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx)));
+    stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablets[idx]));
+    ASSERT_FALSE(resp.has_error());
+  }
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    int64_t current_traffic_sent_bytes = 0;
+    ASSERT_OK(WriteRowsHelper(
+        1, 100, &test_cluster_, true, (kTableName + underscore + std::to_string(idx)).c_str()));
+    ASSERT_OK(test_client()->FlushTables(
+        {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ false));
+    GetChangesResponsePB change_resp =
+        ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets[idx]));
+
+    uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+    ASSERT_GT(record_size, 100);
+
+    auto metrics =
+        std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+            {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()},
+            /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+
+    auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto metrics =
+              std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                  {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+          return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+        },
+        MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+
+    ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 100);
+    ASSERT_TRUE(current_traffic_sent_bytes < metrics->cdcsdk_traffic_sent->value());
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsTwoTablesTwoStreamsOnBothTables)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  const uint32_t num_tables = 2;
+  const uint32_t num_streams = 2;
+  string underscore = "_";
+
+  vector<YBTableName> table(num_tables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+  vector<TableId> table_id(num_tables);
+  vector<CDCStreamId> stream_id(num_streams);
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx),
+        num_tablets));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version =*/nullptr));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
+
+    table_id[idx] = ASSERT_RESULT(
+        GetTableId(&test_cluster_, kNamespaceName, kTableName + underscore + std::to_string(idx)));
+  }
+
+  for (uint32_t idx = 0; idx < num_streams; idx++) {
+    stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    for (auto tablet : tablets) {
+      auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablet));
+      ASSERT_FALSE(resp.has_error());
+    }
+  }
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+
+  for (uint32_t idx = 0; idx < num_tables; idx++) {
+    int64_t current_traffic_sent_bytes = 0;
+    ASSERT_OK(WriteRowsHelper(
+        1, 100, &test_cluster_, true, (kTableName + underscore + std::to_string(idx)).c_str()));
+    ASSERT_OK(test_client()->FlushTables(
+        {table[idx].table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+        /* is_compaction = */ false));
+
+    for (uint32_t stream_idx = 0; stream_idx < num_streams; stream_idx++) {
+      GetChangesResponsePB change_resp =
+          ASSERT_RESULT(GetChangesFromCDC(stream_id[stream_idx], tablets[idx]));
+      uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+      ASSERT_GT(record_size, 100);
+
+      auto metrics =
+          std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+              {"" /* UUID */, stream_id[stream_idx], tablets[idx][0].tablet_id()},
+              /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+      auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
+      ASSERT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            auto metrics =
+                std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                    {"" /* UUID */, stream_id[idx], tablets[idx][0].tablet_id()}, nullptr, CDCSDK));
+            return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+          },
+          MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+      ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 100);
+      ASSERT_TRUE(current_traffic_sent_bytes < metrics->cdcsdk_traffic_sent->value());
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMetricsWithAddStream)) {
+  FLAGS_update_metrics_interval_ms = 1;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id;
+  stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+
+  int64_t current_traffic_sent_bytes = 0;
+
+  ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true, kTableName));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+
+  auto metrics =
+      std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, stream_id, tablets[0].tablet_id()},
+          /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+
+  auto current_expiry_time = metrics->cdcsdk_expiry_time_ms->value();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+
+  ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 100);
+  ASSERT_TRUE(current_traffic_sent_bytes < metrics->cdcsdk_traffic_sent->value());
+
+  // Create a new stream
+  CDCStreamId new_stream_id;
+  new_stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto new_resp = ASSERT_RESULT(SetCDCCheckpoint(new_stream_id, tablets));
+  ASSERT_FALSE(new_resp.has_error());
+
+  current_traffic_sent_bytes = metrics->cdcsdk_traffic_sent->value();
+
+  ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, true, kTableName));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  GetChangesResponsePB new_change_resp = ASSERT_RESULT(GetChangesFromCDC(new_stream_id, tablets));
+
+  record_size = new_change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, 100);
+
+  auto new_metrics =
+      std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"" /* UUID */, new_stream_id, tablets[0].tablet_id()},
+          /* tablet_peer */ nullptr, CDCSDK, CreateCDCMetricsEntity::kFalse));
+
+  current_expiry_time = new_metrics->cdcsdk_expiry_time_ms->value();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto metrics =
+            std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {"" /* UUID */, new_stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
+        return current_expiry_time > metrics->cdcsdk_expiry_time_ms->value();
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for stream expiry time update."));
+  ASSERT_GT(new_metrics->cdcsdk_change_event_count->value(), 100);
+  ASSERT_TRUE(current_traffic_sent_bytes < new_metrics->cdcsdk_traffic_sent->value());
 }
 
 }  // namespace enterprise

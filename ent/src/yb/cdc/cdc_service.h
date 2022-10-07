@@ -159,20 +159,23 @@ class CDCServiceImpl : public CDCServiceIf {
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.
   // If the metrics object is not present, then create it if create == true (eg if we have just
   // moved leaders) and not else (used to not recreate deleted metrics).
-  std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
+  std::shared_ptr<void> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
+      CDCRequestSource source_type = XCLUSTER,
       CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
 
   void RemoveCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer);
 
-  void UpdateCDCTabletMetrics(const GetChangesResponsePB* resp,
-                              const ProducerTabletInfo& producer_tablet,
-                              const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                              const OpId& op_id,
-                              int64_t last_readable_index);
+  void UpdateCDCTabletMetrics(
+      const GetChangesResponsePB* resp,
+      const ProducerTabletInfo& producer_tablet,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      const OpId& op_id,
+      const CDCRequestSource source_type,
+      int64_t last_readable_index );
 
   std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() {
     return server_metrics_;
@@ -300,7 +303,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
-  void UpdateLagMetrics();
+  void UpdateCDCMetrics();
 
   // This method is used to read the cdc_state table to find the minimum replicated index for each
   // tablet and then update the peers' log objects. Also used to update lag metrics.
@@ -318,7 +321,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
-  bool ShouldUpdateLagMetrics(MonoTime time_since_update_metrics);
+  bool ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics);
 
   Result<std::shared_ptr<client::TableHandle>> GetCdcStateTable() EXCLUDES(mutex_);
 

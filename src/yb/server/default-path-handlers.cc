@@ -517,10 +517,21 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
-  std::stringstream *output = &resp->output;
+  std::stringstream* output = &resp->output;
+
+  std::set<std::string> prototypes;
+  metrics->get_all_prototypes(prototypes);
+
   if (entities_opts.empty()) {
+    if (prototypes.find("cdcsdk") != prototypes.end()) {
+      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("cdcsdk");
+      prototypes.erase("cdcsdk");
+    }
+
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
+    entities_opts[AggregationMetricLevel::kTable].exclude_metrics.push_back("cdcsdk");
   }
+
   for (const auto& entity_options : entities_opts) {
     PrometheusWriter writer(output, entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
