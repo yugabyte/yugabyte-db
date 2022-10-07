@@ -23,7 +23,8 @@ body.yb-page-style {
       line-height: 17px;
       display: flex;
       align-items: center;
-      color: #2b59c3;
+      font-weight: 500;
+      color: $yb-anchor-color;
 
       &::after {
         content: '';

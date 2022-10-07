@@ -23,6 +23,11 @@ main {
       }
     }
 
+    p > code {
+      font-size: 14px !important;
+      line-height: 16px;
+    }
+
     h1 > code,
     h2 > code,
     h3 > code,
@@ -41,7 +46,7 @@ main {
 
       > code {
         position: relative;
-        z-index: -1;
+        //z-index: -1;
       }
     }
 
@@ -72,6 +77,27 @@ main {
         word-wrap: normal;
         word-break: keep-all;
         overflow: auto;
+        scrollbar-width: thin;
+
+        &:not(:only-child) {
+          >span > span {
+            padding-right: 40px;
+          }
+        }
+
+        &::-webkit-scrollbar {
+          height: 5px;
+          width: 5px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: var(--theme-color);
+          border-radius: 6px;
+        }
+
+        &::-webkit-scrollbar-thumb:hover {
+          background: var(--theme-dark-color);
+        }
       }
 
       button.copy {
@@ -84,7 +110,7 @@ main {
         background-image: url(/icons/copy-icon.svg);
         background-position: center;
         background-repeat: no-repeat;
-        background-color: transparent;
+        background-color: #f7fafc;
       }
 
       &:has(code>span:only-child) {
