@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { TaskProgressBar, TaskProgressStepBar } from '..';
-import { isValidObject } from '../../../utils/ObjectUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { YBLoading } from '../../common/indicators';
 import { TASK_SHORT_TIMEOUT } from '../constants';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -50,8 +50,9 @@ export default class TaskProgress extends Component {
       if (data.status === 'Success' && onTaskSuccess) {
         this.props.onTaskSuccess();
       }
-      // Check to make sure if the current state is running
-      if (isValidObject(data) && (data.status === 'Running' || data.status === 'Initializing')) {
+      // Check to make sure if the current state is in not the final state.
+      if (isDefinedNotNull(data) && (data.status === 'Created' || data.status === 'Abort'
+            || data.status === 'Running' || data.status === 'Initializing')) {
         this.scheduleFetch();
       }
     }
