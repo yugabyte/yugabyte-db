@@ -38,6 +38,8 @@ class RetryableRequests {
   explicit RetryableRequests(std::string log_prefix = std::string());
   ~RetryableRequests();
 
+  RetryableRequests(const RetryableRequests& rhs);
+
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
 
@@ -66,6 +68,8 @@ class RetryableRequests {
   Result<RetryableRequestId> MinRunningRequestId(const ClientId& client_id) const;
 
   void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity);
+
+  void set_log_prefix(const std::string& log_prefix);
 
  private:
   class Impl;
