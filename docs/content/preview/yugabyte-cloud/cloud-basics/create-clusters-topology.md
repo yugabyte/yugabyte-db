@@ -103,6 +103,8 @@ Here's how it works:
 
 With this deployment mode, the cluster automatically keeps specific rows and all the table shards (known as tablets) in the specified region. In addition to complying with data sovereignty requirements, you also get low-latency access to data from users in the region while maintaining transactional consistency semantics.
 
+In YugabyteDB Managed, a Partition by region cluster consists of a primary region where all tables that aren't geo-partitioned (that is, don't reside in a tablespace) reside, and any number of additional regions where you can store partitioned data, whether it's to reduce latencies or comply with data sovereignty requirements.
+
 ![Geo-partitioned cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-5.png)
 
 **Resilience**: Clusters with geo-partitioned tables are resilient to zone-level failures when the nodes in each region are deployed in different zones of the region.
