@@ -574,6 +574,8 @@ class OutstandingSplitState {
           VLOG(4) << Format("Not scheduling split for tablet $0. $1", candidate.tablet->id(), s);
           continue;
         }
+        VLOG(2) << Format("Add split to schedule for tablet $0 with size $1",
+            candidate.tablet->id(), candidate.leader_sst_size);
         splits_to_schedule_.insert(candidate.tablet->id());
         TrackTserverSplits(candidate.tablet->id(), *replicas);
       }
