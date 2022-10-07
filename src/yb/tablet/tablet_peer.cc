@@ -205,6 +205,7 @@ Status TabletPeer::InitTabletPeer(
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
+    std::unique_ptr<ConsensusMetadata> consensus_meta,
     consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -282,9 +283,10 @@ Status TabletPeer::InitTabletPeer(
 
     TRACE("Creating consensus instance");
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
-                                          meta_->fs_manager()->uuid(), &cmeta));
+    if (!consensus_meta) {
+      RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
+                                            meta_->fs_manager()->uuid(), &consensus_meta));
+    }
 
     if (retryable_requests) {
       retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
@@ -292,7 +294,7 @@ Status TabletPeer::InitTabletPeer(
 
     consensus_ = RaftConsensus::Create(
         options,
-        std::move(cmeta),
+        std::move(consensus_meta),
         local_peer_pb_,
         table_metric_entity,
         tablet_metric_entity,
