@@ -323,6 +323,11 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
+    prometheus_attr["table_id"] = attrs["table_id"];
+    prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["namespace_name"] = attrs["namespace_name"];
+    prometheus_attr["stream_id"] = attrs["stream_id"];
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
   } else {

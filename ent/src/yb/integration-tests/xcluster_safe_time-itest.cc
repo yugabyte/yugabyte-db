@@ -510,7 +510,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+              std::static_pointer_cast<cdc::CDCTabletMetrics>(
+                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
 
           if (metrics && metrics->last_read_hybridtime->value()) {
             producer_tablet_read_time_[tablet_id] = metrics->last_read_hybridtime->value();
@@ -534,7 +535,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
           std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+              std::static_pointer_cast<cdc::CDCTabletMetrics>(
+                  cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id}));
 
           if (metrics &&
               metrics->last_read_hybridtime->value() > producer_tablet_read_time_[tablet_id]) {
