@@ -1600,6 +1600,24 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
   return Status::OK();
 }
 
+Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+  req.set_role(role);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ChangeXClusterRole(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error changing role: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Changed role successfully" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::SetUniverseReplicationEnabled(const std::string& producer_id,
                                                                  bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;

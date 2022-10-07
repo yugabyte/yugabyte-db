@@ -497,6 +497,25 @@ Status TwoDCTestBase::ToggleUniverseReplication(
   return Status::OK();
 }
 
+Status TwoDCTestBase::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+
+  req.set_role(role);
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy->ChangeXClusterRole(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status TwoDCTestBase::VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
     YBClient* consumer_client, const std::string& universe_id, int timeout) {
   return LoggedWaitFor([=]() -> Result<bool> {

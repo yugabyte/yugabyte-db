@@ -534,6 +534,6 @@ message SysUniverseReplicationEntryPB {
 }
 
 message XClusterSafeTimePB {
-  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  // Map[Local NamespaceId]: xCluster safe read HybridTime
   map<string, fixed64> safe_time_map = 1;
 }
