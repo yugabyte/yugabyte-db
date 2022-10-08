@@ -7,8 +7,7 @@
   font-size: 14px;
 }
 
-// TODO: rename
-.infoSearch {
+.tableDescriptor {
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -32,10 +31,10 @@
 
   border: 1px solid #dde1e6;
   border-radius: 8px;
-}
 
-.bootstrapTable {
-  overflow-y: auto;
+  .bootstrapTable {
+    overflow-y: auto;
+  }
 }
 
 .paginationControls {
@@ -62,7 +61,7 @@
   border-radius: 4px;
 
   i {
-    color: colors.$YB_ERROR_ICON_COLOR
+    color: colors.$YB_ERROR_ICON_COLOR;
   }
 
   .errorMessage {
@@ -78,5 +77,4 @@
       margin-bottom: 0;
     }
   }
-
 }

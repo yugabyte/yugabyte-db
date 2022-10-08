@@ -29,20 +29,22 @@ import {
 import { SortOrder, YBTableRelationType } from '../constants';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import YBPagination from '../../tables/YBPagination/YBPagination';
+import { CollapsibleNote } from '../common/CollapsibleNote';
 
 import { TableType, Universe } from '../../../redesign/helpers/dtos';
 import { XClusterConfig, YBTable, XClusterTableType } from '../XClusterTypes';
+import { XClusterTableEligibility } from '../common/TableEligibilityPill';
 
 import styles from './SelectTablesStep.module.scss';
 
 const DEFAULT_TABLE_TYPE_OPTION = {
   value: TableType.PGSQL_TABLE_TYPE,
-  label: 'YSQL databases'
+  label: 'YSQL'
 } as const;
 
 const TABLE_TYPE_OPTIONS = [
   DEFAULT_TABLE_TYPE_OPTION,
-  { value: TableType.YQL_TABLE_TYPE, label: 'YCQL databases' }
+  { value: TableType.YQL_TABLE_TYPE, label: 'YCQL' }
 ] as const;
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -51,7 +53,7 @@ const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
 const TABLE_TYPE_SELECT_STYLES = {
   container: (provided: any) => ({
     ...provided,
-    width: 200
+    width: 115
   }),
   control: (provided: any) => ({
     ...provided,
@@ -59,12 +61,97 @@ const TABLE_TYPE_SELECT_STYLES = {
   })
 };
 
+const FORM_INSTRUCTION = 'Select the tables you want to replicate';
+const TABLE_DESCRIPTOR = 'List of keyspaces and tables in the source universe';
+
+const NOTE_CONTENT = (
+  <p>
+    <b>Note!</b>
+    <p>
+      Index tables are not shown. Replication for these tables will automatically be set up if the
+      main table is selected.
+    </p>
+    <p>
+      If a YSQL keyspace contains any tables considered ineligible for replication, it will not be
+      selectable. Creating xCluster configurations for a subset of the tables in a YSQL keyspace is
+      currently not supported.
+    </p>
+    <p>
+      Replication is done at the table level. Selecting a keyspace simply adds all its{' '}
+      <b>current</b> tables to the xCluster configuration.{' '}
+      <b>
+        Any tables created later on must be manually added to the xCluster configuration if
+        replication is desired.
+      </b>
+    </p>
+  </p>
+);
+
+const NOTE_EXPAND_CONTENT = (
+  <div>
+    <b>Which tables are considered eligible for xCluster replication?</b>
+    <p>
+      We have 2 criteria for <b>eligible tables</b>:
+      <ol>
+        <li>
+          <b>Table not already in use</b>
+          <p>
+            The table is not involved in another xCluster configuration between the same two
+            universes in the same direction.
+          </p>
+        </li>
+        <li>
+          <b>Matching table exists on target universe</b>
+          <p>
+            A table with the same name in the same keyspace and schema exists on the target
+            universe.
+          </p>
+        </li>
+      </ol>
+      If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
+      table for xCluster purposes.
+    </p>
+    <b>What are my options if I want to replicate a subset of tables from a YSQL keyspace?</b>
+    <p>
+      Creating xCluster configurations for a subset of the tables in a YSQL keyspace is currently
+      not supported. In addition, if a YSQL keyspace contains ineligible tables, then the whole
+      keyspace will not be selectable for replication. If needed, you may still use yb-admin to
+      create xCluster configurations for a subset of the tables in a YSQL keyspace.
+    </p>
+    <p>
+      Please be aware that we currently do not support backup/restore at table-level granularity for
+      YSQL. The bootstrapping step involves a backup/restore of the source universe data, and
+      initiating a restart replication task from the UI will involve bootstrapping. For a smooth
+      experience managing the xCluster configuration from the UI, we do not recommend creating
+      xCluster configurations for a subset of the tables in a YSQL keyspace.
+    </p>
+  </div>
+);
+
+/**
+ * This type stores details of a table's eligibility for xCluster replication.
+ */
+export type EligibilityDetails =
+  | {
+      state: XClusterTableEligibility.ELIGIBLE;
+    }
+  | { state: XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string }
+  | { state: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+
+/**
+ * YBTable with an EligibilityDetail field
+ */
+export interface XClusterTable extends YBTable {
+  eligibilityDetails: EligibilityDetails;
+}
+
 /**
  * Holds list of tables for a keyspace and provides extra metadata.
  */
 interface KeyspaceItem {
+  eligibleTables: number;
   sizeBytes: number;
-  tables: YBTable[];
+  tables: XClusterTable[];
 }
 
 export interface KeyspaceRow extends KeyspaceItem {
@@ -150,7 +237,7 @@ export const SelectTablesStep = ({
   /**
    * Queries for shared xCluster config UUIDs
    */
-  const xClusterConfigQueries = useQueries(
+  const sharedXClusterConfigQueries = useQueries(
     sharedXClusterConfigUUIDs.map((UUID) => ({
       queryKey: ['Xcluster', UUID],
       queryFn: () => getXclusterConfig(UUID)
@@ -159,8 +246,11 @@ export const SelectTablesStep = ({
 
   if (
     targetUniverseTablesQuery.isLoading ||
+    targetUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    targetUniverseQuery.isLoading
+    sourceUniverseQuery.isIdle ||
+    targetUniverseQuery.isLoading ||
+    targetUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -168,36 +258,12 @@ export const SelectTablesStep = ({
   if (
     targetUniverseTablesQuery.isError ||
     sourceUniverseQuery.isError ||
-    targetUniverseQuery.isError ||
-    targetUniverseTablesQuery.data === undefined ||
-    sourceUniverseQuery.data === undefined ||
-    targetUniverseQuery.data === undefined
+    targetUniverseQuery.isError
   ) {
     return <YBErrorIndicator />;
   }
 
-  const tableUUIDsInUse = new Set<string>();
-  for (const xClusterConfigQuery of xClusterConfigQueries) {
-    if (xClusterConfigQuery.isLoading) {
-      return <YBLoading />;
-    }
-    if (xClusterConfigQuery.isError || xClusterConfigQuery.data === undefined) {
-      return <YBErrorIndicator />;
-    }
-
-    xClusterConfigQuery.data.tables.forEach(tableUUIDsInUse.add, tableUUIDsInUse);
-  }
-
-  /**
-   * Valid tables for xCluster replication
-   */
-  const validTables = getValidTablesForReplication(
-    sourceTables,
-    targetUniverseTablesQuery.data,
-    tableUUIDsInUse
-  );
-
-  const toggleTableGroup = (isSelected: boolean, rows: YBTable[]) => {
+  const toggleTableGroup = (isSelected: boolean, rows: XClusterTable[]) => {
     if (isSelected) {
       const tableUUIDsToAdd: string[] = [];
       const currentSelectedTables = new Set(values.tableUUIDs);
@@ -219,12 +285,12 @@ export const SelectTablesStep = ({
     }
   };
 
-  const handleAllTableSelect = (isSelected: boolean, rows: YBTable[]) => {
+  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTable[]) => {
     toggleTableGroup(isSelected, rows);
     return true;
   };
 
-  const handleTableSelect = (row: YBTable, isSelected: boolean) => {
+  const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
     if (isSelected) {
       checkedSetFieldValue('tableUUIDs', [...values.tableUUIDs, row.tableUUID]);
     } else {
@@ -255,8 +321,12 @@ export const SelectTablesStep = ({
   };
 
   const handleAllKeyspaceSelect = (isSelected: boolean, rows: KeyspaceRow[]) => {
-    const underlyingTables = rows.reduce((tableUUIDs: YBTable[], row) => {
-      return tableUUIDs.concat(row.tables);
+    const underlyingTables = rows.reduce((table: XClusterTable[], row) => {
+      return table.concat(
+        row.tables.filter(
+          (table) => table.eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE
+        )
+      );
     }, []);
 
     toggleKeyspaceGroup(isSelected, rows);
@@ -270,7 +340,12 @@ export const SelectTablesStep = ({
     } else {
       setSelectedKeyspaces(selectedKeyspaces.filter((keyspace) => keyspace !== row.keyspace));
     }
-    toggleTableGroup(isSelected, row.tables);
+    toggleTableGroup(
+      isSelected,
+      row.tables.filter(
+        (table) => table.eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE
+      )
+    );
   };
 
   // Casting workaround: https://github.com/JedWatson/react-select/issues/2902
@@ -283,11 +358,33 @@ export const SelectTablesStep = ({
     checkedSetFieldValue('tableUUIDs', []);
   };
 
-  const replicationItems = getReplicationItemsFromTables(validTables);
+  const tableUUIDsInUse = Object.fromEntries(
+    sharedXClusterConfigUUIDs.map((xClusterConfigUUID) => [xClusterConfigUUID, new Set<string>()])
+  );
+  for (const xClusterConfigQuery of sharedXClusterConfigQueries) {
+    if (xClusterConfigQuery.isLoading) {
+      return <YBLoading />;
+    }
+    if (xClusterConfigQuery.isError || xClusterConfigQuery.data === undefined) {
+      return <YBErrorIndicator />;
+    }
+    tableUUIDsInUse[xClusterConfigQuery.data.name] = new Set<string>(
+      xClusterConfigQuery.data.tables
+    );
+  }
+
+  const replicationItems = getReplicationItemsFromTables(
+    sourceTables,
+    targetUniverseTablesQuery.data,
+    tableUUIDsInUse
+  );
   const bootstrapTableData = Object.entries(replicationItems[tableType].keyspaces)
     .filter(([keyspace, _]) => hasSubstringMatch(keyspace, keyspaceSearchTerm))
     .map(([keyspace, keyspaceItem]) => ({ keyspace, ...keyspaceItem }));
-
+  const unselectableKeyspaces = getUnselectableKeyspaces(
+    replicationItems[tableType].keyspaces,
+    tableType
+  );
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
@@ -300,10 +397,8 @@ export const SelectTablesStep = ({
 
   return (
     <>
-      <div className={styles.formInstruction}>2. Select the tables you want to replicate</div>
-      <div className={styles.infoSearch}>
-        List of common tables across source and target universe
-      </div>
+      <div className={styles.formInstruction}>2. {FORM_INSTRUCTION}</div>
+      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
         <Select
           styles={TABLE_TYPE_SELECT_STYLES}
@@ -319,13 +414,13 @@ export const SelectTablesStep = ({
       </div>
       <div className={styles.bootstrapTableContainer}>
         <BootstrapTable
+          tableContainerClass={styles.bootstrapTable}
+          maxHeight="450px"
           data={bootstrapTableData
             .sort((a, b) => tableSort<KeyspaceRow>(a, b, sortField, sortOrder, 'keyspace'))
             .slice((activePage - 1) * pageSize, activePage * pageSize)}
-          height={'300'}
-          tableContainerClass={styles.bootstrapTable}
           expandableRow={(row: KeyspaceRow) => {
-            return row.tables.length > 0 && tableType === TableType.YQL_TABLE_TYPE;
+            return row.tables.length > 0;
           }}
           expandComponent={(row: KeyspaceRow) => (
             <ExpandedTableSelect
@@ -334,24 +429,26 @@ export const SelectTablesStep = ({
               minPageSize={TABLE_MIN_PAGE_SIZE}
               handleTableSelect={handleTableSelect}
               handleAllTableSelect={handleAllTableSelect}
+              hideCheckboxes={tableType === TableType.PGSQL_TABLE_TYPE}
             />
           )}
           expandColumnOptions={{
-            expandColumnVisible: tableType === TableType.YQL_TABLE_TYPE,
+            expandColumnVisible: true,
             expandColumnComponent: expandColumnComponent,
             columnWidth: 25
           }}
           selectRow={{
             mode: 'checkbox',
-            clickToExpand: tableType === TableType.YQL_TABLE_TYPE,
+            clickToExpand: true,
             onSelect: handleKeyspaceSelect,
             onSelectAll: handleAllKeyspaceSelect,
-            selected: selectedKeyspaces
+            selected: selectedKeyspaces,
+            unselectable: unselectableKeyspaces
           }}
           options={tableOptions}
         >
           <TableHeaderColumn dataField="keyspace" isKey={true} dataSort={true}>
-            {tableType === TableType.PGSQL_TABLE_TYPE ? 'Namespace' : 'Keyspace'}
+            Keyspace
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="sizeBytes"
@@ -385,9 +482,16 @@ export const SelectTablesStep = ({
           />
         </div>
       )}
-      <div>
-        {values.tableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
-      </div>
+      {tableType === TableType.PGSQL_TABLE_TYPE ? (
+        <div>
+          Tables in {selectedKeyspaces.length} of{' '}
+          {Object.keys(replicationItems.PGSQL_TABLE_TYPE.keyspaces).length} keyspaces selected
+        </div>
+      ) : (
+        <div>
+          {values.tableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
+        </div>
+      )}
       {errors.tableUUIDs && (
         <div className={styles.validationErrorContainer}>
           <i className="fa fa-exclamation-triangle" aria-hidden="true" />
@@ -397,6 +501,7 @@ export const SelectTablesStep = ({
           </div>
         </div>
       )}
+      <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />
     </>
   );
 };
@@ -418,25 +523,55 @@ const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComp
 
 /**
  * Group tables by {@link TableType} and then by keyspace/database name.
+ * - A YSQL keyspace (DBs) is not selectable if it contains any 'invalid' table.
+ * - Since we provide table-level selection for YCQL, we filter out invalid YCQL
+ *   tables from the options.
  */
-function getReplicationItemsFromTables(tables: YBTable[]): ReplicationItems {
-  return tables.reduce(
-    (items: ReplicationItems, table) => {
-      const { tableType, keySpace: keyspace, sizeBytes } = table;
-      if (tableType === TableType.PGSQL_TABLE_TYPE || tableType === TableType.YQL_TABLE_TYPE) {
+function getReplicationItemsFromTables(
+  sourceTables: YBTable[],
+  targetUniverseTables: YBTable[],
+  tableUUIDsInUse: { [xClusteConfigUUID: string]: Set<string> }
+): ReplicationItems {
+  return sourceTables.reduce(
+    (items: ReplicationItems, sourceTable) => {
+      const tableEligibility = getXClusterTableEligibility(
+        sourceTable,
+        targetUniverseTables,
+        tableUUIDsInUse
+      );
+      const xClusterTable: XClusterTable = { eligibilityDetails: tableEligibility, ...sourceTable };
+      const { tableType, keySpace: keyspace, sizeBytes, eligibilityDetails } = xClusterTable;
+
+      // We only support `PGSQL_TABLE_TYPE` and `YQL_TABLE_TYPE` for now.
+      // We also drop index tables from selection because replication will be
+      // automatically if the main table is selected.
+      if (
+        xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
+        (tableType === TableType.PGSQL_TABLE_TYPE || tableType === TableType.YQL_TABLE_TYPE)
+      ) {
         items[tableType].keyspaces[keyspace] = items[tableType].keyspaces[keyspace] ?? {
+          eligibleTables: 0,
           sizeBytes: 0,
           tables: []
         };
         items[tableType].keyspaces[keyspace].sizeBytes += sizeBytes;
-        items[tableType].keyspaces[keyspace].tables.push(table);
+        items[tableType].keyspaces[keyspace].tables.push(xClusterTable);
         items[tableType].tableCount += 1;
+        if (eligibilityDetails.state === XClusterTableEligibility.ELIGIBLE) {
+          items[tableType].keyspaces[keyspace].eligibleTables += 1;
+        }
       }
       return items;
     },
     {
-      [TableType.PGSQL_TABLE_TYPE]: { keyspaces: {}, tableCount: 0 },
-      [TableType.YQL_TABLE_TYPE]: { keyspaces: {}, tableCount: 0 }
+      [TableType.PGSQL_TABLE_TYPE]: {
+        keyspaces: {},
+        tableCount: 0
+      },
+      [TableType.YQL_TABLE_TYPE]: {
+        keyspaces: {},
+        tableCount: 0
+      }
     }
   );
 }
@@ -450,25 +585,49 @@ const getTableIdentifier = (table: YBTable): string =>
   `${table.keySpace},${table.pgSchemaName},${table.tableName}`;
 
 /**
- * A table is valid for replication if all of the following holds true:
+ * A table is eligible for replication if all of the following holds true:
  * - there exists another table with same keyspace, table name, and schema name
  *   in target universe
  * - the table is NOT part of an existing xCluster config between the same universes
  *   in the same direction
  */
-function getValidTablesForReplication(
-  sourceUniverseTables: YBTable[],
+function getXClusterTableEligibility(
+  sourceTable: YBTable,
   targetUniverseTables: YBTable[],
-  tableUUIDsInUse: Set<string>
-) {
+  tableUUIDsInUse: { [xClusteConfigUUID: string]: Set<string> }
+): EligibilityDetails {
   const targetUniverseTableIds = new Set(
     targetUniverseTables.map((table) => getTableIdentifier(table))
   );
+  if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
+    return { state: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  }
 
-  return sourceUniverseTables.filter(
-    (sourceTable) =>
-      sourceTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
-      !tableUUIDsInUse.has(adaptTableUUID(sourceTable.tableUUID)) &&
-      targetUniverseTableIds.has(getTableIdentifier(sourceTable))
-  );
+  for (const [xClusterConfigName, tableUUIDs] of Object.entries(tableUUIDsInUse)) {
+    if (tableUUIDs.has(adaptTableUUID(sourceTable.tableUUID))) {
+      return {
+        state: XClusterTableEligibility.INELIGIBLE_IN_USE,
+        xClusterConfigName: xClusterConfigName
+      };
+    }
+  }
+
+  return { state: XClusterTableEligibility.ELIGIBLE };
+}
+
+/**
+ * - YSQL keyspaces are unselectable if they contain at least one ineligible table.
+ * - YCQL keyspaces are unselectable if they contain no eligible table.
+ */
+function getUnselectableKeyspaces(
+  keyspaceItems: Record<string, KeyspaceItem>,
+  tableType: XClusterTableType
+): string[] {
+  return Object.entries(keyspaceItems)
+    .filter(([_, keyspaceItem]) => {
+      return tableType === TableType.PGSQL_TABLE_TYPE
+        ? keyspaceItem.eligibleTables < keyspaceItem.tables.length
+        : keyspaceItem.eligibleTables === 0;
+    })
+    .map(([keyspace, _]) => keyspace);
 }
