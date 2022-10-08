@@ -38,6 +38,7 @@ DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 using std::string;
 
 namespace yb {
+using OK = Status::OK;
 const string kDisableAutoFlagsManagementFlagName = "disable_auto_flags_management";
 const string kTESTAutoFlagsInitializedFlagName = "TEST_auto_flags_initialized";
 const string kTrue = "true";
@@ -52,49 +53,67 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
   void TestBody() override {}
 
  public:
-  void RunSetUp() {
+  Status RunSetUp() {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = kNumTServers;
     opts.num_masters = kNumMasterServers;
     cluster_.reset(new MiniCluster(opts));
-    ASSERT_OK(cluster_->Start());
+    return cluster_->Start();
   }
 
-  void ValidateConfig() {
+  Status ValidateConfig() {
     int count_flags = 0;
-    auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     const AutoFlagsConfigPB leader_config = leader_master->master()->GetAutoFlagsConfig();
     for (const auto& per_process_flags : leader_config.promoted_flags()) {
       auto it = std::find(
           per_process_flags.flags().begin(), per_process_flags.flags().end(),
           kTESTAutoFlagsInitializedFlagName);
-      ASSERT_NE(it, per_process_flags.flags().end());
+      SCHECK(it != per_process_flags.flags().end(), IllegalState, "Unable to find");
       count_flags++;
     }
 
     if (FLAGS_disable_auto_flags_management) {
-      ASSERT_FALSE(FLAGS_TEST_auto_flags_initialized);
-      ASSERT_EQ(count_flags, 0);
+      SCHECK(
+          !FLAGS_TEST_auto_flags_initialized, IllegalState,
+          "TEST_auto_flags_initialized should not be set");
+      SCHECK_EQ(
+          count_flags, 0, IllegalState,
+          "TEST_auto_flags_initialized should not be set in any process");
     } else {
-      ASSERT_TRUE(FLAGS_TEST_auto_flags_initialized);
-      ASSERT_EQ(count_flags, leader_config.promoted_flags().size());
+      SCHECK(
+          FLAGS_TEST_auto_flags_initialized, IllegalState,
+          "TEST_auto_flags_initialized should be set");
+      SCHECK_EQ(
+          count_flags, leader_config.promoted_flags().size(), IllegalState,
+          "TEST_auto_flags_initialized should be set in every process");
     }
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
       auto master = cluster_->mini_master(i);
       const AutoFlagsConfigPB follower_config = master->master()->GetAutoFlagsConfig();
-      ASSERT_EQ(follower_config.DebugString(), leader_config.DebugString());
+      SCHECK_EQ(
+          follower_config.DebugString(), leader_config.DebugString(), IllegalState,
+          Format(
+              "Config of master follower $0 does not match leader $1", *master->master(),
+              *leader_master->master()));
     }
 
-    ASSERT_OK(cluster_->AddTabletServer());
-    ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTServers + 1));
+    RETURN_NOT_OK(cluster_->AddTabletServer());
+    RETURN_NOT_OK(cluster_->WaitForTabletServerCount(kNumTServers + 1));
 
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       auto tserver = cluster_->mini_tablet_server(i);
       const AutoFlagsConfigPB tserver_config = tserver->server()->TEST_GetAutoFlagConfig();
-      ASSERT_EQ(tserver_config.DebugString(), leader_config.DebugString());
+      SCHECK_EQ(
+          tserver_config.DebugString(), leader_config.DebugString(), IllegalState,
+          Format(
+              "Config of tserver $0 does not match leader $1", *tserver->server(),
+              *leader_master->master()));
     }
+
+    return OK();
   }
 
   Status WaitForAllLeaderOpsToApply() {
@@ -111,29 +130,39 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
         Format("Wait OpId apply within $0 seconds failed", kTimeout.ToSeconds()));
   }
 
-  void ValidateConfigOnMasters(uint32_t expected_config_version) {
-    ASSERT_OK(WaitForAllLeaderOpsToApply());
+  Status ValidateConfigOnMasters(uint32_t expected_config_version) {
+    RETURN_NOT_OK(WaitForAllLeaderOpsToApply());
 
-    auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+    auto* leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
     const auto leader_config = leader_master->GetAutoFlagsConfig();
-    ASSERT_EQ(expected_config_version, leader_config.config_version());
+    SCHECK_EQ(
+        expected_config_version, leader_config.config_version(), IllegalState,
+        Format("Invalid Config version leader master $0", *leader_master));
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
       auto master = cluster_->mini_master(i);
       const auto follower_config = master->master()->GetAutoFlagsConfig();
-      ASSERT_EQ(follower_config.DebugString(), leader_config.DebugString());
+      SCHECK_EQ(
+          follower_config.DebugString(), leader_config.DebugString(), IllegalState,
+          Format(
+              "Config of master follower $0 does not match leader $1", *master->master(),
+              *leader_master));
     }
+
+    return OK();
   }
 
-  void ValidateConfigOnTservers(uint32_t expected_config_version) {
-    auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
+  Status ValidateConfigOnTservers(uint32_t expected_config_version) {
+    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
     const auto master_config = leader_master->GetAutoFlagsConfig();
-    ASSERT_EQ(expected_config_version, master_config.config_version());
+    SCHECK_EQ(
+        expected_config_version, master_config.config_version(), IllegalState,
+        Format("Invalid Config version leader master $0", *leader_master));
     LOG(INFO) << leader_master->ToString() << " AutoFlag config: " << master_config.DebugString();
 
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       auto tserver = cluster_->mini_tablet_server(i);
-      ASSERT_OK(WaitFor(
+      RETURN_NOT_OK(WaitFor(
           [&]() {
             const auto config = tserver->server()->TEST_GetAutoFlagConfig();
             LOG(INFO) << tserver->server()->ToString()
@@ -143,25 +172,26 @@ class AutoFlagsMiniClusterTest : public YBMiniClusterTestBase<MiniCluster> {
           FLAGS_heartbeat_interval_ms * 3ms * kTimeMultiplier,
           "AutoFlags not propagated to all TServers"));
     }
+    return OK();
   }
 };
 
 TEST_F(AutoFlagsMiniClusterTest, NewCluster) {
-  RunSetUp();
-  ValidateConfig();
+  ASSERT_OK(RunSetUp());
+  ASSERT_OK(ValidateConfig());
 }
 
 TEST_F(AutoFlagsMiniClusterTest, DisableAutoFlagManagement) {
   FLAGS_disable_auto_flags_management = true;
 
-  RunSetUp();
-  ValidateConfig();
+  ASSERT_OK(RunSetUp());
+  ASSERT_OK(ValidateConfig());
 }
 
 TEST_F(AutoFlagsMiniClusterTest, Promote) {
   // Start with an empty config
   FLAGS_limit_auto_flag_promote_for_new_universe = 0;
-  RunSetUp();
+  ASSERT_OK(RunSetUp());
 
   // Initial empty config
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
@@ -180,8 +210,8 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   ASSERT_TRUE(resp.has_new_config_version());
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
 
-  ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
-  ASSERT_NO_FATALS(ValidateConfigOnTservers(resp.new_config_version()));
+  ASSERT_OK(ValidateConfigOnMasters(resp.new_config_version()));
+  ASSERT_OK(ValidateConfigOnTservers(resp.new_config_version()));
   previous_config = leader_master->GetAutoFlagsConfig();
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version());
   ASSERT_GE(previous_config.promoted_flags_size(), 1);
@@ -199,8 +229,8 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   ASSERT_EQ(resp.new_config_version(), previous_config.config_version() + 1);
   ASSERT_FALSE(resp.non_runtime_flags_promoted());
 
-  ASSERT_NO_FATALS(ValidateConfigOnMasters(resp.new_config_version()));
-  ASSERT_NO_FATALS(ValidateConfigOnTservers(resp.new_config_version()));
+  ASSERT_OK(ValidateConfigOnMasters(resp.new_config_version()));
+  ASSERT_OK(ValidateConfigOnTservers(resp.new_config_version()));
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
@@ -217,16 +247,20 @@ class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
     opts_ = *opts;
   }
 
-  void CheckFlagOnNode(
+  Status CheckFlagOnNode(
       const string& flag_name, const string& expected_val, ExternalDaemon* daemon) {
-    auto value = ASSERT_RESULT(daemon->GetFlag(flag_name));
-    ASSERT_EQ(value, expected_val);
+    auto value = VERIFY_RESULT(daemon->GetFlag(flag_name));
+    SCHECK_EQ(
+        value, expected_val, IllegalState,
+        Format("Invalid value for flag $0 in $1", flag_name, daemon->id()));
+    return OK();
   }
 
-  void CheckFlagOnAllNodes(string flag_name, string expected_val) {
+  Status CheckFlagOnAllNodes(string flag_name, string expected_val) {
     for (auto* daemon : cluster_->daemons()) {
-      CheckFlagOnNode(flag_name, expected_val, daemon);
+      RETURN_NOT_OK(CheckFlagOnNode(flag_name, expected_val, daemon));
     }
+    return OK();
   }
 
   uint32_t GetAutoFlagConfigVersion(ExternalDaemon* daemon) {
@@ -247,9 +281,9 @@ class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
 // Validate AutoFlags in new cluster and make sure it handles process restarts, and addition of
 // new nodes.
 TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
-  BuildAndStart();
+  ASSERT_NO_FATALS(BuildAndStart());
 
-  CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue);
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
 
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
@@ -259,24 +293,24 @@ TEST_F(AutoFlagsExternalMiniClusterTest, NewCluster) {
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
 
-  CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, new_master);
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, new_master));
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
 
-  CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue);
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kTrue));
 
   for (auto* master : cluster_->master_daemons()) {
     master->Shutdown();
-    CHECK_OK(master->Restart());
-    CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, master);
+    ASSERT_OK(master->Restart());
+    ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, master));
     ASSERT_EQ(GetAutoFlagConfigVersion(master), 1);
   }
 
   for (auto* tserver : cluster_->tserver_daemons()) {
     tserver->Shutdown();
-    CHECK_OK(tserver->Restart());
-    CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, tserver);
+    ASSERT_OK(tserver->Restart());
+    ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kTrue, tserver));
     ASSERT_EQ(GetAutoFlagConfigVersion(tserver), 1);
   }
 }
@@ -296,12 +330,12 @@ void RemoveFromVector(vector<T>* collection, const T& val) {
 // added to this cluster works as expected.
 TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   string disable_auto_flag_management = "--" + kDisableAutoFlagsManagementFlagName;
-  BuildAndStart(
+  ASSERT_NO_FATALS(BuildAndStart(
       {disable_auto_flag_management} /* ts_flags */,
-      {disable_auto_flag_management} /* master_flags */);
+      {disable_auto_flag_management} /* master_flags */));
 
-  CheckFlagOnAllNodes(kDisableAutoFlagsManagementFlagName, kTrue);
-  CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse);
+  ASSERT_OK(CheckFlagOnAllNodes(kDisableAutoFlagsManagementFlagName, kTrue));
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
 
   // Remove the disable_auto_flag_management flag from cluster config
   RemoveFromVector(cluster_->mutable_extra_master_flags(), disable_auto_flag_management);
@@ -312,17 +346,17 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
   // Add a new tserver
   auto* new_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
-  CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver);
-  CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_tserver), 0);
 
   // Restart the new tserver
   new_tserver->Shutdown();
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers, kTimeout));
-  CHECK_OK(new_tserver->Restart());
+  ASSERT_OK(new_tserver->Restart());
   ASSERT_OK(cluster_->WaitForTabletServerCount(opts_.num_tablet_servers + 1, kTimeout));
-  CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver);
-  CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_tserver));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_tserver));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_tserver), 0);
 
   // Add a new master
@@ -333,15 +367,15 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
   ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
   ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(op_id.index()));
-  CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master);
-  CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
 
   // Restart the master
   new_master->Shutdown();
   ASSERT_OK(new_master->Restart());
-  CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master);
-  CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master);
+  ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, new_master));
+  ASSERT_OK(CheckFlagOnNode(kTESTAutoFlagsInitializedFlagName, kFalse, new_master));
   ASSERT_EQ(GetAutoFlagConfigVersion(new_master), 0);
 
   // Remove disable_auto_flag_management from each process config and restart
@@ -350,7 +384,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
     master->Shutdown();
     ASSERT_OK(master->Restart());
-    CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, master);
+    ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, master));
     const auto config_version = GetAutoFlagConfigVersion(master);
     if (master == new_master) {
       ASSERT_EQ(config_version, 0);
@@ -364,7 +398,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
 
     tserver->Shutdown();
     ASSERT_OK(tserver->Restart());
-    CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, tserver);
+    ASSERT_OK(CheckFlagOnNode(kDisableAutoFlagsManagementFlagName, kFalse, tserver));
     ASSERT_OK(WaitFor(
         [&]() {
           const auto config_version = GetAutoFlagConfigVersion(tserver);
@@ -374,7 +408,7 @@ TEST_F(AutoFlagsExternalMiniClusterTest, UpgradeCluster) {
         Format("Wait for tserver $0 to reach config version 1", tserver->id())));
   }
 
-  CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse);
+  ASSERT_OK(CheckFlagOnAllNodes(kTESTAutoFlagsInitializedFlagName, kFalse));
 }
 
 }  // namespace yb

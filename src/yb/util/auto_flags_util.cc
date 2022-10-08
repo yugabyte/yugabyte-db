@@ -42,7 +42,7 @@ const char kNameMember[] = "name";
 const char kClassMember[] = "class";
 const char kRuntimeMember[] = "is_runtime";
 
-string AutoFlagsUtil::DumpAutoFlagsToJSON() {
+string AutoFlagsUtil::DumpAutoFlagsToJSON(const std::string& program_name) {
   // Format:
   //  {
   //     "auto_flags": [
@@ -62,7 +62,7 @@ string AutoFlagsUtil::DumpAutoFlagsToJSON() {
   doc.SetObject();
   auto& allocator = doc.GetAllocator();
 
-  AddMember(kProgramMember, BaseName(google::ProgramInvocationShortName()), &doc, &allocator);
+  AddMember(kProgramMember, program_name, &doc, &allocator);
 
   Value flags(rapidjson::kArrayType);
 
