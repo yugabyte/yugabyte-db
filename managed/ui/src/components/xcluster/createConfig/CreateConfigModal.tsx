@@ -442,7 +442,7 @@ const validateForm = async (
         errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
       } else if (
         shouldValidateParallelThread &&
-        values.parallelThreads > PARALLEL_THREADS_RANGE.MIN
+        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
       ) {
         errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
       }

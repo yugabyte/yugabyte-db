@@ -26,7 +26,10 @@ export function createXClusterReplication(
   sourceUniverseUUID: string,
   name: string,
   tables: string[],
-  bootstrapParams: any = null
+  bootstrapParams?: {
+    tables: string[];
+    backupRequestParams: any;
+  }
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs`, {
@@ -34,9 +37,22 @@ export function createXClusterReplication(
     targetUniverseUUID,
     name,
     tables,
-    ...(bootstrapParams !== null && { bootstrapParams })
+    ...(bootstrapParams !== undefined && { bootstrapParams })
   });
 }
+
+export function restartXClusterConfig(
+  xClusterUUID: string,
+  tables: string[],
+  bootstrapParams: { backupRequestParams: any }
+) {
+  const customerId = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+    tables,
+    bootstrapParams
+  });
+}
+
 export function isBootstrapRequired(sourceUniverseUUID: string, tableUUIDs: string[]) {
   const customerId = localStorage.getItem('customerId');
   return Promise.all(
@@ -150,12 +166,18 @@ type callbackFunc = (err: boolean, data: any) => void;
 export function fetchTaskUntilItCompletes(
   taskUUID: string,
   callback: callbackFunc,
+  onTaskStarted?: () => void,
   interval = DEFAULT_TASK_REFETCH_INTERVAL
 ) {
+  let taskRunning = false;
   async function retryTask() {
     try {
       const resp = await fetchTaskProgress(taskUUID);
       const { percent, status } = resp.data;
+      if (percent > 0 && taskRunning === false) {
+        onTaskStarted && onTaskStarted();
+        taskRunning = true;
+      }
       if (status === 'Failed' || status === 'Failure') {
         callback(true, resp);
       } else if (percent === 100) {
