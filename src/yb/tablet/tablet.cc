@@ -1412,7 +1412,8 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
 
-  ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);/*changed to redis_read_latency  to ql_read_latency 
+Since  ql_read_latency, redis_read_latency,  pgsql_read_latency as  only one  of them can be non-zero for Table type */
 
   docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), deadline, read_time);
   RETURN_NOT_OK(doc_op.Execute());
@@ -1540,8 +1541,8 @@ Status Tablet::HandlePgsqlReadRequest(
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
   // TODO(neil) Work on metrics for PGSQL.
-  // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
-
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
+//Added pgsql_read_latency so it would  be in sync with other  latencies 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
   Result<TransactionOperationContext> txn_op_ctx =
