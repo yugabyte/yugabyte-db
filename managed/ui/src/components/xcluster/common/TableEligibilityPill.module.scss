@@ -1,0 +1,12 @@
+.pill {
+  height: fit-content;
+  padding: 4px 6px;
+
+  font-size: 10px;
+  border-radius: 6px;
+  background: #e5e5e9;
+
+  &.ineligible {
+    background: #fde2e2;
+  }
+}

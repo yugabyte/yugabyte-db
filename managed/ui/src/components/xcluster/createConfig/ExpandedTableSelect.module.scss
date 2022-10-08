@@ -1,3 +1,5 @@
+@use '../../../_style/colors.scss';
+
 .expandComponent {
   margin-left: 65px;
 }
@@ -12,5 +14,26 @@
 
   .yBPagination {
     margin-left: auto;
+  }
+}
+
+// Override react-bootstrap-table styles.
+.bootstrapTable {
+  overflow-y: auto !important;
+
+  table > tbody > tr:not(:last-child) td {
+    padding: 11px 8px 11px 0 !important;
+
+    border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+  }
+}
+
+.tableNameContainer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  .tableName {
+    align-content: center;
   }
 }
