@@ -91,6 +91,8 @@ Monthly total costs for the cluster are estimated automatically. **+ Usage** ref
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
+{{% includeMarkdown "network-access.md" %}}
+
 ### Database Credentials
 
 The database admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
