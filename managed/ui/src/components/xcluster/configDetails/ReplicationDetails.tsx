@@ -38,6 +38,7 @@ import { ReplicationTables } from './ReplicationTables';
 import { ReplicationOverview } from './ReplicationOverview';
 import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
+import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 
 import './ReplicationDetails.scss';
 
@@ -183,6 +184,24 @@ export function ReplicationDetails({ params }: Props) {
                     >
                       Delete Replication
                     </MenuItem>
+                    <MenuItem
+                      eventKey="3"
+                      onClick={() => {
+                        if (
+                          _.includes(
+                            getEnabledConfigActions(replication),
+                            ReplicationAction.RESTART
+                          )
+                        ) {
+                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                        }
+                      }}
+                      disabled={
+                        !_.includes(getEnabledConfigActions(replication), ReplicationAction.RESTART)
+                      }
+                    >
+                      Restart Replication
+                    </MenuItem>
                   </DropdownButton>
                 </ButtonGroup>
               </Row>
@@ -265,6 +284,12 @@ export function ReplicationDetails({ params }: Props) {
           xClusterConfig={replication}
           onHide={hideModal}
           visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
+        />
+        <RestartConfigModal
+          onHide={hideModal}
+          isVisible={showModal && visibleModal === XClusterModalName.RESTART_CONFIG}
+          currentUniverseUUID={params.uuid}
+          xClusterConfigUUID={replication.uuid}
         />
       </div>
     </>
