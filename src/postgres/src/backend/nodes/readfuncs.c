@@ -2095,7 +2095,7 @@ _readYbBatchedNestLoop(void)
 
 	READ_NODE_FIELD(hashOps);
 	READ_NODE_FIELD(innerHashAttNos);
-	READ_NODE_FIELD(outerParamNos);
+	READ_NODE_FIELD(outerParamExprs);
 
 	READ_DONE();
 }
