@@ -902,7 +902,7 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(innerHashAttNos);
-	COPY_NODE_FIELD(outerParamNos);
+	COPY_NODE_FIELD(outerParamExprs);
 	COPY_NODE_FIELD(hashOps);
 
 	return newnode;
