@@ -757,7 +757,7 @@ typedef struct YbBatchedNestLoop
 	List	   *innerHashAttNos; /* List of attributes of inner tuple that
 									are to be hashed if we are using the hash
 									strategy. */
-	List	   *outerParamNos; /* List of attributes of outer tuple that
+	List	   *outerParamExprs; /* List of expressions on outer tuple that
 									are to be hashed if we are using the hash
 									strategy. */
 } YbBatchedNestLoop;
