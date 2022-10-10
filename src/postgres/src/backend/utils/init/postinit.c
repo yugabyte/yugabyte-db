@@ -699,11 +699,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
-		 * only read the above shared relations and therefore can use any
-		 * database OID. We will update yb_catalog_cache_version to match
-		 * MyDatabaseId once the latter is resolved so we will never use
-		 * the catalog version of template1 to query relations that are
-		 * private to MyDatabaseId.
+		 * only read shared relations and therefore can use any database OID.
+		 * We will update yb_catalog_cache_version to match MyDatabaseId once
+		 * the latter is resolved so we will never use the catalog version of
+		 * template1 to query relations that are private to MyDatabaseId.
 		 */
 		yb_catalog_cache_version = YbGetMasterCatalogVersion();
 	}

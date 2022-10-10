@@ -38,7 +38,7 @@ class PgDmlWrite : public PgDml {
   Status Exec(bool force_non_bufferable = false);
 
   void SetIsSystemCatalogChange() {
-    write_req_->set_is_ysql_catalog_change(true);
+    write_req_->set_is_ysql_catalog_change_using_protobuf(true);
   }
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid,

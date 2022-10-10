@@ -377,42 +377,48 @@ YBCStatus YBCPgExecDropTablegroup(YBCPgStatement handle) {
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called) {
   return ToYBCStatus(pgapi->InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
 YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
+                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
                                               bool expected_is_called,
                                               bool *skipped) {
   return ToYBCStatus(
-      pgapi->UpdateSequenceTupleConditionally(db_oid, seq_oid, ysql_catalog_version,
+      pgapi->UpdateSequenceTupleConditionally(
+          db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
           last_val, is_called, expected_last_val, expected_is_called, skipped));
 }
 
 YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped) {
   return ToYBCStatus(pgapi->UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called, skipped));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode,
+      last_val, is_called, skipped));
 }
 
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
+                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called) {
   return ToYBCStatus(pgapi->ReadSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, last_val, is_called));
+      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
 YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
@@ -1262,6 +1268,10 @@ YBCStatus YBCGetSharedDBCatalogVersion(YBCPgOid db_oid, uint64_t* catalog_versio
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(db_oid), catalog_version);
 }
 
+YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
+  return ExtractValueFromResult(pgapi->GetNumberOfDatabases(), num_databases);
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -1274,6 +1284,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
+      .ysql_num_databases_reserved_in_db_catalog_version_mode =
+          &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,
       .ysql_sequence_cache_minval              = &FLAGS_ysql_sequence_cache_minval,
       .ysql_session_max_batch_size             = &FLAGS_ysql_session_max_batch_size,
