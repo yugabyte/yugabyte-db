@@ -310,7 +310,9 @@ message GetSharedDataResponsePB {
 }
 
 message GetTserverCatalogVersionInfoRequestPB {
-  // We ask for the catalog version of all databases from the tserver.
+  // If true, we only ask for the size of the catalog version map in tserver. Otherwise,
+  // we ask for the catalog version of all databases from the tserver.
+  optional bool size_only = 1;
 }
 
 message GetTserverCatalogVersionInfoResponsePB {
@@ -327,4 +329,5 @@ message GetTserverCatalogVersionInfoResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
   repeated Entry entries = 2;
+  optional uint32 num_entries = 3;
 }
