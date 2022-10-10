@@ -122,7 +122,7 @@ using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
 // State variables for INDEX analysis.
-class SelectScanInfo : public MCBase {
+class SelectScanInfo : public MCBase, public AnalyzeStepState {
  public:
   // Public types.
   typedef MCSharedPtr<SelectScanInfo> SharedPtr;
@@ -130,6 +130,7 @@ class SelectScanInfo : public MCBase {
   // Constructor.
   explicit SelectScanInfo(MemoryContext *memctx,
                           size_t num_columns,
+                          MCList<PartitionKeyOp> *partition_key_ops,
                           MCVector<const PTExpr*> *scan_filtering_exprs,
                           MCMap<MCString, ColumnDesc> *scan_column_map);
 
