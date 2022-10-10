@@ -13,6 +13,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +31,8 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -233,5 +236,21 @@ public class NodeAgent extends Model {
             .eq("state", state)
             .update()
         > 0;
+  }
+
+  public void purge() {
+    String val = config == null ? null : config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isNotBlank(val)) {
+      Path certDirPath = Paths.get(val);
+      try {
+        File file = certDirPath.toFile();
+        if (file.exists()) {
+          FileUtils.deleteDirectory(file);
+        }
+      } catch (Exception e) {
+        log.warn("Error deleting cert directory {}", certDirPath, e);
+      }
+    }
+    delete();
   }
 }
