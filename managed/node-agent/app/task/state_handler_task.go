@@ -67,7 +67,7 @@ func (handler *stateHandlerTask) handleLiveState(ctx context.Context, config *ut
 		config.String(util.PlatformVersionKey),
 	).Handle(ctx)
 	if err != nil {
-		util.FileLogger().Errorf("Error while heartbeating to the platform - %s", err.Error())
+		util.FileLogger().Errorf("Error in heartbeating to the platform - %s", err.Error())
 	}
 }
 
@@ -76,14 +76,14 @@ func (handler *stateHandlerTask) handleUpgradeState(ctx context.Context, config 
 	// Remove previous downloaded package and remove the update_version.
 	if err := removeReleasesExceptCurrent(); err != nil {
 		util.FileLogger().
-			Errorf("Error while cleaning up the releases directory - %s", err.Error())
+			Errorf("Error in cleaning up the releases directory - %s", err.Error())
 		return
 	}
 
 	out, err := HandleDownloadPackageScript(config, ctx)
 	if err != nil {
 		util.FileLogger().Errorf(
-			"Error while trying to the run the download updated version script - %s",
+			"Error in trying to the run the download updated version script - %s",
 			err.Error(),
 		)
 		return
@@ -100,7 +100,7 @@ func (handler *stateHandlerTask) handleUpgradeState(ctx context.Context, config 
 		config.String(util.PlatformVersionKey),
 	).Handle(ctx)
 	if err != nil {
-		util.FileLogger().Errorf("Error while updating agent state to Upgrading - %s", err.Error())
+		util.FileLogger().Errorf("Error in updating agent state to Upgrading - %s", err.Error())
 	}
 	util.FileLogger().Info("Changed the node agent state to UPGRADING")
 }
@@ -111,7 +111,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	_, err := putHandler.Handle(ctx)
 	if err != nil {
 		util.FileLogger().
-			Errorf("Error while posting upgrading state to the platform - %s", err.Error())
+			Errorf("Error in posting upgrading state to the platform - %s", err.Error())
 		return
 	}
 	// Get the latest version certs
@@ -121,7 +121,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 
 	if err := util.SaveCerts(config, newCert, newKey, uuid); err != nil {
 		util.FileLogger().Errorf(
-			"Error while saving new certs during upgrading step - %s",
+			"Error in saving new certs during upgrading step - %s",
 			err.Error(),
 		)
 		return
@@ -130,10 +130,10 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	// Delete the certs from past failures.
 	if config.String(util.PlatformCertsUpgradeKey) != "" {
 		err := util.DeleteCerts(util.PlatformCertsUpgradeKey)
-		//Log the error while deleting the certs but do not suspend the process.
+		// Log the error in deleting the certs but do not suspend the process.
 		if err != nil {
 			util.FileLogger().Errorf(
-				"Error while deleting certs - %s from past failures",
+				"Error in deleting certs - %s from past failures",
 				config.String(util.PlatformCertsUpgradeKey),
 			)
 		}
@@ -144,7 +144,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	// Run the update script to change the symlink to the updated version
 	if err := HandleUpgradeScript(config, ctx, config.String(util.PlatformVersionUpdateKey)); err != nil {
 		util.FileLogger().Errorf(
-			"Error while changing the symlink to the updated version - %s",
+			"Error in upgrading to version - %s",
 			err.Error(),
 		)
 		return
@@ -157,7 +157,7 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 	)
 	if _, err := NewPutAgentStateHandler(
 		model.Upgraded, config.String(util.PlatformVersionUpdateKey)).Handle(ctx); err != nil {
-		util.FileLogger().Errorf("Error while updating agent state to Upgraded - %s", err.Error())
+		util.FileLogger().Errorf("Error in updating agent state to Upgraded - %s", err.Error())
 		return
 	}
 
@@ -166,15 +166,15 @@ func (handler *stateHandlerTask) handleUpgradingState(ctx context.Context, confi
 
 func (handler *stateHandlerTask) handleUpgradedState(ctx context.Context, config *util.Config) {
 	util.FileLogger().Info("Starting the node agent Upgraded step")
-	// Stop the service after cleaning up the config
+	// Stop the service after cleaning up the config.
 	pid := os.Getpid()
 	defer syscall.Kill(pid, syscall.SIGTERM)
 
-	// Clean up the configp
+	// Clean up the config.
 	if err := cleanUpConfigAfterUpdate(ctx, config); err != nil {
-		return
+		util.FileLogger().Infof(
+			"Error in cleaning up config after update - %s", err.Error())
 	}
-
 }
 
 func HandleUpgradedStateAfterRestart(ctx context.Context, config *util.Config) error {
@@ -191,24 +191,24 @@ func HandleUpgradedStateAfterRestart(ctx context.Context, config *util.Config) e
 			Infof("Node Agent is not in Upgraded State, thus continuing the restart")
 		return nil
 	}
-	//Try cleaning up the config
+	// Try cleaning up the config.
 	err = cleanUpConfigAfterUpdate(ctx, config)
 	if err != nil {
-		util.FileLogger().Errorf("Error while restarting the node agent - %s", err)
+		util.FileLogger().Errorf("Error in cleaning up config after restart - %s", err)
 		return err
 	}
 
-	//Remove the Current Version Directory and change version to upgrade version
+	// Remove the Current Version Directory and change version to upgrade version.
 	config.Update(util.PlatformVersionKey, config.String(util.PlatformVersionUpdateKey))
 	if err := removeReleasesExceptCurrent(); err != nil {
-		util.FileLogger().Errorf("Error while cleaning up the releases dir - %s", err.Error())
+		util.FileLogger().Errorf("Error in cleaning up the releases directory - %s", err.Error())
 		return err
 	}
 
 	// Send Live status to the Platform
 	_, err = NewPutAgentStateHandler(model.Live, config.String(util.PlatformVersionKey)).Handle(ctx)
 	if err != nil {
-		util.FileLogger().Errorf("Error while updating agent state to Live - %s", err.Error())
+		util.FileLogger().Errorf("Error in updating agent state to Live - %s", err.Error())
 		return err
 	}
 	return nil
@@ -243,13 +243,16 @@ func removeReleasesExceptCurrent() error {
 
 func cleanUpConfigAfterUpdate(ctx context.Context, config *util.Config) error {
 	util.FileLogger().Infof("Starting config clean up after the update")
-	// Point current certs to the new certs
-	if config.String(util.PlatformCertsUpgradeKey) != "" {
-		// Remove the current certs
-		if err := util.DeleteCerts(config.String(util.PlatformCertsKey)); err != nil &&
+	// Point current certs to the new certs.
+	certDir := config.String(util.PlatformCertsKey)
+	upgradeCertDir := config.String(util.PlatformCertsUpgradeKey)
+	if upgradeCertDir != "" && upgradeCertDir != certDir {
+		// It is possible that the cert dir is updated but
+		// delete did not happen due to restart.
+		if err := util.DeleteCerts(certDir); err != nil &&
 			!os.IsNotExist(err) {
 			util.FileLogger().Errorf(
-				"Error while deleting the certs during cleanup - %s",
+				"Error in deleting the certs during cleanup - %s",
 				err.Error(),
 			)
 			return err

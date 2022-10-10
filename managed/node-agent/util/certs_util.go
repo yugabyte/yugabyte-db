@@ -52,8 +52,8 @@ func SaveCerts(config *Config, cert string, key string, subDir string) error {
 }
 
 func DeleteCerts(subDir string) error {
-	FileLogger().Infof("Deleting certs %s", subDir)
 	certsDir := filepath.Join(CertsDir(), subDir)
+	FileLogger().Infof("Deleting certs %s", certsDir)
 	err := os.RemoveAll(certsDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting certs %s, err %s", certsDir, err.Error())
@@ -62,8 +62,8 @@ func DeleteCerts(subDir string) error {
 }
 
 func DeleteRelease(release string) error {
-	FileLogger().Infof("Deleting release dir %s", release)
 	releaseDir := filepath.Join(ReleaseDir(), release)
+	FileLogger().Infof("Deleting release dir %s", releaseDir)
 	err := os.RemoveAll(releaseDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting release dir %s, err %s", release, err.Error())
