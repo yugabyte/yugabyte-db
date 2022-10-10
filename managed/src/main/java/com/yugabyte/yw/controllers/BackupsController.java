@@ -673,7 +673,7 @@ public class BackupsController extends AuthenticatedController {
                   : String.format("univ-%s", backup.universeUUID.toString());
           CustomerTask.create(
               customer,
-              backup.backupUUID,
+              backup.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
