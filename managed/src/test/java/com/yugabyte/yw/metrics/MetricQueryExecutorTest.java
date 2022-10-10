@@ -165,7 +165,6 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 .setTimeAggregation(TimeAggregation.MAX)
                 .setSplitType(SplitType.NODE)
                 .setSplitMode(SplitMode.TOP)
-                .setReturnAggregatedValue(false)
                 .setSplitCount(2),
             false);
 
@@ -200,7 +199,9 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
             + "%22%7D%5B60s%5D%29%29+by+%28exported_instance%29%29+or+%28max%28max_over_time"
             + "%28our_valid_range_metric%7Bfilter%3D%22awesome%22%2C+cpu%3D%22system%22%2C+"
             + "exported_instance%3D%22instance2%22%7D%5B60s%5D%29%29+by+%28exported_instance"
-            + "%29%29&g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17");
+            + "%29%29+or+%28max%28max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome"
+            + "%22%7D%5B60s%5D%29%29%29&g0.tab=0&g0.range_input=100000s"
+            + "&g0.end_input=2016-11-17 11:22:17");
   }
 
   @Test
