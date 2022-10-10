@@ -735,7 +735,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertEquals(200, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.universeUUID);
     assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
@@ -790,7 +790,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertEquals(200, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertEquals(customerTask.getTargetUUID(), backup.backupUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.universeUUID);
     assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);

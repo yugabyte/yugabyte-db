@@ -587,7 +587,7 @@ public class BackupsController extends AuthenticatedController {
           LOG.info("Saved task uuid {} in customer tasks for backup {}.", taskUUID, backupUUID);
           CustomerTask.create(
               customer,
-              backup.backupUUID,
+              backup.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
