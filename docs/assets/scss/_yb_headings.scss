@@ -33,6 +33,26 @@
     margin: 0 0 24px 0;
   }
 
+  h1[id],
+  h2[id],
+  h3[id],
+  h4[id],
+  h5[id] {
+    > a {
+      &::after {
+        content: "";
+        background: url(/icons/Link.svg) center no-repeat;
+        height: 15px;
+        width: 15px;
+        display: inline-block;
+      }
+
+      svg {
+        display: none;
+      }
+    }
+  }
+
   h1,
   .h1,
   h2,

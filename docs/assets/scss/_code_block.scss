@@ -23,6 +23,7 @@ main {
       }
     }
 
+    li > code,
     p > code {
       font-size: 14px !important;
       line-height: 16px;
@@ -51,7 +52,7 @@ main {
     }
 
     *:not(.tabs-name) > li:not(.nav-item) > a:hover > code {
-      text-decoration: underline;
+      //text-decoration: underline;
     }
 
     pre {
@@ -105,15 +106,34 @@ main {
         border: none !important;
         right: 16px;
         top: 4px;
-        width: 25px;
-        height: 25px;
+        padding: 0;
+        width: 16px;
+        height: 18px;
         background-image: url(/icons/copy-icon.svg);
         background-position: center;
         background-repeat: no-repeat;
         background-color: #f7fafc;
+        z-index: 1;
+
+        &:not(.unclicked)::after {
+          position: absolute;
+          top: -2px;
+          left: -4px;
+          font: 11px/1 "font awesome 5 free";
+          font-weight: 100;
+          content: "\f00c";
+          color: #fff;
+          text-align: center;
+          border-radius: 50%;
+          width: 25px;
+          height: 25px;
+          line-height: 26px;
+          opacity: 1;
+          background-color: #48ab52 !important;
+        }
       }
 
-      &:has(code>span:only-child) {
+      &:has(code > span:only-child) {
         > code {
           padding: 13px 48px 13.32px 16px;
         }
@@ -127,6 +147,23 @@ main {
       &:has(code:only-child) {
         > code {
           padding: 12px 16px;
+        }
+      }
+    }
+
+    .highlight {
+      pre {
+        &::after {
+          content: "";
+          display: inline-block;
+          background: #f7fafc;
+          height: 24px;
+          position: absolute;
+          right: 1px;
+          width: 40px;
+          top: 11px;
+          z-index: 0;
+          border-radius: 5px;
         }
       }
     }

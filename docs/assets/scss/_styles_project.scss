@@ -402,6 +402,7 @@ body:not(.td-home) .td-main main {
 
 .td-content {
   .admonition a,
+  td a,
   p a,
   li:not(.nav-item) a,
   .note a {
@@ -409,17 +410,17 @@ body:not(.td-home) .td-main main {
     font-weight: 500;
 
     i {
-      margin-left: 5px;
-      font-size: 12px;
+      //margin-left: 5px;
+      //font-size: 12px;
     }
 
     &:hover {
       text-decoration: underline;
+      text-underline-offset: 4px;
     }
   }
 
   td a {
-    color: #3176d9;
     border-bottom: 1px solid transparent;
 
     &:hover {
