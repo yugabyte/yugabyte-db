@@ -219,7 +219,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     // Complete registration.
     payload.state = State.LIVE;
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
-    Thread.sleep(2000);
+    Thread.sleep(1000);
     nodeAgentHandler.cleanerService();
     nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
     Date time1 = nodeAgent.updatedAt;
@@ -231,9 +231,11 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     assertEquals(State.LIVE, nodeAgent.state);
     // Make sure time is updated.
     assertTrue("Time is not updated", time2.after(time1));
+    // Delay because the time has just been updated.
+    Thread.sleep(1000);
     nodeAgentHandler.cleanerService();
     assertThrows(
-        "Invalid current state LIVE, expected state UPGRADING",
+        "Cannot find node agent",
         PlatformServiceException.class,
         () -> NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid));
   }
