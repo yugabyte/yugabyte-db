@@ -39,6 +39,8 @@
 namespace yb {
 namespace rpc {
 
+const char* const kUnknownRemoteMethod = "UNKNOWN_METHOD";
+
 class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCallParserListener {
  public:
   YBConnectionContext(
@@ -221,6 +223,9 @@ class YBInboundCall : public InboundCall {
   RefCntBuffer response_buf_;
 
   ScopedTrackedConsumption consumption_;
+
+  // Cache of result of YBInboundCall::ToString().
+  mutable std::string cached_to_string_;
 };
 
 class YBOutboundConnectionContext : public YBConnectionContext {
