@@ -27,6 +27,10 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 - Primary cluster that is deployed in a VPC.
 - Replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy the replicas. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
+## Limitations
+
+- The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
+
 ## Add or edit read replicas
 
 To add or edit read-replicas:

@@ -256,6 +256,7 @@ The following **AWS regions** are available:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Read Replicas** - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
 
 ### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
 
