@@ -34,6 +34,7 @@ import play.mvc.Http.Status;
 public class NodeAgentDownloadHandler {
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
   private static final String NODE_AGENT_TGZ_FILE_FORMAT = "node_agent-%s-%s-%s.tar.gz";
+  private static final String NODE_AGENT_RELEASES_PATH_PROPERTY = "yb.node_agent.releases.path";
 
   private final Config appConfig;
   private final ConfigHelper configHelper;
@@ -112,8 +113,7 @@ public class NodeAgentDownloadHandler {
     OS osType = EnumUtils.getEnumIgnoreCase(OS.class, os);
     Arch archType = EnumUtils.getEnumIgnoreCase(Arch.class, arch);
     validateDownloadType(downloadType, osType, archType);
-    Path nodeAgentsReleasesPath =
-        Paths.get(appConfig.getString("yb.storage.path"), "node-agent", "releases");
+    Path nodeAgentsReleasesPath = Paths.get(appConfig.getString(NODE_AGENT_RELEASES_PATH_PROPERTY));
     String softwareVersion =
         Objects.requireNonNull(
             (String)

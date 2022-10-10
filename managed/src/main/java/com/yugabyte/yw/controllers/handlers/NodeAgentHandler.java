@@ -18,10 +18,10 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
-import com.yugabyte.yw.models.NodeInstance;
 import io.ebean.annotation.Transactional;
 import io.grpc.ManagedChannel;
 import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
@@ -177,8 +177,7 @@ public class NodeAgentHandler {
           .flatMap(cUuid -> NodeAgent.getNodeAgents(cUuid).stream())
           .filter(n -> expiryDate.after(n.updatedAt))
           .filter(n -> !nodeIps.contains(n.ip))
-          .forEach(n -> n.delete());
-
+          .forEach(NodeAgent::purge);
     } catch (Exception e) {
       log.error("Error occurred in cleaner service", e);
     }
@@ -286,7 +285,7 @@ public class NodeAgentHandler {
     try {
       // Delete the old cert directory.
       FileUtils.deleteDirectory(currentCertDirPath.toFile());
-    } catch (IOException e) {
+    } catch (Exception e) {
       // Ignore error.
       log.warn("Error deleting old cert directory {}", currentCertDirPath, e);
     }
@@ -545,16 +544,6 @@ public class NodeAgentHandler {
    * @param uuid the node UUID.
    */
   public void unregister(UUID uuid) {
-    NodeAgent.maybeGet(uuid)
-        .ifPresent(
-            nodeAgent -> {
-              Path basePath = getNodeAgentBaseCertDirectory(nodeAgent);
-              nodeAgent.delete();
-              try {
-                FileUtils.deleteDirectory(basePath.toFile());
-              } catch (IOException e) {
-                log.error("Failed to clean up {}", basePath, e);
-              }
-            });
+    NodeAgent.maybeGet(uuid).ifPresent(NodeAgent::purge);
   }
 }
