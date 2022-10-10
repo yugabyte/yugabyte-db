@@ -513,6 +513,15 @@ bool PTDmlStmt::StaticColumnArgsOnly() const {
 
 //--------------------------------------------------------------------------------------------------
 
+Status AnalyzeStepState::AnalyzePartitionKeyOp(SemContext *sem_context,
+                                               const PTRelationExpr *expr,
+                                               PTExprPtr value) {
+  partition_key_ops_->emplace_back(expr->ql_op(), value);
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
 Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
                                        const ColumnDesc *col_desc,
@@ -807,8 +816,7 @@ Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  partition_key_ops_->emplace_back(expr->ql_op(), value);
-  return Status::OK();
+  return AnalyzeStepState::AnalyzePartitionKeyOp(sem_context, expr, value);
 }
 
 std::vector<int64_t> PTDmlStmt::hash_col_indices() const {

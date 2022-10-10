@@ -471,6 +471,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
     // select_scan_info_ is used to collect information on references for columns, operators, etc.
     SelectScanInfo select_scan_info(sem_context->PTempMem(),
                                     num_columns(),
+                                    &partition_key_ops_,
                                     &filtering_exprs_,
                                     &column_map_);
     select_scan_info_ = &select_scan_info;
@@ -510,6 +511,9 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
       sem_context->set_void_primary_key_condition(true);
     }
   }
+
+  // Prevent double filling. It's filled in AnalyzeReferences() and in AnalyzeWhereClause().
+  partition_key_ops_.clear();
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
@@ -1217,9 +1221,11 @@ CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
 
 SelectScanInfo::SelectScanInfo(MemoryContext *memctx,
                                int num_columns,
+                               MCList<PartitionKeyOp> *partition_key_ops,
                                MCVector<const PTExpr*> *scan_filtering_exprs,
                                MCMap<MCString, ColumnDesc> *scan_column_map)
-    : col_ops_(memctx),
+    : AnalyzeStepState(partition_key_ops),
+      col_ops_(memctx),
       col_op_counters_(memctx),
       col_json_ops_(memctx),
       col_subscript_ops_(memctx),

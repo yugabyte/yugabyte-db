@@ -903,37 +903,65 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(0, rows.size());
   }
 
-  private void runPartitionHashTest(String func_name) throws Exception {
-    LOG.info(String.format("TEST %s - Start", func_name));
-    setupTable(String.format("%s_test", func_name), 10);
+  protected static enum UseIndex { ON, OFF }
+
+  private void runPartitionHashTest(String func_name, UseIndex use_index) throws Exception {
+    LOG.info(String.format("TEST %s - Start with using-index=%s", func_name, use_index));
+    final String tbl_name = func_name + "_test_tbl";
+
+    if (use_index == UseIndex.ON) {
+      session.execute(
+          "CREATE TABLE " + tbl_name + " (h1 int, h2 text, r1 int, r2 text," +
+          "    v1 int, v2 text, PRIMARY KEY ((h1, h2), r1, r2))" +
+          "    WITH CLUSTERING ORDER BY (r1 ASC, r2 DESC)" +
+          "    AND transactions = {'enabled':'true'}");
+      session.execute("CREATE INDEX idx ON " + tbl_name + " ((h1, r2), h2, r1)" +
+                      "    WITH CLUSTERING ORDER BY (h2 DESC, r1 ASC)");
+      waitForReadPermsOnAllIndexes(tbl_name);
+
+      session.execute("INSERT INTO " + tbl_name + " (h1, h2, r1, r2, v1, v2)" +
+                      "    VALUES (2, 'h2', 102, 'r102', 1002, 'v1002')");
+    } else {
+      setupTable(tbl_name, 10);
+    }
 
     // Testing only basic token call as sanity check here.
     // Main token tests are in YbSqlQuery (C++) and TestBindVariable (Java) tests.
-    Iterator<Row> rows = session.execute(String.format("SELECT * FROM %s_test WHERE " +
-        "%s(h1, h2) = %s(2, 'h2')", func_name, func_name, func_name)).iterator();
+    assertQuery("SELECT * FROM " + tbl_name + " WHERE " +
+                func_name + "(h1,h2) = " + func_name + "(2, 'h2')",
+                "Row[2, h2, 102, r102, 1002, v1002]");
+    // Use index-based scan-path.
+    assertQuery("SELECT count(*) FROM " + tbl_name + " WHERE " +
+                func_name + "(h1, h2) >= 0 AND " + func_name + "(h1, h2) <= 65535 " +
+                "AND h1 = 0 AND r2 = 'text'", "Row[0]");
 
-    assertTrue(rows.hasNext());
-    // Checking result.
-    Row row = rows.next();
-    assertEquals(2, row.getInt(0));
-    assertEquals("h2", row.getString(1));
-    assertEquals(102, row.getInt(2));
-    assertEquals("r102", row.getString(3));
-    assertEquals(1002, row.getInt(4));
-    assertEquals("v1002", row.getString(5));
-    assertFalse(rows.hasNext());
+    // Try to run the function with the Primary Key from the index: (h1, r2).
+    assertQueryError("SELECT count(*) FROM " + tbl_name + " WHERE " +
+                     func_name + "(h1, r2)>=0 AND " + func_name + "(h1, r2)<=65535 " +
+                     "AND h1=0 AND r2='text'",
+                     "Invalid " + func_name + " call, found reference to unexpected column");
 
-    LOG.info(String.format("TEST %s - End", func_name));
+    LOG.info(String.format("TEST %s - End with using-index=%s", func_name, use_index));
   }
 
   @Test
   public void testToken() throws Exception {
-    runPartitionHashTest("token");
+    runPartitionHashTest("token", UseIndex.OFF);
   }
 
   @Test
   public void testPartitionHash() throws Exception {
-    runPartitionHashTest("partition_hash");
+    runPartitionHashTest("partition_hash", UseIndex.OFF);
+  }
+
+  @Test
+  public void testTokenWithIndex() throws Exception {
+    runPartitionHashTest("token", UseIndex.ON);
+  }
+
+  @Test
+  public void testPartitionHashWithIndex() throws Exception {
+    runPartitionHashTest("partition_hash", UseIndex.ON);
   }
 
   @Test
