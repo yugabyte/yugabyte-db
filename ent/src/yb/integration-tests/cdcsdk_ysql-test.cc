@@ -3577,19 +3577,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
     ASSERT_OK(test_client()->FlushTables(
         {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
         /* is_compaction = */ false));
-
     int total_count = 0;
-    for (uint32_t kdx = 0; kdx < num_tablets; kdx++) {
-      GetChangesResponsePB change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets, nullptr, kdx));
-      uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-      for (uint32_t i = 0; i < record_size; ++i) {
-        if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
-          const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-          total_count += 1;
-        }
-      }
-    }
+    vector<GetChangesResponsePB> change_resp(3);
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          while (true) {
+            uint32_t kdx = 0;
+            for (; kdx < num_tablets; kdx++) {
+                auto result = GetChangesFromCDC(
+                    stream_id[idx], tablets, &change_resp[kdx].cdc_sdk_checkpoint(), kdx);
+                if (!result.ok()) {
+                  return false;
+                }
+                change_resp[kdx] = *result;
+              uint32_t record_size = change_resp[kdx].cdc_sdk_proto_records_size();
+              for (uint32_t i = 0; i < record_size; ++i) {
+                if (change_resp[kdx].cdc_sdk_proto_records(i).row_message().op() ==
+                    RowMessage::INSERT) {
+                  const CDCSDKProtoRecordPB record = change_resp[kdx].cdc_sdk_proto_records(i);
+                  total_count += 1;
+                }
+              }
+            }
+            if (total_count == 100) {
+              return true;
+            }
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(60) * kTimeMultiplier, "Waiting to get changes from all tablets."));
     LOG(INFO) << "Total GetChanges record counts: " << total_count;
     ASSERT_EQ(total_count, 100);
   }
