@@ -70,7 +70,8 @@ public class AllowedActionsHelper {
   private String nodeActionErrOrNull(NodeActionType action) {
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
-        || action == NodeActionType.REBOOT) {
+        || action == NodeActionType.REBOOT
+        || action == NodeActionType.HARD_REBOOT) {
       String errorMsg = removeMasterErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
@@ -97,7 +98,9 @@ public class AllowedActionsHelper {
       // TODO: Clean this up as this null is probably test artifact
       return errorMsg(action, "It is in null state");
     }
-    if (!node.state.allowedActions().contains(action)) {
+    try {
+      node.validateActionOnState(action);
+    } catch (RuntimeException ex) {
       return errorMsg(action, "It is in " + node.state + " state");
     }
     return null;

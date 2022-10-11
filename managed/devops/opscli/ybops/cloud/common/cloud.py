@@ -750,3 +750,6 @@ class AbstractCloud(AbstractCommandParser):
 
     def reboot_instance(self, args, ssh_ports):
         pass
+
+    def hard_reboot_instance(self, args, ssh_ports):
+        pass
