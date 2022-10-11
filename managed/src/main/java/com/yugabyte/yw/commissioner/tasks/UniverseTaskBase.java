@@ -122,6 +122,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -2129,7 +2130,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return backup;
   }
 
-  protected void createAllRestoreSubtasks(
+  protected Restore createAllRestoreSubtasks(
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
@@ -2190,6 +2191,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(subTaskGroupType);
     }
+
+    Restore restore = null;
+    Optional<Restore> restoreIfPresent = Restore.fetchRestore(restoreBackupParams.prefixUUID);
+    if (!restoreIfPresent.isPresent()) {
+      log.info(
+          "Creating entry for restore taskUUID: {}, restoreUUID: {} ",
+          taskUUID,
+          restoreBackupParams.prefixUUID);
+      restore = Restore.create(TaskInfo.getOrBadRequest(taskUUID));
+    } else {
+      restore = restoreIfPresent.get();
+      restore.updateTaskUUID(taskUUID);
+      restore.update(taskUUID, TaskInfo.State.Running);
+    }
+
+    return restore;
   }
 
   public SubTaskGroup createTableBackupTaskYb(BackupTableParams taskParams) {

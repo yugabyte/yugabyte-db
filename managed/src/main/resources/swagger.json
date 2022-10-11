@@ -6587,6 +6587,61 @@
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "platformUrl", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
+    "RestoreApiFilter" : {
+      "properties" : {
+        "dateRangeEnd" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "dateRangeStart" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "onlyShowDeletedSourceUniverses" : {
+          "type" : "boolean"
+        },
+        "sourceUniverseNameList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "states" : {
+          "items" : {
+            "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "storageConfigUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeNameList" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "universeUUIDList" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "dateRangeEnd", "dateRangeStart", "onlyShowDeletedSourceUniverses", "sourceUniverseNameList", "states", "storageConfigUUIDList", "universeNameList", "universeUUIDList" ],
+      "type" : "object"
+    },
     "RestoreBackupParams" : {
       "properties" : {
         "actionType" : {
@@ -6766,6 +6821,163 @@
         }
       },
       "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "type" : "object"
+    },
+    "RestoreKeyspace" : {
+      "description" : "Keyspace level restores",
+      "properties" : {
+        "backupSizeFromStorageLocation" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "completeTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "createTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "restoreUUID" : {
+          "description" : "Universe-level Restore UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "sourceKeyspace" : {
+          "description" : "Source keyspace name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "state" : {
+          "description" : "State of the keyspace restore",
+          "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "storageLocation" : {
+          "description" : "Storage location name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "targetKeyspace" : {
+          "description" : "Target keyspace name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "taskUUID" : {
+          "description" : "Restore Keyspace task UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Restore keyspace UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupSizeFromStorageLocation", "completeTime", "createTime" ],
+      "type" : "object"
+    },
+    "RestorePagedApiQuery" : {
+      "properties" : {
+        "direction" : {
+          "enum" : [ "ASC", "DESC" ],
+          "type" : "string"
+        },
+        "filter" : {
+          "$ref" : "#/definitions/RestoreApiFilter"
+        },
+        "limit" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "needTotalCount" : {
+          "type" : "boolean"
+        },
+        "offset" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sortBy" : {
+          "enum" : [ "createTime" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "direction", "filter", "limit", "needTotalCount", "offset", "sortBy" ],
+      "type" : "object"
+    },
+    "RestorePagedApiResponse" : {
+      "properties" : {
+        "entities" : {
+          "items" : {
+            "$ref" : "#/definitions/RestoreResp"
+          },
+          "type" : "array"
+        },
+        "hasNext" : {
+          "type" : "boolean"
+        },
+        "hasPrev" : {
+          "type" : "boolean"
+        },
+        "totalCount" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "RestoreResp" : {
+      "properties" : {
+        "creationTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "isSourceUniversePresent" : {
+          "type" : "boolean"
+        },
+        "restoreKeyspaceList" : {
+          "items" : {
+            "$ref" : "#/definitions/RestoreKeyspace"
+          },
+          "type" : "array"
+        },
+        "restoreSizeInBytes" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "restoreUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "sourceUniverseName" : {
+          "type" : "string"
+        },
+        "state" : {
+          "enum" : [ "Created", "InProgress", "Success", "Failed", "Aborted" ],
+          "type" : "string"
+        },
+        "targetUniverseName" : {
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "updateTime" : {
+          "format" : "date-time",
+          "type" : "string"
+        }
+      },
+      "required" : [ "creationTime", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "state", "targetUniverseName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -14136,6 +14348,39 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restore from a backup V2",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/restore/page" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "listBackupRestoresV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "PageRestoresRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RestorePagedApiQuery"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePagedApiResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List Backup Restores (paginated)",
         "tags" : [ "Backups" ]
       }
     },
