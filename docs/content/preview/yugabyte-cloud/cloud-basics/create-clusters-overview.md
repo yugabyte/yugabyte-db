@@ -72,6 +72,17 @@ For lowest possible network latency and data transfer costs, deploy your cluster
 
 For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
 
+#### Instance types
+
+An instance in cloud computing is a server resource provided by third-party cloud services. An instance abstracts physical computing infrastructure using virtual machines. It's similar to having your own server machine in the cloud.
+
+Cloud providers offer a variety of instance types across the regions where they have data centers. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
+
+- AWS - m5
+- GCP - n2-standard
+
+In cases where the default is unavailable in a region, YugabyteDB Managed will fall back to a suitable replacement instance type for all nodes in the cluster.
+
 ### Fault tolerance
 
 The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
