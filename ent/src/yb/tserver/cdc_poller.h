@@ -50,19 +50,20 @@ class CDCConsumer;
 
 class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
  public:
-  CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
-            const cdc::ConsumerTabletInfo& consumer_tablet_info,
-            std::function<bool(void)> should_continue_polling,
-            std::function<void(void)> remove_self_from_pollers_map,
-            ThreadPool* thread_pool,
-            rpc::Rpcs* rpcs,
-            const std::shared_ptr<CDCClient>& local_client,
-            const std::shared_ptr<CDCClient>& producer_client,
-            CDCConsumer* cdc_consumer,
-            bool use_local_tserver,
-            client::YBTablePtr global_transaction_status_table,
-            bool enable_replicate_transaction_status_table);
+  CDCPoller(
+      const cdc::ProducerTabletInfo& producer_tablet_info,
+      const cdc::ConsumerTabletInfo& consumer_tablet_info,
+      ThreadPool* thread_pool,
+      rpc::Rpcs* rpcs,
+      const std::shared_ptr<CDCClient>& local_client,
+      const std::shared_ptr<CDCClient>& producer_client,
+      CDCConsumer* cdc_consumer,
+      bool use_local_tserver,
+      client::YBTablePtr global_transaction_status_table,
+      bool enable_replicate_transaction_status_table);
   ~CDCPoller();
+
+  void Shutdown();
 
   // Begins poll process for a producer tablet.
   void Poll();
@@ -75,15 +76,17 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
+  cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
+
  private:
-  bool CheckOnline();
+  bool CheckOffline();
 
   void DoSetSchemaVersion(uint32 cur_version);
 
   void DoPoll();
   // Does the work of sending the changes to the output client.
-  void HandlePoll(yb::Status status,
-                  std::shared_ptr<cdc::GetChangesResponsePB> resp);
+  void HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp);
+  void DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp);
   // Async handler for the response from output client.
   void HandleApplyChanges(cdc::OutputClientResponse response);
   // Does the work of polling for new changes.
@@ -92,26 +95,28 @@ class CDCPoller : public std::enable_shared_from_this<CDCPoller> {
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
-  std::function<bool()> should_continue_polling_ GUARDED_BY(data_mutex_);
-  std::function<void(void)> remove_self_from_pollers_map_ GUARDED_BY(data_mutex_);
 
   // Although this is processing serially, it might be on a different thread in the ThreadPool.
   // Using mutex to guarantee cache flush, preventing TSAN warnings.
+  // Recursive, since when we abort the CDCReadRpc, that will also call the callback within the
+  // same thread (HandlePoll()) which needs to Unregister poll_handle_ from rpcs_.
   std::mutex data_mutex_;
+
+  std::atomic<bool> shutdown_ = false;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
   uint32_t validated_schema_version_ GUARDED_BY(data_mutex_);
 
-  yb::Status status_ GUARDED_BY(data_mutex_);
+  Status status_ GUARDED_BY(data_mutex_);
   std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
 
-  std::unique_ptr<cdc::CDCOutputClient> output_client_;
+  std::shared_ptr<cdc::CDCOutputClient> output_client_;
   std::shared_ptr<CDCClient> producer_client_;
 
   ThreadPool* thread_pool_;
   rpc::Rpcs* rpcs_;
-  rpc::Rpcs::Handle poll_handle_;
-  CDCConsumer* cdc_consumer_;
+  rpc::Rpcs::Handle poll_handle_ GUARDED_BY(data_mutex_);
+  CDCConsumer* cdc_consumer_ GUARDED_BY(data_mutex_);
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
