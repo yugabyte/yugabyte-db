@@ -14,135 +14,135 @@ zone_cidr_format: "{}.{}.0/20"
 regions:
   westus2:
     cidr_prefix: "10.12"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   centralus:
     cidr_prefix: "10.13"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   eastus:
     cidr_prefix: "10.14"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   eastus2:
     cidr_prefix: "10.15"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   westeurope:
     cidr_prefix: "10.16"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   northeurope:
     cidr_prefix: "10.17"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   japaneast:
     cidr_prefix: "10.18"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   southeastasia:
     cidr_prefix: "10.19"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   australiaeast:
     cidr_prefix: "10.20"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   uksouth:
     cidr_prefix: "10.21"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   francecentral:
     cidr_prefix: "10.22"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   westus:
     cidr_prefix: "10.23"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   westcentralus:
     cidr_prefix: "10.24"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   eastasia:
     cidr_prefix: "10.25"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   northcentralus:
     cidr_prefix: "10.26"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   southcentralus:
     cidr_prefix: "10.27"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   japanwest:
     cidr_prefix: "10.28"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   brazilsouth:
     cidr_prefix: "10.29"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   australiasoutheast:
     cidr_prefix: "10.30"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   centralindia:
     cidr_prefix: "10.31"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   southindia:
     cidr_prefix: "10.33"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   westindia:
     cidr_prefix: "10.34"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   canadacentral:
     cidr_prefix: "10.35"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   canadaeast:
     cidr_prefix: "10.36"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   ukwest:
     cidr_prefix: "10.37"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   koreacentral:
     cidr_prefix: "10.38"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   koreasouth:
     cidr_prefix: "10.39"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   australiacentral:
     cidr_prefix: "10.40"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   southafricanorth:
     cidr_prefix: "10.41"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   uaenorth:
     cidr_prefix: "10.42"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   switzerlandnorth:
     cidr_prefix: "10.43"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
   germanywestcentral:
     cidr_prefix: "10.44"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: ['1','2','3']
   norwayeast:
     cidr_prefix: "10.45"
-    image: "almalinux:almalinux:8_5:8.5.20220311"
+    image: "OpenLogic:CentOS:7_9:7.9.2022020700"
     zones: []
 
 
