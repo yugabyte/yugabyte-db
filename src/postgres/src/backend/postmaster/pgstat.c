@@ -2852,7 +2852,7 @@ pgstat_report_query_termination(const char *termination_reason, int32 backend_pi
 {
 	PgStat_MsgQueryTermination msg;
 
-	if (pgStatSock == PGINVALID_SOCKET)
+	if (pgStatSock == PGINVALID_SOCKET || !MyBEEntry)
 		return;
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
