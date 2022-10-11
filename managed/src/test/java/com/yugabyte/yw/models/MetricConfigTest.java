@@ -251,17 +251,18 @@ public class MetricConfigTest extends FakeDBApplication {
             notNullValue(),
             equalTo(
                 "((sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
-                    + "service_type=\"TabletServerService\", service_method=\"Read\", "
-                    + "exported_instance=~\"instance1|instance2\"}[60s])) by "
-                    + "(service_method, exported_instance)) / (sum(irate(rpc_latency_count"
-                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
-                    + "service_method=\"Read\", exported_instance=~\"instance1|instance2\"}[60s]))"
-                    + " by (service_method, exported_instance))) or ((sum(irate(rpc_latency_sum"
-                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
-                    + "service_method=\"Write\", exported_instance=~\"instance3|instance4\"}[60s]))"
+                    + "service_type=\"TabletServerService\", "
+                    + "exported_instance=~\"instance1|instance2\", service_method=\"Read\"}[60s]))"
                     + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
                     + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
-                    + "service_method=\"Write\", exported_instance=~\"instance3|instance4\"}[60s]))"
+                    + "exported_instance=~\"instance1|instance2\", service_method=\"Read\"}[60s]))"
+                    + " by (service_method, exported_instance))) or "
+                    + "((sum(irate(rpc_latency_sum{export_type=\"tserver_export\", "
+                    + "service_type=\"TabletServerService\", "
+                    + "exported_instance=~\"instance3|instance4\", service_method=\"Write\"}[60s]))"
+                    + " by (service_method, exported_instance)) / (sum(irate(rpc_latency_count"
+                    + "{export_type=\"tserver_export\", service_type=\"TabletServerService\", "
+                    + "exported_instance=~\"instance3|instance4\", service_method=\"Write\"}[60s]))"
                     + " by (service_method, exported_instance)))")));
   }
 

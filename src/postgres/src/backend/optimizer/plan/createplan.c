@@ -6574,7 +6574,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.nestParams = nestParams;
 	node->hashOps = hashOps;
 	node->innerHashAttNos = NULL;
-	node->outerParamNos = NULL;
+	node->outerParamExprs = NULL;
 
 	return node;
 }

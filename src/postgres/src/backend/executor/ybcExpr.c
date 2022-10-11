@@ -333,6 +333,13 @@ bool yb_pushdown_walker(Node *node, List **params)
 			{
 				return true;
 			}
+			/*
+			 * Unsafe to pushdown function if collation is not C, there may be
+			 * needed metadata lookup for collation details.
+			 */
+			if (YBIsCollationValidNonC(func_expr->inputcollid)) {
+				return true;
+			}
 			/* Check if the function is pushable */
 			if (!yb_can_pushdown_func(func_expr->funcid))
 			{
@@ -343,6 +350,13 @@ bool yb_pushdown_walker(Node *node, List **params)
 		case T_OpExpr:
 		{
 			OpExpr *op_expr = castNode(OpExpr, node);
+			/*
+			 * Unsafe to pushdown function if collation is not C, there may be
+			 * needed metadata lookup for collation details.
+			 */
+			if (YBIsCollationValidNonC(op_expr->inputcollid)) {
+				return true;
+			}
 			if (!yb_can_pushdown_func(op_expr->opfuncid))
 			{
 				return true;

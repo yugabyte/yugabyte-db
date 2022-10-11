@@ -292,6 +292,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   virtual void NonTrackedRoundReplicationFinished(
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
+  Result<RetryableRequests> GetRetryableRequests() const;
+
  protected:
   // As a leader, append a new ConsensusRound to the queue.
   // Only virtual and protected for mocking purposes.

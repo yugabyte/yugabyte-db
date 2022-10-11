@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
+import com.yugabyte.yw.models.NodeInstance;
 import io.ebean.annotation.Transactional;
 import io.grpc.ManagedChannel;
 import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
@@ -41,12 +42,14 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
@@ -72,6 +75,13 @@ public class NodeAgentHandler {
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
   public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
 
+  public static final String CLEANER_CHECK_INTERVAL_PROPERTY =
+      "yb.node_agent.cleaner_check_interval";
+  public static final Duration CLEANER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(10);
+
+  public static final String CLEANER_RETENTION_DURATION_PROPERTY =
+      "yb.node_agent.retention_duration";
+
   public static final int CERT_EXPIRY_YEARS = 5;
 
   public static final Set<State> UPDATABLE_STATES_BY_NODE_AGENT =
@@ -93,17 +103,28 @@ public class NodeAgentHandler {
 
   /** Starts background tasks. */
   public void init() {
-    Duration checkInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
-    if (checkInterval.isZero()) {
+    Duration updateCheckInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
+    if (updateCheckInterval.isZero()) {
       throw new IllegalArgumentException(
           String.format("%s cannot be 0", UPGRADE_CHECK_INTERVAL_PROPERTY));
     }
+    Duration cleanerCheckInterval = appConfig.getDuration(CLEANER_CHECK_INTERVAL_PROPERTY);
+    if (updateCheckInterval.isZero()) {
+      throw new IllegalArgumentException(
+          String.format("%s cannot be 0", CLEANER_CHECK_INTERVAL_PROPERTY));
+    }
     log.info("Scheduling updater service");
     platformScheduler.schedule(
-        NodeAgentHandler.class.getSimpleName(),
+        NodeAgentHandler.class.getSimpleName() + "Updater",
         UPDATER_SERVICE_INITIAL_DELAY,
-        checkInterval,
+        updateCheckInterval,
         this::updaterService);
+    log.info("Scheduling cleaner service");
+    platformScheduler.schedule(
+        NodeAgentHandler.class.getSimpleName() + "Cleaner",
+        CLEANER_SERVICE_INITIAL_DELAY,
+        cleanerCheckInterval,
+        this::cleanerService);
   }
 
   /**
@@ -133,6 +154,33 @@ public class NodeAgentHandler {
               });
     } catch (Exception e) {
       log.error("Error occurred in updater service", e);
+    }
+  }
+
+  /**
+   * This method is run in interval. Node agents whose IPs are not found in node instance and have
+   * not sent heartbeats beyond a retention time are deleted.
+   */
+  @VisibleForTesting
+  void cleanerService() {
+    try {
+      Duration duration = appConfig.getDuration(CLEANER_RETENTION_DURATION_PROPERTY);
+      Date expiryDate = Date.from(Instant.now().minus(duration.toMinutes(), ChronoUnit.MINUTES));
+      Set<String> nodeIps =
+          NodeInstance.getAll()
+              .stream()
+              .map(node -> node.getDetails().ip)
+              .collect(Collectors.toSet());
+      Customer.getAll()
+          .stream()
+          .map(c -> c.uuid)
+          .flatMap(cUuid -> NodeAgent.getNodeAgents(cUuid).stream())
+          .filter(n -> expiryDate.after(n.updatedAt))
+          .filter(n -> !nodeIps.contains(n.ip))
+          .forEach(n -> n.delete());
+
+    } catch (Exception e) {
+      log.error("Error occurred in cleaner service", e);
     }
   }
 
@@ -445,17 +493,22 @@ public class NodeAgentHandler {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Invalid node agent state " + payload.state);
     }
-    nodeAgent.state = payload.state;
-    if (nodeAgent.state == State.UPGRADED) {
+    if (payload.state == State.UPGRADED) {
       if (StringUtils.isBlank(payload.version)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Node agent version must be specified");
       }
       // Node agent is ready after an upgrade.
+      nodeAgent.state = payload.state;
       nodeAgent.version = payload.version;
       updateNodeAgentCerts(nodeAgent);
     } else {
-      nodeAgent.save();
+      boolean updated = nodeAgent.updateState(payload.state);
+      if (!updated) {
+        throw new PlatformServiceException(
+            Status.CONFLICT, String.format("Expected state %s has changed", nodeAgent.state));
+      }
+      nodeAgent.state = payload.state;
     }
     return nodeAgent;
   }

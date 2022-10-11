@@ -16,21 +16,28 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.MiscUtil;
+import org.yb.util.MiscUtil.ThrowingRunnable;
+import org.yb.util.ProcessUtil;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgYbStat extends BasePgSQLTest {
   private static final Integer MAX_PG_STAT_RETRIES = 20;
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
@@ -71,6 +78,37 @@ public class TestPgYbStat extends BasePgSQLTest {
     }
   }
 
+  private void executeQueryAndSendSignal(final String query,
+    final Connection inputConnection, final String signal) throws Exception {
+    try (Statement statement = inputConnection.createStatement()) {
+      final int pid = getPid(inputConnection);
+
+      final CountDownLatch startSignal = new CountDownLatch(1);
+      final List<ThrowingRunnable> cmds = new ArrayList<>();
+      cmds.add(() -> {
+        startSignal.countDown();
+        startSignal.await();
+        try {
+          statement.execute(query);
+        } catch (Throwable throwable) {
+          assertEquals("An I/O error occurred while sending to the backend.",
+                       throwable.getMessage());
+        }
+      });
+      cmds.add(() -> {
+        startSignal.countDown();
+        startSignal.await();
+        Thread.sleep(100); // Allow the query execution a headstart before killing
+        ProcessUtil.signalProcess(pid, signal);
+      });
+      MiscUtil.runInParallel(cmds, startSignal, 60);
+    } catch (Throwable exception) {
+      exception.printStackTrace();
+      fail("Unexpected exception thrown");
+    }
+    assertTrue(inputConnection.isClosed());
+  }
+
   private void setupMinTempFileConfigs(final Connection inputConnection) throws Exception {
     executeQueryAndExpectNoResults("SET work_mem TO 64", inputConnection);
     executeQueryAndExpectNoResults("SET temp_file_limit TO 0", inputConnection);
@@ -78,7 +116,7 @@ public class TestPgYbStat extends BasePgSQLTest {
 
   private int getPid(final Connection inputConnection) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
-      ResultSet result = statement.executeQuery(String.format("SELECT pg_backend_pid() AS pid"));
+      ResultSet result = statement.executeQuery("SELECT pg_backend_pid() AS pid");
       assertTrue(result.next());
       return result.getInt("pid");
     }
@@ -87,7 +125,7 @@ public class TestPgYbStat extends BasePgSQLTest {
   private int getCurrentDatabaseOid(final Connection inputConnection) throws Exception {
     try (Statement statement = inputConnection.createStatement()) {
       ResultSet result = statement.executeQuery(
-        String.format("SELECT oid FROM pg_database WHERE datname = current_database()"));
+        "SELECT oid FROM pg_database WHERE datname = current_database()");
       assertTrue(result.next());
       return result.getInt("oid");
     }
@@ -120,6 +158,69 @@ public class TestPgYbStat extends BasePgSQLTest {
       Thread.sleep(200);
     }
     return false;
+  }
+
+  @Test
+  public void testYbTerminatedQueriesMultipleCauses() throws Exception {
+    // We need to restart the cluster to wipe the state currently contained in yb_terminated_queries
+    // that can potentially be leftover from another test in this class. This would let us start
+    // with a clean slate.
+    restartCluster();
+
+    final String oversized_query = "SELECT a FROM generate_series(0, 1000000) a ORDER BY a";
+
+    // We run three queries, each fail for a different reason.
+    // 1: OOM (mocked by sending kill -KILL)
+    executeQueryAndSendSignal(oversized_query, connection, "KILL");
+
+    // Mocking a segfault results in ASAN build failing because it detects the
+    // SIGSEGV. So skip this query if we're in ASAN.
+    if (!BuildTypeUtil.isASAN()) {
+      // 2: seg fault (mocked by sending kill -SIGSEGV)
+      connection = getConnectionBuilder().connect();
+      executeQueryAndSendSignal(oversized_query, connection, "SIGSEGV");
+    }
+
+    // 3: temp file limit exceeded (mocked by setting file limit to super small)
+    connection = getConnectionBuilder().connect();
+    setupMinTempFileConfigs(connection);
+    executeQueryAndExpectTempFileLimitExceeded(oversized_query, connection);
+
+    try (Statement statement = connection.createStatement()) {
+      createQueryTerminationView(connection);
+
+      // By current implementation, we expect that the queries will overflow from the end
+      // of the array and start overwiting the oldest entries stored at the beginning of
+      // the array. Consider this a circular buffer.
+      assertTrue(waitUntilConditionSatisfiedOrTimeout(
+        "SELECT query_text, termination_reason FROM yb_terminated_queries", connection,
+        (ResultSet resultSet) -> {
+          if (!resultSet.next()
+           || !oversized_query.equals(resultSet.getString("query_text"))
+           || !resultSet.getString("termination_reason")
+                        .equals("Terminated by SIGKILL"))
+            return false;
+
+          // We did not mock a segfault in ASAN build, so do not look for it
+          if (!BuildTypeUtil.isASAN()) {
+            if (!resultSet.next()
+            || !oversized_query.equals(resultSet.getString("query_text"))
+            || !resultSet.getString("termination_reason")
+                        .equals("Terminated by SIGSEGV"))
+              return false;
+          }
+
+
+          if (!resultSet.next()
+           || !oversized_query.equals(resultSet.getString("query_text"))
+           || !resultSet.getString("termination_reason")
+                        .startsWith("temporary file size exceeds temp_file_limit"))
+            return false;
+
+          assertFalse("Expected only 3 queries in this test", resultSet.next());
+          return true;
+        }));
+    }
   }
 
   @Test

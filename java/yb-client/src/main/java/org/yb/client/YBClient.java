@@ -745,9 +745,15 @@ public class YBClient implements AutoCloseable {
                                                  boolean isAdd, boolean useHost,
                                                  String hostAddrToAdd) throws Exception {
     String masterUuid = null;
+    int tries = 0;
 
     if (isAdd || !useHost) {
-      masterUuid = getMasterUUID(host, port);
+      // In case the master UUID is returned as null, retry a few times
+      do {
+          masterUuid = getMasterUUID(host, port);
+          Thread.sleep(AsyncYBClient.SLEEP_TIME);
+          tries++;
+      } while (tries < MAX_NUM_RETRIES && masterUuid == null);
 
       if (masterUuid == null) {
         throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +

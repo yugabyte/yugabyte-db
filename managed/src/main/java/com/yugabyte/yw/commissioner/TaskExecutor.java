@@ -256,10 +256,11 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
-        100 /* weight */,
-        () -> {
-          TaskExecutor.this.shutdown(Duration.ofMinutes(5));
-        });
+        TaskExecutor.this,
+        (taskExecutor) -> {
+          taskExecutor.shutdown(Duration.ofMinutes(5));
+        },
+        100 /* weight */);
   }
 
   // Shuts down the task executor.
@@ -800,7 +801,7 @@ public class TaskExecutor {
       try {
         if (log.isDebugEnabled()) {
           log.debug(
-              "Task {} waited for {}ms",
+              "Task {} waited for {}s",
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
@@ -826,7 +827,7 @@ public class TaskExecutor {
         taskCompletionTime = Instant.now();
         if (log.isDebugEnabled()) {
           log.debug(
-              "Completed task {} in {}ms",
+              "Completed task {} in {}s",
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }

@@ -102,6 +102,9 @@ DEFINE_uint64(webserver_compression_threshold_kb, 4,
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
 TAG_FLAG(webserver_compression_threshold_kb, runtime);
 
+DEFINE_bool(webserver_redirect_http_to_https, false,
+            "Redirect HTTP requests to the embedded webserver to HTTPS if HTTPS is enabled.");
+
 DEFINE_test_flag(bool, mini_cluster_mode, false,
                  "Enable special fixes for MiniCluster test cluster.");
 
@@ -285,9 +288,14 @@ Status Webserver::Impl::BuildListenSpec(string* spec) const {
       "No IPs available for address $0", http_address_);
   }
   std::vector<string> parts;
+  std::string suffix;
+  if (IsSecure()) {
+    // Sockets with 's' suffix accept SSL traffic.
+    // Sockets with 'r' suffix redirects non-SSL traffic to a SSL socket.
+    suffix = FLAGS_webserver_redirect_http_to_https ? "rs" : "s";
+  }
   for (const auto& endpoint : endpoints) {
-    // Mongoose makes sockets with 's' suffixes accept SSL traffic only
-    parts.push_back(ToString(endpoint) + (IsSecure() ? "s" : ""));
+    parts.push_back(ToString(endpoint) + suffix);
   }
 
   JoinStrings(parts, ",", spec);

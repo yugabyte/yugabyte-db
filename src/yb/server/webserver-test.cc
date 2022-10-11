@@ -57,6 +57,7 @@ using strings::Substitute;
 
 DECLARE_int32(webserver_max_post_length_bytes);
 DECLARE_uint64(webserver_compression_threshold_kb);
+DECLARE_string(webserver_ca_certificate_file);
 
 namespace yb {
 
@@ -274,7 +275,7 @@ class WebserverSecureTest : public WebserverTest {
     const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
-    ca_cert_ = JoinPathSegments(certs_dir, "ca.crt");
+    FLAGS_webserver_ca_certificate_file = JoinPathSegments(certs_dir, "ca.crt");
     return opts;
   }
 
@@ -282,15 +283,13 @@ class WebserverSecureTest : public WebserverTest {
     WebserverTest::SetUp();
 
     url_ = Substitute("https://$0", ToString(addr_));
+    curl_.set_ca_cert(FLAGS_webserver_ca_certificate_file);
   }
-
- protected:
-  std::string ca_cert_;
 };
 
 // Test HTTPS endpoint.
 TEST_F(WebserverSecureTest, TestIndexPage) {
-  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */, ca_cert_));
+  ASSERT_OK(curl_.FetchURL(url_, &buf_, EasyCurl::kDefaultTimeoutSec, {} /* headers */));
 }
 
 } // namespace yb
