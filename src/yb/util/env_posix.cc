@@ -126,8 +126,6 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
-DECLARE_bool(never_fsync);
-
 using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
