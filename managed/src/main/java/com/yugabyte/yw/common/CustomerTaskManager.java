@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
 import static io.ebean.Ebean.beginTransaction;
 import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
@@ -114,6 +116,7 @@ public class CustomerTaskManager {
       // targets like Cluster, Node are Universe targets.
       boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
       boolean resumeTask = false;
+      boolean isRestoreYbc = false;
       CustomerTask.TaskType type = customerTask.getType();
       Map<BackupCategory, List<Backup>> backupCategoryMap = new HashMap<>();
       if (customerTask.getTarget().equals(TargetType.Backup)) {
@@ -151,6 +154,11 @@ public class CustomerTaskManager {
         } else if (CustomerTask.TaskType.Restore.equals(type)) {
           // Restore locks the Universe.
           unlockUniverse = true;
+          RestoreBackupParams params =
+              Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+          if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
+            isRestoreYbc = true;
+          }
         }
       } else if (CustomerTask.TaskType.Restore.equals(type)) {
         unlockUniverse = true;
@@ -158,6 +166,22 @@ public class CustomerTaskManager {
             Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
         if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
           resumeTask = true;
+          isRestoreYbc = true;
+        }
+      }
+
+      if (!isRestoreYbc) {
+        List<Restore> restoreList =
+            Restore.fetchByTaskUUID(taskUUID)
+                .stream()
+                .filter(
+                    restore ->
+                        restore.getState().equals(Restore.State.Created)
+                            || restore.getState().equals(Restore.State.InProgress))
+                .collect(Collectors.toList());
+        for (Restore restore : restoreList) {
+          restore.update(taskUUID, TaskInfo.State.Failure);
+          RestoreKeyspace.update(restore, TaskInfo.State.Failure);
         }
       }
 

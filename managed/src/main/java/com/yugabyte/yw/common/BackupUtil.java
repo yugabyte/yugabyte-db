@@ -698,6 +698,13 @@ public class BackupUtil {
     return keyspaceRegionLocations;
   }
 
+  public static String getKeyspaceFromStorageLocation(String storageLocation) {
+    String[] splitArray = storageLocation.split("/");
+    String keyspaceString = splitArray[(splitArray).length - 1];
+    splitArray = keyspaceString.split("-");
+    return splitArray[(splitArray).length - 1];
+  }
+
   public static boolean checkInProgressIncrementalBackup(Backup backup) {
     return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
         .stream()
@@ -710,5 +717,9 @@ public class BackupUtil {
 
   public static boolean checkIfUniverseExists(Backup backup) {
     return Universe.maybeGet(backup.universeUUID).isPresent();
+  }
+
+  public static boolean checkIfUniverseExists(UUID universeUUID) {
+    return Universe.maybeGet(universeUUID).isPresent();
   }
 }
