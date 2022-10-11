@@ -402,6 +402,7 @@ body:not(.td-home) .td-main main {
 
 .td-content {
   .admonition a,
+  th a,
   td a,
   p a,
   li:not(.nav-item) a,
@@ -409,23 +410,9 @@ body:not(.td-home) .td-main main {
     color: #507ce1;
     font-weight: 500;
 
-    i {
-      //margin-left: 5px;
-      //font-size: 12px;
-    }
-
     &:hover {
       text-decoration: underline;
       text-underline-offset: 4px;
-    }
-  }
-
-  td a {
-    border-bottom: 1px solid transparent;
-
-    &:hover {
-      text-decoration: none;
-      border-bottom-color: #3176d9;
     }
   }
 }

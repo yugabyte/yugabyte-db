@@ -4,6 +4,20 @@
     background: rgb(246, 246, 248);
     margin-top: 129px;
     height: calc(100vh - 129px);
+
+    &::-webkit-scrollbar {
+      height: 5px;
+      width: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--theme-color);
+      border-radius: 6px;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+      background: var(--theme-dark-color);
+    }
   }
 }
 

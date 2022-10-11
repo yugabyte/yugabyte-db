@@ -8,6 +8,25 @@ main {
       display: table;
       margin: 1em 0;
 
+      &.no-alter-colors {
+        display: block;
+        overflow-x: auto;
+
+        &::-webkit-scrollbar {
+          height: 5px;
+          width: 5px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: var(--theme-color);
+          border-radius: 6px;
+        }
+
+        &::-webkit-scrollbar-thumb:hover {
+          background: var(--theme-dark-color);
+        }
+      }
+
       thead {
         border-color: #e9eef2;
         border-style: solid;
@@ -41,9 +60,6 @@ main {
           border-width: 0;
           font-family: 'Inter';
           font-style: normal;
-          font-weight: 400;
-          font-size: 14px;
-          line-height: 26px;
           color: #4e5f6d;
           text-transform: uppercase;
           font-weight: 600;
@@ -86,12 +102,16 @@ main {
           margin: 0 0;
           line-height: 1;
           max-width: 100%;
-          overflow: auto;
           background: #f2f6ff;
           border: 1px solid #cbdbff;
+          overflow: auto;
           border-radius: 4px;
           color: $yb-font-gray;
           padding: 2px 6px;
+
+          &[style*=padding] {
+            overflow: hidden;
+          }
         }
       }
     }
