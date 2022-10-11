@@ -38,7 +38,7 @@ groups:
 
       - record: container_cpu_usage
         expr: 'irate(container_cpu_usage_seconds_total[1m]) /
-          on (container_name, pod_name, namespace) kube_pod_container_resource_requests_cpu_cores'
+          on (container_name, pod_name, namespace) kube_pod_container_resource_requests{unit="core"}'
         labels:
           saved_name: container_cpu_usage
 
