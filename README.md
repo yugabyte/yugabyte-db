@@ -8,15 +8,15 @@
 
 <img src="https://age.apache.org/age-manual/master/_static/logo.png" width="30%" height="30%">
 
-Apache AGE is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for A Graph Extension, and is inspired by Bitnine's fork of PostgreSQL 10, AgensGraph, which is a multi-model database. The goal of the project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language.
+Apache AGE is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for A Graph Extension, and is inspired by Bitnine's AgensGraph, a multimodel database fork of PostgreSQL. The goal of the project is to enable users of Postgres to use graph query modeling in unison with Postgres' existing relational model. 
 
 A graph consists of a set of vertices (also called nodes) and edges, where each individual vertex and edge possesses a map of properties. A vertex is the basic object of a graph, that can exist independently of everything else in the graph. An edge creates a directed connection between two vertices. A graph database is simply composed of vertices and edges. This type of database is useful when the meaning is in the relationships between the data. Relational databases can easily handle direct relationships, but indirect relationships are more difficult to deal with in relational databases. A graph database stores relationship information as a first-class entity. Apache AGE gives you the best of both worlds, simultaneously.
 
 Apache AGE is:
 
-Powerful -- AGE adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
-Flexible -- AGE allows you to perform openCypher queries, which make complex queries much easier to write.
-Intelligent -- AGE allows you to perform graph queries that are the basis for many next level web services such as fraud & intrusion detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
+- **Powerful**: adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
+- **Flexible**: allows you to perform openCypher queries, which make complex queries much easier to write.
+- **Intelligent**: allows you to perform graph queries that are the basis for many next level web services such as fraud detection, master data management, product recommendations, identity and relationship management, experience personalization, knowledge management and more.
 
 Also, while the technology can be integrated against many data layers, a graph database is also the perfect companion for a [GraphQL](https://graphql.org/) API! Since the information is already in a native format, it simplifies many factors and even allows many operations to be generated automatically. GraphQL is rapidly  superceeding REST as the standard for cloud applications. 
 
@@ -27,7 +27,7 @@ Also, while the technology can be integrated against many data layers, a graph d
 - Apache AGE enables querying multiple graphs at the same time.
 - Apache AGE will be enhanced with an aim to support all of the key features of AgensGraph (PostgreSQL fork extended with graph DB functionality).
 
-## Latest happenings
+## Latest Events
 
 - The latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc0).
 - The latest Apache AGE documentation is now available at [here](https://age.apache.org/age-manual/master/index.html).
@@ -42,21 +42,20 @@ Also, while the technology can be integrated against many data layers, a graph d
 
 ## Graph visualization tool for AGE
 
-Apache AGE Viewer is a user interface for Apache AGE to provide visualization and exploration of data.
-It provides a simple web visualization tool for users to enter complex graph queries and explore the results in graph and table forms.
+Apache AGE Viewer is a user interface for Apache AGE that provides visualization and exploration of data.
+Through this simple web visualization tool, users can enter complex graph queries and explore the results in graph and table forms.
 Apache AGE Viewer is enhanced to proceed with large graph data and discover the insights through various graph algorithms.
 Apache AGE Viewer will become a graph data administration and development platform for Apache AGE to support multiple relational databases: <https://github.com/apache/age-viewer>.
 
 - This is a visualization tool.
-After AGE Extension Installation
-You can use this tool to use the visualization features.
+After installing AGE Extension, you may use this tool to get access to the visualization features.
 - Follow the instructions on the link to run it.
-Under Connect to Database , select database type as "Apache AGE"
+Under "Connect to Database", select database type as "Apache AGE"
 
 ## Documentation
 
 Here is the link to the latest [Apache AGE documentation](https://age.apache.org/age-manual/master/index.html).
-You can learn about how to install Apache AGE, its features and built-in functions and how to use various Cypher queries.
+Learn how to install Apache AGE, its features and built-in functions, and how to use various Cypher queries.
 
 ## Language Specific Drivers
 
