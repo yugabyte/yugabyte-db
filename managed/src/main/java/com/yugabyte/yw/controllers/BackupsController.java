@@ -29,9 +29,12 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
+import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
+import com.yugabyte.yw.forms.paging.RestorePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -47,10 +50,13 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
+import com.yugabyte.yw.models.filters.RestoreFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
+import com.yugabyte.yw.models.paging.RestorePagedApiResponse;
+import com.yugabyte.yw.models.paging.RestorePagedQuery;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -163,6 +169,29 @@ public class BackupsController extends AuthenticatedController {
     BackupPagedApiResponse backups = Backup.pagedList(query);
 
     return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(
+      value = "List Backup Restores (paginated)",
+      response = RestorePagedApiResponse.class,
+      nickname = "listBackupRestoresV2")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PageRestoresRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.paging.RestorePagedApiQuery",
+          required = true))
+  public Result pageRestoreList(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    RestorePagedApiQuery apiQuery = parseJsonAndValidate(RestorePagedApiQuery.class);
+    RestoreApiFilter apiFilter = apiQuery.getFilter();
+    RestoreFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
+    RestorePagedQuery query = apiQuery.copyWithFilter(filter, RestorePagedQuery.class);
+
+    RestorePagedApiResponse restores = Restore.pagedList(query);
+
+    return PlatformResults.withData(restores);
   }
 
   @ApiOperation(
@@ -460,7 +489,6 @@ public class BackupsController extends AuthenticatedController {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Restore,
         universe.name);
-
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -575,7 +603,6 @@ public class BackupsController extends AuthenticatedController {
             universe.name);
       }
     }
-
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
