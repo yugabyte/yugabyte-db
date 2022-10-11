@@ -73,6 +73,8 @@ const initialValues: Form_Values = {
   recovery_interval: 1
 };
 
+const TOAST_AUTO_CLOSE_INTERVAL = 3000;
+
 export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   visible,
   onHide,
@@ -83,21 +85,22 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
 
   const createPITR = useMutation((values: any) => restoreSnapShot(universeUUID, values), {
     onSuccess: () => {
-      toast.success(`${config.dbName} recovered successfully!`);
+      toast.success(`${config.dbName} recovered successfully!`, {
+        autoClose: TOAST_AUTO_CLOSE_INTERVAL
+      });
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },
     onError: () => {
-      toast.error(`Failed to recover ${config.dbName}.`);
+      toast.error(`Failed to recover ${config.dbName}.`, { autoClose: TOAST_AUTO_CLOSE_INTERVAL });
       onHide();
     }
   });
 
   if (!config) return <></>;
 
-  const activeSnapShots = config.snapshots.filter((snapshot: any) => snapshot.state === 'COMPLETE');
-  const minTime = Math.min(...activeSnapShots.map((snapshot: any) => snapshot.recoveryTime));
-  const maxTime = Math.max(...activeSnapShots.map((snapshot: any) => snapshot.snapshotTime));
+  const minTime = config.minRecoverTimeInMillis;
+  const maxTime = config.maxRecoverTimeInMillis;
 
   const getFinalTimeStamp = (values: any) => {
     const {
