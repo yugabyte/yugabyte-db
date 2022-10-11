@@ -22,6 +22,7 @@
 #define PG_YBGATE_YBGATE_API_H
 
 #include <setjmp.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -104,6 +105,34 @@ YbgStatus YbgDeleteMemoryContext();
 //-----------------------------------------------------------------------------
 // Types
 //-----------------------------------------------------------------------------
+
+struct PgAttributeRow
+{
+	uint32_t attrelid;
+	char	 attname[64];
+	uint32_t atttypid;
+	int32_t	 attstattarget;
+	int16_t	 attlen;
+	int16_t	 attnum;
+	int32_t	 attndims;
+	int32_t	 attcacheoff;
+	int32_t	 atttypmod;
+	bool	 attbyval;
+	char	 attstorage;
+	char	 attalign;
+	bool	 attnotnull;
+	bool	 atthasdef;
+	bool	 atthasmissing;
+	char	 attidentity;
+	bool	 attisdropped;
+	bool	 attislocal;
+	int32_t	 attinhcount;
+	uint32_t attcollation;
+};
+
+#ifndef __cplusplus
+typedef struct PgAttributeRow PgAttributeRow;
+#endif
 
 struct YbgTypeDesc {
 	int32_t type_id; /* type identifier */
@@ -223,6 +252,18 @@ char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
 		char elem_align, char range_align, char elem_delim, char option, char range_option,
 		bool from_YB, char const* elem_fn_name, char const* range_fn_name, int range_type,
 		const char *timezone);
+
+char *DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts);
+
+char *GetOutFuncName(const int pg_data_type);
+
+uint32_t GetRecordTypeId(uintptr_t datum);
+
+uintptr_t HeapFormTuple(void *attrs, size_t natts, uintptr_t *values,
+						bool *nulls);
+
+void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
+					 uintptr_t *values, bool *nulls);
 
 #ifdef __cplusplus
 }

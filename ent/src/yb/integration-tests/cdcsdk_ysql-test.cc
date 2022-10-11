@@ -439,6 +439,150 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Result<YBTableName> CreateCompositeTable(
+      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TYPE composite_name$0 AS (first text, last text);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE emp(id int primary key, name composite_name) "
+        "SPLIT INTO $0 TABLETS",
+        num_tablets));
+    return GetTable(cluster, kNamespaceName, "emp");
+  }
+
+  Status WriteCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(
+          conn.ExecuteFormat("INSERT INTO emp(id, name) VALUES ($0, ('John', 'Doe'))", i));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
+  Result<YBTableName> CreateNestedCompositeTable(
+      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+
+    RETURN_NOT_OK(
+        conn.ExecuteFormat("CREATE TYPE part_name$0 AS (first text, middle text);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TYPE full_name$0 AS (part part_name$0, last text);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE emp_nested(id int primary key, name full_name$0) "
+        "SPLIT INTO $1 TABLETS",
+        type_suffix, num_tablets));
+    return GetTable(cluster, kNamespaceName, "emp_nested");
+  }
+
+  Status WriteNestedCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO emp_nested(id, name) VALUES ($0, (('John', 'Middle'), 'Doe'))", i));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
+  Result<YBTableName> CreateArrayCompositeTable(
+      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+
+    RETURN_NOT_OK(
+        conn.ExecuteFormat("CREATE TYPE emp_data$0 AS (name text[], phone int[]);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE emp_array(id int primary key, data emp_data$0) "
+        "SPLIT INTO $1 TABLETS",
+        type_suffix, num_tablets));
+    return GetTable(cluster, kNamespaceName, "emp_array");
+  }
+
+  Status WriteArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO emp_array(id, data) VALUES ($0, ('{\"John\", \"Middle\", \"Doe\"}', '{123, "
+          "456}'))",
+          i));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
+  Result<YBTableName> CreateRangeCompositeTable(
+      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE type range_composite$0 AS (r1 numrange, r2 int4range);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE range_composite_table(id int primary key, data range_composite$0) "
+        "SPLIT INTO $1 TABLETS",
+        type_suffix, num_tablets));
+    return GetTable(cluster, kNamespaceName, "range_composite_table");
+  }
+
+  Status WriteRangeCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO range_composite_table(id, data) VALUES ($0, ('[$1, $2]', '[$3, $4]'))", i, i,
+          i + 10, i + 11, i + 20));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
+  Result<YBTableName> CreateRangeArrayCompositeTable(
+      Cluster* cluster, const uint32_t num_tablets, const std::string& type_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE type range_array_composite$0 AS (r1 numrange[], r2 int4range[]);", type_suffix));
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE range_array_composite_table(id int primary key, data "
+        "range_array_composite$0) "
+        "SPLIT INTO $1 TABLETS",
+        type_suffix, num_tablets));
+    return GetTable(cluster, kNamespaceName, "range_array_composite_table");
+  }
+
+  Status WriteRangeArrayCompositeRows(uint32_t start, uint32_t end, Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO range_array_composite_table(id, data) VALUES ($0, ('{\"[$1, $2]\", \"[$3, "
+          "$4]\"}', '{\"[$5, $6]\"}'))",
+          i, i, i + 10, i + 11, i + 20, i + 21, i + 30));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
   Status UpdateRows(uint32_t key, uint32_t value, Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Updating row for key " << key << " with value " << value;
@@ -3130,19 +3274,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnum)) {
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_key_value = 0;
+  int expected_key = 0;
   for (uint32_t i = 0; i < record_size; ++i) {
     if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
       const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
       ASSERT_EQ(
-          expected_key_value % 2 ? "FIXED" : "PERCENTAGE",
+          expected_key % 2 ? "FIXED" : "PERCENTAGE",
           record.row_message().new_tuple(1).datum_string());
-      expected_key_value++;
+      expected_key++;
     }
   }
 
-  ASSERT_EQ(insert_count, expected_key_value);
+  ASSERT_EQ(insert_count, expected_key);
 }
 
 // Tests that the enum cache is correctly re-populated on a cache miss.
@@ -3189,19 +3333,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, insert_count);
 
-  int expected_key_value = 0;
+  int expected_key = 0;
   for (uint32_t i = 0; i < record_size; ++i) {
     if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
       const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
       ASSERT_EQ(
-          expected_key_value % 2 ? "FIXED" : "PERCENTAGE",
+          expected_key % 2 ? "FIXED" : "PERCENTAGE",
           record.row_message().new_tuple(1).datum_string());
-      expected_key_value++;
+      expected_key++;
     }
   }
 
-  ASSERT_EQ(insert_count, expected_key_value);
+  ASSERT_EQ(insert_count, expected_key);
 }
 
 // Tests that the enum cache is correctly re-populated on stream creation.
@@ -3248,19 +3392,296 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
   uint32_t record_size1 = change_resp1.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size1, insert_count);
 
-  int expected_key_value = 0;
+  int expected_key = 0;
   for (uint32_t i = 0; i < record_size1; ++i) {
     if (change_resp1.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
       const CDCSDKProtoRecordPB record = change_resp1.cdc_sdk_proto_records(i);
-      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
       ASSERT_EQ(
-          expected_key_value % 2 ? "FIXED1" : "PERCENTAGE1",
+          expected_key % 2 ? "FIXED1" : "PERCENTAGE1",
           record.row_message().new_tuple(1).datum_string());
-      expected_key_value++;
+      expected_key++;
     }
   }
 
-  ASSERT_EQ(insert_count, expected_key_value);
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeType)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteCompositeRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ("(John,Doe)", record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompositeTypeWithRestart)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 20;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteCompositeRows(0, insert_count / 2, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Restart one of the node.
+  SleepFor(MonoDelta::FromSeconds(1));
+  test_cluster()->mini_tablet_server(0)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
+
+  // Insert some more records in transaction.
+  ASSERT_OK(WriteCompositeRows(insert_count / 2, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ("(John,Doe)", record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNestedCompositeType)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateNestedCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp_nested"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteNestedCompositeRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ("(\"(John,Middle)\",Doe)", record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestArrayCompositeType)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateArrayCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "emp_array"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteArrayCompositeRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          "(\"{John,Middle,Doe}\",\"{123,456}\")",
+          record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeCompositeType)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateRangeCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id =
+      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "range_composite_table"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRangeCompositeRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          Format(
+              "(\"[$0,$1]\",\"[$2,$3)\")", expected_key, expected_key + 10, expected_key + 11,
+              expected_key + 21),
+          record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRangeArrayCompositeType)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateRangeArrayCompositeTable(&test_cluster_, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id =
+      ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "range_array_composite_table"));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRangeArrayCompositeRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          Format(
+              "(\"{\"\"[$0,$1]\"\",\"\"[$2,$3]\"\"}\",\"{\"\"[$4,$5)\"\"}\")", expected_key,
+              expected_key + 10, expected_key + 11, expected_key + 20, expected_key + 21,
+              expected_key + 31),
+          record.row_message().new_tuple(1).datum_string());
+      expected_key++;
+    }
+  }
+  ASSERT_EQ(insert_count, expected_key);
 }
 
 // Test GetChanges() can return records of a transaction with size was greater than

@@ -36,6 +36,7 @@
 #include <vector>
 #include <unordered_map>
 
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -197,11 +198,12 @@ class SysCatalogTable {
                                              const uint32_t relnamespace_oid);
 
   // Read attname and atttypid from pg_attribute catalog table.
-  Result<std::unordered_map<string, uint32_t>> ReadPgAttributeInfo(
+  Result<std::unordered_map<string, uint32_t>> ReadPgAttNameTypidMap(
       uint32_t database_oid, uint32_t table_oid);
 
   // Read enumtypid and enumlabel from pg_enum catalog table.
-  Result<std::unordered_map<uint32_t, string>> ReadPgEnum(uint32_t database_oid);
+  Result<std::unordered_map<uint32_t, string>> ReadPgEnum(
+      uint32_t database_oid, uint32_t type_oid = kPgInvalidOid);
 
   // Read oid, typtype and typbasetype from pg_type catalog table.
   Result<std::unordered_map<uint32_t, PgTypeInfo>> ReadPgTypeInfo(
@@ -210,6 +212,12 @@ class SysCatalogTable {
   // Read the pg_tablespace catalog table and return a map with all the tablespaces and their
   // respective placement information.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> ReadPgTablespaceInfo();
+
+  Result<RelIdToAttributesMap> ReadPgAttributeInfo(
+      uint32_t database_oid, std::vector<uint32_t> table_oids);
+
+  Result<RelTypeOIDMap> ReadCompositeTypeFromPgClass(
+      uint32_t database_oid, uint32_t type_oid = kPgInvalidOid);
 
   // Copy the content of co-located tables in sys catalog as a batch.
   Status CopyPgsqlTables(const std::vector<TableId>& source_table_ids,
