@@ -54,7 +54,12 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           createRollingUpgradeTaskFlow(
               (nodes1, processTypes) -> createSystemdUpgradeTasks(nodes1, getSingle(processTypes)),
               nodes,
-              DEFAULT_CONTEXT,
+              UpgradeContext.builder()
+                  .reconfigureMaster(false)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(false)
+                  .skipStartingProcesses(true)
+                  .build(),
               false);
 
           // Persist useSystemd changes
@@ -84,5 +89,8 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     // Conditional Configuring
     createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Start using SystemD
+    createServerControlTasks(nodes, processType, "start", params -> params.useSystemd = true);
   }
 }
