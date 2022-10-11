@@ -29,7 +29,7 @@ Also, while the technology can be integrated against many data layers, a graph d
 
 ## Latest happenings
 
-- Latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc1).
+- The latest Apache AGE release, [Apache AGE 1.1.0](https://github.com/apache/age/releases/tag/v1.1.0-rc1).
 - The latest Apache AGE documentation is now available at [here](https://age.apache.org/age-manual/master/index.html).
 - The roadmap - [Apache AGE website](http://age.apache.org/).
 - Send all your comments and inquiries to the user mailing list, users@age.apache.org.
