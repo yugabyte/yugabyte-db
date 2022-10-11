@@ -10,6 +10,12 @@ type: docs
 
 ## Releases
 
+### October 11, 2022
+
+**Infrastructure**
+
+- Instance type for new Dedicated clusters now falls back to a suitable replacement when creating a cluster in regions that don't support the default instance type.
+
 ### September 28, 2022
 
 **Database**
