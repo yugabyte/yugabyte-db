@@ -48,6 +48,27 @@ struct ChildTransactionData {
   static Result<ChildTransactionData> FromPB(const ChildTransactionDataPB& data);
 };
 
+template<class T>
+class ConstStaticWrapper {
+ public:
+  const T& Get() const {
+    return ref_.get();
+  }
+
+  template<const T* U>
+  static ConstStaticWrapper Build() {
+    return ConstStaticWrapper(*U);
+  }
+
+ private:
+  explicit ConstStaticWrapper(const T& ref)
+      : ref_(ref) {}
+
+  std::reference_wrapper<const T> ref_;
+};
+
+using LogPrefixName = ConstStaticWrapper<std::string>;
+
 // SealOnly is a special commit mode.
 // I.e. sealed transaction will be committed after seal record and all write batches are replicated.
 YB_STRONGLY_TYPED_BOOL(SealOnly);
@@ -153,6 +174,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
   bool HasSubTransaction(SubTransactionId id);
+
+  void SetLogPrefixTag(const LogPrefixName& name, uint64_t value);
 
  private:
   class Impl;
