@@ -5128,7 +5128,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, table_oid);
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(

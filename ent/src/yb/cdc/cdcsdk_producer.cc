@@ -71,6 +71,7 @@ Status AddColumnToMap(
     const ColumnSchema& col_schema,
     const Value& col,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     DatumMessagePB* cdc_datum_message) {
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
@@ -78,7 +79,8 @@ Status AddColumnToMap(
     col.ToQLValuePB(col_schema.type(), &ql_value);
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
-          ql_value, col_schema.pg_type_oid(), enum_oid_label_map, cdc_datum_message));
+          ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
+          cdc_datum_message));
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
     }
@@ -105,19 +107,19 @@ DatumMessagePB* AddTuple(RowMessage* row_message) {
 Status AddPrimaryKey(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
     const Schema& tablet_schema, const EnumOidLabelMap& enum_oid_label_map,
-    RowMessage* row_message) {
+    const CompositeAttsMap& composite_atts_map, RowMessage* row_message) {
   size_t i = 0;
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
     DatumMessagePB* tuple = AddTuple(row_message);
-    RETURN_NOT_OK(
-        AddColumnToMap(tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, tuple));
+    RETURN_NOT_OK(AddColumnToMap(
+        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple));
     i++;
   }
 
   for (const auto& col : decoded_key.doc_key().range_group()) {
     DatumMessagePB* tuple = AddTuple(row_message);
-    RETURN_NOT_OK(
-        AddColumnToMap(tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, tuple));
+    RETURN_NOT_OK(AddColumnToMap(
+        tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, composite_atts_map, tuple));
     i++;
   }
   return Status::OK();
@@ -182,7 +184,8 @@ void MakeNewProtoRecord(
 Result<size_t> PopulatePackedRows(
     const SchemaPackingStorage& schema_packing_storage, const Schema& schema,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const EnumOidLabelMap& enum_oid_label_map, Slice* value_slice, RowMessage* row_message) {
+    const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
+    Slice* value_slice, RowMessage* row_message) {
   const docdb::SchemaPacking& packing =
       VERIFY_RESULT(schema_packing_storage.GetPacking(value_slice));
   for (size_t i = 0; i != packing.columns(); ++i) {
@@ -195,8 +198,9 @@ Result<size_t> PopulatePackedRows(
       RETURN_NOT_OK(pv.DecodeFromValue(slice));
     }
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
-    RETURN_NOT_OK(
-        AddColumnToMap(tablet_peer, col, pv, enum_oid_label_map, row_message->add_new_tuple()));
+    RETURN_NOT_OK(AddColumnToMap(
+        tablet_peer, col, pv, enum_oid_label_map, composite_atts_map,
+        row_message->add_new_tuple()));
     row_message->add_old_tuple();
   }
 
@@ -211,6 +215,7 @@ Status PopulateCDCSDKIntentRecord(
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     IntraTxnWriteId* write_id,
@@ -324,8 +329,8 @@ Status PopulateCDCSDKIntentRecord(
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       row_message->set_transaction_id(transaction_id.ToString());
-      RETURN_NOT_OK(
-          AddPrimaryKey(tablet_peer, decoded_key, schema, enum_oid_label_map, row_message));
+      RETURN_NOT_OK(AddPrimaryKey(
+          tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message));
     }
 
     prev_key = primary_key;
@@ -333,8 +338,8 @@ Status PopulateCDCSDKIntentRecord(
     if (IsInsertOrUpdate(*row_message)) {
       if (value_type == docdb::ValueEntryType::kPackedRow) {
         col_count += VERIFY_RESULT(PopulatePackedRows(
-            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, &value_slice,
-            row_message));
+            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
+            &value_slice, row_message));
       } else {
         if (FLAGS_enable_single_record_update) {
           ++col_count;
@@ -353,7 +358,7 @@ Status PopulateCDCSDKIntentRecord(
 
           RETURN_NOT_OK(AddColumnToMap(
               tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
-              row_message->add_new_tuple()));
+              composite_atts_map, row_message->add_new_tuple()));
           row_message->add_old_tuple();
 
         } else if (column_id_opt && column_id_opt->type() != docdb::KeyEntryType::kSystemColumnId) {
@@ -402,6 +407,7 @@ Status PopulateCDCSDKWriteRecord(
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     GetChangesResponsePB* resp,
     const Schema& current_schema) {
   const auto& batch = msg->write().write_batch();
@@ -470,8 +476,8 @@ Status PopulateCDCSDKWriteRecord(
         }
       }
 
-      RETURN_NOT_OK(
-          AddPrimaryKey(tablet_peer, decoded_key, schema, enum_oid_label_map, row_message));
+      RETURN_NOT_OK(AddPrimaryKey(
+          tablet_peer, decoded_key, schema, enum_oid_label_map, composite_atts_map, row_message));
       // Process intent records.
       row_message->set_commit_time(msg->hybrid_time());
     }
@@ -481,8 +487,8 @@ Status PopulateCDCSDKWriteRecord(
     if (IsInsertOrUpdate(*row_message)) {
       if (value_type == docdb::ValueEntryType::kPackedRow) {
         RETURN_NOT_OK(PopulatePackedRows(
-            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, &value_slice,
-            row_message));
+            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
+            &value_slice, row_message));
       } else {
         docdb::KeyEntryValue column_id;
         Slice key_column = key.WithoutPrefix(key_size);
@@ -494,7 +500,7 @@ Status PopulateCDCSDKWriteRecord(
 
           RETURN_NOT_OK(AddColumnToMap(
               tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
-              row_message->add_new_tuple()));
+              composite_atts_map, row_message->add_new_tuple()));
           row_message->add_old_tuple();
 
         } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
@@ -598,6 +604,7 @@ Status ProcessIntents(
     const TransactionId& transaction_id,
     const StreamMetadata& metadata,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     CDCSDKCheckpointPB* checkpoint,
@@ -649,8 +656,8 @@ Status ProcessIntents(
 
   // Need to populate the CDCSDKRecords
   RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
-      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map, resp,
-      consumption, &write_id, &reverse_index_key, schema));
+      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
+      composite_atts_map, resp, consumption, &write_id, &reverse_index_key, schema));
 
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
@@ -678,7 +685,8 @@ Status PopulateCDCSDKSnapshotRecord(
     const Schema& schema,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     ReadHybridTime time,
-    const EnumOidLabelMap& enum_oid_label_map) {
+    const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
   const std::string& table_name = tablet_peer->tablet()->metadata()->table_name();
@@ -703,7 +711,8 @@ Status PopulateCDCSDKSnapshotRecord(
     if (value && value->value_case() != QLValuePB::VALUE_NOT_SET
         && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
-          *value, col_schema.pg_type_oid(), enum_oid_label_map, cdc_datum_message));
+          *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
+          cdc_datum_message));
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
     }
@@ -782,6 +791,7 @@ Status GetChangesForCDCSDK(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const MemTrackerPtr& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
@@ -851,7 +861,7 @@ Status GetChangesForCDCSDK(
       while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
         RETURN_NOT_OK(iter->NextRow(&row));
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
-            resp, &row, schema, tablet_peer, time, enum_oid_label_map));
+            resp, &row, schema, tablet_peer, time, enum_oid_label_map, composite_atts_map));
         fetched++;
       }
       docdb::SubDocKey sub_doc_key;
@@ -885,8 +895,8 @@ Status GetChangesForCDCSDK(
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
     RETURN_NOT_OK(ProcessIntents(
-        op_id, transaction_id, stream_metadata, enum_oid_label_map, resp, &consumption, &checkpoint,
-        tablet_peer, &keyValueIntents, &stream_state, nullptr));
+        op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
+        &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, nullptr));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
@@ -954,8 +964,9 @@ Status GetChangesForCDCSDK(
               op_id.term = msg->id().term();
               op_id.index = msg->id().index();
               RETURN_NOT_OK(ProcessIntents(
-                  op_id, txn_id, stream_metadata, enum_oid_label_map, resp, &consumption,
-                  &checkpoint, tablet_peer, &intents, &new_stream_state, &current_schema));
+                  op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
+                  &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state,
+                  &current_schema));
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
@@ -974,7 +985,8 @@ Status GetChangesForCDCSDK(
 
             if (!batch.has_transaction()) {
               RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
-                  msg, stream_metadata, tablet_peer, enum_oid_label_map, resp, current_schema));
+                  msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map, resp,
+                  current_schema));
 
               SetCheckpoint(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);

@@ -899,10 +899,10 @@ Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(const NamespaceName&
       return enumlabel_cache_.at(ns_name);
     }
   }
-  return UpdateCacheAndGetEnumMap(ns_name);
+  return UpdateEnumCacheAndGetMap(ns_name);
 }
 
-Result<EnumOidLabelMap> CDCServiceImpl::UpdateCacheAndGetEnumMap(const NamespaceName& ns_name) {
+Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumCacheAndGetMap(const NamespaceName& ns_name) {
   std::lock_guard<decltype(mutex_)> l(mutex_);
   if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
     return UpdateEnumMapInCacheUnlocked(ns_name);
@@ -914,6 +914,33 @@ Result<EnumOidLabelMap> CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const Names
   EnumOidLabelMap enum_oid_label_map = VERIFY_RESULT(client()->GetPgEnumOidLabelMap(ns_name));
   enumlabel_cache_[ns_name] = enum_oid_label_map;
   return enumlabel_cache_[ns_name];
+}
+
+Result<CompositeAttsMap> CDCServiceImpl::GetCompositeAttsMapFromCache(
+    const NamespaceName& ns_name) {
+  {
+    yb::SharedLock<decltype(mutex_)> l(mutex_);
+    if (composite_type_cache_.find(ns_name) != composite_type_cache_.end()) {
+      return composite_type_cache_.at(ns_name);
+    }
+  }
+  return UpdateCompositeCacheAndGetMap(ns_name);
+}
+
+Result<CompositeAttsMap> CDCServiceImpl::UpdateCompositeCacheAndGetMap(
+    const NamespaceName& ns_name) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  if (composite_type_cache_.find(ns_name) == composite_type_cache_.end()) {
+    return UpdateCompositeMapInCacheUnlocked(ns_name);
+  }
+  return composite_type_cache_.at(ns_name);
+}
+
+Result<CompositeAttsMap> CDCServiceImpl::UpdateCompositeMapInCacheUnlocked(
+    const NamespaceName& ns_name) {
+  CompositeAttsMap enum_oid_label_map = VERIFY_RESULT(client()->GetPgCompositeAttsMap(ns_name));
+  composite_type_cache_[ns_name] = enum_oid_label_map;
+  return composite_type_cache_[ns_name];
 }
 
 Status CDCServiceImpl::CreateCDCStreamForNamespace(
@@ -1482,27 +1509,42 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     RPC_RESULT_RETURN_ERROR(
         enum_map_result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
+    auto composite_atts_map = GetCompositeAttsMapFromCache(namespace_name);
+    RPC_CHECK_AND_RETURN_ERROR(
+        composite_atts_map.ok(), composite_atts_map.status(), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+
     status = GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
-        *enum_map_result, client(), &msgs_holder, resp, &commit_timestamp, &cached_schema,
-        &last_streamed_op_id, &last_readable_index, get_changes_deadline);
-    // This specific error from the docdb_pgapi layer is used to identify enum cache entry is out of
-    // date, hence we need to repopulate.
+        *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
+        &cached_schema, &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+    // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
+    // out of date, hence we need to repopulate.
     if (status.IsCacheMissError()) {
       {
-        // Recreate the enum cache entry for the corresponding namespace.
-        std::lock_guard<decltype(mutex_)> l(mutex_);
-        enum_map_result = UpdateEnumMapInCacheUnlocked(namespace_name);
-        RPC_RESULT_RETURN_ERROR(
-            enum_map_result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+        string message = status.ToUserMessage(false);
+        if (message == "enum") {
+          // Recreate the enum cache entry for the corresponding namespace.
+          std::lock_guard<decltype(mutex_)> l(mutex_);
+          enum_map_result = UpdateEnumMapInCacheUnlocked(namespace_name);
+          RPC_CHECK_AND_RETURN_ERROR(
+              enum_map_result.ok(), enum_map_result.status(), resp->mutable_error(),
+              CDCErrorPB::INTERNAL_ERROR, context);
+        } else if (message == "composite") {
+          std::lock_guard<decltype(mutex_)> l(mutex_);
+          composite_atts_map = UpdateCompositeMapInCacheUnlocked(namespace_name);
+          RPC_CHECK_AND_RETURN_ERROR(
+              composite_atts_map.ok(), composite_atts_map.status(), resp->mutable_error(),
+              CDCErrorPB::INTERNAL_ERROR, context);
+        }
       }
       // Clean all the records which got added in the resp, till the enum cache miss failure is
       // encountered.
       resp->clear_cdc_sdk_proto_records();
       status = GetChangesForCDCSDK(
           req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
-          *enum_map_result, client(), &msgs_holder, resp, &commit_timestamp, &cached_schema,
-          &last_streamed_op_id, &last_readable_index, get_changes_deadline);
+          *enum_map_result, *composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
+          &cached_schema, &last_streamed_op_id, &last_readable_index, get_changes_deadline);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {

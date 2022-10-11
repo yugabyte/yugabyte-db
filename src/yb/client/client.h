@@ -46,6 +46,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/cdc/cdc_producer.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 
@@ -585,7 +586,9 @@ class YBClient {
       const master::NamespaceIdentifierPB& ns_identifier,
       bool include_indexes = false);
 
-  Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
+  Result<cdc::EnumOidLabelMap> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
+
+  Result<cdc::CompositeAttsMap> GetPgCompositeAttsMap(const NamespaceName& ns_name);
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
