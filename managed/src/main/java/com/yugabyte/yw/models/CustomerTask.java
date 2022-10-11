@@ -115,6 +115,9 @@ public class CustomerTask extends Model {
     @EnumValue("Reboot")
     Reboot,
 
+    @EnumValue("Hard Reboot")
+    HardReboot,
+
     @EnumValue("Edit")
     Edit,
 
@@ -282,6 +285,7 @@ public class CustomerTask extends Model {
         case Release:
           return completed ? "Released " : "Releasing ";
         case Reboot:
+        case HardReboot:
           return completed ? "Rebooted " : "Rebooting ";
         case Remove:
           return completed ? "Removed " : "Removing ";

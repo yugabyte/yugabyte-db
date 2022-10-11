@@ -28,7 +28,9 @@ public enum NodeActionType {
   // Start the Master server on the node.
   START_MASTER,
   // Precheck for detached node.
-  PRECHECK_DETACHED(true);
+  PRECHECK_DETACHED(true),
+  // Hard reboot the node (stop + start).
+  HARD_REBOOT;
 
   NodeActionType() {
     this(false);
@@ -62,6 +64,8 @@ public enum NodeActionType {
         return completed ? "Released" : "Releasing";
       case REBOOT:
         return completed ? "Rebooted" : "Rebooting";
+      case HARD_REBOOT:
+        return completed ? "Hard rebooted" : "Hard rebooting";
       case START_MASTER:
         return completed ? "Started Master" : "Starting Master";
       case PRECHECK_DETACHED:
@@ -84,6 +88,7 @@ public enum NodeActionType {
       case DELETE:
         return TaskType.DeleteNodeFromUniverse;
       case REBOOT:
+      case HARD_REBOOT:
         return TaskType.RebootNodeInUniverse;
       case RELEASE:
         return TaskType.ReleaseInstanceFromUniverse;
@@ -112,6 +117,8 @@ public enum NodeActionType {
         return CustomerTask.TaskType.Release;
       case REBOOT:
         return CustomerTask.TaskType.Reboot;
+      case HARD_REBOOT:
+        return CustomerTask.TaskType.HardReboot;
       case START_MASTER:
         return CustomerTask.TaskType.StartMaster;
       case PRECHECK_DETACHED:
