@@ -4384,20 +4384,57 @@ Status CatalogManager::GetUDTypeMetadata(
     const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
     rpc::RpcContext* rpc) {
   auto namespace_info = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  uint32_t database_oid;
+  {
+    namespace_info->LockForRead();
+    RSTATUS_DCHECK_EQ(
+        namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+        Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+    database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+  }
   if (req->pg_enum_info()) {
-    uint32_t database_oid;
-    {
-      namespace_info->LockForRead();
-      RSTATUS_DCHECK_EQ(
-          namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
-          Format("Expected YSQL database, got: $0", namespace_info->database_type()));
-      database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+    std::unordered_map<uint32_t, string> enum_oid_label_map;
+    if (req->has_pg_type_oid()) {
+      enum_oid_label_map =
+          VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid, req->pg_type_oid()));
+    } else {
+      enum_oid_label_map = VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid));
     }
-    const auto enum_oid_label_map = VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid));
     for (const auto& [oid, label] : enum_oid_label_map) {
       PgEnumInfoPB* pg_enum_info_pb = resp->add_enums();
       pg_enum_info_pb->set_oid(oid);
       pg_enum_info_pb->set_label(label);
+    }
+  } else if (req->pg_composite_info()) {
+    RelTypeOIDMap reltype_oid_map;
+    if (req->has_pg_type_oid()) {
+      reltype_oid_map = VERIFY_RESULT(
+          sys_catalog_->ReadCompositeTypeFromPgClass(database_oid, req->pg_type_oid()));
+    } else {
+      reltype_oid_map = VERIFY_RESULT(sys_catalog_->ReadCompositeTypeFromPgClass(database_oid));
+    }
+
+    std::vector<uint32_t> table_oids;
+    for (const auto& [reltype, oid] : reltype_oid_map) {
+      table_oids.push_back(oid);
+    }
+
+    sort(table_oids.begin(), table_oids.end());
+
+    RelIdToAttributesMap attributes_map =
+        VERIFY_RESULT(sys_catalog_->ReadPgAttributeInfo(database_oid, table_oids));
+
+    for (const auto& [reltype, oid] : reltype_oid_map) {
+      if (attributes_map.find(oid) != attributes_map.end()) {
+        PgCompositeInfoPB* pg_composite_info_pb = resp->add_composites();
+        pg_composite_info_pb->set_oid(reltype);
+        for (auto const& attribute : attributes_map[oid]) {
+          *(pg_composite_info_pb->add_attributes()) = attribute;
+        }
+      } else {
+        LOG_WITH_FUNC(INFO) << "No attributes found for attrelid: " << oid
+                            << " corresponding to composite type of id: " << reltype;
+      }
     }
   }
   return Status::OK();
