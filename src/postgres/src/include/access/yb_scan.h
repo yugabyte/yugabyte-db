@@ -119,6 +119,8 @@ typedef struct YbScanDescData
 
 typedef struct YbScanDescData *YbScanDesc;
 
+extern void ybc_free_ybscan(YbScanDesc ybscan);
+
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
  * We ignore the index id and always do a regular YugaByte scan (Postgres
