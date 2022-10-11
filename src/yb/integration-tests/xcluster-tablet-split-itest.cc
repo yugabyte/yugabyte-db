@@ -344,22 +344,6 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
 
     SwitchToConsumer();
 
-    // Since delete_universe_replication is async, wait until consumers are empty before shutdown.
-    // TODO: remove this once #12068 is fixed.
-    ASSERT_OK(WaitFor([&]() {
-      for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
-        auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
-        tserver::enterprise::CDCConsumer* cdc_consumer;
-        if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
-          auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
-          if (!tablets_running.empty()) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }, 10s * kTimeMultiplier, "Wait for CDCConsumers to shutdown."));
-
     cluster_->Shutdown();
 
     SwitchToProducer();

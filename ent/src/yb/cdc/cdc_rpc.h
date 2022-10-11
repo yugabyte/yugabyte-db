@@ -38,7 +38,7 @@ class CDCRecordPB;
 class GetChangesRequestPB;
 class GetChangesResponsePB;
 
-typedef std::function<void(const Status&, const tserver::WriteResponsePB&)> WriteCDCRecordCallback;
+typedef std::function<void(const Status&, tserver::WriteResponsePB&&)> WriteCDCRecordCallback;
 
 // deadline - operation deadline, i.e. timeout.
 // tablet - tablet to write the CDC record to.
@@ -54,7 +54,7 @@ MUST_USE_RESULT rpc::RpcCommandPtr CreateCDCWriteRpc(
     bool use_local_tserver);
 
 
-typedef std::function<void(Status, GetChangesResponsePB&&)> GetChangesCDCRpcCallback;
+typedef std::function<void(const Status&, GetChangesResponsePB&&)> GetChangesCDCRpcCallback;
 
 MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
     CoarseTimePoint deadline,
