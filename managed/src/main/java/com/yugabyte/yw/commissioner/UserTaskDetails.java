@@ -194,6 +194,9 @@ public class UserTaskDetails {
     // Rebooting the node.
     RebootingNode,
 
+    // Hard rebooting (stop/start) the node.
+    HardRebootingNode,
+
     // Running custom hooks
     RunningHooks,
 
@@ -466,6 +469,10 @@ public class UserTaskDetails {
       case RebootingNode:
         title = "Rebooting Node";
         description = "Rebooting node";
+        break;
+      case HardRebootingNode:
+        title = "Hard Rebooting Node";
+        description = "Hard rebooting node";
         break;
       case RunningHooks:
         title = "Running Hooks";

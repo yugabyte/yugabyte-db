@@ -684,6 +684,12 @@ class GoogleCloudAdmin():
                                                    instance=instance_name).execute()
         return self.waiter.wait(operation, zone=zone)
 
+    def reboot_instance(self, zone, instance_name):
+        operation = self.compute.instances().reset(project=self.project,
+                                                   zone=zone,
+                                                   instance=instance_name).execute()
+        self.waiter.wait(operation, zone=zone)
+
     def query_vpc(self, region):
         """
         TODO: implement this once we get GCP custom region support...

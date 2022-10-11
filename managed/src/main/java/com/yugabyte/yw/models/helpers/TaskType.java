@@ -392,6 +392,8 @@ public enum TaskType {
 
   RebootServer("subtasks.RebootServer"),
 
+  HardRebootServer("subtasks.HardRebootServer"),
+
   RunHooks("subtasks.RunHooks"),
 
   UpdateUniverseTags("subtasks.UpdateUniverseTags"),
