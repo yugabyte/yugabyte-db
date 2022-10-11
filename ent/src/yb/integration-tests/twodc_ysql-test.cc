@@ -84,6 +84,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+using std::string;
+
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(client_read_write_timeout_ms);

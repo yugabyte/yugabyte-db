@@ -28,7 +28,7 @@ class HeaderManagerMockImpl : public HeaderManager {
   HeaderManagerMockImpl();
   void SetFileEncryption(bool file_encrypted);
 
-  Result<string> SerializeEncryptionParams(
+  Result<std::string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) override;
 
   Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(

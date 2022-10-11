@@ -36,6 +36,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_kill.h"
 
+using std::unique_ptr;
+
 DEFINE_bool(allow_preempting_compactions, true,
             "Whether a compaction may be preempted in favor of another compaction with higher "
             "priority");

@@ -34,6 +34,8 @@
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
 
+using std::vector;
+
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
 DEFINE_bool(update_all_tablets_upon_network_failure, true, "If this is enabled, then "

@@ -159,11 +159,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) override;
 
   // Clean CDC streams for a table.
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids) override;
 
   Status AddNewTableToCDCDKStreamsMetadata(
       const TableId& table_id, const NamespaceId& ns_id) override;
@@ -276,7 +276,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
-  using StreamTablesMap = std::unordered_map<CDCStreamId, set<TableId>>;
+  using StreamTablesMap = std::unordered_map<CDCStreamId, std::set<TableId>>;
 
   Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
 
@@ -655,7 +655,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
       google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
           tablet_snapshot_info = nullptr,
-      vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
+      std::vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
@@ -753,7 +753,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   };
   std::unordered_map<std::string, NSReplicationInfo> namespace_replication_map_ GUARDED_BY(mutex_);
 
-  void XClusterAddTableToNSReplication(string universe_id, CoarseTimePoint deadline);
+  void XClusterAddTableToNSReplication(std::string universe_id, CoarseTimePoint deadline);
 
   // Find the list of producer table IDs that can be added to the current NS-level replication.
   Status XClusterNSReplicationSyncWithProducer(scoped_refptr<UniverseReplicationInfo> universe,
@@ -770,7 +770,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
 
-  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid,
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid,
                                                  CoarseTimePoint deadline);
 
   void RemoveTableFromCDCSDKUnprocessedSet(

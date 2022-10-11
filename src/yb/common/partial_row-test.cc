@@ -37,6 +37,8 @@
 
 #include "yb/util/test_util.h"
 
+using std::string;
+
 namespace yb {
 
 class PartialRowTest : public YBTest {

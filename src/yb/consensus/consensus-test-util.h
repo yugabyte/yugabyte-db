@@ -640,7 +640,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     return new_proxy;
   }
 
-  virtual const vector<LocalTestPeerProxy*>& GetProxies() {
+  virtual const std::vector<LocalTestPeerProxy*>& GetProxies() {
     return proxies_;
   }
 
@@ -653,7 +653,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
-  vector<LocalTestPeerProxy*> proxies_;
+  std::vector<LocalTestPeerProxy*> proxies_;
 };
 
 // A simple implementation of the transaction driver.

@@ -89,12 +89,6 @@ upload_package() {
       return
     fi
 
-    if ! is_jenkins_master_build; then
-      log "This is not a master job (job name: ${JOB_NAME:-undefined}), skipping package upload." \
-          "Use YB_FORCE_PACKAGE_UPLOAD to override this behavior."
-      return
-    fi
-
     if [[ $BUILD_TYPE != "release" ]]; then
       log "Skipping package upload for a non-release build (build type: $BUILD_TYPE)"
       return

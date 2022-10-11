@@ -84,8 +84,9 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
-using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
-using RollBackTabletIdCheckpointMap = std::unordered_map<const std::string*, pair<int64_t, OpId>>;
+using TabletIdStreamIdSet = std::set<std::pair<TabletId, CDCStreamId>>;
+using RollBackTabletIdCheckpointMap =
+    std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -134,12 +135,19 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
+<<<<<<< HEAD
       const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
       const MonoDelta& cdc_sdk_op_id_expiration,
       RollBackTabletIdCheckpointMap* rollback_tablet_id_map);
 
   void RollbackCdcReplicatedIndexEntry(
       const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info);
+=======
+      const std::string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
+      const MonoDelta& cdc_sdk_op_id_expiration);
+
+  void RollbackCdcReplicatedIndexEntry(const std::string& tablet_id);
+>>>>>>> 5d3f9dddea... Remove using from headers
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -211,7 +219,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                  const client::YBSessionPtr& session);
 
-  Result<std::vector<pair<std::string, std::string>>> GetDBStreamInfo(
+  Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
           const std::string& db_stream_id,
           const client::YBSessionPtr& session);
 
@@ -351,7 +359,7 @@ class CDCServiceImpl : public CDCServiceIf {
       TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
-      const OpId& checkpoint, const string& tablet_id,
+      const OpId& checkpoint, const std::string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   Status UpdateChildrenTabletsOnSplitOp(

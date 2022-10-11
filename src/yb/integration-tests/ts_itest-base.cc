@@ -34,6 +34,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
+using std::pair;
+
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
 DEFINE_string(master_flags, "", "Flags to pass through to masters");
 

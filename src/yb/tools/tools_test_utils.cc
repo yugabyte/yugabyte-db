@@ -21,6 +21,8 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {

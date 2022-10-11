@@ -47,6 +47,9 @@
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBTableName;

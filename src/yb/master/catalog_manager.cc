@@ -544,6 +544,10 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::set;
+using std::min;
+using std::map;
+using std::pair;
 
 using namespace std::placeholders;
 

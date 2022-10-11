@@ -46,6 +46,9 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 
 class NetUtilTest : public YBTest {

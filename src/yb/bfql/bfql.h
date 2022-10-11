@@ -119,7 +119,7 @@ class BFCompileApi {
 
   // Interface for any collections of shared_ptrs.
   template<template<typename, typename> class CType, typename AType>
-  static Status FindQLOpcodeImpl(const string& ql_name,
+  static Status FindQLOpcodeImpl(const std::string& ql_name,
                                   const CType<std::shared_ptr<PType>, AType>& param_types,
                                   BFOpcode *opcode,
                                   const BFDecl **bfdecl,
@@ -132,7 +132,7 @@ class BFCompileApi {
 
   // Interface for any collections of raw pointers.
   template<template<typename, typename> class CType, typename AType>
-  static Status FindQLOpcodeImpl(const string& ql_name,
+  static Status FindQLOpcodeImpl(const std::string& ql_name,
                                   const CType<PType*, AType>& param_types,
                                   BFOpcode *opcode,
                                   const BFDecl **bfdecl,
@@ -145,7 +145,7 @@ class BFCompileApi {
 
   //------------------------------------------------------------------------------------------------
   // Seeks builtin opcode using the given the std::vector of shared pointers.
-  static Status FindQLOpcode(const string& ql_name,
+  static Status FindQLOpcode(const std::string& ql_name,
                               const std::vector<std::shared_ptr<PType>>& param_types,
                               BFOpcode *opcode,
                               const BFDecl **bfdecl,
@@ -154,7 +154,7 @@ class BFCompileApi {
   }
 
   // Seeks builtin opcode using the given the std::vector of raw pointers.
-  static Status FindQLOpcode(const string& ql_name,
+  static Status FindQLOpcode(const std::string& ql_name,
                               const std::vector<PType*>& param_types,
                               BFOpcode *opcode,
                               const BFDecl **bfdecl,
@@ -163,7 +163,7 @@ class BFCompileApi {
   }
 
   // Seeks builtin opcode using the given the std::vector of Datatypes.
-  static Status FindQLOpcode(const string& ql_name,
+  static Status FindQLOpcode(const std::string& ql_name,
                               const std::vector<DataType>& actual_types,
                               BFOpcode *opcode,
                               const BFDecl **bfdecl,
@@ -339,7 +339,7 @@ template<typename PType,
 class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
  public:
   // Interface for shared_ptr.
-  static Status ExecQLFunc(const string& ql_name,
+  static Status ExecQLFunc(const std::string& ql_name,
                             const std::vector<std::shared_ptr<PType>>& params,
                             const std::shared_ptr<RType>& result) {
     BFOpcode opcode;
@@ -350,7 +350,7 @@ class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
   }
 
   // Interface for raw pointer.
-  static Status ExecQLFunc(const string& ql_name,
+  static Status ExecQLFunc(const std::string& ql_name,
                             const std::vector<PType*>& params,
                             RType *result) {
     BFOpcode opcode;

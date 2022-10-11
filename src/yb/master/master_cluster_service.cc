@@ -23,6 +23,9 @@
 
 #include "yb/util/service_util.h"
 
+using std::string;
+using std::vector;
+
 DEFINE_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 

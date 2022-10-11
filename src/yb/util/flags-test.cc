@@ -20,6 +20,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 DEFINE_int32(flagstest_testflag, 0, "test flag");
 DECLARE_string(vmodule);
 

@@ -153,14 +153,14 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
     }
 
     for (auto i = smaller_vector->size();
-         i < min(smaller_vector->size() + 16, bigger_vector->size());
+         i < std::min(smaller_vector->size() + 16, bigger_vector->size());
          ++i) {
       LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
     }
   }
   int num_differences_logged = 0;
   size_t num_differences_left = 0;
-  size_t min_size = min(expected.size(), actual.size());
+  size_t min_size = std::min(expected.size(), actual.size());
   for (size_t i = 0; i < min_size; ++i) {
     if (expected[i] != actual[i]) {
       if (num_differences_logged < 16) {

@@ -27,6 +27,8 @@
 #include "yb/util/signal_util.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 namespace yb {
 DECLARE_string(metric_node_name);
 

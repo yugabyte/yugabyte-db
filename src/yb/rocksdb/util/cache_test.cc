@@ -34,6 +34,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
+using std::shared_ptr;
+
 DECLARE_double(cache_single_touch_ratio);
 
 namespace rocksdb {

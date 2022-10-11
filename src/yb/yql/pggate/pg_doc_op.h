@@ -69,7 +69,7 @@ class PgDocResult {
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
-  const vector<Slice>& ybctids() const {
+  const std::vector<Slice>& ybctids() const {
     DCHECK(syscol_processed_) << "System columns are not yet setup";
     return ybctids_;
   }

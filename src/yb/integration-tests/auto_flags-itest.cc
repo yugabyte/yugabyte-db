@@ -36,6 +36,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 using std::string;
+using std::vector;
 
 namespace yb {
 using OK = Status::OK;

@@ -130,6 +130,7 @@ using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
+using std::string;
 using strings::Substitute;
 
 static __thread uint64_t thread_local_id;

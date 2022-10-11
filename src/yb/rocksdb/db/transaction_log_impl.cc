@@ -28,6 +28,8 @@
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 TransactionLogIteratorImpl::TransactionLogIteratorImpl(
