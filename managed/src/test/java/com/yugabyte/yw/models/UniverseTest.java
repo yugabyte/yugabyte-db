@@ -743,7 +743,8 @@ public class UniverseTest extends FakeDBApplication {
                   NodeActionType.STOP,
                   NodeActionType.REMOVE,
                   NodeActionType.QUERY,
-                  NodeActionType.REBOOT),
+                  NodeActionType.REBOOT,
+                  NodeActionType.HARD_REBOOT),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           if (nd.isMaster) {
