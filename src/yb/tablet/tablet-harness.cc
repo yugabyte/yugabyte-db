@@ -101,7 +101,9 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
     .txns_enabled = TransactionsEnabled::kFalse,
     .is_sys_catalog = IsSysCatalogTablet::kFalse,
     .snapshot_coordinator = nullptr,
-    .tablet_splitter = nullptr
+    .tablet_splitter = nullptr,
+    .post_split_compaction_pool = nullptr,
+    .post_split_compaction_added = nullptr
   };
 }
 

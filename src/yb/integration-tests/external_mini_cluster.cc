@@ -187,6 +187,8 @@ constexpr size_t kDefaultMemoryLimitHardBytes = NonTsanVsTsan(1_GB, 512_MB);
 
 namespace {
 
+constexpr auto kDefaultTimeout = 10s * kTimeMultiplier;
+
 void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest) {
   const char* extra_daemon_flags_env_var_value = getenv(env_var_name);
   if (extra_daemon_flags_env_var_value) {
@@ -1514,6 +1516,23 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   }
 
   return result;
+}
+
+Result<tserver::GetTabletStatusResponsePB> ExternalMiniCluster::GetTabletStatus(
+      const ExternalTabletServer& ts, const yb::TabletId& tablet_id) {
+  rpc::RpcController rpc;
+  rpc.set_timeout(kDefaultTimeout);
+
+  tserver::GetTabletStatusRequestPB req;
+  req.set_tablet_id(tablet_id);
+
+  tserver::GetTabletStatusResponsePB resp;
+  RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetTabletStatus(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status()).CloneAndPrepend(
+        Format("Code $0", TabletServerErrorPB::Code_Name(resp.error().code())));
+  }
+  return resp;
 }
 
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(

@@ -599,6 +599,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
+      // We don't support splitting the catalog tablet, these fields are unneeded.
+      .post_split_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

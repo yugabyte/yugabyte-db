@@ -220,6 +220,8 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .post_split_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
