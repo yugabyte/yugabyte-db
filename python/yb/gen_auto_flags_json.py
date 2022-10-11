@@ -28,11 +28,16 @@ from typing import List, Dict
 from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type: ignore
 
 
-def get_auto_flags(build_root: str, program_name: str, return_dict: Dict[str, str]) -> None:
+def get_auto_flags(
+        build_root: str,
+        program_name: str,
+        dynamically_linked_exe_suffix: str,
+        return_dict: Dict[str, str]) -> None:
     auto_flags_result = run_program(
                 [
                     os.path.join(build_root, 'bin', program_name),
                     "--help_auto_flag_json",
+                    "--dynamically_linked_exe_suffix", dynamically_linked_exe_suffix,
                 ],
                 shell=True
             )
@@ -42,6 +47,8 @@ def get_auto_flags(build_root: str, program_name: str, return_dict: Dict[str, st
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--program_list', type=str, help="CSV list of programs")
+    parser.add_argument('--dynamically_linked_exe_suffix', type=str,
+                        help="Executable suffix used in case of dynamic linking")
     parser.add_argument('--output_file_path', type=str, help="Path to output file")
     args = parser.parse_args()
 
@@ -54,7 +61,11 @@ def main() -> None:
     with WorkDirContext(build_root):
         for program_name in args.program_list.split(','):
             process = multiprocessing.Process(target=get_auto_flags,
-                                              args=(build_root, program_name, return_dict))
+                                              args=(
+                                                build_root,
+                                                program_name,
+                                                args.dynamically_linked_exe_suffix,
+                                                return_dict))
             process_list.append(process)
             process.start()
 

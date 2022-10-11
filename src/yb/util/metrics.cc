@@ -237,6 +237,17 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
   return Status::OK();
 }
 
+void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
+  EntityMap entities;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    entities = entities_;
+  }
+  for (const EntityMap::value_type& e : entities) {
+    prototypes.insert(e.second->prototype().name());
+  }
+}
+
 void MetricRegistry::RetireOldMetrics() {
   std::lock_guard<simple_spinlock> l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {
@@ -574,9 +585,12 @@ Status Histogram::WriteForPrometheus(
   HdrHistogram snapshot(*histogram_);
   // HdrHistogram reports percentiles based on all the data points from the
   // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    histogram_->ResetPercentiles();
+  }
 
   // Representing the sum and count require suffixed names.
   std::string hist_name = prototype_->name();
@@ -619,9 +633,12 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
   HdrHistogram snapshot(*histogram_);
   // HdrHistogram reports percentiles based on all the data points from the
   // begining of time. We are interested in the percentiles based on just
-  // the "newly-arrived" data. So, we will reset the histogram's percentiles
-  // between each invocation.
-  histogram_->ResetPercentiles();
+  // the "newly-arrived" data. So, in the defualt setting, we will reset
+  // the histogram's percentiles between each invocation. User also has the
+  // option to set the url parameter reset_histograms=false
+  if (opts.reset_histograms) {
+    histogram_->ResetPercentiles();
+  }
 
   snapshot_pb->set_name(prototype_->name());
   if (opts.include_schema_info) {

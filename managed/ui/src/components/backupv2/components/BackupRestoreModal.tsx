@@ -148,7 +148,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     targetUniverseUUID: undefined,
     parallelThreads: 1,
     backup: backup_details,
-    keyspaces: Array(backup_details?.responseList.length).fill(''),
+    keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
     kmsConfigUUID: null,
     should_rename_keyspace: false,
     disable_keyspace_rename: false
@@ -200,7 +200,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     }
     setIsFetchingTables(false);
 
-    const keyspaceInForm = backup_details!.responseList.map(
+    const keyspaceInForm = backup_details!.commonBackupInfo.responseList.map(
       (k, i) => values['keyspaces'][i] || k.keyspace
     );
 
@@ -380,7 +380,9 @@ function RestoreChooseUniverseForm({
         </Col>
         <Col lg={6} className="no-padding align-right">
           <div className="title">Created at</div>
-          <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.createTime} />
+          <FormatUnixTimeStampTimeToTimezone
+            timestamp={backup_details.commonBackupInfo.createTime}
+          />
         </Col>
       </Row>
       <Row>
@@ -522,7 +524,10 @@ export function RenameKeyspace({
   values,
   setFieldValue
 }: {
-  values: Record<string, any>;
+  values: {
+    backup: IBackup;
+    [key: string]: any;
+  };
   setFieldValue: Function;
 }) {
   return (
@@ -546,40 +551,41 @@ export function RenameKeyspace({
       <FieldArray
         name="keyspaces"
         render={({ form: { errors } }) =>
-          values.backup.responseList.map((keyspace: Keyspace_Table, index: number) =>
-            values['searchText'] &&
-            keyspace.keyspace &&
-            keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
-              <Row key={index}>
-                <Col lg={6} className="keyspaces-input no-padding">
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      disabled: true,
-                      value: keyspace.keyspace
-                    }}
-                  />
-                  {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
-                    <span className="err-msg">Name already exists. Rename to proceed</span>
-                  )}
-                </Col>
-                <Col lg={6}>
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      value: values['keyspaces'][`${index}`]
-                    }}
-                    onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
-                    placeHolder="Add new name"
-                  />
-                  {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
-                    <span className="err-msg">{errors['keyspaces'][index]}</span>
-                  )}
-                </Col>
-              </Row>
-            )
+          values.backup.commonBackupInfo.responseList.map(
+            (keyspace: Keyspace_Table, index: number) =>
+              values['searchText'] &&
+              keyspace.keyspace &&
+              keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+                <Row key={index}>
+                  <Col lg={6} className="keyspaces-input no-padding">
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        disabled: true,
+                        value: keyspace.keyspace
+                      }}
+                    />
+                    {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
+                      <span className="err-msg">Name already exists. Rename to proceed</span>
+                    )}
+                  </Col>
+                  <Col lg={6}>
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        value: values['keyspaces'][`${index}`]
+                      }}
+                      onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
+                      placeHolder="Add new name"
+                    />
+                    {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
+                      <span className="err-msg">{errors['keyspaces'][index]}</span>
+                    )}
+                  </Col>
+                </Row>
+              )
           )
         }
       />

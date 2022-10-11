@@ -361,22 +361,28 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 	bnlstate->innerAttrs =
 		palloc(bnlstate->numLookupAttrs * sizeof(AttrNumber));
 	int numattrs = plan->nl.nestParams->length;
-	AttrNumber *keyattrs = palloc(numattrs * (sizeof(AttrNumber)));
+	ExprState **keyexprs = palloc(numattrs * (sizeof(ExprState*)));
 
-	forthree(lc, plan->hashOps, lc2, plan->innerHashAttNos,
-			lc3, plan->outerParamNos)
+	forthree(lc, plan->hashOps,
+			 lc2, plan->innerHashAttNos,
+			 lc3, plan->outerParamExprs)
 	{
 		Oid eqop = lfirst_oid(lc);
 		if (!OidIsValid(eqop))
 			continue;
 		eqops[i] = eqop;
 		bnlstate->innerAttrs[i] = lfirst_int(lc2);
-		int outerAttno = lfirst_int(lc3);
-		keyattrs[i] = outerAttno;
+		Expr *outerExpr = (Expr *) lfirst(lc3);
+		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
 		i++;
 	}
 	Oid *eqFuncOids;
 	execTuplesHashPrepare(i, eqops, &eqFuncOids, &bnlstate->hashFunctions);
+
+	ExprState *tab_eq_fn =
+		ybPrepareOuterExprsEqualFn(plan->outerParamExprs,
+								   eqops,
+								   (PlanState *) bnlstate);
 
 	bnlstate->hashslot =
 		ExecAllocTableSlot(&estate->es_tupleTable, outer_tdesc);
@@ -388,12 +394,12 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 							  ALLOCSET_DEFAULT_SIZES);
 
 	bnlstate->hashtable =
-		BuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
-							   i, keyattrs,
-							   eqFuncOids, bnlstate->hashFunctions,
-							   GetBatchSize(plan), 0,
-							   econtext->ecxt_per_query_memory, tablecxt,
-							   econtext->ecxt_per_tuple_memory, false);
+		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
+								 i, keyexprs, tab_eq_fn,
+								 eqFuncOids, bnlstate->hashFunctions,
+								 GetBatchSize(plan), 0,
+								 econtext->ecxt_per_query_memory, tablecxt,
+								 econtext->ecxt_per_tuple_memory, false);
 
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;

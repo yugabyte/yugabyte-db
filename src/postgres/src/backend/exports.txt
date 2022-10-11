@@ -1,5 +1,6 @@
 # src/backend/exports.txt
 # Functions to be exported by postgres DLLs
+YbgInit
 
 # Memory Context API
 YbgCreateMemoryContext

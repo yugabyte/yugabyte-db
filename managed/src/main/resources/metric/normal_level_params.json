@@ -1,6 +1,6 @@
 {
   "priority_regex": [
-    "rocksdb_(number_db_(next|seek)",
+    "rocksdb_(number_db_(next|seek|prev)",
     "|block_cache_(add|single_touch_add|multi_touch_add)",
     "|current_version_(sst_files_size|num_sst_files)",
     "|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)",
@@ -11,7 +11,7 @@
     "|majority_sst_files_rejections|expired_transactions",
     "|log_(sync_latency_[^_]+|group_commit_latency_[^_]+",
     "|append_latency_[^_]+|bytes_logged|reader_bytes_read",
-    "|append_latency_count|sync_latency_count|cache_size|cache_num_ops)",
-    "|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size"
+    "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
+    "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight"
   ]
 }

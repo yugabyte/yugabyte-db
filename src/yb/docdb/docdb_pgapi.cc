@@ -78,6 +78,12 @@ namespace docdb {
     range_elmalign = range_elemalign; \
   } while (0);
 
+Status DocPgInit()
+{
+  PG_RETURN_NOT_OK(YbgInit());
+  return Status::OK();
+}
+
 //-----------------------------------------------------------------------------
 // Types
 //-----------------------------------------------------------------------------
@@ -172,6 +178,26 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
   return Status::OK();
 }
 
+// Wrapper for PgValueFromPB to safely call from the YbGate.
+// The PgValueFromPB function was initially designed to be used in the PgGate where it converts
+// values coming from DocDB into Postgres format. The PgGate runs within Postgres where exception
+// handling is available. YbGate runs within DocDB, so it requires PG_SETUP_ERROR_REPORTING macro.
+// The PG_SETUP_ERROR_REPORTING requires the surrounding function to return YbgStatus,
+// hence the wrapper.
+YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
+                         YBCPgTypeAttrs type_attrs,
+                         const QLValuePB& ql_value,
+                         uint64_t* datum,
+                         bool *is_null) {
+  PG_SETUP_ERROR_REPORTING();
+  Status s = PgValueFromPB(type_entity, type_attrs, ql_value, datum, is_null);
+  if (!s.ok()) {
+    // Error code currently has no special meaning, any non-zero value is an error
+    return PG_STATUS(1, s.message().cdata());
+  }
+  return PG_STATUS_OK;
+}
+
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext expr_ctx) {
@@ -183,7 +209,11 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
     const QLValuePB* val = table_row.GetColumn(arg_ref.var_colid);
     bool is_null = false;
     uint64_t datum = 0;
-    RETURN_NOT_OK(PgValueFromPB(arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum, &is_null));
+    PG_RETURN_NOT_OK(YbgValueFromPB(arg_ref.var_type,
+                                    arg_ref.var_type_attrs,
+                                    *val,
+                                    &datum,
+                                    &is_null));
     VLOG(1) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }

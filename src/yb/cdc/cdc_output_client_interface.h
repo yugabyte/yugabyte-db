@@ -37,7 +37,7 @@ struct OutputClientResponse {
   uint32_t wait_for_version { 0 };
 };
 
-class CDCOutputClient {
+class CDCOutputClient : public std::enable_shared_from_this<CDCOutputClient> {
  public:
   virtual ~CDCOutputClient() {}
   virtual void Shutdown() {}

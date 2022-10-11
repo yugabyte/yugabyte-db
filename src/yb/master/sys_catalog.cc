@@ -604,6 +604,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           raft_pool(),
           tablet_prepare_pool(),
           nullptr /* retryable_requests */,
+          nullptr /* consensus_meta */,
           multi_raft_manager_.get()),
       "Failed to Init() TabletPeer");
 
