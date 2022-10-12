@@ -14,11 +14,16 @@ import { Backup_States, IBackup, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import {
-  calculateDuration,
+  convertBackupToFormValues,
   FormatUnixTimeStampTimeToTimezone,
   RevealBadge
 } from '../common/BackupUtils';
-import { YCQLTableList, YSQLTableList } from './BackupTableList';
+import {
+  IncrementalTableBackupList,
+  YCQLTableList,
+  YSQLTableList,
+  YSQLTableProps
+} from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
 import { isFunction } from 'lodash';
@@ -26,9 +31,11 @@ import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useQuery } from 'react-query';
 import { getKMSConfigs } from '../common/BackupAPI';
 
+import { BackupCreateModal } from './BackupCreateModal';
 import './BackupDetails.scss';
+
 interface BackupDetailsProps {
-  backup_details: IBackup | null;
+  backupDetails: IBackup | null;
   onHide: () => void;
   storageConfigName: string;
   onDelete: () => void;
@@ -38,6 +45,7 @@ interface BackupDetailsProps {
   };
   hideRestore?: boolean;
   onAssignStorageConfig?: () => void;
+  currentUniverseUUID?: string;
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -51,31 +59,51 @@ const STORAGE_CONFIG_DELETED_MSG = (
   </span>
 );
 export const BackupDetails: FC<BackupDetailsProps> = ({
-  backup_details,
+  backupDetails,
   onHide,
   storageConfigName,
   onRestore,
   onDelete,
   storageConfigs,
   hideRestore = false,
-  onAssignStorageConfig
+  onAssignStorageConfig,
+  currentUniverseUUID
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const [formValues, setFormValues] = useState<Record<string, any>>();
 
   const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
-    enabled: backup_details?.kmsConfigUUID !== undefined
+    enabled: backupDetails?.kmsConfigUUID !== undefined
   });
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backup_details?.kmsConfigUUID;
+        return config.metadata.configUUID === backupDetails?.kmsConfigUUID;
       })
     : undefined;
 
-  if (!backup_details) return null;
+  if (!backupDetails) return null;
+
   const storageConfig = storageConfigs?.data?.find(
-    (config) => config.configUUID === backup_details.storageConfigUUID
+    (config) => config.configUUID === backupDetails.commonBackupInfo.storageConfigUUID
   );
+
+  let TableListComponent: React.FC<YSQLTableProps> = () => null;
+
+  if (backupDetails.hasIncrementalBackups) {
+    TableListComponent = IncrementalTableBackupList;
+  } else {
+    if (
+      backupDetails.backupType === TableType.YQL_TABLE_TYPE ||
+      backupDetails.backupType === TableType.REDIS_TABLE_TYPE
+    ) {
+      TableListComponent = YCQLTableList;
+    } else {
+      TableListComponent = YSQLTableList;
+    }
+  }
 
   return (
     <div id="universe-tab-panel-pane-queries" className={'backup-details-panel'}>
@@ -98,10 +126,10 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               btnIcon="fa fa-trash-o"
               onClick={() => onDelete()}
               disabled={
-                backup_details.state === Backup_States.DELETED ||
-                backup_details.state === Backup_States.DELETE_IN_PROGRESS ||
-                backup_details.state === Backup_States.QUEUED_FOR_DELETION ||
-                !backup_details.isStorageConfigPresent
+                backupDetails.commonBackupInfo.state === Backup_States.DELETED ||
+                backupDetails.commonBackupInfo.state === Backup_States.DELETE_IN_PROGRESS ||
+                backupDetails.commonBackupInfo.state === Backup_States.QUEUED_FOR_DELETION ||
+                !backupDetails.isStorageConfigPresent
               }
             />
             {!hideRestore && (
@@ -109,8 +137,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 btnText="Restore Entire Backup"
                 onClick={() => onRestore()}
                 disabled={
-                  backup_details.state !== Backup_States.COMPLETED ||
-                  !backup_details.isStorageConfigPresent
+                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                  !backupDetails.isStorageConfigPresent
                 }
               />
             )}
@@ -120,55 +148,57 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               <div>
                 <div className="header-text">
                   Source Universe Name &nbsp;&nbsp;&nbsp;
-                  <RevealBadge label="Show UUID" textToShow={backup_details.universeUUID} />
+                  <RevealBadge label="Show UUID" textToShow={backupDetails.universeUUID} />
                 </div>
 
-                {backup_details.isUniversePresent ? (
+                {backupDetails.isUniversePresent ? (
                   <div className="universeLink">
-                    <Link target="_blank" to={`/universes/${backup_details.universeUUID}`}>
-                      {backup_details.universeName}
+                    <Link target="_blank" to={`/universes/${backupDetails.universeUUID}`}>
+                      {backupDetails.universeName}
                     </Link>
                   </div>
                 ) : (
-                  backup_details.universeName
+                  backupDetails.universeName
                 )}
 
-                {!backup_details.isUniversePresent && <div>{SOURCE_UNIVERSE_DELETED_MSG}</div>}
+                {!backupDetails.isUniversePresent && <div>{SOURCE_UNIVERSE_DELETED_MSG}</div>}
               </div>
               <div>
                 <div className="header-text">Backup Status</div>
-                <StatusBadge statusType={backup_details.state as any} />
+                <StatusBadge statusType={backupDetails.commonBackupInfo.state as any} />
               </div>
             </div>
             <div className="details-rest">
               <div>
                 <div className="header-text">Backup Type</div>
-                <div>{backup_details.backupType ? 'On Demand' : 'Scheduled'}</div>
+                <div>{backupDetails.backupType ? 'On Demand' : 'Scheduled'}</div>
               </div>
               <div>
                 <div className="header-text">Table Type</div>
-                <div>{TABLE_TYPE_MAP[backup_details.backupType]}</div>
+                <div>{TABLE_TYPE_MAP[backupDetails.backupType]}</div>
               </div>
               <div>
                 <div className="header-text">Size</div>
-                <div>{formatBytes(backup_details.totalBackupSizeInBytes ?? 0)}</div>
-              </div>
-              <div>
-                <div className="header-text">Duration</div>
                 <div>
-                  {calculateDuration(backup_details.createTime, backup_details.completionTime)}
+                  {formatBytes(
+                    backupDetails.fullChainSizeInBytes ||
+                      backupDetails.commonBackupInfo.totalBackupSizeInBytes
+                  )}
                 </div>
               </div>
+              <div></div>
               <div>
                 <div className="header-text">Created At</div>
                 <div>
-                  <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.createTime} />
+                  <FormatUnixTimeStampTimeToTimezone
+                    timestamp={backupDetails.commonBackupInfo.createTime}
+                  />
                 </div>
               </div>
               <div>
                 <div className="header-text">Expiration</div>
                 <div>
-                  <FormatUnixTimeStampTimeToTimezone timestamp={backup_details.expiryTime} />
+                  <FormatUnixTimeStampTimeToTimezone timestamp={backupDetails.expiryTime} />
                 </div>
               </div>
               <span className="flex-divider" />
@@ -206,7 +236,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </span>
             )}
           </Row>
-          {backup_details.state !== Backup_States.FAILED && (
+          {backupDetails.commonBackupInfo.state !== Backup_States.FAILED && (
             <Row className="tables-list">
               <Col lg={6} className="no-padding">
                 <YBSearchInput
@@ -216,39 +246,50 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   }}
                 />
               </Col>
+              {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
+                <Col lg={6} className="no-padding">
+                  <YBButton
+                    btnText="Add Incremental Backup"
+                    btnIcon="fa fa-plus"
+                    className="add-increment-backup-btn"
+                    onConfirm={() => {}}
+                    onClick={() => {
+                      setFormValues(convertBackupToFormValues(backupDetails, storageConfig));
+                      setShowCreateModal(true);
+                    }}
+                  />
+                </Col>
+              )}
 
               <Col lg={12} className="no-padding">
-                {backup_details.backupType === TableType.YQL_TABLE_TYPE ||
-                backup_details.backupType === TableType.REDIS_TABLE_TYPE ? (
-                  <YCQLTableList
-                    backup={backup_details}
-                    keyspaceSearch={searchKeyspaceText}
-                    onRestore={(tablesList: Keyspace_Table[]) => {
-                      onRestore({
-                        ...backup_details,
+                <TableListComponent
+                  backup={backupDetails}
+                  keyspaceSearch={searchKeyspaceText}
+                  onRestore={(tablesList: Keyspace_Table[]) => {
+                    onRestore({
+                      ...backupDetails,
+                      commonBackupInfo: {
+                        ...backupDetails.commonBackupInfo,
                         responseList: tablesList
-                      });
-                    }}
-                    hideRestore={hideRestore}
-                  />
-                ) : (
-                  <YSQLTableList
-                    backup={backup_details}
-                    keyspaceSearch={searchKeyspaceText}
-                    onRestore={(tablesList: Keyspace_Table[]) => {
-                      onRestore({
-                        ...backup_details,
-                        responseList: tablesList
-                      });
-                    }}
-                    hideRestore={hideRestore}
-                  />
-                )}
+                      }
+                    });
+                  }}
+                  hideRestore={hideRestore}
+                />
               </Col>
             </Row>
           )}
         </div>
       </div>
+      <BackupCreateModal
+        visible={showCreateModal}
+        onHide={() => {
+          setShowCreateModal(false);
+        }}
+        editValues={formValues}
+        currentUniverseUUID={currentUniverseUUID}
+        isIncrementalBackup={true}
+      />
     </div>
   );
 };

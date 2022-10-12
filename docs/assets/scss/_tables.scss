@@ -19,4 +19,9 @@
   .td-box .row.section > table tbody tr:nth-of-type(odd) {
     background: rgb(248, 248, 249);
   }
+
+  > table.no-alter-colors tbody tr {
+    // background: inherit !important;
+    background: rgb(248, 248, 249) !important;
+  }
 }

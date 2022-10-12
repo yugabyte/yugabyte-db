@@ -67,6 +67,9 @@ public class Audit extends Model {
     @EnumValue("Alert")
     Alert,
 
+    @EnumValue("Alert Template Settings")
+    AlertTemplateSettings,
+
     @EnumValue("Alert Channel")
     AlertChannel,
 
@@ -134,7 +137,10 @@ public class Audit extends Model {
     HookScope,
 
     @EnumValue("NodeAgent")
-    NodeAgent
+    NodeAgent,
+
+    @EnumValue("CustomerLicense")
+    CustomerLicense
   }
 
   public enum ActionType {
@@ -227,6 +233,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
+
+    @EnumValue("Upgrade Kubernetes Overrides")
+    UpgradeKubernetesOverrides,
 
     @EnumValue("Upgrade Certs")
     UpgradeCerts,
@@ -348,6 +357,15 @@ public class Audit extends Model {
     @EnumValue("Create Backup Schedule")
     CreateBackupSchedule,
 
+    @EnumValue("Create PITR Config")
+    CreatePitrConfig,
+
+    @EnumValue("Restore Snapshot")
+    RestoreSnapshot,
+
+    @EnumValue("Delete PITR Config")
+    DeletePitrConfig,
+
     @EnumValue("Edit Backup Schedule")
     EditBackupSchedule,
 
@@ -454,7 +472,10 @@ public class Audit extends Model {
     UpgradeYbc,
 
     @EnumValue("Install Ybc")
-    InstallYbc
+    InstallYbc,
+
+    @EnumValue("Set YB-Controller throttle params")
+    SetThrottleParams
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

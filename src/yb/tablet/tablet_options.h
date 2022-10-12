@@ -18,11 +18,14 @@
 #include <vector>
 
 #include "yb/util/env.h"
+#include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/consensus/log_fwd.h"
+
+#include "yb/docdb/local_waiting_txn_registry.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -39,6 +42,7 @@ struct RocksDBPriorityThreadPoolMetrics;
 
 namespace yb {
 
+class AutoFlagsManager;
 class Env;
 class MemTracker;
 class MetricRegistry;
@@ -77,6 +81,10 @@ struct TabletInitData {
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
+  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  AutoFlagsManager* auto_flags_manager = nullptr;
+  ThreadPool* post_split_compaction_pool;
+  scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 
 } // namespace tablet

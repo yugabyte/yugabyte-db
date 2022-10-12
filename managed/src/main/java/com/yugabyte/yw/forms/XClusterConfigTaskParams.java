@@ -26,6 +26,17 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.editFormData = editFormData;
   }
 
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig, XClusterConfigRestartFormData restartFormData) {
+    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.xClusterConfig = xClusterConfig;
+    this.createFormData = new XClusterConfigCreateFormData();
+    this.createFormData.tables = restartFormData.tables;
+    this.createFormData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+    this.createFormData.bootstrapParams.backupRequestParams =
+        restartFormData.bootstrapParams.backupRequestParams;
+  }
+
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig) {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;

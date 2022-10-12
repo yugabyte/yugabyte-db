@@ -130,6 +130,9 @@ public class CustomerTask extends Model {
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
+    @EnumValue("KubernetesOverridesUpgrade")
+    KubernetesOverridesUpgrade,
+
     @EnumValue("CertsRotate")
     CertsRotate,
 
@@ -180,6 +183,12 @@ public class CustomerTask extends Model {
 
     @EnumValue("Restore")
     Restore,
+
+    @EnumValue("CreatePitrConfig")
+    CreatePitrConfig,
+
+    @EnumValue("RestoreSnapshot")
+    RestoreSnapshot,
 
     @Deprecated
     @EnumValue("SetEncryptionKey")
@@ -300,6 +309,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+        case KubernetesOverridesUpgrade:
+          return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
         case CertsRotate:
           return completed ? "Updated Certificates " : "Updating Certificates ";
         case TlsToggle:
@@ -321,6 +332,10 @@ public class CustomerTask extends Model {
           return completed ? "Bulk imported data" : "Bulk importing data";
         case Restore:
           return completed ? "Restored " : "Restoring ";
+        case CreatePitrConfig:
+          return completed ? "Created PITR Config" : "Creating PITR Config";
+        case RestoreSnapshot:
+          return completed ? "Restored Snapshot" : "Restoring Snapshot";
         case Restart:
           return completed ? "Restarted " : "Restarting ";
         case Backup:

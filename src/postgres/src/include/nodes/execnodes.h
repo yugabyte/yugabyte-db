@@ -722,6 +722,12 @@ typedef struct TupleHashTableData
 	int			numCols;		/* number of columns in lookup key */
 	AttrNumber *keyColIdx;		/* attr numbers of key columns */
 	FmgrInfo   *tab_hash_funcs; /* hash functions for table datatype(s) */
+	ExprState  **yb_keyColExprs; /*
+								  * expressions that are input to hash
+								  * functions. If these are null, we
+								  * revert to using keyColIdx to know
+								  * what tuple attributes to hash.
+								  */
 	ExprState  *tab_eq_func;	/* comparator for table datatype(s) */
 	MemoryContext tablecxt;		/* memory context containing table */
 	MemoryContext tempcxt;		/* context for function evaluations */
@@ -730,6 +736,11 @@ typedef struct TupleHashTableData
 	/* The following fields are set transiently for each table search: */
 	TupleTableSlot *inputslot;	/* current input tuple's slot */
 	FmgrInfo   *in_hash_funcs;	/* hash functions for input datatype(s) */
+	AttrNumber *in_keyColIdx;	/* attr numbers of input key columns */
+	ExprState  **yb_in_keycolExprs; /*
+									 * equivalent of yb_keyColExprs for input
+									 * tuples
+									 */
 	ExprState  *cur_eq_func;	/* comparator for input vs. table */
 	uint32		hash_iv;		/* hash-function IV */
 	ExprContext *exprcontext;	/* expression context */
@@ -1771,6 +1782,49 @@ typedef struct JoinState
 	ExprState  *joinqual;		/* JOIN quals (in addition to ps.qual) */
 } JoinState;
 
+
+/* 
+ * Batch state of batched NL Join. These are explained in the comment for
+ * ExecYbBatchedNestLoop in nodeYbBatchedNestLoop.c.
+ */
+typedef enum NLBatchStatus
+{
+	BNL_INIT,
+	BNL_NEWINNER,
+	BNL_MATCHING,
+	BNL_FLUSHING
+} NLBatchStatus;
+
+/* Struct to contain tuple and its matching info in a hash bucket*/
+typedef struct BucketTupleInfo
+{
+	MinimalTuple tuple;
+	bool matched;
+} BucketTupleInfo;
+
+/* Buckets of MinimalTuples stored in the hash table. */
+typedef struct NLBucketInfo
+{
+	ListCell *current; /* The current list element being iterated on. */
+	List *tuples;	   /* List of BucketTupleInfo in this bucket */
+} NLBucketInfo;
+
+struct YbBatchedNestLoopState;
+
+typedef bool (*FlushTupleFn_t)(struct YbBatchedNestLoopState *, ExprContext *);
+
+typedef bool (*GetNewOuterTupleFn_t)(struct YbBatchedNestLoopState *node,
+									 ExprContext *econtext);
+typedef void (*ResetBatchFn_t)(struct YbBatchedNestLoopState *node,
+							   ExprContext *econtext);
+typedef void (*RegisterOuterMatchFn_t)(struct YbBatchedNestLoopState *node,
+									   ExprContext *econtext);
+typedef void (*AddTupleToOuterBatchFn_t)(struct YbBatchedNestLoopState *node,
+										 TupleTableSlot *slot);
+
+typedef void (*FreeBatchFn_t)(struct YbBatchedNestLoopState *node);
+typedef void (*EndFn_t)(struct YbBatchedNestLoopState *node);
+
 /* ----------------
  *	 NestLoopState information
  *
@@ -1785,7 +1839,46 @@ typedef struct NestLoopState
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
 	TupleTableSlot *nl_NullInnerTupleSlot;
+	Tuplestorestate *batchedtuplestorestate;
+	NLBatchStatus nl_currentstatus;
 } NestLoopState;
+
+typedef struct YbBatchedNestLoopState
+{
+	JoinState	js;				/* its first field is NodeTag */
+	TupleTableSlot *nl_NullInnerTupleSlot;
+
+	/* State for tuplestore batch strategy */
+	Tuplestorestate *bnl_tupleStoreState;
+	NLBatchStatus bnl_currentstatus;
+	List *bnl_batchMatchedInfo;
+	int bnl_batchTupNo;
+	
+	/* State for hashing batch strategy */
+
+	/*
+	 * This hash table stores instance of NLBucketInfo, each of which
+	 * stores lists of tuples with the same hash value.
+	 */
+	TupleHashTable hashtable;
+	TupleTableSlot *hashslot;
+	bool hashiterinit;
+	TupleHashIterator hashiter;
+	BucketTupleInfo *current_ht_tuple;
+	TupleHashEntry current_hash_entry;
+	FmgrInfo *hashFunctions;
+	int numLookupAttrs;
+	AttrNumber *innerAttrs;
+
+	/* Function pointers to local join methods */
+	FlushTupleFn_t FlushTupleImpl;
+	GetNewOuterTupleFn_t GetNewOuterTupleImpl;
+	ResetBatchFn_t ResetBatchImpl;
+	RegisterOuterMatchFn_t RegisterOuterMatchImpl;
+	AddTupleToOuterBatchFn_t AddTupleToOuterBatchImpl;
+	FreeBatchFn_t FreeBatchImpl;
+	EndFn_t EndImpl;
+} YbBatchedNestLoopState;
 
 /* ----------------
  *	 MergeJoinState information

@@ -25,9 +25,9 @@
 
 namespace yb {
 
-YB_STRONGLY_TYPED_UUID(TxnSnapshotId);
-YB_STRONGLY_TYPED_UUID(TxnSnapshotRestorationId);
-YB_STRONGLY_TYPED_UUID(SnapshotScheduleId);
+YB_STRONGLY_TYPED_UUID_DECL(TxnSnapshotId);
+YB_STRONGLY_TYPED_UUID_DECL(TxnSnapshotRestorationId);
+YB_STRONGLY_TYPED_UUID_DECL(SnapshotScheduleId);
 
 using SnapshotSchedulesToObjectIdsMap =
     std::unordered_map<SnapshotScheduleId, std::vector<std::string>, SnapshotScheduleIdHash>;

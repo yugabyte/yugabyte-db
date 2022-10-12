@@ -267,9 +267,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     exec_params.rowmark = ROW_MARK_KEYSHARE;
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
-    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps(make_lw_function([&it, table_id, end] {
+    RETURN_NOT_OK(doc_op.PopulateDmlByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();
-    })));
+    }), static_cast<size_t>(end - it)}));
     RETURN_NOT_OK(doc_op.Execute());
   }
 
@@ -281,18 +281,19 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   precast_sender.DisableCollecting();
   // Collect the results from the docdb ops.
   ybctids->clear();
-  std::list<PgDocResult> rowsets;
   for (auto& it : doc_ops) {
-    do {
-      rowsets.clear();
-      RETURN_NOT_OK(it->GetResult(&rowsets));
+    for (;;) {
+      auto rowsets = VERIFY_RESULT(it->GetResult());
+      if (rowsets.empty()) {
+        break;
+      }
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
           ybctids->emplace_back(it->table()->id().object_oid, ybctid.ToBuffer());
         }
       }
-    } while (!rowsets.empty());
+    }
   }
 
   return Status::OK();
@@ -974,6 +975,27 @@ Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_c
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
+Status PgApiImpl::SetDBCatalogCacheVersion(PgStatement *handle,
+                                           uint32_t db_oid,
+                                           uint64_t catalog_cache_version) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_SELECT:
+    case StmtOp::STMT_INSERT:
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      down_cast<PgDml *>(handle)->SetDBCatalogCacheVersion(db_oid, catalog_cache_version);
+      return Status::OK();
+    default:
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Invalid statement handle");
+}
+
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_session_->GetTableDiskSize(table_oid);
 }
@@ -1611,6 +1633,15 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
 }
 
+Result<uint64_t> PgApiImpl::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  return pg_session_->GetSharedDBCatalogVersion(db_oid_shm_index);
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgApiImpl::GetTserverCatalogVersionInfo() {
+  return pg_session_->GetTserverCatalogVersionInfo();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
   return pg_session_->GetSharedAuthKey();
 }
@@ -1756,6 +1787,7 @@ void PgApiImpl::StartSysTablePrefetching() {
   if (pg_sys_table_prefetcher_) {
     DLOG(FATAL) << "Sys table prefetching was started already";
   }
+  CHECK(!pg_session_->HasCatalogReadPoint());
   pg_sys_table_prefetcher_.reset(new PgSysTablePrefetcher());
 }
 

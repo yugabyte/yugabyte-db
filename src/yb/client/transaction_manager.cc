@@ -26,6 +26,7 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -37,6 +38,10 @@ DEFINE_uint64(transaction_manager_workers_limit, 50,
 
 DEFINE_uint64(transaction_manager_queue_limit, 500,
               "Max number of tasks used by transaction manager");
+
+DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
+                 "For testing only. If non-empty, transaction manager will try to use the status "
+                 "tablet with id matching this flag, if present in the list of status tablets.");
 
 namespace yb {
 namespace client {
@@ -98,6 +103,12 @@ class TransactionTableState {
                           const PickStatusTabletCallback& callback) REQUIRES_SHARED(mutex_) {
     if (tablets.empty()) {
       return false;
+    }
+    if (PREDICT_FALSE(!FLAGS_TEST_transaction_manager_preferred_tablet.empty()) &&
+        std::find(tablets.begin(), tablets.end(),
+                  FLAGS_TEST_transaction_manager_preferred_tablet) != tablets.end()) {
+      callback(FLAGS_TEST_transaction_manager_preferred_tablet);
+      return true;
     }
     if (local_tablet_filter_) {
       std::vector<const TabletId*> ids;
@@ -245,14 +256,27 @@ class TransactionManager::Impl {
     Shutdown();
   }
 
-  void UpdateTransactionTablesVersion(uint64_t version) {
+  void UpdateTransactionTablesVersion(
+      uint64_t version, UpdateTransactionTablesVersionCallback callback) {
     if (table_state_.GetStatusTabletsVersion() >= version) {
       return;
     }
 
-    if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version)) {
+    PickStatusTabletCallback cb;
+    if (callback) {
+      cb = [callback](const Result<std::string>& result) {
+        return callback(ResultToStatus(result));
+      };
+    }
+
+    if (!tasks_pool_.Enqueue(&thread_pool_, client_, &table_state_, version, std::move(cb))) {
       YB_LOG_EVERY_N_SECS(ERROR, 1) << "Update tasks overflow, number of tasks: "
                                     << tasks_pool_.size();
+      if (callback) {
+        callback(STATUS_FORMAT(ServiceUnavailable,
+                               "Update tasks queue overflow, number of tasks: $0",
+                               tasks_pool_.size()));
+      }
     }
   }
 
@@ -332,8 +356,9 @@ TransactionManager::TransactionManager(
 
 TransactionManager::~TransactionManager() = default;
 
-void TransactionManager::UpdateTransactionTablesVersion(uint64_t version) {
-  impl_->UpdateTransactionTablesVersion(version);
+void TransactionManager::UpdateTransactionTablesVersion(
+    uint64_t version, UpdateTransactionTablesVersionCallback callback) {
+  impl_->UpdateTransactionTablesVersion(version, std::move(callback));
 }
 
 void TransactionManager::PickStatusTablet(

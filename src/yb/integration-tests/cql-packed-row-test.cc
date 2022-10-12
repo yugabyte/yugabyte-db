@@ -135,4 +135,37 @@ TEST_F(CqlPackedRowTest, TTL) {
   ASSERT_EQ(value, "3,tri");
 }
 
+TEST_F(CqlPackedRowTest, WriteTime) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) WITH tablets = 1"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
+
+  int64_t v1time, v2time;
+  auto processor = [&v1time, &v2time](const CassandraRow& row) {
+    row.Get(0, &v1time);
+    row.Get(1, &v2time);
+  };
+
+  ASSERT_OK(session.ExecuteAndProcessOneRow(
+      "SELECT writetime(v1), writetime(v2) FROM t", processor));
+  ASSERT_EQ(v1time, v2time);
+
+  ASSERT_OK(session.ExecuteQueryFormat("UPDATE t SET v2 = 'dva' WHERE key = 1"));
+
+  ASSERT_OK(session.ExecuteAndProcessOneRow(
+      "SELECT writetime(v1), writetime(v2) FROM t", processor));
+  ASSERT_LT(v1time, v2time);
+  auto old_v1time = v1time;
+  auto old_v2time = v2time;
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(session.ExecuteAndProcessOneRow(
+      "SELECT writetime(v1), writetime(v2) FROM t", processor));
+  ASSERT_EQ(old_v1time, v1time);
+  ASSERT_EQ(old_v2time, v2time);
+}
+
 } // namespace yb

@@ -32,24 +32,52 @@ class AsyncTaskTracker {
   bool started_ = false;
 };
 
-// TODO(Sanket): Can have an entire inheritance hierarchy later on
-// depending on the type of task and custom requirements for each type.
-class AsyncTaskThrottler {
+// Provides an abstract base class for tracking and throttling async tasks.
+class AsyncTaskThrottlerBase {
+ public:
+  AsyncTaskThrottlerBase() = default;
+  virtual ~AsyncTaskThrottlerBase() = default;
+
+  bool Throttle();
+  bool RemoveOutstandingTask();
+
+ protected:
+  uint64_t CurrentOutstandingTaskCount() const REQUIRES(mutex_);
+
+  std::mutex mutex_;
+
+ private:
+  virtual bool ShouldThrottle() REQUIRES(mutex_) = 0;
+
+  void AddOutstandingTask() REQUIRES(mutex_);
+
+  uint64_t current_outstanding_task_count_ GUARDED_BY(mutex_) = 0;
+};
+
+// An async task throttler where the limit is set by the caller.
+class AsyncTaskThrottler : public AsyncTaskThrottlerBase {
  public:
   AsyncTaskThrottler();
   explicit AsyncTaskThrottler(uint64_t limit);
 
   void RefreshLimit(uint64_t limit);
-  bool Throttle();
-  bool RemoveOutstandingTask();
 
  private:
-  bool ShouldThrottle() REQUIRES(mutex_);
-  void AddOutstandingTask() REQUIRES(mutex_);
+  virtual bool ShouldThrottle() REQUIRES(mutex_);
 
-  std::mutex mutex_;
   uint64_t outstanding_task_count_limit_ GUARDED_BY(mutex_);
-  uint64_t current_outstanding_task_count_ GUARDED_BY(mutex_) = 0;
+};
+
+// As async task throttler where the limit is dynamically fetched through a callback function.
+class DynamicAsyncTaskThrottler : public AsyncTaskThrottlerBase {
+ public:
+  DynamicAsyncTaskThrottler();
+  explicit DynamicAsyncTaskThrottler(std::function<uint64_t()>&& get_limit_fn);
+
+ private:
+  virtual bool ShouldThrottle() REQUIRES(mutex_);
+
+  std::function<uint64_t()> get_limit_fn_;
 };
 
 } // namespace yb

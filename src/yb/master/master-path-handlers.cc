@@ -70,6 +70,7 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
@@ -84,13 +85,26 @@ DEFINE_int32(
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
 
+DEFINE_bool(master_webserver_require_https, false,
+            "Require HTTPS when redirecting master UI requests to the leader.");
+TAG_FLAG(master_webserver_require_https, runtime);
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
+
+DECLARE_string(webserver_ca_certificate_file);
+
+DECLARE_string(webserver_certificate_file);
 
 namespace yb {
 
 namespace {
 
 const int64_t kCurlTimeoutSec = 180;
+
+const char* GetProtocol() {
+  return FLAGS_webserver_certificate_file.empty() || !FLAGS_master_webserver_require_https
+      ? "http" : "https";
+}
 
 std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& registration) {
   if (registration.http_addresses().empty()) {
@@ -156,7 +170,10 @@ void MasterPathHandlers::RedirectToLeader(
   std::string redirect = *redirect_result;
   EasyCurl curl;
   faststring buf;
-  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
+
+  curl.set_follow_redirects(true);
+  curl.set_ca_cert(FLAGS_webserver_ca_certificate_file);
+  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec, {} /* headers */);
   if (!s.ok()) {
     LOG(WARNING) << "Error retrieving leader master URL: " << redirect
                  << ", error :" << s.ToString();
@@ -193,7 +210,8 @@ Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebReq
     host_port.set_port(reg.http_addresses(0).port());
   }
   return Substitute(
-      "http://$0$1$2",
+      "$0://$1$2$3",
+      GetProtocol(),
       HostPortPBToString(DesiredHostPort(
           http_broadcast_addresses,
           reg.http_addresses(),
@@ -983,21 +1001,8 @@ void MasterPathHandlers::HandleCatalogManager(
 
     string table_uuid = table->id();
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
-    bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
 
-    TableType table_cat;
-    // Determine the table category. YugaWare tables should be displayed as system tables.
-    if (is_platform) {
-      table_cat = kSystemTable;
-    } else if (master_->catalog_manager()->IsUserIndex(*table)) {
-      table_cat = kUserIndex;
-    } else if (master_->catalog_manager()->IsUserTable(*table)) {
-      table_cat = kUserTable;
-    } else if (table->IsColocationParentTable()) {
-      table_cat = kParentTable;
-    } else {
-      table_cat = kSystemTable;
-    }
+    TableType table_cat = GetTableType(*table);
     // Skip non-user tables if we should.
     if (only_user_tables && (table_cat != kUserIndex && table_cat != kUserTable)) {
       continue;
@@ -2100,7 +2105,7 @@ void MasterPathHandlers::HandlePrettyLB(
   // Get the TServerTree.
   // A map of tserver -> all tables with their tablets.
   TServerTree tserver_tree;
-  Status s = CalculateTServerTree(&tserver_tree);
+  Status s = CalculateTServerTree(&tserver_tree, 4 /* max_table_count */);
   if (!s.ok()) {
     *output << "<div class='alert alert-warning'>"
             << "Current placement has more than 4 tables. Not recommended"
@@ -2165,8 +2170,9 @@ void MasterPathHandlers::HandlePrettyLB(
       // Point to the tablet servers link.
       TSRegistrationPB reg = desc->GetRegistration();
       *output << Substitute("<div class='panel-heading'>"
-                            "<h6 class='panel-title'><a href='http://$0'>TServer - $0    "
-                            "<i class='fa $1'></i></a></h6></div>\n",
+                            "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
+                            "<i class='fa $2'></i></a></h6></div>\n",
+                            GetProtocol(),
                             GetHttpHostPortFromServerRegistration(reg.common()),
                             icon_type);
 
@@ -2180,8 +2186,9 @@ void MasterPathHandlers::HandlePrettyLB(
         if (!master_->GetMasterRegistration(&reg).ok()) {
           continue;
         }
-        *output << Substitute("<td><h4><a href='http://$0/table?id=$1'>"
-                              "<i class='fa fa-table'></i>    $2</a></h4>\n",
+        *output << Substitute("<td><h4><a href='$0://$1/table?id=$2'>"
+                              "<i class='fa fa-table'></i>    $3</a></h4>\n",
+                              GetProtocol(),
                               GetHttpHostPortFromServerRegistration(reg),
                               table.first,
                               tname);
@@ -2221,6 +2228,27 @@ void MasterPathHandlers::HandlePrettyLB(
     *output << "</div><!-- zone-level-spacing -->\n";
   }
   *output << "</div><!-- zone-level-row -->\n";
+}
+
+void MasterPathHandlers::HandleLoadBalancer(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  vector<std::shared_ptr<TSDescriptor>> descs;
+  const auto& ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
+
+  TServerTree tserver_tree;
+  Status s = CalculateTServerTree(&tserver_tree, -1 /* max_table_count */);
+  if (!s.ok()) {
+    *output << "<div class='alert alert-warning'>"
+            << "Cannot Calculate TServer Tree."
+            << "</div>";
+    return;
+  }
+
+  RenderLoadBalancerViewPanel(tserver_tree, descs, tables, output);
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
@@ -2284,6 +2312,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/pretty-lb", "Load balancer Pretty Picture",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
+  cb = std::bind(&MasterPathHandlers::HandleLoadBalancer, this, _1, _2);
+  server->RegisterPathHandler(
+      "/load-distribution", "Load balancer View",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
 
   // JSON Endpoints
   cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
@@ -2343,7 +2376,8 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
   auto public_http_hp = GetPublicHttpHostPort(reg.common());
   if (public_http_hp) {
     return Substitute(
-        "<a href=\"http://$0/tablet?id=$1\">$2</a>",
+        "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
+        GetProtocol(),
         HostPortPBToString(*public_http_hp),
         EscapeForHtmlToString(tablet_id),
         EscapeForHtmlToString(public_http_hp->host()));
@@ -2357,7 +2391,8 @@ string MasterPathHandlers::RegistrationToHtml(
   string link_html = EscapeForHtmlToString(link_text);
   auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
-    link_html = Substitute("<a href=\"http://$0/\">$1</a>",
+    link_html = Substitute("<a href=\"$0://$1/\">$2</a>",
+                           GetProtocol(),
                            HostPortPBToString(*public_http_hp),
                            link_html);
   }
@@ -2397,19 +2432,22 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   }
 }
 
-Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
+Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int max_table_count) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
-  int count = 0;
-  for (const auto& table : tables) {
-    if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
-      table->IsColocatedUserTable()) {
-      continue;
-    }
+  if (max_table_count != -1) {
+    int count = 0;
+    for (const auto& table : tables) {
+      if (!master_->catalog_manager()->IsUserCreatedTable(*table) ||
+          table->IsColocatedUserTable()) {
+        continue;
+      }
 
-    count++;
-    if (count > 4) {
-      return STATUS(NotSupported, "Not supported for more than 4 tables.");
+      count++;
+      if (count > max_table_count) {
+        return STATUS_FORMAT(
+            NotSupported, "Not supported for more that $0 tables.", max_table_count);
+      }
     }
   }
 
@@ -2436,8 +2474,105 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
   return Status::OK();
 }
 
+void MasterPathHandlers::RenderLoadBalancerViewPanel(
+    const TServerTree& tserver_tree, const vector<std::shared_ptr<TSDescriptor>>& descs,
+    const std::vector<TableInfoPtr>& tables, std::stringstream* output) {
+  *output << "<div class='panel panel-default'>\n"
+          << "<div class='panel-heading'><h2 class='panel-title'>Load Balancing Distribution</h2>\n"
+          << "</div>\n";
 
+  *output << "<div class='panel-body table-responsive'>";
+  *output << "<table class='table table-responsive'>\n";
 
+  // Table header.
+  *output << "<thead>";
+  *output << "<tr><th rowspan='2'>Keyspace</th><th rowspan='2'>Table Name</th><th "
+             "rowspan='2'>Tablet Count</th>";
+  for (const auto& desc : descs) {
+    const auto& reg = desc->GetRegistration();
+    const string& uuid = desc->permanent_uuid();
+    string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+    *output << Substitute("<th>$0<br>$1</th>",
+                          RegistrationToHtml(reg.common(), host_port), uuid);
+  }
+  *output << "</tr>";
 
+  *output << "<tr>";
+  for (size_t i = 0; i < descs.size(); i++) {
+    *output << "<th>Total/Leaders</th>";
+  }
+  *output << "</tr>";
+  *output << "</thead>";
+
+  // Table rows.
+  for (const auto& table : tables) {
+    auto table_locked = table->LockForRead();
+    if (!table_locked->is_running()) {
+      continue;
+    }
+
+    const string& keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+
+    const auto& table_cat = GetTableType(*table);
+    // Skip non-user tables if we should.
+    if (table_cat != kUserIndex && table_cat != kUserTable) {
+      continue;
+    }
+    const string& table_name = table_locked->name();
+    const string& table_id = table->id();
+    auto tablet_count = table->GetTablets(IncludeInactive::kTrue).size();
+
+    *output << Substitute(
+        "<tr>"
+        "<td>$0</td>"
+        "<td><a href=\"/table?id=$1\">$2</a></td>"
+        "<td>$3</td>",
+        EscapeForHtmlToString(keyspace),
+        EscapeForHtmlToString(table_id),
+        EscapeForHtmlToString(table_name),
+        tablet_count);
+    for (auto& tserver_desc : descs) {
+      const string& tserver_id = tserver_desc->permanent_uuid();
+      uint64 num_replicas = 0;
+      uint64 num_leaders = 0;
+
+      const auto& tserver_table_to_replicas_mapping = tserver_tree.at(tserver_id);
+      auto it = tserver_table_to_replicas_mapping.find(table_id);
+      if (it != tserver_table_to_replicas_mapping.end()) {
+        auto replicas = it->second;
+        num_replicas = replicas.size();
+        num_leaders = std::count_if(
+            replicas.begin(), replicas.end(),
+            [](const ReplicaInfo& replicate) { return replicate.role == LEADER; });
+      }
+      *output << Substitute("<td>$0/$1</td>", num_replicas, num_leaders);
+    }
+    *output << "</tr>";
+  }
+
+  *output << "</table><!-- distribution table -->\n";
+  *output << "</div> <!-- panel-body -->\n";
+  *output << "</div> <!-- panel -->\n";
+}
+
+MasterPathHandlers::TableType MasterPathHandlers::GetTableType(const TableInfo& table) {
+  string keyspace = master_->catalog_manager()->GetNamespaceName(table.namespace_id());
+  bool is_platform = keyspace.compare(kSystemPlatformNamespace) == 0;
+
+  TableType table_cat;
+  // Determine the table category. Platform tables should be displayed as system tables.
+  if (is_platform) {
+    table_cat = kSystemTable;
+  } else if (master_->catalog_manager()->IsUserIndex(table)) {
+    table_cat = kUserIndex;
+  } else if (master_->catalog_manager()->IsUserTable(table)) {
+    table_cat = kUserTable;
+  } else if (table.IsColocationParentTable()) {
+    table_cat = kParentTable;
+  } else {
+    table_cat = kSystemTable;
+  }
+  return table_cat;
+}
 } // namespace master
 } // namespace yb

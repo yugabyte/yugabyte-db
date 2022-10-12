@@ -10,6 +10,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
@@ -48,6 +50,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   // The threadpool on which the tasks are executed.
   protected ExecutorService executor;
+
+  // The UUID of this task.
+  protected UUID taskUUID;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;
@@ -127,6 +132,11 @@ public abstract class AbstractTaskBase implements ITask {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
     executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
+  }
+
+  @Override
+  public void setTaskUUID(UUID taskUUID) {
+    this.taskUUID = taskUUID;
   }
 
   @Override
@@ -220,5 +230,17 @@ public abstract class AbstractTaskBase implements ITask {
   // signal is received. It can be a replacement for Thread.sleep in subtasks.
   protected void waitFor(Duration duration) {
     getRunnableTask().waitFor(duration);
+  }
+
+  protected UUID getUserTaskUUID() {
+    return userTaskUUID;
+  }
+
+  protected UUID getTaskUUID() {
+    return taskUUID;
+  }
+
+  protected TaskCache getTaskCache() {
+    return getRunnableTask().getTaskCache();
   }
 }

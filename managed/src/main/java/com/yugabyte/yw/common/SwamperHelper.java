@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -32,7 +33,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -147,24 +147,20 @@ public class SwamperHelper {
     EXPORTED_INSTANCE
   }
 
-  private ObjectNode getIndividualConfig(
-      Universe universe, TargetType t, Collection<NodeDetails> nodes, String exportedInstance) {
+  private ObjectNode getIndividualConfig(Universe universe, TargetType t, NodeDetails nodeDetails) {
     ObjectNode target = Json.newObject();
     ArrayNode targetNodes = Json.newArray();
-    nodes.forEach(
-        (node) -> {
-          int port = t.getPort(node);
-          if (node.isActive() && port > 0) {
-            targetNodes.add(node.cloudInfo.private_ip + ":" + port);
-          }
-        });
+    int port = t.getPort(nodeDetails);
+    if (nodeDetails.isActive() && port > 0) {
+      targetNodes.add(nodeDetails.cloudInfo.private_ip + ":" + port);
+    }
 
     ObjectNode labels = Json.newObject();
     labels.put(
         LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
     labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
-    if (exportedInstance != null) {
-      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), exportedInstance);
+    if (nodeDetails.nodeName != null) {
+      labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
     }
     if (t.isCollectionLevelSupported()) {
       MetricCollectionLevel level = getLevel(universe);
@@ -217,12 +213,7 @@ public class SwamperHelper {
                 // no node exporter on k8s pods
                 return;
               }
-              nodeTargets.add(
-                  getIndividualConfig(
-                      universe,
-                      TargetType.NODE_EXPORT,
-                      Collections.singletonList(node),
-                      node.nodeName));
+              nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));
             });
     writeJsonFile(swamperFile, nodeTargets);
 
@@ -265,9 +256,7 @@ public class SwamperHelper {
                   }
                 }
 
-                ybTargets.add(
-                    getIndividualConfig(
-                        universe, t, Collections.singletonList(node), node.nodeName));
+                ybTargets.add(getIndividualConfig(universe, t, node));
               }
             });
 
@@ -324,7 +313,10 @@ public class SwamperHelper {
     writeFile(rulesFile, fileContent);
   }
 
-  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
+  public void writeAlertDefinition(
+      AlertConfiguration configuration,
+      AlertDefinition definition,
+      AlertTemplateSettings templateSettings) {
     String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
@@ -354,7 +346,8 @@ public class SwamperHelper {
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
-                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
+                      new AlertRuleTemplateSubstitutor(
+                          configuration, definition, severity, templateSettings);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());

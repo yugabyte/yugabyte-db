@@ -86,6 +86,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
@@ -1447,7 +1448,9 @@ int RaftConsensusITest::RestartAnyCrashedTabletServers() {
     if (!cluster_->tablet_server(i)->IsProcessAlive()) {
       LOG(INFO) << "TS " << i << " appears to have crashed. Restarting.";
       cluster_->tablet_server(i)->Shutdown();
-      CHECK_OK(cluster_->tablet_server(i)->Restart());
+      CHECK_OK(WaitFor([&]() {
+        return cluster_->tablet_server(i)->Restart().ok();
+      }, 20s * kTimeMultiplier, "restarting tablet server"));
       restarted++;
     }
   }

@@ -710,7 +710,7 @@ void QLTableRow::Clear() {
     return;
   }
 
-  memset(assigned_.data(), 0, assigned_.size());
+  memset(assigned_.data(), 0x0, assigned_.size());
   num_assigned_ = 0;
 }
 

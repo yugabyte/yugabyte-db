@@ -57,6 +57,9 @@ public class TestExplainPlan extends CQLTester {
       "  INCLUDE(user_rank);");
     createIndex("CREATE INDEX IF NOT EXISTS best_rated\n" +
       "  ON movie_stats((user_rank, movie_genre), movie_name, user_name);");
+
+    waitForReadPermsOnAllIndexes("imdb", "movie_stats");
+
     execute("INSERT INTO movie_stats(movie_name, movie_genre, user_name, user_rank,\n"
       +" last_watched) VALUES ('m1', 'g1', 'u1', 5, '2019-01-18');");
     execute("INSERT INTO movie_stats(movie_name, movie_genre, user_name, user_rank,\n"

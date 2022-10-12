@@ -12,10 +12,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -153,10 +155,33 @@ public class YbcControllerTest extends FakeDBApplication {
   public void testInstallYbcSuccess(String ybcVersion) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = installYbc(defaultYbcUniverse.universeUUID, ybcVersion);
+    UserIntent userIntent =
+        defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = "2.14.0.0-b2";
+    Universe.saveDetails(
+        defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    Result result = installYbc(defaultNonYbcUniverse.universeUUID, ybcVersion);
     assertOk(result);
-    verify(mockCommissioner, times(1)).submit(any(), any());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    result = installYbc(defaultYbcUniverse.universeUUID, ybcVersion);
+    assertOk(result);
+    verify(mockCommissioner, times(2)).submit(any(), any());
+    assertAuditEntry(2, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testInstallYbcFailureWithNonCompatibleDBVersion() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UserIntent userIntent =
+        defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = "2.13.0.0-b1";
+    Universe.saveDetails(
+        defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    Result result =
+        assertPlatformException(() -> installYbc(defaultNonYbcUniverse.universeUUID, "1.0.0-b2"));
+    assertBadRequest(result, "Cannot install universe with DB version lower than 2.14.0.0-b1");
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test

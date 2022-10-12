@@ -9,20 +9,21 @@
  */
 package com.yugabyte.yw.common.config.impl;
 
-import static com.yugabyte.yw.common.ha.PlatformInstanceClientFactory.YB_HA_WS_KEY;
+import static com.yugabyte.yw.common.ha.PlatformInstanceClient.YB_HA_WS_KEY;
 
+import com.google.inject.name.Named;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
-import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 @Singleton
 public class HAWSClientKeyListener implements RuntimeConfigChangeListener {
-  private final PlatformInstanceClientFactory platformInstanceClientFactory;
+  private final WSClientRefresher wsClientRefresher;
 
   @Inject
-  public HAWSClientKeyListener(PlatformInstanceClientFactory platformInstanceClientFactory) {
-    this.platformInstanceClientFactory = platformInstanceClientFactory;
+  public HAWSClientKeyListener(@Named(YB_HA_WS_KEY) WSClientRefresher wsClientRefresher) {
+    this.wsClientRefresher = wsClientRefresher;
   }
 
   public String getKeyPath() {
@@ -30,6 +31,6 @@ public class HAWSClientKeyListener implements RuntimeConfigChangeListener {
   }
 
   public void processGlobal() {
-    platformInstanceClientFactory.refreshWsClient(getKeyPath());
+    wsClientRefresher.refreshWsClient(getKeyPath());
   }
 }

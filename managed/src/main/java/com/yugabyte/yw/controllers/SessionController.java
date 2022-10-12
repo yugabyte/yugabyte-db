@@ -33,7 +33,6 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
-import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -388,6 +387,9 @@ public class SessionController extends AbstractPlatformController {
     String emailAttr =
         runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
     String email;
+    String originUrl = request().getQueryString("orig_url");
+    String redirectTo = originUrl != null ? originUrl : "/";
+
     if (emailAttr.equals("")) {
       email = profile.getEmail();
     } else {
@@ -425,10 +427,11 @@ public class SessionController extends AbstractPlatformController {
           null,
           null);
     }
+
     if (environment.isDev()) {
-      return redirect("http://localhost:3000/");
+      return redirect("http://localhost:3000" + redirectTo);
     } else {
-      return redirect("/");
+      return redirect(redirectTo);
     }
   }
 

@@ -9,7 +9,7 @@
 replicated_api_version: "2.8.0"
 name: "yugaware"
 properties:
-  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
+  app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
   console_title: YugaByte Platform Deployment Console
 backup:
@@ -102,60 +102,39 @@ cmds:
     cmd: publicip
 
 components:
-  - name: db_stale_9_6
+  - name: pg_upgrade
     containers:
     - source: public
-      image_name: postgres
-      name: postgres_stale_9_6
-      version: 9.6
-      env_vars:
-        - name: POSTGRES_DB
-          static_val: 'yugaware'
-        - name: POSTGRES_USER
-          static_val: 'postgres'
-        - name: POSTGRES_PASSWORD
-          static_val: '{{repl ConfigOption "dbpass"}}'
-        - name: PGDATA
-          static_val: '/var/lib/postgresql/data/yugaware'
-      ports:
-        - private_port: "5432"
+      image_name: tianon/postgres-upgrade
+      name: postgres_upgrade
+      version: 9.6-to-14
       volumes:
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/yugaware'
+          container_path: /var/lib/postgresql/9.6/data
+          owner: "999"
+        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14/yugaware'
+          container_path: /var/lib/postgresql/14/data
+          owner: "999"
         - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
-          container_path: /var/lib/postgresql/data
+          container_path: /var/lib/postgresql/status
           owner: "999"
       publish_events:
-        - name: Postgres started
-          trigger: exec
-          args: ["sh", "/home/post_container_start.sh"]
+        - name: Postgres_Upgrade started
+          trigger: container-stop
           subscriptions:
             - component: db
               container: postgres
               action: start
       config_files:
-        - filename: /home/update_password.sql
-          contents: |
-            ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
         - filename: /home/entrypoint.sh
           contents: |
-            if  [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
-            then
-                echo "Starting Postgres in the container";
-                docker-entrypoint.sh postgres;
-            else
-                echo "Starting tail -f command";
-                tail -f /dev/null;
-            fi
-        - filename: /home/post_container_start.sh
-          contents: |
-            if [ ! -f /var/lib/postgresql/data/backup_9_6.sql ]
-            then
-              psql -U postgres -f /home/update_password.sql;
-              pg_dumpall -c -U postgres > /var/lib/postgresql/data/backup_9_6.sql;
-              rm -rf /var/lib/postgresql/data/yugaware;
-            else
-              # Kill all the process in the container.
-              kill -9 -1;
-            fi
+              #!/bin/bash
+
+              if [ ! "$(ls -A /var/lib/postgresql/14/data)" ] && [ "$(ls -A /var/lib/postgresql/9.6/data)" ];
+              then
+                docker-upgrade pg_upgrade;
+                echo "host all all all scram-sha-256" >> /var/lib/postgresql/14/data/pg_hba.conf;
+              fi
       ephemeral: true
       entrypoint: ["sh", "/home/entrypoint.sh"]
 
@@ -169,7 +148,7 @@ components:
           - name: POSTGRES_DB
             static_val: 'yugaware'
           - name: POSTGRES_USER
-            static_val: 'postgres'
+            static_val: '{{repl ConfigOption "dbuser"}}'
           - name: POSTGRES_PASSWORD
             static_val: '{{repl ConfigOption "dbpass"}}'
           - name: PGDATA
@@ -177,14 +156,19 @@ components:
         ports:
           - private_port: "5432"
             public_port: '{{repl ConfigOption "db_external_port"}}'
+            interface: docker0
+            when: '{{repl ConfigOptionEquals "expose_db_port" "0"}}'
+          - private_port: "5432"
+            public_port: '{{repl ConfigOption "db_external_port"}}'
+            when: '{{repl ConfigOptionEquals "expose_db_port" "1"}}'
         volumes:
-          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
+          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14'
             container_path: /var/lib/postgresql/data
             owner: "999"
         publish_events:
-          - name: Postgres started
+          - name: Postgres_14 started
             trigger: exec
-            args: ["sh", "/home/post_container_start.sh"]
+            args: ["sh", "/home/startup.sh"]
             subscriptions:
               - component: app
                 container: yugabyte/yugaware
@@ -192,10 +176,19 @@ components:
         config_files:
           - filename: /home/update_password.sql
             contents: |
-              ALTER USER postgres WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
+              ALTER USER {{repl ConfigOption "dbuser"}} WITH PASSWORD '{{repl ConfigOption "dbpass"}}';
           - filename: /home/reload_pg_hba_conf.sql
             contents: |
               SELECT pg_reload_conf();
+          - filename: /home/create_user.sql
+            contents: |
+              CREATE USER {{repl ConfigOption "dbuser"}} WITH SUPERUSER CREATEDB CREATEROLE;
+          - filename: /home/create_user_if_missing.sh
+            contents: |
+              # Check for the existence of role before creating.
+              if ! ( psql -U postgres -t -c '\du' | cut -d \| -f 1 | grep -qw {{repl ConfigOption "dbuser"}} ) then
+                psql -U postgres -f /home/create_user.sql;
+              fi
           - filename: /home/enable_ldap.sh
             contents: |
               sleep 5;
@@ -210,14 +203,9 @@ components:
               su - postgres bash -c 'echo host all all all scram-sha-256 >> /var/lib/postgresql/data/yugaware/pg_hba.conf';
               psql -U postgres -f /home/update_password.sql;
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
-          - filename: /home/post_container_start.sh
+          - filename: /home/startup.sh
             contents: |
-                if [ ! -f "/var/lib/postgresql/data/db_upgraded_9_6_to_14_4" ] \
-                  && [ -f /var/lib/postgresql/data/backup_9_6.sql ]
-                  then
-                    psql -U postgres -f /var/lib/postgresql/data/backup_9_6.sql && \
-                      echo "true" >> /var/lib/postgresql/data/db_upgraded_9_6_to_14_4;
-                fi
+                {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
                 {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
@@ -255,8 +243,8 @@ components:
           - name: Prometheus started
             trigger: container-start
             subscriptions:
-              - component: db_stale_9_6
-                container: postgres
+              - component: pg_upgrade
+                container: tianon/postgres-upgrade
                 action: start
         config_files:
           - filename: /prometheus_configs/default_prometheus.yml
@@ -282,7 +270,7 @@ components:
                   metrics_path: "/api/v1/prometheus_metrics"
                   static_configs:
                     - targets: [
-                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "app_external_port"}}'
+                      '{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}}'
                     ]
 
                 - job_name: "node"
@@ -435,6 +423,11 @@ components:
         ports:
           - private_port: "9000"
             public_port: '{{repl ConfigOption "app_external_port"}}'
+            interface: docker0
+            when: '{{repl ConfigOptionEquals "expose_app_port" "0"}}'
+          - private_port: "9000"
+            public_port: '{{repl ConfigOption "app_external_port"}}'
+            when: '{{repl ConfigOptionEquals "expose_app_port" "1"}}'
         publish_events:
           - name: YugaWare started
             trigger: container-start
@@ -447,15 +440,15 @@ components:
             contents: |
               include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
-              play.http.forwarded.trustedProxies = ["172.17.0.1"]
+              play.http.forwarded.trustedProxies = ["{{repl ConfigOption "docker_gateway"}}"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
               log.override.path = "/opt/yugabyte/yugaware/data/logs"
 
               db {
-                default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
+                default.host="{{repl ConfigOption "docker_gateway"}}"
                 default.port="{{repl ConfigOption "db_external_port"}}"
-                default.username="postgres"
+                default.username="{{repl ConfigOption "dbuser"}}"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
                 default.migration.initOnMigrate=true
@@ -486,8 +479,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
-                    "{{repl ConfigOption "support_origin_url"}}"
+                  allowedOrigins = [
+                    "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}",
+                    "{{repl Trim (ConfigOption "support_origin_url") "/" }}"
                   ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
@@ -514,7 +508,7 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}"
                 security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
                 security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
                 security.ssh2_enabled = false
@@ -568,10 +562,10 @@ components:
 
 
                 location / {
-                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
                 }
                 location ~ /settings/ha/internal/upload$ {
-                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  proxy_pass http://{{repl ConfigOption "docker_gateway" }}:{{repl ConfigOption "app_external_port"}};
                   # HA backp upload endpoint needs to allow bigger request size
                   # Broaden the location match regex to cover more endpoints as needed
                   client_max_body_size {{repl ConfigOption "upload_size"}};
@@ -581,11 +575,12 @@ components:
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             public_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
             port_type: tcp
-            when: '{{repl or (ConfigOptionEquals "nginx_external_port" "80") (ConfigOptionEquals "nginx_external_port" "443")}}'
+            when: '{{repl or (ConfigOptionEquals "nginx_custom_port" "80") (ConfigOptionEquals "nginx_custom_port" "443")}}'
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
-            public_port: '{{repl ConfigOption "nginx_external_port" }}'
+            public_port: '{{repl ConfigOption "nginx_custom_port" }}'
             port_type: tcp
-            when: '{{repl and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}'
+            when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
+
 config:
   - name: database
     title: Database config
@@ -598,11 +593,21 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+      - name: dbuser
+        title: DB User
+        type: text
+        default: "postgres"
+      - name: expose_db_port
+        title: Expose Postgres Database Port
+        help_text: When enabled you can access postgres database on host ip
+        type: bool
+        default: "0"
       - name: db_external_port
         title: Postgres Database Port
         type: text
         value: ""
         default: "5432"
+        when: '{{repl ConfigOptionEquals "expose_db_port" "1" }}'
       - name: dbldapauth
         title: Enable LDAP Authentication for DB
         help_text: When enabled YB Anywhere will use ldap for Postgres Authentication
@@ -611,19 +616,24 @@ config:
       - name: ldap_server
         title: LDAP server DNS/IP
         type: text
+        when: '{{repl ConfigOptionEquals "dbldapauth" "1" }}'
       - name: ldap_base_dn
         title: LDAP Base DN
         type: text
+        when: '{{repl ConfigOptionEquals "dbldapauth" "1" }}'
       - name: ldap_dn_prefix
         title: LDAP DN Prefix
         type: text
+        when: '{{repl ConfigOptionEquals "dbldapauth" "1" }}'
       - name: ldap_port
         title: LDAP Port
         type: text
+        when: '{{repl ConfigOptionEquals "dbldapauth" "1" }}'
       - name: secure_ldap
         title: Enable Secure LDAP(LDAPS)
         type: bool
         default: "0"
+        when: '{{repl ConfigOptionEquals "dbldapauth" "1" }}'
   - name: app
     title: Application config
     description: Configure your yugaware application
@@ -650,28 +660,54 @@ config:
         value_cmd:
           name: host_ip
           value_at: 0
+        test_proc:
+          run_on_save: true
+          display_name: Check hostname is valid
+          command: regex_match
+          args:
+            - '^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$'
+            - "Enter a valid hostname or IP address without http(s)"
         required: true
       - name: support_origin_url
         title: Support Origin URL
         type: text
         value: ""
         default: http://localhost
+        test_proc:
+          run_on_save: true
+          display_name: Check Support Origin URL is valid
+          command: regex_match
+          args:
+            - '^http[s]?:\/\/\w+([\.\-\_]\w+)*(:[0-9]+)?(\/.*)?$'
+            - "Enter a valid URL of the form http://localhost:3000"
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
+      - name: expose_app_port
+        title: Expose Yugaware HTTP Port
+        help_text: DEBUG ONLY - When enabled you can access yugaware directly (bypassing the nginx)
+        type: bool
+        default: "0"
       - name: app_external_port
         title: Yugaware Application Port
         type: text
         value: ""
         default: "9000"
-      - name: nginx_external_port
-        title: Yugaware UI Port
+        when: '{{repl ConfigOptionEquals "expose_app_port" "1" }}'
+      - name: enable_custom_port
+        title: Enable Yugaware UI Custom Port
+        type: bool
+        value: ""
+        default: "0"
+      - name: nginx_custom_port
+        title: Yugaware UI Custom Port
         type: text
         value: ""
-        default: "80"
+        default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
+        when: '{{repl ConfigOptionEquals "enable_custom_port" "1"}}'
       - name: https_enabled
         title: Enable HTTPS
         help_text: When enabled we will listen to https
         type: bool
-        default: "0"
+        default: "1"
       - name: upload_size
         title: Maximum Request Size
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
@@ -687,16 +723,19 @@ config:
         help_text: Specify the setting for HTTP_PROXY
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: https_proxy
         title: HTTPS Proxy setting
         help_text: Specify the setting for HTTPS_PROXY
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: no_proxy
         title: HTTP no proxy setting
         help_text: Specify the setting for NO_PROXY
         type: text
         default: ""
+        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend
@@ -718,6 +757,11 @@ config:
         help_text: Enable the use of sudo when executing custom hooks on Platform
         type: bool
         default: "0"
+      - name: docker_gateway
+        title: Docker Gateway IP Address
+        type: text
+        value: ""
+        default: 172.17.0.1
 
   - name: metrics
     title: Metrics config
@@ -752,3 +796,12 @@ config:
         title: How long until query execution times out, default to 30s
         type: text
         default: "30s"
+
+state:
+  ready:
+    command: http_status_code
+    args:
+    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if ConfigOptionEquals "enable_custom_port" "1"}}:{{repl ConfigOption "nginx_custom_port"}}{{repl end}}'
+    - '200'
+    - '15'
+    timeout: 900

@@ -42,12 +42,6 @@ type: docs
       YSQL - GORM
     </a>
   </li>
-  <li>
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
 </ul>
 
 This driver is a fork of the [jackc/pgx](https://github.com/jackc/pgx) driver, with an added feature of [connection load balancing](https://github.com/yugabyte/pgx#connection-load-balancing).

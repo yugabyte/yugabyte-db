@@ -31,6 +31,8 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
+
 namespace yb {
 namespace tserver {
 
@@ -124,6 +126,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
       nullptr /* retryable_requests */,
+      nullptr /* consensus_meta */,
       multi_raft_manager_.get()));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));

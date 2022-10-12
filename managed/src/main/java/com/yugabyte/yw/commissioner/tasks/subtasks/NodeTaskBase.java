@@ -15,13 +15,18 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.RecoverableException;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 
 import javax.inject.Inject;
+
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+@Slf4j
 public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   private final NodeManager nodeManager;
 
@@ -66,5 +71,25 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
     UniverseUpdater updater =
         nodeStateUpdater(taskParams().universeUUID, taskParams().nodeName, nodeStatus);
     saveUniverseDetails(updater);
+  }
+
+  @Override
+  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+    if (cause instanceof RecoverableException) {
+      NodeTaskParams params = taskParams();
+
+      log.warn("Encountered a recoverable error, rebooting node {}", params.nodeName);
+
+      RebootServer.Params rebootParams = new RebootServer.Params();
+      rebootParams.nodeName = params.nodeName;
+      rebootParams.universeUUID = params.universeUUID;
+      rebootParams.azUuid = params.azUuid;
+      rebootParams.useSSH = false;
+
+      RebootServer task = createTask(RebootServer.class);
+      task.initialize(rebootParams);
+      task.setUserTaskUUID(userTaskUUID);
+      task.run();
+    }
   }
 }

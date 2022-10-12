@@ -27,6 +27,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -73,6 +74,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   private Map<String, String> config1 = new HashMap<>();
   private Map<String, String> config2 = new HashMap<>();
   private Map<String, String> config3 = new HashMap<>();
+
+  private YBClient mockClient;
 
   private void setupUniverseMultiAZ(
       boolean setMasters, boolean enabledYEDIS, boolean setNamespace, boolean newNamingStyle) {
@@ -263,7 +266,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupCommon() {
     // Table RPCs.
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
     // WaitForTServerHeartBeats mock.
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -424,9 +427,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix1),
             eq(ns1),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
@@ -434,9 +435,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix2),
             eq(ns2),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
             eq(YB_SOFTWARE_VERSION),
@@ -444,9 +443,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(nodePrefix3),
             eq(ns3),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -508,9 +505,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             eq(defaultProvider.uuid),
             eq(NODE_PREFIX),
             eq(ns),
-            expectedOverrideFile.capture(),
-            eq(new HashMap<String, Object>()),
-            eq(new HashMap<String, Object>()));
+            expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -581,6 +576,52 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         expectedResults,
         getTaskPositionsToSkip(/* skip namespace task */ false),
         taskCountPerPosition);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseWithPodAddrTemplate() {
+    setupUniverseMultiAZ(
+        false /* Create Masters */,
+        true /* YEDIS/REDIS enabled */,
+        false /* set namespace */,
+        false /* new naming */);
+    config.put("KUBE_POD_ADDRESS_TEMPLATE", "{pod_name}.{namespace}.svc.{cluster_domain}");
+    defaultProvider.setConfig(config);
+    defaultProvider.save();
+    setupCommon();
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    String masters =
+        String.format(
+            "yb-master-0.%s.svc.cluster.local:7100,"
+                + "yb-master-0.%s.svc.cluster.local:7100,"
+                + "yb-master-0.%s.svc.cluster.local:7100",
+            ns1, ns2, ns3);
+    verify(mockYBClient, times(7)).getClient(masters, null);
+
+    long timeout = 300000;
+    verify(mockClient, times(1))
+        .waitForServer(
+            HostAndPort.fromParts("yb-tserver-0." + ns1 + ".svc.cluster.local", 9100), timeout);
+    verify(mockClient, times(1))
+        .waitForServer(
+            HostAndPort.fromParts("yb-tserver-0." + ns2 + ".svc.cluster.local", 9100), timeout);
+    verify(mockClient, times(1))
+        .waitForServer(
+            HostAndPort.fromParts("yb-tserver-0." + ns3 + ".svc.cluster.local", 9100), timeout);
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CREATE_UNIVERSE_TASKS,
+        getExpectedCreateUniverseTaskResults(),
+        getTaskPositionsToSkip(/* skip namespace task */ false),
+        getTaskCountPerPosition(3, 3));
     assertEquals(Success, taskInfo.getTaskState());
   }
 }

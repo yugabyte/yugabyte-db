@@ -5,6 +5,8 @@ import sbt.Tests._
 
 import scala.sys.process.Process
 
+historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -90,11 +92,12 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
-lazy val buildNodeAgent = taskKey[Int]("Build Node Agent")
+lazy val buildModules = taskKey[Int]("Build modules")
+lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
-lazy val cleanNodeAgent = taskKey[Int]("Clean Node Agent")
+lazy val cleanModules = taskKey[Int]("Clean modules")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -126,7 +129,7 @@ libraryDependencies ++= Seq(
   filters,
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
-  "org.postgresql" % "postgresql" % "42.2.25",
+  "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -187,6 +190,7 @@ libraryDependencies ++= Seq(
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
   "io.swagger" % "swagger-annotations" % "1.5.22", // needed for annotations in prod code
+  "de.dentrassi.crypto" % "pem-keystore" % "2.2.1",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -283,11 +287,12 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
+(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+  ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
   buildUI.value
-  //buildNodeAgent.value
   versionGenerate.value
 }
 
@@ -295,7 +300,7 @@ cleanPlatform := {
   clean.value
   cleanVenv.value
   cleanUI.value
-  cleanNodeAgent.value
+  cleanModules.value
 }
 
 versionGenerate := {
@@ -321,9 +326,15 @@ buildUI := {
   status
 }
 
-buildNodeAgent := {
-  ybLog("Building node agent...")
-  val status = Process("./build.sh clean build package " + version.value, baseDirectory.value / "node-agent").!
+buildModules := {
+  ybLog("Building modules...")
+  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  status
+}
+
+buildDependentArtifacts := {
+  ybLog("Building dependencies...")
+  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -339,9 +350,9 @@ cleanUI := {
   status
 }
 
-cleanNodeAgent := {
+cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("./build.sh clean", baseDirectory.value / "node-agent").!
+  val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -387,7 +398,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -405,37 +416,21 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.21-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b1"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.28-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
-  "io.netty" % "netty-handler" % "4.1.71.Final",
-  "io.netty" % "netty-codec-http" % "4.1.71.Final",
-  "io.netty" % "netty" % "3.10.6.Final",
-  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
-  // TODO(Shashank): Remove this in Step 3:
-  // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16",
+  "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
-// TODO(Shashank): Remove these in Step 3:
-dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
-
-javaOptions in Universal ++= Seq(
-  "-Djdk.tls.client.protocols=TLSv1.2",
-  "-Dhttps.protocols=TLSv1.2"
-)
 
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")

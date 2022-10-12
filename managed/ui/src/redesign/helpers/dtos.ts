@@ -196,6 +196,11 @@ export interface UniverseDetails {
   nodePrefix: string;
   resetAZConfig: boolean;
   rootCA: string | null;
+  xclusterInfo: {
+    sourceRootCertDirPath: string;
+    sourceXClusterConfigs: string[];
+    targetXClusterConfigs: string[];
+  };
   universeUUID: string;
   updateInProgress: boolean;
   updateSucceeded: boolean;
@@ -319,9 +324,9 @@ export interface KmsConfig {
 export interface HAPlatformInstance {
   uuid: string;
   config_uuid: string;
-  address: string,
-  is_leader: boolean,
-  is_local: boolean,
+  address: string;
+  is_leader: boolean;
+  is_local: boolean;
   last_backup: string | null;
 }
 
@@ -348,3 +353,95 @@ export const TABLE_TYPE_MAP: Record<TableType, string> = {
   PGSQL_TABLE_TYPE: 'YSQL',
   REDIS_TABLE_TYPE: 'REDIS'
 };
+
+
+export interface MetricsData {
+  type: string;
+  metricsKey: string[];
+  nodePrefixes: string;
+  selectedUniverse: any;
+  title: string;
+  tableName?: string
+}
+
+export interface GraphFilter {
+  startMoment: any;
+  endMoment: any;
+  nodeName: string;
+  nodePrefix: string;
+  filterValue?: string;
+  filterType?: string;
+  currentSelectedRegion?: string;
+  metricMeasure?: string;
+  outlierType?: string;
+  outlierNumNodes?: number;
+  selectedRegionClusterUUID?: string | null;
+  selectedRegionCode?: string | null;
+  selectedZoneName?: string | null;
+}
+
+export interface MetricSettings {
+  metric: string;
+  splitTopNodes: number;
+}
+
+export interface MetricQueryParams {
+  metricsWithSettings: MetricSettings[];
+  start: string;
+  end: string;
+  nodePrefix: string;
+  nodeNames: string[];
+}
+export interface CpuMeasureQueryData {
+  maxNodeName: string;
+  maxNodeValue: number;
+  otherNodesAvgValue: number;
+}
+export interface CpuMeasureRecommendation {
+  data: CpuMeasureQueryData;
+  summary: React.ReactNode | string;
+}
+
+export interface CpuUsageRecommendation {
+  summary: React.ReactNode | string;
+}
+
+export interface IndexSchemaQueryData {
+  table_name: string;
+  index_name: string;
+  index_command: string;
+}
+
+export interface IndexSchemaRecommendation {
+  data: IndexSchemaQueryData[];
+  summary: React.ReactNode | string;
+}
+
+export interface NodeDistributionData {
+  numSelect: number;
+  numInsert: number;
+  numUpdate: number;
+  numDelete: number;
+}
+
+export interface QueryLoadData {
+  maxNodeName: string;
+  percentDiff: number;
+  maxNodeDistribution: NodeDistributionData;
+  otherNodesDistribution: NodeDistributionData;
+}
+
+export interface QueryLoadRecommendation {
+  data: QueryLoadData;
+  summary: React.ReactNode | string;
+}
+
+export enum RecommendationTypeEnum {
+  All = 'All',
+  SchemaSuggestion = 'SchemaSuggestion',
+  QueryLoadSkew = 'QueryLoadSkew',
+  IndexSuggestion = 'IndexSuggestion',
+  ConnectionSkew = 'ConnectionSkew',
+  CpuSkew = 'CpuSkew',
+  CpuUsage = 'CpuUsage'
+}

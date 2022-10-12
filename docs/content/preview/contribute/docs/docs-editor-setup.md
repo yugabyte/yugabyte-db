@@ -24,9 +24,9 @@ To install an extension in Visual Studio Code, click the Extensions icon in the 
 
 * **GitHub Pull Requests and Issues**, by GitHub: Pretty good pull request support. Not perfect, and can get confused with large PRs, but handy on a regular basis.
 
-* **GitLens — Git supercharged**, by Eric Amodio: Useful git tooling, including per-line blame/history.
+* **GitLens — Git supercharged**, by Eric Amodio: Useful Git tooling, including per-line blame/history.
 
-* **Markdown Preview Enhanced**, by Yiyi Wang: Even nicer markdown previews.
+* **Markdown Preview Enhanced**, by Yiyi Wang: Even nicer Markdown previews.
 
 * **markdownlint**, by David Anson: Lints your markdown formatting to catch errors and inconsistencies.
 

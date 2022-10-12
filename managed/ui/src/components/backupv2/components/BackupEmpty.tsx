@@ -20,7 +20,7 @@ interface BackupEmptyProps {
   classNames?: string;
 }
 
-const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
+export const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
   return <div className={clsx('backup-empty', classNames)}>{children}</div>;
 };
 
@@ -98,7 +98,7 @@ export const AccountLevelBackupEmpty = () => {
 const BACKUP_DISABLED_POPOVER = (
   <Popover
     id="popover-backup-disabled"
-    title="This universe does not have any tables to backup or backup is disabled"
+    title="This universe does not have any tables to backup or backup/universe is disabled"
   />
 );
 

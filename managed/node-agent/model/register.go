@@ -2,7 +2,9 @@
 
 package model
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type RegisterRequest struct {
 	CommonInfo
@@ -25,7 +27,7 @@ type ResponseError struct {
 	Message       string `json:"error"`
 }
 
-type RegisterResponseEmpty struct {
+type ResponseMessage struct {
 	SuccessStatus bool   `json:"success"`
 	Message       string `json:"message"`
 }
@@ -35,6 +37,7 @@ type CommonInfo struct {
 	IP      string `json:"ip"`
 	State   string `json:"state"`
 	Version string `json:"version"`
+	Port    int    `json:"port"`
 }
 
 type NodeAgentConfig struct {
@@ -52,6 +55,11 @@ type User struct {
 	UserId     string `json:"uuid"`
 	CustomerId string `json:"customerUUID"`
 	Role       string `json:"role"`
+}
+
+type SessionInfo struct {
+	CustomerId string `json:"customerUUID"`
+	UserId     string `json:"UserUUID"`
 }
 
 type DisplayInterface interface {

@@ -309,7 +309,7 @@ message EncryptionInfoPB {
   optional bool key_in_memory = 5;
 }
 
-// The on-disk entry in the sys.catalog table for configuration vinformation
+// The on-disk entry in the sys.catalog table for configuration information
 // that are relevant to the entire cluster. This has a version entry that is
 // used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
@@ -524,11 +524,16 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> consumer table ID map.
   map<string, string> validated_tables = 5;
 
-  // producer table ID -> producer CDC stream map.
+  // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
   // Namespace-level replication setup.
   optional bool is_ns_replication = 7 [default = false];
   optional NamespaceIdentifierPB producer_namespace = 8;
   optional NamespaceIdentifierPB consumer_namespace = 9;
+}
+
+message XClusterSafeTimePB {
+  // Map[Local NamespaceId]: xCluester safe read HybridTime
+  map<string, fixed64> safe_time_map = 1;
 }

@@ -9,18 +9,21 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
-import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -55,15 +58,15 @@ public class UpgradeUniverseController extends AuthenticatedController {
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
-          name = "upgrade_task_params",
-          value = "Upgrade Task Params",
-          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
+          name = "restart_task_params",
+          value = "Restart Task Params",
+          dataType = "com.yugabyte.yw.forms.RestartTaskParams",
           required = true,
           paramType = "body"))
   public Result restartUniverse(UUID customerUuid, UUID universeUuid) {
     return requestHandler(
         upgradeUniverseHandler::restartUniverse,
-        UpgradeTaskParams.class,
+        RestartTaskParams.class,
         Audit.ActionType.Restart,
         customerUuid,
         universeUuid);
@@ -123,6 +126,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::upgradeGFlags,
         GFlagsUpgradeParams.class,
         Audit.ActionType.UpgradeGFlags,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API that upgrades kubernetes overrides for primary and read clusters.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Upgrade KubernetesOverrides",
+      notes = "Queues a task to perform Kubernetesoverrides upgrade for a kubernetes universe.",
+      nickname = "upgradeKubernetesOverrides",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "Kubernetes_overrides_upgrade_params",
+          value = "Kubernetes Override Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams",
+          required = true,
+          paramType = "body"))
+  public Result upgradeKubernetesOverrides(UUID customerUuid, UUID universeUuid) {
+    return requestHandler(
+        upgradeUniverseHandler::upgradeKubernetesOverrides,
+        KubernetesOverridesUpgradeParams.class,
+        Audit.ActionType.UpgradeKubernetesOverrides,
         customerUuid,
         universeUuid);
   }

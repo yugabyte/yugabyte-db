@@ -35,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -200,7 +199,7 @@ public class TaskInfo extends Model {
     return taskState;
   }
 
-  boolean hasCompleted() {
+  public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
   }
 
@@ -305,7 +304,9 @@ public class TaskInfo extends Model {
   /**
    * Retrieve the UserTaskDetails for the task mapped to this TaskInfo object. Should only be called
    * on the user-level parent task, since only that task will have subtasks. Nothing will break if
-   * called on a SubTask, it just won't give you much useful information.
+   * called on a SubTask, it just won't give you much useful information. Some subtask group types
+   * are repeated later in the task that must be fixed. So, a subTask group cannot be marked
+   * Success.
    *
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
    *     subTaskGroups.
@@ -353,7 +354,7 @@ public class TaskInfo extends Model {
   public double getPercentCompleted() {
     int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
     if (numSubtasks == 0) {
-      if (TaskInfo.COMPLETED_STATES.contains(getTaskState())) {
+      if (getTaskState() == TaskInfo.State.Success) {
         return 100.0;
       }
       return 0.0;

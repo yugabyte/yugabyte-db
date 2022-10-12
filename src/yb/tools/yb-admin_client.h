@@ -79,14 +79,16 @@ struct TypedNamespaceName {
 
 class TableNameResolver {
  public:
-  TableNameResolver(std::vector<client::YBTableName> tables,
-                    std::vector<master::NamespaceIdentifierPB> namespaces);
+  using Values = std::vector<client::YBTableName>;
+  TableNameResolver(
+      Values* values,
+      std::vector<client::YBTableName>&& tables,
+      std::vector<master::NamespaceIdentifierPB>&& namespaces);
   TableNameResolver(TableNameResolver&&);
   ~TableNameResolver();
 
   Result<bool> Feed(const std::string& value);
-  std::vector<client::YBTableName>& values();
-  master::NamespaceIdentifierPB last_namespace();
+  const master::NamespaceIdentifierPB* last_namespace() const;
 
  private:
   class Impl;
@@ -282,7 +284,9 @@ class ClusterAdminClient {
 
   Status CreateTransactionsStatusTable(const std::string& table_name);
 
-  Result<TableNameResolver> BuildTableNameResolver();
+  Status AddTransactionStatusTablet(const TableId& table_id);
+
+  Result<TableNameResolver> BuildTableNameResolver(TableNameResolver::Values* tables);
 
   Result<std::string> GetMasterLeaderUuid();
 
@@ -293,7 +297,7 @@ class ClusterAdminClient {
   // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
   // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
   //       look like this workflow is a good fit there.
-  Status UpgradeYsql();
+  Status UpgradeYsql(bool use_single_connection);
 
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(

@@ -119,7 +119,7 @@ For information on the relevant YSQL API, see [CREATE TABLE ... SPLIT AT VALUES]
 
 ## Manual tablet splitting
 
-Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually. 
+Imagine there is a table with pre-existing data spread across a certain number of tablets. It is possible to split some or all of the tablets in this table manually.
 
 {{< note title="Note" >}}
 
@@ -235,10 +235,11 @@ In the event that performance suffers due to automatic tablet splitting, the fol
 
 [Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags)
 
-* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by defualt. Tablets that are performing post-split compactions count against this limit.
+* `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by default. Tablets that are performing post-split compactions count against this limit.
 * `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
 
 [TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags)
+
 ### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database:
@@ -300,11 +301,9 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 The following known limitations are planned to be resolved in upcoming releases:
 
 * Colocated tables cannot be split. For details, see [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463).
-* In v2.14.0, tablet splitting should be disabled during an index backfill. This is expected to be fixed in 2.14.1. For details, see [#13127](https://github.com/yugabyte/yugabyte-db/issues/13127).
-* When tablet splitting is used with Point In Time Recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. For details, see [#13022](https://github.com/yugabyte/yugabyte-db/issues/13022).
+* In 2.14.0, when tablet splitting is used with Point In Time Recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This is fixed in 2.14.1.
 * Tablet splitting is currently disabled by default for tables with cross cluster replication. It can be enabled using the [`enable_tablet_split_of_xcluster_replicated_tables`](../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) flag on master on both the producer and consumer clusters (as they will perform splits independently of one another). If using this feature after upgrade, the producer and consumer clusters should both be upgraded to 2.14.0+ before enabling the feature.
 * Tablet splitting is currently disabled during bootstrap for tables with cross cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
 * Tablet splitting is currently disabled for tables that are using the [TTL file expiration](../../develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).
-

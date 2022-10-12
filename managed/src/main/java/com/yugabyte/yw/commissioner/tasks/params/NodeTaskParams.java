@@ -24,7 +24,6 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
   public UUID placementUuid;
 
   // The type of instance for this node
-  // TODO: currently only used for onprem cloud.
   public String instanceType;
 
   public boolean useSystemd;

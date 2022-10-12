@@ -8,6 +8,7 @@
  */
 
 import { TableType } from '../../../redesign/helpers/dtos';
+import { OptionTypeBase } from 'react-select';
 
 export enum Backup_States {
   IN_PROGRESS = 'InProgress',
@@ -40,11 +41,27 @@ export interface Keyspace_Table {
   defaultLocation?: string;
 }
 
-export interface IBackup {
-  state: Backup_States;
+export interface ICommonBackupInfo {
   backupUUID: string;
-  backupType: TableType;
+  baseBackupUUID: string;
+  completionTime: number;
+  createTime: number;
+  responseList: Keyspace_Table[];
+  sse: boolean;
+  state: Backup_States;
   storageConfigUUID: string;
+  taskUUID: string;
+  totalBackupSizeInBytes?: number;
+  updateTime: number;
+  parallelism: number;
+}
+
+export interface IBackup {
+  commonBackupInfo: ICommonBackupInfo;
+  isFullBackup: boolean;
+  hasIncrementalBackups: boolean;
+  lastBackupState: Backup_States;
+  backupType: TableType;
   universeUUID: string;
   scheduleUUID: string;
   customerUUID: string;
@@ -52,14 +69,10 @@ export interface IBackup {
   isStorageConfigPresent: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  createTime: number;
   updateTime: number;
-  completionTime: number;
   expiryTime: number;
-  responseList: Keyspace_Table[];
-  sse: boolean;
-  totalBackupSizeInBytes?: number;
   kmsConfigUUID?: null | string;
+  fullChainSizeInBytes: number;
 }
 
 export interface IUniverse {
@@ -93,7 +106,7 @@ export interface IStorageConfig {
   name: string;
   data: {
     BACKUP_LOCATION: string;
-    REGION_LOCATIONS: any [];
+    REGION_LOCATIONS: any[];
   };
   state: 'ACTIVE' | 'INACTIVE';
   inUse: boolean;
@@ -112,3 +125,16 @@ export enum Backup_Options_Type {
   ALL = 'all',
   CUSTOM = 'custom'
 }
+
+export interface ThrottleParameters {
+  max_concurrent_uploads: number;
+  per_upload_num_objects: number;
+  max_concurrent_downloads: number;
+  per_download_num_objects: number;
+}
+
+interface IOptionType extends OptionTypeBase {
+  value: string;
+  label: string;
+}
+export type SELECT_VALUE_TYPE = IOptionType;

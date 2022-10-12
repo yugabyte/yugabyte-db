@@ -64,6 +64,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"

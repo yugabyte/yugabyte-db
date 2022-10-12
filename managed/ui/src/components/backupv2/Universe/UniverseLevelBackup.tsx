@@ -14,6 +14,9 @@ import { Tab } from 'react-bootstrap';
 import './UniverseLevelBackup.scss';
 import { withRouter } from 'react-router';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
+import { useSelector } from 'react-redux';
+import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
+import './UniverseLevelBackup.scss';
 
 interface UniverseBackupProps {
   params: {
@@ -23,6 +26,7 @@ interface UniverseBackupProps {
 }
 
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
+  const featureFlags = useSelector((state: any) => state.featureFlags);
   return (
     <YBTabsPanel id="backup-tab-panel">
       <Tab eventKey="backupList" title="Backups" unmountOnExit>
@@ -31,6 +35,11 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
         <ScheduledBackup universeUUID={uuid} />
       </Tab>
+      {(featureFlags.test.enablePITR || featureFlags.released.enablePITR) && (
+        <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
+          <PointInTimeRecovery universeUUID={uuid} />
+        </Tab>
+      )}
     </YBTabsPanel>
   );
 };

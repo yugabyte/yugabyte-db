@@ -137,3 +137,13 @@ enum PeerRole {
 
   UNKNOWN_ROLE = 7;
 };
+
+enum ReplicationErrorPb {
+  REPLICATION_UNKNOWN_ERROR = 0;
+
+  // One or more WAL segments are missing an expected op id.
+  REPLICATION_MISSING_OP_ID = 1;
+
+  // There is a schema mismatch between the producer and consumer tables.
+  REPLICATION_SCHEMA_MISMATCH = 2;
+}

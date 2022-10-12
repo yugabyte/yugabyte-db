@@ -18,7 +18,16 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
+import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
+import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import io.ebean.annotation.Transactional;
+import io.grpc.ManagedChannel;
+import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.ByteArrayInputStream;
@@ -33,14 +42,17 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import javax.net.ssl.SSLException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -60,7 +72,15 @@ public class NodeAgentHandler {
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
   public static final String UPGRADE_CHECK_INTERVAL_PROPERTY =
       "yb.node_agent.upgrade_check_interval";
+  public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
   public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
+
+  public static final String CLEANER_CHECK_INTERVAL_PROPERTY =
+      "yb.node_agent.cleaner_check_interval";
+  public static final Duration CLEANER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(10);
+
+  public static final String CLEANER_RETENTION_DURATION_PROPERTY =
+      "yb.node_agent.retention_duration";
 
   public static final int CERT_EXPIRY_YEARS = 5;
 
@@ -70,6 +90,8 @@ public class NodeAgentHandler {
   private final Config appConfig;
   private final PlatformScheduler platformScheduler;
   private final ConfigHelper configHelper;
+
+  private boolean validateConnection = true;
 
   @Inject
   public NodeAgentHandler(
@@ -81,17 +103,28 @@ public class NodeAgentHandler {
 
   /** Starts background tasks. */
   public void init() {
-    Duration checkInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
-    if (checkInterval.isZero()) {
+    Duration updateCheckInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
+    if (updateCheckInterval.isZero()) {
       throw new IllegalArgumentException(
           String.format("%s cannot be 0", UPGRADE_CHECK_INTERVAL_PROPERTY));
     }
+    Duration cleanerCheckInterval = appConfig.getDuration(CLEANER_CHECK_INTERVAL_PROPERTY);
+    if (updateCheckInterval.isZero()) {
+      throw new IllegalArgumentException(
+          String.format("%s cannot be 0", CLEANER_CHECK_INTERVAL_PROPERTY));
+    }
     log.info("Scheduling updater service");
     platformScheduler.schedule(
-        NodeAgentHandler.class.getSimpleName(),
+        NodeAgentHandler.class.getSimpleName() + "Updater",
         UPDATER_SERVICE_INITIAL_DELAY,
-        checkInterval,
+        updateCheckInterval,
         this::updaterService);
+    log.info("Scheduling cleaner service");
+    platformScheduler.schedule(
+        NodeAgentHandler.class.getSimpleName() + "Cleaner",
+        CLEANER_SERVICE_INITIAL_DELAY,
+        cleanerCheckInterval,
+        this::cleanerService);
   }
 
   /**
@@ -124,10 +157,36 @@ public class NodeAgentHandler {
     }
   }
 
+  /**
+   * This method is run in interval. Node agents whose IPs are not found in node instance and have
+   * not sent heartbeats beyond a retention time are deleted.
+   */
+  @VisibleForTesting
+  void cleanerService() {
+    try {
+      Duration duration = appConfig.getDuration(CLEANER_RETENTION_DURATION_PROPERTY);
+      Date expiryDate = Date.from(Instant.now().minus(duration.toMinutes(), ChronoUnit.MINUTES));
+      Set<String> nodeIps =
+          NodeInstance.getAll()
+              .stream()
+              .map(node -> node.getDetails().ip)
+              .collect(Collectors.toSet());
+      Customer.getAll()
+          .stream()
+          .map(c -> c.uuid)
+          .flatMap(cUuid -> NodeAgent.getNodeAgents(cUuid).stream())
+          .filter(n -> expiryDate.after(n.updatedAt))
+          .filter(n -> !nodeIps.contains(n.ip))
+          .forEach(NodeAgent::purge);
+    } catch (Exception e) {
+      log.error("Error occurred in cleaner service", e);
+    }
+  }
+
   private Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
     return Paths.get(
         appConfig.getString("yb.storage.path"),
-        "node-agents",
+        "node-agent",
         "certs",
         nodeAgent.customerUuid.toString(),
         nodeAgent.uuid.toString());
@@ -137,6 +196,15 @@ public class NodeAgentHandler {
     Path certDirPath = getNodeAgentBaseCertDirectory(nodeAgent).resolve(certDir);
     log.info("Creating node agent cert directory {}", certDirPath);
     return Util.getOrCreateDir(certDirPath);
+  }
+
+  private Path getCertFilePath(NodeAgent nodeAgent, String certName) {
+    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isBlank(certDirPath)) {
+      throw new IllegalArgumentException(
+          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+    }
+    return Paths.get(certDirPath, certName);
   }
 
   // Certs are created in each directory <base-cert-dir>/<index>/.
@@ -217,7 +285,7 @@ public class NodeAgentHandler {
     try {
       // Delete the old cert directory.
       FileUtils.deleteDirectory(currentCertDirPath.toFile());
-    } catch (IOException e) {
+    } catch (Exception e) {
       // Ignore error.
       log.warn("Error deleting old cert directory {}", currentCertDirPath, e);
     }
@@ -318,6 +386,45 @@ public class NodeAgentHandler {
         .compact();
   }
 
+  // TODO add caching of channels later.
+  private ManagedChannel createRpcChannel(NodeAgent nodeAgent, boolean enableTls) {
+    NettyChannelBuilder channelBuilder =
+        NettyChannelBuilder.forAddress(nodeAgent.ip, nodeAgent.port);
+    if (enableTls) {
+      Path caCertPath = getCertFilePath(nodeAgent, NodeAgent.ROOT_CA_CERT_NAME);
+      SslContext sslcontext;
+      try {
+        sslcontext = GrpcSslContexts.forClient().trustManager(caCertPath.toFile()).build();
+        channelBuilder = channelBuilder.sslContext(sslcontext);
+      } catch (SSLException e) {
+        throw new RuntimeException("SSL context creation for gRPC client failed", e);
+      }
+    } else {
+      channelBuilder = channelBuilder.usePlaintext();
+    }
+    Duration connectTimeout = appConfig.getDuration(NODE_AGENT_CONNECT_TIMEOUT_PROPERTY);
+    channelBuilder.withOption(
+        ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) connectTimeout.toMillis());
+    return channelBuilder.build();
+  }
+
+  private void validateConnection(NodeAgent nodeAgent) {
+    ManagedChannel channel = createRpcChannel(nodeAgent, false);
+    try {
+      NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
+      stub.ping(PingRequest.newBuilder().setData("test").build());
+    } catch (Exception e) {
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Ping failed " + e.getMessage());
+    } finally {
+      channel.shutdownNow();
+    }
+  }
+
+  @VisibleForTesting
+  public void enableConnectionValidation(boolean enable) {
+    validateConnection = enable;
+  }
+
   /**
    * Registers the node agent to platform to set up the authentication keys.
    *
@@ -331,9 +438,13 @@ public class NodeAgentHandler {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent is already registered");
     }
     if (StringUtils.isBlank(payload.version)) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Node agent version must be specified");
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
+    if (validateConnection) {
+      validateConnection(nodeAgent);
+    }
     // Save within the transaction to get DB generated column values.
     nodeAgent.saveState(State.REGISTERING);
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
@@ -378,18 +489,25 @@ public class NodeAgentHandler {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
     nodeAgent.validateStateTransition(payload.state);
     if (!UPDATABLE_STATES_BY_NODE_AGENT.contains(payload.state)) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Invalid state " + payload.state);
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Invalid node agent state " + payload.state);
     }
-    nodeAgent.state = payload.state;
-    if (nodeAgent.state == State.UPGRADED) {
+    if (payload.state == State.UPGRADED) {
       if (StringUtils.isBlank(payload.version)) {
-        throw new PlatformServiceException(Status.BAD_REQUEST, "Version must be specified");
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Node agent version must be specified");
       }
       // Node agent is ready after an upgrade.
+      nodeAgent.state = payload.state;
       nodeAgent.version = payload.version;
       updateNodeAgentCerts(nodeAgent);
     } else {
-      nodeAgent.save();
+      boolean updated = nodeAgent.updateState(payload.state);
+      if (!updated) {
+        throw new PlatformServiceException(
+            Status.CONFLICT, String.format("Expected state %s has changed", nodeAgent.state));
+      }
+      nodeAgent.state = payload.state;
     }
     return nodeAgent;
   }
@@ -426,16 +544,6 @@ public class NodeAgentHandler {
    * @param uuid the node UUID.
    */
   public void unregister(UUID uuid) {
-    NodeAgent.maybeGet(uuid)
-        .ifPresent(
-            nodeAgent -> {
-              Path basePath = getNodeAgentBaseCertDirectory(nodeAgent);
-              nodeAgent.delete();
-              try {
-                FileUtils.deleteDirectory(basePath.toFile());
-              } catch (IOException e) {
-                log.error("Failed to clean up {}", basePath, e);
-              }
-            });
+    NodeAgent.maybeGet(uuid).ifPresent(NodeAgent::purge);
   }
 }

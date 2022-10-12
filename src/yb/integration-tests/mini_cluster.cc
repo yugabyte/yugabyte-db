@@ -46,6 +46,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
@@ -72,7 +73,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -90,6 +93,8 @@ using strings::Substitute;
 
 DEFINE_string(mini_cluster_base_dir, "", "Directory for master/ts data");
 DEFINE_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
+DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
+                 "Time to wait for tservers to register to master.");
 DECLARE_int32(master_svc_num_threads);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int32(master_consensus_svc_num_threads);
@@ -125,9 +130,7 @@ using master::SysClusterConfigEntryPB;
 
 namespace {
 
-const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
-const int kRegistrationWaitTimeSeconds = 45 * kTimeMultiplier;
 const int kTabletReportWaitTimeSeconds = 5;
 
 std::string GetClusterDataDirName(const MiniClusterOptions& options) {
@@ -463,17 +466,34 @@ Result<MiniMaster*> MiniCluster::GetLeaderMiniMaster() {
 }
 
 void MiniCluster::Shutdown() {
-  if (!running_)
-    return;
+  if (!running_) {
+    // It's possible for the cluster to not be running on shutdown when there's a bad status during
+    // startup.  We don't know how much initialization has been done, so continue with cleanup
+    // assuming the worst (that a lot of initialization was done).
+    LOG(INFO) << "Shutdown when mini cluster is not running (did mini cluster startup fail?)";
+  }
 
   for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-    tablet_server->Shutdown();
+    if (tablet_server) {
+      tablet_server->Shutdown();
+    } else {
+      // Unlike mini masters (below), it is not expected for this vector to have an uninitialized
+      // mini tserver.
+      LOG(ERROR) << "Found uninitialized mini tserver";
+    }
   }
   mini_tablet_servers_.clear();
 
   for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
-    master_server->Shutdown();
-    master_server.reset();
+    if (master_server) {
+      master_server->Shutdown();
+      master_server.reset();
+    } else {
+      // It's possible for a mini master in the vector to be uninitialized because the constructor
+      // initializes the vector with num_masters size and shutdown could happen before each mini
+      // master is initialized in case of a bad status during startup.
+      LOG(INFO) << "Found uninitialized mini master";
+    }
   }
   mini_masters_.clear();
 
@@ -506,13 +526,6 @@ Status MiniCluster::CleanTabletLogs() {
     RETURN_NOT_OK(tablet_server->CleanTabletLogs());
   }
   return Status::OK();
-}
-
-void MiniCluster::ShutdownMasters() {
-  for (shared_ptr<MiniMaster>& master_server : mini_masters_) {
-    master_server->Shutdown();
-    master_server.reset();
-  }
 }
 
 MiniMaster* MiniCluster::mini_master(size_t idx) {
@@ -601,7 +614,7 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
                                              vector<shared_ptr<TSDescriptor> >* descs) {
   Stopwatch sw;
   sw.start();
-  while (sw.elapsed().wall_seconds() < kRegistrationWaitTimeSeconds) {
+  while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       (*leader)->ts_manager().GetAllDescriptors(descs);
@@ -680,6 +693,25 @@ void MiniCluster::EnsurePortsAllocated(size_t new_num_masters, size_t new_num_ts
   }
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
+}
+
+Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
+  auto master_leader = VERIFY_RESULT(GetLeaderMiniMaster())->master();
+  const auto start_time = MonoTime::Now();
+  const auto deadline = start_time + timeout;
+  RETURN_NOT_OK(Wait(
+      [&]() -> Result<bool> {
+        return master_leader->catalog_manager_impl()->LastLoadBalancerRunTime() > start_time;
+      },
+      deadline, "LoadBalancer did not evaluate the cluster load"));
+
+  master::IsLoadBalancerIdleRequestPB req;
+  master::IsLoadBalancerIdleResponsePB resp;
+  return Wait(
+      [&]() -> Result<bool> {
+        return master_leader->catalog_manager_impl()->IsLoadBalancerIdle(&req, &resp).ok();
+      },
+      deadline, "IsLoadBalancerIdle");
 }
 
 server::SkewedClockDeltaChanger JumpClock(
@@ -860,6 +892,15 @@ std::vector<tablet::TabletPeerPtr> ListTableInactiveSplitTabletPeers(
     }
   }
   return result;
+}
+
+tserver::MiniTabletServer* GetLeaderForTablet(MiniCluster* cluster, const std::string& tablet_id) {
+  for (size_t i = 0; i < cluster->num_tablet_servers(); i++) {
+    if (cluster->mini_tablet_server(i)->server()->LeaderAndReady(tablet_id)) {
+      return cluster->mini_tablet_server(i);
+    }
+  }
+  return nullptr;
 }
 
 Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
@@ -1050,11 +1091,12 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     if (filter && !filter(peer.get())) {
       continue;
     }
-    auto intents_count = participant->TEST_CountIntents();
-    if (intents_count.first) {
-      result += intents_count.first;
+    auto intents_count_result = participant->TEST_CountIntents();
+    if (intents_count_result.ok() && intents_count_result->first) {
+      result += intents_count_result->first;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count.first, intents_count.second);
+                          peer->permanent_uuid(), intents_count_result->first,
+                          intents_count_result->second);
     }
   }
   return result;
@@ -1190,6 +1232,15 @@ Status WaitAllReplicasSynchronizedWithLeader(
                      peer->tablet_id(), peer->permanent_uuid(), it->second)));
   }
   return Status::OK();
+}
+
+Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
+  CHECK_NOTNULL(peer.get());
+  return LoggedWaitFor([peer] {
+        return peer->tablet()->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
+    },
+    timeout,
+    Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
 }
 
 }  // namespace yb

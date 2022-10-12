@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -22,6 +23,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Represents all the details of a cloud node that are of interest. */
 @JsonIgnoreProperties(
@@ -30,6 +33,8 @@ import org.apache.commons.lang3.StringUtils;
     ignoreUnknown = true)
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
+  public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -232,6 +237,9 @@ public class NodeDetails {
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")
   public boolean cronsActive = true;
 
+  @ApiModelProperty(value = "Used for configurations where each node can have only one process")
+  public UniverseDefinitionTaskBase.ServerType dedicatedTo = null;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(
@@ -259,6 +267,8 @@ public class NodeDetails {
     clone.placementUuid = this.placementUuid;
     clone.machineImage = this.machineImage;
     clone.ybPrebuiltAmi = this.ybPrebuiltAmi;
+    clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
+    clone.dedicatedTo = this.dedicatedTo;
     return clone;
   }
 
@@ -279,6 +289,10 @@ public class NodeDetails {
         .append(azUuid)
         .append(", placementUuid: ")
         .append(placementUuid)
+        .append(", dedicatedTo: ")
+        .append(dedicatedTo)
+        .append(", masterState: ")
+        .append(masterState)
         .append("}");
     return sb.toString();
   }
@@ -294,7 +308,7 @@ public class NodeDetails {
     if (!isActionAllowedOnState(actionType)) {
       String msg =
           String.format(
-              "Node %s is not in %s, but is in one of %s, so action %s is not allowed.",
+              "Node %s is in %s state, but not in one of %s, so action %s is not allowed.",
               nodeName,
               state,
               StringUtils.join(NodeState.allowedStatesForAction(actionType), ","),
@@ -373,5 +387,40 @@ public class NodeDetails {
 
   public UUID getNodeUuid() {
     return nodeUuid;
+  }
+
+  // The variables KubernetesPodName and KubernetesNamespace will
+  // eventually be set to correct values, till then we depend on the
+  // private_ip, which is the pod FQDN in single Kubernetes cluster
+  // setups. For multi Kubernetes cluster environments these values
+  // will always be set.
+  @JsonIgnore
+  public String getK8sPodName() {
+    String pod = this.cloudInfo.kubernetesPodName;
+    if (StringUtils.isBlank(pod)) {
+      LOG.warn(
+          "The pod name is blank for {}, inferring it from the first part of node private_ip",
+          this.nodeName);
+      if (StringUtils.isBlank(this.cloudInfo.private_ip)) {
+        throw new RuntimeException(this.nodeName + " has a blank private_ip (FQDN)");
+      }
+      pod = this.cloudInfo.private_ip.split("\\.")[0];
+    }
+    return pod;
+  }
+
+  @JsonIgnore
+  public String getK8sNamespace() {
+    String namespace = this.cloudInfo.kubernetesNamespace;
+    if (StringUtils.isBlank(namespace)) {
+      LOG.warn(
+          "The namesapce is blank for {}, inferring it from the third part of the node private_ip",
+          this.nodeName);
+      if (StringUtils.isBlank(this.cloudInfo.private_ip)) {
+        throw new RuntimeException(this.nodeName + " has a blank private_ip (FQDN)");
+      }
+      namespace = this.cloudInfo.private_ip.split("\\.")[2];
+    }
+    return namespace;
   }
 }

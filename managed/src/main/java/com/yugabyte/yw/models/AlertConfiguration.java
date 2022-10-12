@@ -69,6 +69,7 @@ public class AlertConfiguration extends Model {
           + "targetType, target, thresholds, thresholdUnit, template, durationSec, active, "
           + "destinationUUID, defaultDestination, maintenanceWindowUuids";
 
+  @ApiModel
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
     name("name"),
@@ -97,11 +98,13 @@ public class AlertConfiguration extends Model {
     }
   }
 
+  @ApiModel
   public enum TargetType {
     PLATFORM,
     UNIVERSE
   }
 
+  @ApiModel
   public enum Severity {
     SEVERE(2),
     WARNING(1);
@@ -147,7 +150,7 @@ public class AlertConfiguration extends Model {
   @NotNull
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Target type", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Target type", accessMode = READ_WRITE)
   private TargetType targetType;
 
   @NotNull
@@ -168,13 +171,13 @@ public class AlertConfiguration extends Model {
   @NotNull
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Threshold unit", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Threshold unit", accessMode = READ_WRITE)
   private Unit thresholdUnit;
 
   @NotNull
   @Column(columnDefinition = "Text", nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "Template name", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Template name", accessMode = READ_WRITE)
   private AlertTemplate template;
 
   @NotNull
@@ -334,9 +337,8 @@ public class AlertConfiguration extends Model {
       }
       expression.endOr();
     }
-    if (filter.getTemplate() != null) {
-      expression.eq("template", filter.getTemplate().name());
-    }
+
+    appendInClause(expression, "template", filter.getTemplatesStr());
     if (filter.getDestinationType() != null) {
       switch (filter.getDestinationType()) {
         case NO_DESTINATION:

@@ -89,7 +89,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      Set<NodeDetails> nodeList = toOrderedSet(fetchNodes(taskParams().upgradeOption));
+      Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
       // Run the pre-upgrade hooks
       createHookTriggerTasks(nodeList, true, false);
@@ -306,7 +306,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
       if (activeRole) {
         for (ServerType processType : processTypes) {
-          createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          if (!context.skipStartingProcesses) {
+            createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+          }
           if (processType == ServerType.CONTROLLER) {
             createWaitForYbcServerTask(new HashSet<NodeDetails>(singletonNodeList))
                 .setSubTaskGroupType(subGroupType);
@@ -582,12 +584,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
   }
 
-  protected LinkedHashSet<NodeDetails> toOrderedSet(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
-    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
-    nodeSet.addAll(nodes.getLeft());
-    nodeSet.addAll(nodes.getRight());
-    return nodeSet;
+  public LinkedHashSet fetchAllNodes(UpgradeOption upgradeOption) {
+    return toOrderedSet(fetchNodes(upgradeOption));
   }
 
   public ImmutablePair<List<NodeDetails>, List<NodeDetails>> fetchNodes(
@@ -685,6 +683,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean skipStartingProcesses = false;
     Consumer<NodeDetails> postAction;
   }
 }

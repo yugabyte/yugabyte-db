@@ -1,7 +1,7 @@
   services:
 
       - name: prometheusConfig
-        fileName: {{ yamlPath ".prometheus.fileName" }}
+        fileName: {{ installRoot }}/prometheus/conf/prometheus.yml
         contents: |
           # Copyright (c) YugaByte, Inc.
 
@@ -19,7 +19,7 @@
              monitor: 'swamper'
 
           rule_files:
-          - '/opt/yugabyte/swamper_rules/yugaware.ad.*.yml'
+          - '{{ installRoot }}/prometheus/swamper_rules/yugaware.ad.*.yml'
 
           # A list of scrape configurations.
           scrape_configs:
@@ -31,15 +31,18 @@
               - targets: ['127.0.0.1:{{ yamlPath ".prometheus.externalPort" }}']
 
           - job_name: 'platform'
+            scheme: https
+            tls_config:
+                insecure_skip_verify: true
             scrape_timeout:  {{ yamlPath ".prometheus.scrapeTimeout" }}s
             metrics_path: "/api/v1/prometheus_metrics"
             static_configs:
-              - targets: ['127.0.0.1:{{ yamlPath ".prometheus.appExternalPort" }}']
+              - targets: ['127.0.0.1:{{ yamlPath ".platform.containerExposedPort" }}']
 
           - job_name: "node"
             file_sd_configs:
               - files:
-                - '/opt/yugabyte/swamper_targets/node.*.json'
+                - '{{ installRoot }}/prometheus/swamper_targets/node.*.json'
             metric_relabel_configs:
             # Below relabels are required for smooth migration from node_exporter 0.13.0 to latest
             - source_labels: ["__name__"]
@@ -141,7 +144,7 @@
                 |glog_[^_]+_messages|follower_lag_ms"
             file_sd_configs:
               - files:
-                - '/opt/yugabyte/swamper_targets/yugabyte.*.json'
+                - '{{ installRoot }}/prometheus/swamper_targets/yugabyte.*.json'
             metric_relabel_configs:
             - source_labels: ["__name__"]
               regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)"
@@ -177,12 +180,13 @@
           Group=prometheus
           Type=simple
           ExecStart=/usr/local/bin/prometheus \
-          --config.file {{ yamlPath ".prometheus.fileName" }} \
-          --storage.tsdb.path {{ yamlPath ".prometheus.storagePath" }} \
-          --web.console.templates=/etc/prometheus/consoles \
-          --web.console.libraries=/etc/prometheus/console_libraries \
+          --config.file {{ installRoot }}/prometheus/conf/prometheus.yml \
+          --storage.tsdb.path {{ installRoot }}/prometheus/storage \
+          --web.console.templates={{ installRoot }}/prometheus/consoles \
+          --web.console.libraries={{ installRoot }}/prometheus/console_libraries \
           --web.enable-admin-api \
           --web.enable-lifecycle \
+          --web.listen-address=:{{ yamlPath ".prometheus.externalPort" }} \
           --query.max-concurrency={{ yamlPath ".prometheus.maxConcurrency" }} \
           --query.max-samples={{ yamlPath ".prometheus.maxSamples" }} \
           --query.timeout={{ yamlPath ".prometheus.timeout" }}s

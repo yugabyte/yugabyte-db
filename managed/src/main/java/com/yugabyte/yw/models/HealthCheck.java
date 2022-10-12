@@ -17,6 +17,7 @@ import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -46,6 +47,15 @@ public class HealthCheck extends Model {
       private List<String> details;
       private List<Metric> metrics;
       private String message;
+
+      public String toHumanReadableString() {
+        return String.format(
+            "%s (%s) - %s - '%s'",
+            nodeName,
+            node,
+            (StringUtils.isEmpty(process) ? message : message + " (" + process + ")"),
+            String.join("; ", details));
+      }
     }
 
     @Data

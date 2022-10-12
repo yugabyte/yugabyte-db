@@ -1184,6 +1184,8 @@ class PTSubscriptedColumn : public PTOperator0 {
   // Analyze LHS expression.
   virtual Status CheckLhsExpr(SemContext *sem_context) override;
 
+  virtual std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
+
  private:
   PTQualifiedNamePtr name_;
   PTExprListNode::SharedPtr args_;

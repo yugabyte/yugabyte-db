@@ -66,6 +66,7 @@
 
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -197,6 +198,7 @@ class TabletPeerTest : public YBTabletTest {
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
                                            nullptr /* retryable_requests */,
+                                           nullptr /* consensus_meta */,
                                            multi_raft_manager_.get()));
   }
 

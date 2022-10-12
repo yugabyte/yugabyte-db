@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
@@ -66,6 +67,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_lock.h"
@@ -748,13 +750,14 @@ TEST_F(QLTabletTest, WaitFlush) {
     }
   }
 
-  auto deadline = std::chrono::steady_clock::now() + 20s;
-  while (std::chrono::steady_clock::now() <= deadline) {
+  auto deadline = CoarseMonoClock::Now() + 20s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() <= deadline) {
     for (const auto& peer : peers) {
       auto flushed_op_id = ASSERT_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
       auto latest_entry_op_id = peer->log()->GetLatestEntryOpId();
       ASSERT_LE(flushed_op_id.index, latest_entry_op_id.index);
     }
+    SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
   for (const auto& peer : peers) {
@@ -1109,7 +1112,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
   workload.Setup();
   workload.Start();
 
-  while (workload.rows_inserted() < RegularBuildVsSanitizers(75000, 20000)) {
+  while (workload.rows_inserted() < RegularBuildVsSanitizers(60000, 20000)) {
     std::this_thread::sleep_for(10ms);
   }
 

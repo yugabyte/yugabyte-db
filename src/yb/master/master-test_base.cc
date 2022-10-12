@@ -53,10 +53,10 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);

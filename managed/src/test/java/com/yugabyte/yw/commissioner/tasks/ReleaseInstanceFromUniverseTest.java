@@ -148,8 +148,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.AnsibleDestroyServer,
-          TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
+          TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
@@ -159,8 +159,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Decommissioned")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Decommissioned")),
           Json.toJson(ImmutableMap.of()));
 
   private void assertReleaseInstanceSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {

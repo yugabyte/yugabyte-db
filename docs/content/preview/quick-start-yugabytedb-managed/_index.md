@@ -33,12 +33,35 @@ The quickest way to get started with YugabyteDB is to create a free Sandbox clus
 
 The first time you log in, YugabyteDB Managed provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
-- Connect to the database, load sample data, and run queries
+- Connect to the database
+- Load sample data and run queries
 - Explore a sample application
 
-To learn more about YugabyteDB Managed, see the following resources:
+After you complete the tutorial, learn more about managing clusters and your account features using the YugabyteDB Managed documentation.
 
-- [YugabyteDB Managed Documentation](../yugabyte-cloud/)
-- [YugabyteDB Managed FAQ](../faq/yugabytedb-managed-faq/)
+<div class="row cloud-laptop">
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
+        </div>
+        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
+        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-12 col-lg-6">
+    <div class="border two-side">
+      <div class="body">
+        <div class="box-top">
+          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
+        </div>
+        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
+        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
+      </div>
+    </div>
+  </div>
+</div>
 
 {{< readfile "managed-quick-start-include.md" >}}

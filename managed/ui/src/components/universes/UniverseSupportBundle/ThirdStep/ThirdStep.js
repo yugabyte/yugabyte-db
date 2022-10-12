@@ -174,7 +174,7 @@ export const ThirdStep = withRouter(({
             <TableHeaderColumn
               dataField="bundleUUID"
               dataFormat={(bundleUUID, row) => {
-                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, creatingBundle, setDeleteBundleObj);
+                return getActions(bundleUUID, row, router.push, handleDeleteBundle, isConfirmDeleteOpen, setIsConfirmDeleteOpen, handleDownloadBundle, row.status === 'Running', setDeleteBundleObj);
               }}
             />
           </BootstrapTable>

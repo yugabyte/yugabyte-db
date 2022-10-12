@@ -82,6 +82,7 @@ class PgDml : public PgStatement {
   Result<bool> GetNextRow(PgTuple *pg_tuple);
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
+  virtual void SetDBCatalogCacheVersion(uint32_t db_oid, uint64_t catalog_cache_version) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.

@@ -42,6 +42,9 @@
 #include "yb/util/locks.h"
 
 namespace yb {
+class ConsistentReadPoint;
+class XClusterSafeTimeMap;
+
 namespace tserver {
 
 #define PG_CLIENT_SESSION_METHODS \
@@ -79,9 +82,10 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
 
   PgClientSession(
+      uint64_t id,
       client::YBClient* client, const scoped_refptr<ClockBase>& clock,
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-      PgTableCache* table_cache, uint64_t id);
+      PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map);
 
   uint64_t id() const;
 
@@ -119,16 +123,21 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   client::YBTransactionPtr& Transaction(PgClientSessionKind kind);
   Status CheckPlainSessionReadTime();
 
+  // Set the read point to the databases xCluster safe time if consistent reads are enabled
+  Status UpdateReadPointForXClusterConsistentReads(
+      const PgPerformOptionsPB& options, ConsistentReadPoint* read_point);
+
   struct SessionData {
     client::YBSessionPtr session;
     client::YBTransactionPtr transaction;
   };
 
+  const uint64_t id_;
   client::YBClient& client_;
   scoped_refptr<ClockBase> clock_;
   const TransactionPoolProvider& transaction_pool_provider_;
   PgTableCache& table_cache_;
-  const uint64_t id_;
+  const XClusterSafeTimeMap* xcluster_safe_time_map_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;

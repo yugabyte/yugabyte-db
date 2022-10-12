@@ -840,7 +840,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
     pggate::PgWire::WriteInt64(0, &result_buffer_);
   }
   ++result_rows_;
-  int rscol_index = 0;
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       QLExprResult value;
@@ -859,7 +858,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
       }
       RETURN_NOT_OK(pggate::WriteColumn(value.Value(), &result_buffer_));
     }
-    rscol_index++;
   }
   return Status::OK();
 }

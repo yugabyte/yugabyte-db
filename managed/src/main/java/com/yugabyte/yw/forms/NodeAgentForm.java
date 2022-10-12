@@ -13,6 +13,7 @@ public class NodeAgentForm {
   public String ip;
   public String version;
   public State state;
+  public int port;
 
   // Helper method to create NodeAgent.
   public NodeAgent toNodeAgent(UUID customerUuid) {
@@ -20,6 +21,7 @@ public class NodeAgentForm {
     nodeAgent.customerUuid = customerUuid;
     nodeAgent.name = name;
     nodeAgent.ip = ip;
+    nodeAgent.port = port;
     nodeAgent.state = state;
     nodeAgent.version = version;
     nodeAgent.config = new HashMap<>();

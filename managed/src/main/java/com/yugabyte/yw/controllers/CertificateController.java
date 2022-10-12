@@ -130,6 +130,16 @@ public class CertificateController extends AuthenticatedController {
             throw new PlatformServiceException(BAD_REQUEST, message);
           }
         }
+      case K8SCertManager:
+        {
+          if (certContent == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Certificate content is required");
+          }
+          if (keyContent != null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Only certificate is expected");
+          }
+          break;
+        }
       default:
         {
           throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");

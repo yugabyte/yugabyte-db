@@ -1334,6 +1334,11 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
 }
 
 void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
+  if (state() == MonitoredTaskState::kAborted) {
+    VLOG(1) << " was aborted";
+    return;
+  }
+
   Status status;
   HybridTime safe_time;
   if (resp_.has_error()) {
@@ -1363,7 +1368,8 @@ BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
     : RetryingTSRpcTask(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
-                        backfill_tablet->tablet()->table().get()),
+                        backfill_tablet->tablet()->table().get(),
+                        /* async_task_throttler */ nullptr),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
       backfill_tablet_(backfill_tablet),
       start_key_(start_key),

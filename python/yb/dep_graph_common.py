@@ -177,6 +177,7 @@ class DepGraphConf:
     incomplete_build: bool
     file_regex: Optional[str]
     src_dir_paths: List[str]
+    never_run_build: bool
 
     # Extra arguments to pass to yb_build.sh.
     build_args: Optional[str]
@@ -188,7 +189,8 @@ class DepGraphConf:
             incomplete_build: bool,
             file_regex: Optional[str],
             file_name_glob: Optional[str],
-            build_args: Optional[str]) -> None:
+            build_args: Optional[str],
+            never_run_build: bool) -> None:
         self.verbose = verbose
         self.build_root = os.path.realpath(build_root)
         self.is_ninja = is_ninja_build_root(self.build_root)
@@ -212,6 +214,7 @@ class DepGraphConf:
             if not os.path.isdir(dir_path):
                 raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
         self.build_args = build_args
+        self.never_run_build = never_run_build
 
 
 class Node:
@@ -823,7 +826,7 @@ class DependencyGraph:
                     (rel_path, pb_h_cc_nodes_by_rel_path[rel_path]))
 
         # This is what we've verified above in two directions separately.
-        assert(set(proto_node_by_rel_path.keys()) == set(pb_h_cc_nodes_by_rel_path.keys()))
+        assert set(proto_node_by_rel_path.keys()) == set(pb_h_cc_nodes_by_rel_path.keys())
 
         for rel_path in proto_node_by_rel_path.keys():
             proto_node = proto_node_by_rel_path[rel_path]

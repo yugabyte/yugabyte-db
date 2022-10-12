@@ -89,6 +89,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.DnsManager;
@@ -107,6 +108,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -767,7 +769,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to check memory limit on the universe nodes */
   public SubTaskGroup createAvailabeMemoryCheck(
-      List<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
+      Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CheckMemory", executor);
     CheckMemory task = createTask(CheckMemory.class);
     CheckMemory.Params params = new CheckMemory.Params();
@@ -788,17 +790,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task */
   public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
-    return createPersistResizeNodeTask(instanceType, volumeSize, null);
+    return createPersistResizeNodeTask(instanceType, volumeSize, null, null, null);
   }
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
   public SubTaskGroup createPersistResizeNodeTask(
-      String instanceType, Integer volumeSize, List<UUID> clusterIds) {
+      String instanceType,
+      Integer volumeSize,
+      String masterInstanceType,
+      Integer masterVolumeSize,
+      List<UUID> clusterIds) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PersistResizeNode", executor);
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.universeUUID = taskParams().universeUUID;
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
+    params.masterInstanceType = masterInstanceType;
+    params.masterVolumeSize = masterVolumeSize;
     params.clusters = clusterIds;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
@@ -863,12 +871,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to ping yb-controller servers on each node */
-  public SubTaskGroup createWaitForYbcServerTask(Set<NodeDetails> nodeDetailsSet) {
+  public SubTaskGroup createWaitForYbcServerTask(Collection<NodeDetails> nodeDetailsSet) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("WaitForYbcServer", executor);
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.nodeDetailsSet = nodeDetailsSet;
+    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -884,6 +892,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param deleteRootVolumes if true, the volumes are deleted.
    */
   public SubTaskGroup createDestroyServerTasks(
+      Universe universe,
       Collection<NodeDetails> nodes,
       boolean isForceDelete,
       boolean deleteNode,
@@ -913,9 +922,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           continue;
         }
       }
+      Cluster cluster = universe.getCluster(node.placementUuid);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -950,7 +960,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be paused.
    */
-  public SubTaskGroup createPauseServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createPauseServerTasks(Universe universe, Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PauseServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -961,8 +971,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         continue;
       }
       PauseServer.Params params = new PauseServer.Params();
+      Cluster cluster = universe.getCluster(node.placementUuid);
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -989,7 +1000,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes : a collection of nodes that need to be resumed.
    */
-  public SubTaskGroup createResumeServerTasks(Collection<NodeDetails> nodes) {
+  public SubTaskGroup createResumeServerTasks(Universe universe) {
+    Collection<NodeDetails> nodes = universe.getNodes();
     SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ResumeServer", executor);
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
@@ -1000,9 +1012,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 "Node %s doesn't have a private IP. Skipping node resume.", node.nodeName));
         continue;
       }
+      Cluster cluster = universe.getCluster(node.placementUuid);
       ResumeServer.Params params = new ResumeServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = taskParams().deviceInfo;
+      params.deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -1071,12 +1084,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTask(
-      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      NodeDetails node,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
-    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0, paramsCustomizer));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createServerControlTask(
+      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTask(node, processType, command, params -> {});
   }
 
   /**
@@ -1134,21 +1155,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTasks(
-      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      List<NodeDetails> nodes,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+      subTaskGroup.addSubTask(
+          getServerControlTask(node, processType, command, 0, paramsCustomizer));
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  // NO-OP that won't customize params.
+  public SubTaskGroup createServerControlTasks(
+      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTasks(nodes, processType, command, params -> {});
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
       NodeDetails node,
       UniverseDefinitionTaskBase.ServerType processType,
       String command,
-      int sleepAfterCmdMillis) {
+      int sleepAfterCmdMillis,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
     // Add the node name.
     params.nodeName = node.nodeName;
@@ -1169,6 +1201,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
+    paramsCustomizer.accept(params);
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1319,9 +1352,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void checkAndCreateReadWriteTestTableTask(Cluster primaryCluster) {
+    boolean isWriteReadTableRelease =
+        CommonUtils.isReleaseEqualOrAfter(
+            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion);
+    boolean isWriteReadTableEnabled =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
     if (primaryCluster.userIntent.enableYSQL
-        && CommonUtils.isReleaseEqualOrAfter(
-            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
+        && isWriteReadTableRelease
+        && isWriteReadTableEnabled) {
       // Create read-write test table
       List<NodeDetails> tserverLiveNodes =
           getUniverse()
@@ -1627,6 +1667,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = getUserIntent();
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1639,6 +1680,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      // Start universe with systemd
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -1898,7 +1941,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             Backup.BackupVersion.V2);
     backup.setTaskUUID(userTaskUUID);
     backupTableParams.backupUuid = backup.backupUUID;
-
+    backupTableParams.baseBackupUUID = backup.baseBackupUUID;
     for (BackupTableParams backupParams : backupTableParams.backupList) {
       createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
     }
@@ -2454,7 +2497,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UserIntent userIntent = cluster.userIntent;
     preflightTaskParams.nodeName = currentNode.nodeName;
     preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-    preflightTaskParams.deviceInfo = userIntent.deviceInfo;
+    preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
     preflightTaskParams.rootCA = rootCA;
@@ -2859,18 +2902,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createDeleteXClusterConfigEntryTask(
-      XClusterConfig xClusterConfig, boolean forceDelete) {
+  protected SubTaskGroup createDeleteXClusterConfigEntryTask(XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("DeleteXClusterConfigEntry", executor);
-    DeleteXClusterConfigEntry.Params DeleteXClusterConfigEntryParams =
-        new DeleteXClusterConfigEntry.Params();
-    DeleteXClusterConfigEntryParams.universeUUID = xClusterConfig.targetUniverseUUID;
-    DeleteXClusterConfigEntryParams.xClusterConfig = xClusterConfig;
-    DeleteXClusterConfigEntryParams.forceDelete = forceDelete;
+    XClusterConfigTaskParams deleteXClusterConfigEntryParams = new XClusterConfigTaskParams();
+    deleteXClusterConfigEntryParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    deleteXClusterConfigEntryParams.xClusterConfig = xClusterConfig;
 
     DeleteXClusterConfigEntry task = createTask(DeleteXClusterConfigEntry.class);
-    task.initialize(DeleteXClusterConfigEntryParams);
+    task.initialize(deleteXClusterConfigEntryParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createResetXClusterConfigEntryTask(XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("ResetXClusterConfigEntry", executor);
+    XClusterConfigTaskParams resetXClusterConfigEntryParams = new XClusterConfigTaskParams();
+    resetXClusterConfigEntryParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    resetXClusterConfigEntryParams.xClusterConfig = xClusterConfig;
+
+    ResetXClusterConfigEntry task = createTask(ResetXClusterConfigEntry.class);
+    task.initialize(resetXClusterConfigEntryParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2914,7 +2968,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             .getSourceRootCertDirPath());
   }
 
-  protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
+  protected void createDeleteXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig, boolean keepEntry) {
     // Delete the replication CDC streams on the target universe.
     createDeleteReplicationTask(xClusterConfig, true /* ignoreErrors */)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
@@ -2940,9 +2995,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
 
-    // Delete the xCluster config from DB.
-    createDeleteXClusterConfigEntryTask(xClusterConfig, false /* forceDelete */)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    if (keepEntry) {
+      createResetXClusterConfigEntryTask(xClusterConfig)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    } else {
+      // Delete the xCluster config from DB.
+      createDeleteXClusterConfigEntryTask(xClusterConfig)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    }
+  }
+
+  protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
+    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */);
   }
 
   /**

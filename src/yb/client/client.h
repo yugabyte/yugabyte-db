@@ -46,6 +46,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/cdc/cdc_producer.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 
@@ -240,6 +241,11 @@ class YBClient {
   Status WaitForCreateTableToFinish(const string& table_id);
   Status WaitForCreateTableToFinish(const string& table_id,
                                             const CoarseTimePoint& deadline);
+
+  // Wait for delete table to finish.
+  Status WaitForDeleteTableToFinish(const string& table_id);
+  Status WaitForDeleteTableToFinish(const string& table_id,
+                                    const CoarseTimePoint& deadline);
 
   // Truncate the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully truncated before returning.
@@ -580,7 +586,12 @@ class YBClient {
       const master::NamespaceIdentifierPB& ns_identifier,
       bool include_indexes = false);
 
-  Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
+  Result<cdc::EnumOidLabelMap> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
+
+  Result<cdc::CompositeAttsMap> GetPgCompositeAttsMap(const NamespaceName& ns_name);
+
+  Result<pair<Schema, uint32_t>> GetTableSchemaFromSysCatalog(
+      const TableId& table_id, const uint64_t read_time);
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
@@ -641,6 +652,9 @@ class YBClient {
   Status CreateTransactionsStatusTable(
       const std::string& table_name,
       const master::ReplicationInfoPB* replication_info = nullptr);
+
+  // Add a tablet to a transaction table.
+  Status AddTransactionStatusTablet(const TableId& table_id);
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
@@ -739,6 +753,7 @@ class YBClient {
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
                         master::IncludeInactive include_inactive,
+                        master::IncludeDeleted include_deleted,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);

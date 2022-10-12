@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
 import { connect } from 'react-redux';
 
 import { GraphPanel } from '../../metrics';

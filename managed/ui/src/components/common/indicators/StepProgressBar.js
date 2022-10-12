@@ -25,7 +25,7 @@ export default class StepProgressBar extends Component {
         title: 'Done'
       }
     ];
-    // if the task is failed and all sub task is in unknown state, then show failure
+    // if the task is failed and all sub task is in unknown state, then show failure.
     if(taskStatus === 'Failure' && this.isFailedIndex(taskDetailsNormalized) === -1){
       taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = 'Failure';
     }
@@ -38,7 +38,7 @@ export default class StepProgressBar extends Component {
       for (let i = 0; i < this.isRunningIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-succeed';
       }
-    } else {
+    } else if (taskStatus !== 'Created' && taskStatus !== 'Abort' && taskStatus !=='Running') {
       taskDetailsNormalized.forEachclass = 'finished';
       taskDetailsNormalized[taskDetailsNormalized.length - 1].class = 'finished';
     }
@@ -65,28 +65,25 @@ export default class StepProgressBar extends Component {
       }
       return null;
     };
-
     const taskDetailsNormalized = this.normalizeTasks(taskDetails, status);
 
-    const tasksTotal = taskDetailsNormalized.length;
+    const tasksTotal = taskDetailsNormalized.length - 1;
     const taskIndex = taskDetailsNormalized.findIndex((element) => {
       return (
         element.state === 'Running' || element.state === 'Failure' || element.state === 'Aborted'
       );
     });
-
     const progressbarClass =
-      this.isFailedIndex(taskDetailsNormalized) > -1
+        (status === 'Failure' || status === 'Aborted')
         ? 'failed'
-        : this.isRunningIndex(taskDetailsNormalized) > -1
+        : (status === 'Created' || status === 'Abort' || status === 'Running')
         ? 'running'
         : 'finished';
     const barWidth =
-      taskIndex === -1
-        ? '100%'
+        tasksTotal === 0
+        ? ((status !== 'Success')? '0%' : '100%')
         : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
-            (tasksTotal - 1) +
-          '%';
+            tasksTotal + '%';
 
     const listLabels = taskDetailsNormalized.map(function (item, idx) {
       taskClassName = getTaskClass(item.state);

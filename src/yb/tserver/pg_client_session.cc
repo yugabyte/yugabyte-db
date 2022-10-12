@@ -39,7 +39,9 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_table_cache.h"
+#include "yb/tserver/xcluster_safe_time_map.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -359,14 +361,15 @@ client::YBSessionPtr CreateSession(
 } // namespace
 
 PgClientSession::PgClientSession(
-    client::YBClient* client, const scoped_refptr<ClockBase>& clock,
+    uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, uint64_t id)
-    : client_(*client),
+    PgTableCache* table_cache, const XClusterSafeTimeMap* xcluster_safe_time_map)
+    : id_(id),
+      client_(*client),
       clock_(clock),
       transaction_pool_provider_(transaction_pool_provider.get()),
-      table_cache_(*table_cache), id_(id) {
-}
+      table_cache_(*table_cache),
+      xcluster_safe_time_map_(xcluster_safe_time_map) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -532,11 +535,40 @@ Status PgClientSession::RollbackToSubTransaction(
     const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Rollback sub transaction $0, when not transaction is running",
-                req.sub_transaction_id()));
-  return Transaction(PgClientSessionKind::kPlain)->RollbackToSubTransaction(
-      req.sub_transaction_id(), context->GetClientDeadline());
+  /*
+   * Currently we do not support a transaction block that has both DDL and DML statements (we
+   * support it syntactically but not semantically). Thus, when a DDL is encountered in a
+   * transaction block, a separate transaction is created for the DDL statement, which is
+   * committed at the end of that statement. This is why there are 2 session objects here, one
+   * corresponds to the DML transaction, and the other to a possible separate transaction object
+   * created for the DDL. However, subtransaction-id increases across both sessions. Also,
+   * it is not possible to rollback to a savepoint created for the DML transaction from the DDL
+   * statement, i.e. the following sequence of events is not possible:
+   * -- Start DML
+   * ---- Commands...
+   * ---- Savepoint 1
+   * ---- Start DDL
+   * ------ Commands
+   * ------ Savepoint 2
+   * ------ Commands
+   * ------ Rollback to Savepoint 1 -- Not possible, can only rollback to Savepoint 1.
+   * ---- DDL committed at this point
+   * ---- Rollback to Savepoint 2 -- Again not possible, the DDL is already committed.
+   * The above is not possible because we do not allow multiple statements in a single DDL txn.
+   * Because of the above properties, when we need to rollback to a savepoint, the subtransaction-id
+   * can only have been part of one session.
+   */
+  for (auto& session : sessions_) {
+    auto transaction = session.transaction;
+    if (transaction
+        && transaction->HasSubTransaction(req.sub_transaction_id())) {
+      return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
+                                                   context->GetClientDeadline());
+    }
+  }
+  return STATUS(IllegalState,
+                Format("Rollback sub transaction $0, when no transaction is running",
+                       req.sub_transaction_id()));
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -544,16 +576,23 @@ Status PgClientSession::SetActiveSubTransaction(
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
 
+  auto kind = PgClientSessionKind::kPlain;
   if (req.has_options()) {
-    RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
-    txn_serial_no_ = req.options().txn_serial_no();
+    if (req.options().ddl_mode()) {
+      kind = PgClientSessionKind::kDdl;
+    } else {
+      RETURN_NOT_OK(BeginTransactionIfNecessary(req.options(), context->GetClientDeadline()));
+      txn_serial_no_ = req.options().txn_serial_no();
+    }
   }
 
-  SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
-         Format("Set active sub transaction $0, when not transaction is running",
+  auto transaction = Transaction(kind);
+
+  SCHECK(transaction, IllegalState,
+         Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
-  Transaction(PgClientSessionKind::kPlain)->SetActiveSubTransaction(req.sub_transaction_id());
+  transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
 
@@ -630,6 +669,40 @@ void PgClientSession::ProcessReadTimeManipulation(ReadTimeManipulation manipulat
   FATAL_INVALID_ENUM_VALUE(ReadTimeManipulation, manipulation);
 }
 
+Status PgClientSession::UpdateReadPointForXClusterConsistentReads(
+    const PgPerformOptionsPB& options, ConsistentReadPoint* read_point) {
+  // Early exit if namespace not provided or atomic reads not enabled
+  if (options.namespace_id().empty() || xcluster_safe_time_map_ == nullptr ||
+      !options.use_xcluster_database_consistency()) {
+    return Status::OK();
+  }
+
+  auto safe_time = xcluster_safe_time_map_->GetSafeTime(options.namespace_id());
+
+  if (safe_time) {
+    RSTATUS_DCHECK(
+        !safe_time->is_special(), TryAgain,
+        Format("xCluster safe time for namespace $0 is invalid", options.namespace_id()));
+
+    // read_point is set for Distributed txns.
+    // Single shard implicit txn will not have read_point set and the serving tablet uses its latest
+    // time. If it read_point not set, or set to a time ahead of the xcluster safe time then we want
+    // to reset it back to the safe time.
+    if (read_point->GetReadTime().read.is_special() ||
+        read_point->GetReadTime().read > safe_time.get()) {
+      read_point->SetReadTime(ReadHybridTime::SingleTime(safe_time.get()), {} /* local_limits */);
+      VLOG_WITH_PREFIX(3) << "Reset read time to xCluster safe time: " << read_point->GetReadTime();
+    }
+  } else {
+    // NotFound is the only acceptable status
+    if (!safe_time.status().IsNotFound()) {
+      return safe_time.status();
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<std::pair<client::YBSession*, PgClientSession::UsedReadTimePtr>>
 PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint deadline) {
   const auto& options = req.options();
@@ -665,9 +738,8 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
         IllegalState,
         "Read time manipulation can't be specified for kDdl/ kCatalog transactions");
     ProcessReadTimeManipulation(options.read_time_manipulation());
-    if (options.has_read_time() &&
-        (options.read_time().has_read_ht() || options.use_catalog_session())) {
-      const auto read_time = options.read_time().has_read_ht()
+    if (options.has_read_time() || options.use_catalog_session()) {
+      const auto read_time = options.has_read_time() && options.read_time().has_read_ht()
           ? ReadHybridTime::FromPB(options.read_time()) : ReadHybridTime();
       session->SetReadPoint(read_time);
       if (read_time) {
@@ -692,6 +764,8 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
       VLOG_WITH_PREFIX(3) << "Keep read time: " << session->read_point()->GetReadTime();
     }
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, session->read_point()));
 
   if (options.defer_read_point()) {
     // This call is idempotent, meaning it has no effect after the first call.
@@ -766,6 +840,9 @@ Status PgClientSession::BeginTransactionIfNecessary(
                         << ", new read time";
     RETURN_NOT_OK(txn->Init(isolation));
   }
+
+  RETURN_NOT_OK(UpdateReadPointForXClusterConsistentReads(options, &txn->read_point()));
+
   if (saved_priority_) {
     priority = *saved_priority_;
     saved_priority_ = boost::none;

@@ -55,7 +55,7 @@ This document uses a client application based on the [yb-sample-apps](https://gi
 Also, because you cannot use read replicas without a primary cluster, ensure that you have the latter available. The following command sets up a primary cluster of three nodes in cloud `c`, region `r` and zones `z1`, `z2`, and `z3`:
 
 ```shell
-$ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_flags "placement_uuid=live,max_stale_read_bound_time_ms=60000000”
+$ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_flags "placement_uuid=live,max_stale_read_bound_time_ms=60000000"
 ```
 
 Output:
@@ -204,7 +204,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                --value_size 1024 --local_reads --with_local_dc r
 ```
 
-The following illustration demonstrates the result of exectuting the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):):
+The following illustration demonstrates the result of executing the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/):):
 
 ![img](/images/explore/multi-region-deployments/read-replicas5.png)
 
@@ -220,7 +220,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                --value_size 1024 --local_reads --with_local_dc r2
 ```
 
-The following illustration demonstrates the result of exectuting the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/)):
+The following illustration demonstrates the result of executing the preceding command (visible via [YugabyteDB Anywhere](/preview/yugabyte-platform/)):
 
 ![img](/images/explore/multi-region-deployments/read-replicas6.png)
 
@@ -228,7 +228,7 @@ For information on deploying read replicas, see [Read Replica Clusters](../../..
 
 ## Fault Tolerance
 
-In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the RAFT group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the RAFT leader (the default is 60 seconds). For "write once, read many times” workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads such that they continue to read (which would not be possible without follower reads).
+In the strong consistency mode (default), more failures can be tolerated by increasing the number of replicas: to tolerate a `k` number of failures, `2k+1` replicas are required in the RAFT group. However, follower reads and observer reads can provide Cassandra-style `CL.ONE` fault tolerance. The  `max_stale_read_bound_time_ms` GFlag controls how far behind the followers are allowed to be before they redirect reads back to the RAFT leader (the default is 60 seconds). For "write once, read many times" workloads, this number could be increased. By stopping nodes, you can induce behavior of follower and observer reads such that they continue to read (which would not be possible without follower reads).
 
 The following command starts a read-only workload:
 

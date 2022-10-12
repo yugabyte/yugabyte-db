@@ -54,5 +54,19 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 // Reads the given file and updates the value of all flags specified in the file. Returns true on
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);
+
+Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value);
+
+using PgConfigReloader = std::function<Status(void)>;
+void RegisterPgConfigReloader(const PgConfigReloader reloader);
+
+YB_STRONGLY_TYPED_BOOL(SetFlagForce);
+YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE)(PG_SET_FAILED));
+
+// Set the current value of the flag if it is runtime safe or if force is set. old_value is only
+// set on success.
+SetFlagResult SetFlag(
+    const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
+    string* output_msg);
 } // namespace yb
 #endif /* YB_UTIL_FLAGS_H */

@@ -491,9 +491,11 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
         stdout (str): output log
         stderr (str): error logs
     """
+    attempts = retries_on_failure + 1
+
     while retries_on_failure >= 0:
         logging.info("[app] Attempt #{} to execute remote command..."
-                     .format(retries_on_failure + 1))
+                     .format(attempts - retries_on_failure))
         try:
             ssh2_enabled = kwargs.get('ssh2_enabled', False)
             ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)

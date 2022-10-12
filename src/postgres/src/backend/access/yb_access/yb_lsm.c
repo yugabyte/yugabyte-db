@@ -363,6 +363,13 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
+	/*
+	 * Information is lacking for hypothetical index in order for estimation
+	 * in YB to work.
+	 * So we skip hypothetical index.
+	 */
+	if (path->indexinfo->hypothetical)
+		return;
 	ybcIndexCostEstimate(root,
 						 path,
 						 indexSelectivity,
@@ -476,8 +483,5 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 void
 ybcinendscan(IndexScanDesc scan)
 {
-	YbScanDesc ybscan = (YbScanDesc)scan->opaque;
-	Assert(PointerIsValid(ybscan));
-	YBCPgDeleteStatement(ybscan->handle);
-	pfree(ybscan);
+	ybc_free_ybscan((YbScanDesc)scan->opaque);
 }

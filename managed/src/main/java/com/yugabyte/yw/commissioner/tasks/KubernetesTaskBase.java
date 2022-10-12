@@ -137,8 +137,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     Map<String, Object> universeOverrides =
         HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
-    Map<String, Object> azsOverrides =
-        HelmUtils.convertYamlToMap(primaryCluster.userIntent.azOverrides);
+    Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
+    if (azsOverrides == null) {
+      azsOverrides = new HashMap<>();
+    }
 
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -179,14 +181,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
-      Object azOverridesObj =
-          azsOverrides.getOrDefault(
-              PlacementInfoUtil.getAZNameFromUUID(provider, azUUID), new HashMap<>());
-      if (!(azOverridesObj instanceof Map)) {
-        throw new IllegalArgumentException(
-            String.format("For AZ %s, helm overrides are not passed as map", azCode));
-      }
-      Map<String, Object> azOverrides = (Map<String, Object>) azOverridesObj;
+      String azOverridesStr =
+          azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+      Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
 
       // This will always be false in the case of a new universe.
       if (activeDeploymentConfigs.containsKey(azUUID)) {
@@ -289,11 +286,41 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String softwareVersion,
       int waitTime,
       String universeOverridesStr,
-      String azOverridesStr,
+      Map<String, String> azsOverrides,
       boolean masterChanged,
       boolean tserverChanged,
       boolean newNamingStyle,
       boolean isReadOnlyCluster) {
+    upgradePodsTask(
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        waitTime,
+        universeOverridesStr,
+        azsOverrides,
+        masterChanged,
+        tserverChanged,
+        newNamingStyle,
+        isReadOnlyCluster,
+        CommandType.HELM_UPGRADE);
+  }
+
+  public void upgradePodsTask(
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      int waitTime,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean masterChanged,
+      boolean tserverChanged,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -341,7 +368,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
 
     Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
-    Map<String, Object> azsOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -371,16 +397,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
 
       Map<String, String> config = newPlacement.configs.get(azUUID);
-
-      Object azOverridesObj =
-          azsOverrides.getOrDefault(
-              PlacementInfoUtil.getAZNameFromUUID(provider, azUUID), new HashMap<>());
-      if (!(azOverridesObj instanceof Map)) {
-        throw new IllegalArgumentException(
-            String.format("For AZ %s, helm overrides are not passed as map", azCode));
-      }
-      Map<String, Object> azOverrides = (Map<String, Object>) azOverridesObj;
-
+      String azOverridesStr =
+          azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+      Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
       // Upgrade the master pods individually for each deployment.
       for (int partition = numPods - 1; partition >= 0; partition--) {
         // Possible scenarios:
@@ -415,8 +434,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
+        String podName =
+            getPodName(
+                partition,
+                azCode,
+                serverType,
+                nodePrefix,
+                isMultiAz,
+                newNamingStyle,
+                isReadOnlyCluster);
         createSingleKubernetesExecutorTaskForServerType(
-            CommandType.HELM_UPGRADE,
+            commandType,
             tempPI,
             azCode,
             masterAddresses,
@@ -427,16 +455,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             tserverPartition,
             universeOverrides,
             azOverrides,
-            isReadOnlyCluster);
-        String podName =
-            getPodName(
-                partition,
-                azCode,
-                serverType,
-                nodePrefix,
-                isMultiAz,
-                newNamingStyle,
-                isReadOnlyCluster);
+            isReadOnlyCluster,
+            podName);
+
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
             podName,
@@ -468,7 +489,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean instanceTypeChanged,
       boolean isMultiAz,
       Provider provider,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -509,8 +531,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
     Map<String, Object> universeOverrides =
         HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
-    Map<String, Object> azsOverrides =
-        HelmUtils.convertYamlToMap(primaryCluster.userIntent.azOverrides);
+    Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
+    if (azsOverrides == null) {
+      azsOverrides = new HashMap<>();
+    }
 
     for (Entry<UUID, Map<String, String>> entry : currPlacement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -535,14 +559,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
             newPlacement.masters.getOrDefault(azUUID, 0);
 
-        Object azOverridesObj =
-            azsOverrides.getOrDefault(
-                PlacementInfoUtil.getAZNameFromUUID(provider, azUUID), new HashMap<>());
-        if (!(azOverridesObj instanceof Map)) {
-          throw new IllegalArgumentException(
-              String.format("For AZ %s, helm overrides are not passed as map", azCode));
-        }
-        Map<String, Object> azOverrides = (Map<String, Object>) azOverridesObj;
+        String azOverridesStr =
+            azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+        Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
 
         helmDeletes.addSubTask(
             createKubernetesExecutorTask(
@@ -581,7 +600,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         // If the namespace is configured at the AZ, we don't delete
         // it, as it is not created by us.
-        if (config.get("KUBENAMESPACE") == null) {
+        // In case of new naming style other AZs also run in the same namespace so skip deleting
+        // namespace.
+        if (config.get("KUBENAMESPACE") == null && !newNamingStyle) {
           // Delete the namespaces of the deployments.
           namespaceDeletes.addSubTask(
               createKubernetesExecutorTask(
@@ -809,7 +830,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         0 /* tserver partition */,
         null, /* universeOverrides */
         null, /* azOverrides */
-        isReadOnlyCluster);
+        isReadOnlyCluster,
+        null);
   }
 
   // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
@@ -825,7 +847,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int tserverPartition,
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
-      boolean isReadOnlyCluster) {
+      boolean isReadOnlyCluster,
+      String podName) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
@@ -874,6 +897,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
+    params.podName = podName;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

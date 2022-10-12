@@ -352,7 +352,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createStartTserverProcessTasks(newTservers);
 
       if (universe.isYbcEnabled()) {
-        createStartYbcProcessTasks(newTservers);
+        createStartYbcProcessTasks(
+            newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
       }
     }
     if (!nodesToProvision.isEmpty()) {
@@ -470,6 +471,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

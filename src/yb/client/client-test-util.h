@@ -61,6 +61,7 @@ void ScanTableToStrings(const TableHandle& table, std::vector<std::string>* row_
 
 // Scans in LEADER_ONLY mode, returning stringified rows.
 std::vector<std::string> ScanTableToStrings(const TableHandle& table);
+std::vector<std::string> ScanTableToStrings(const YBTableName& table_name, YBClient* client);
 
 // Count the number of rows in the table in LEADER_ONLY mode.
 int64_t CountTableRows(const TableHandle& table);

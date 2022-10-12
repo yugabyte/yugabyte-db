@@ -25,7 +25,6 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -40,6 +39,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
@@ -524,11 +524,7 @@ Result<PerformFuture> PgSession::Perform(
   tserver::PgPerformOptionsPB options;
   if (use_catalog_session) {
     if (catalog_read_time_) {
-      if (*catalog_read_time_) {
-        catalog_read_time_->ToPB(options.mutable_read_time());
-      } else {
-        options.mutable_read_time();
-      }
+      catalog_read_time_.ToPB(options.mutable_read_time());
     }
     options.set_use_catalog_session(true);
   } else {
@@ -542,7 +538,33 @@ Result<PerformFuture> PgSession::Perform(
   }
   options.set_force_global_transaction(global_transaction);
 
+  // For DDLs we always read latest data.
+  options.set_use_xcluster_database_consistency(
+      !pg_txn_manager_->IsDdlMode() &&
+      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE);
+
   auto promise = std::make_shared<std::promise<PerformResult>>();
+
+  // If all operations belong to the same database then set the namespace.
+  // DDLs are ignored as they have operations in both template1 and the user database.
+  // Ex: create database and create table
+  if (!pg_txn_manager_->IsDdlMode() && !ops.relations.empty()) {
+    PgOid database_oid = ops.relations[0].database_oid;
+    for (const auto& relation : ops.relations) {
+      if (PREDICT_FALSE(database_oid != relation.database_oid)) {
+        // We do not expect this to be true. Adding a log to catch violation just in case.
+        YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
+            "Operations from multiple databases ('$0', '$1') found in a single Perform step",
+            database_oid, relation.database_oid);
+        database_oid = kPgInvalidOid;
+        break;
+      }
+    }
+
+    if (database_oid != kPgInvalidOid) {
+      options.set_namespace_id(GetPgsqlNamespaceId(database_oid));
+    }
+  }
 
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
@@ -572,6 +594,19 @@ Result<uint64_t> PgSession::GetSharedCatalogVersion() {
   } else {
     return STATUS(NotSupported, "Tablet server shared memory has not been opened");
   }
+}
+
+Result<uint64_t> PgSession::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  if (tserver_shared_object_) {
+    return (**tserver_shared_object_).ysql_db_catalog_version(db_oid_shm_index);
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgSession::GetTserverCatalogVersionInfo() {
+  return VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo());
 }
 
 Result<uint64_t> PgSession::GetSharedAuthKey() {
@@ -644,17 +679,6 @@ void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
   Erase(&fk_reference_cache_, key);
 }
 
-Status PgSession::PatchStatus(const Status& status, const PgObjectIds& relations) {
-  if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
-    auto op_index = OpIndex::ValueFromStatus(status);
-    if (op_index && *op_index < relations.size()) {
-      return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
-          .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
-    }
-  }
-  return status;
-}
-
 Result<int> PgSession::TabletServerCount(bool primary_only) {
   return pg_client_.TabletServerCount(primary_only);
 }
@@ -673,6 +697,10 @@ void PgSession::SetTimeout(const int timeout_ms) {
 
 void PgSession::ResetCatalogReadPoint() {
   catalog_read_time_ = ReadHybridTime();
+}
+
+bool PgSession::HasCatalogReadPoint() const {
+  return static_cast<bool>(catalog_read_time_);
 }
 
 void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {

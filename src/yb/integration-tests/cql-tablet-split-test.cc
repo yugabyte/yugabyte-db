@@ -35,6 +35,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -43,7 +44,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;  // NOLINT
@@ -502,6 +502,7 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
     // Lower SST block size to have multiple entries in index and be able to detect a split key.
     tserver_flags.push_back(Format(
         "--db_block_size_bytes=$0", std::min(FLAGS_db_block_size_bytes, kSplitThreshold / 8)));
+    tserver_flags.push_back("--cleanup_split_tablets_interval_sec=5");
 
     for (auto& flag : common_flags) {
       master_flags.push_back(flag);

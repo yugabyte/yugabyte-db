@@ -127,6 +127,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
+  [[nodiscard]] bool HasCatalogReadPoint() const;
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -279,9 +280,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  // Return the local tserver's catalog version stored in shared memory or an error if the shared
-  // memory has not been initialized (e.g. in initdb).
+  // Return the local tserver's global catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedCatalogVersion();
+
+  // Return the local tserver's per-db catalog version stored in shared memory or an error if the
+  // shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
+
+  // Return the tserver catalog version info that can be used to translate a database oid to the
+  // index of its slot in the shared memory array db_catalog_versions_.
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+
   // Return the local tserver's postgres authentication key stored in shared memory or an error if
   // the shared memory has not been initialized (e.g. in initdb).
   Result<uint64_t> GetSharedAuthKey();
@@ -295,8 +305,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
-
-  Status PatchStatus(const Status& status, const PgObjectIds& relations);
 
   Result<int> TabletServerCount(bool primary_only = false);
 
@@ -356,8 +364,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const scoped_refptr<server::HybridClock> clock_;
 
-  // YBSession to read data from catalog tables.
-  boost::optional<ReadHybridTime> catalog_read_time_;
+  ReadHybridTime catalog_read_time_;
 
   // Execution status.
   Status status_;

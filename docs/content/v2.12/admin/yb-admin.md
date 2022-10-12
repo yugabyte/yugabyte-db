@@ -1658,7 +1658,7 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* ADD | REMOVE: Adds or removes the specified YB-TServer server.
+* ADD | REMOVE: Adds or removes the specified YB-TServer server from blacklist.
 * *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**
@@ -1677,14 +1677,22 @@ yb-admin \
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    change_leader_blacklist < ADD | REMOVE > <ip_addr>:<port> \
-    [<ip_addr>:<port>]...
+    change_leader_blacklist [ ADD | REMOVE ] <ip_addr>:<port> \
+    [ <ip_addr>:<port> ]...
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* `ADD` or `REMOVE`: Adds or removes nodes from blacklist.
-* *ip_addr*: The IP address of the node.
-* *port*: The port of the node.
+* ADD | REMOVE: Adds or removes the specified YB-TServer from leader blacklist.
+* *ip_addr:port*: The IP address and port of the YB-TServer.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    change_leader_blacklist \
+      ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
+```
 
 #### leader_stepdown
 

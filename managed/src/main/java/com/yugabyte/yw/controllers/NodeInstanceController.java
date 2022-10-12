@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
+import com.yugabyte.yw.forms.NodeDetailsResp;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -28,7 +29,9 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
-import com.yugabyte.yw.models.helpers.NodeConfig;
+import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
+import com.yugabyte.yw.models.helpers.NodeConfigValidator;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -40,12 +43,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -60,7 +61,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
   @Inject NodeAgentHandler nodeAgentHandler;
 
-  public static final Logger LOG = LoggerFactory.getLogger(NodeInstanceController.class);
+  @Inject NodeConfigValidator nodeConfigValidator;
 
   /**
    * GET endpoint for Node data
@@ -77,6 +78,26 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
     return PlatformResults.withData(node);
+  }
+
+  /**
+   * GET endpoint for Node data
+   *
+   * @param customerUUID the customer UUID
+   * @param universeUUID the universe UUID
+   * @param nodeName the node name
+   * @return JSON response with Node data
+   */
+  @ApiOperation(
+      value = "Get node details",
+      response = NodeDetailsResp.class,
+      nickname = "getNodeDetails")
+  public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    NodeDetails detail = universe.getNode(nodeName);
+    NodeDetailsResp resp = new NodeDetailsResp(detail, universe);
+    return PlatformResults.withData(resp);
   }
 
   /**
@@ -117,6 +138,32 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   /**
+   * Validates the node instance.
+   *
+   * @param customerUuid the customer UUID
+   * @param zoneUuid the zone UUID
+   * @return YBSuccess or throws PlatformServiceException with bad request code.
+   */
+  @ApiOperation(
+      value = "Validate a node instance",
+      response = ValidationResult.class,
+      responseContainer = "Map",
+      nickname = "validateNodeInstance")
+  @ApiImplicitParam(
+      name = "Node instance",
+      value = "Node instance data to be validated",
+      required = true,
+      dataType = "com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData",
+      paramType = "body")
+  public Result validate(UUID customerUuid, UUID zoneUuid) {
+    NodeInstanceData nodeData = parseJsonAndValidate(NodeInstanceData.class);
+    Customer.getOrBadRequest(customerUuid);
+    AvailabilityZone az = AvailabilityZone.getOrBadRequest(zoneUuid);
+    return PlatformResults.withData(
+        nodeConfigValidator.validateNodeConfigs(az.getProvider(), nodeData));
+  }
+
+  /**
    * POST endpoint for creating new Node(s)
    *
    * @param customerUuid the customer UUID
@@ -150,11 +197,18 @@ public class NodeInstanceController extends AuthenticatedController {
         if (clientTypeOp.isPresent() && clientTypeOp.get() == ClientType.NODE_AGENT) {
           NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, getJWTClientUuid());
           nodeAgent.ensureState(State.LIVE);
-          Set<NodeConfig.Type> failedTypes = nodeData.getFailedNodeConfigTypes(provider);
-          if (CollectionUtils.isNotEmpty(failedTypes)) {
-            log.error("Failed node configuration types: {}", failedTypes);
+          List<ValidationResult> failedResults =
+              nodeConfigValidator
+                  .validateNodeConfigs(provider, nodeData)
+                  .values()
+                  .stream()
+                  .filter(r -> r.isRequired())
+                  .filter(r -> !r.isValid())
+                  .collect(Collectors.toList());
+          if (CollectionUtils.isNotEmpty(failedResults)) {
+            log.error("Failed node configuration types: {}", failedResults);
             throw new PlatformServiceException(
-                BAD_REQUEST, "Invalid configurations " + failedTypes);
+                BAD_REQUEST, "Invalid node configurations: " + failedResults);
           }
         }
         NodeInstance node = NodeInstance.create(zoneUuid, nodeData);
@@ -218,7 +272,7 @@ public class NodeInstanceController extends AuthenticatedController {
             Audit.ActionType.Create,
             Json.toJson(nodeActionFormData),
             taskUUID);
-    return Results.status(OK);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
@@ -256,7 +310,7 @@ public class NodeInstanceController extends AuthenticatedController {
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
-      LOG.error(errMsg);
+      log.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
 
@@ -283,10 +337,11 @@ public class NodeInstanceController extends AuthenticatedController {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }
+    taskParams.clusters = universe.getUniverseDetails().clusters;
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
-        || nodeAction == NodeActionType.START_MASTER) {
-      taskParams.clusters = universe.getUniverseDetails().clusters;
+        || nodeAction == NodeActionType.START_MASTER
+        || nodeAction == NodeActionType.STOP) {
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
       taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
@@ -295,18 +350,18 @@ public class NodeInstanceController extends AuthenticatedController {
             String.format(
                 "The certificate %s needs info. Update the cert" + " and retry.",
                 CertificateInfo.get(taskParams.rootCA).label);
-        LOG.error(errMsg);
+        log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
     }
 
     if (nodeAction == NodeActionType.QUERY) {
       String errMsg = "Node action not allowed for this action type.";
-      LOG.error(errMsg);
+      log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
-    LOG.info(
+    log.info(
         "{} Node {} in universe={}: name={} at version={}.",
         nodeAction.toString(false),
         nodeName,
@@ -322,7 +377,7 @@ public class NodeInstanceController extends AuthenticatedController {
         CustomerTask.TargetType.Node,
         nodeAction.getCustomerTask(),
         nodeName);
-    LOG.info(
+    log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
         taskUUID,
         universe.universeUUID,

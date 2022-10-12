@@ -5,9 +5,12 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -32,6 +35,15 @@ public class DisableYbc extends UniverseTaskBase {
 
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+      if (Schedule.getAllActiveSchedulesByOwnerUUIDAndType(
+              universe.universeUUID, TaskType.CreateBackup)
+          .stream()
+          .anyMatch(s -> ScheduleUtil.isIncrementalBackupSchedule(s.getScheduleUUID()))) {
+        throw new RuntimeException(
+            "Cannot disable ybc as an incremental backup schedule exists on universe "
+                + universe.universeUUID);
+      }
 
       if (!universeDetails.enableYbc || !universeDetails.ybcInstalled) {
         throw new RuntimeException(

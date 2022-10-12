@@ -39,6 +39,7 @@
 
 #include "yb/gutil/stl_util.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
@@ -88,14 +89,15 @@ class TestTableLoader : public Visitor<PersistentTableInfo> {
 };
 
 TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
-
-  FLAGS_cluster_uuid = "invalid_uuid";
-
-  enterprise::CatalogManager catalog_manager(nullptr);
-  {
-    CatalogManager::LockGuard lock(catalog_manager.mutex_);
-    ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
-  }
+  // Verify that a cluster cannot be created with an invalid uuid.
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = 1;
+  opts.num_tablet_servers = 1;
+  opts.extra_master_flags.push_back("--FLAGS_cluster_uuid=invalid_uuid");
+  auto external_mini_cluster = std::make_unique<ExternalMiniCluster>(opts);
+  Status s = external_mini_cluster->Start();
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Unable to start Master");
 
   auto dir = GetTestPath("Master") + "valid_cluster_uuid_test";
   ASSERT_OK(Env::Default()->CreateDir(dir));

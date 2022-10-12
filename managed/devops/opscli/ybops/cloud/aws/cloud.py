@@ -476,6 +476,23 @@ class AwsCloud(AbstractCloud):
         instance.terminate()
         instance.wait_until_terminated()
 
+    def reboot_instance(self, args, ssh_ports):
+        host_info = self.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False
+        )
+
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+
+        boto3.client('ec2', region_name=args.region).reboot_instances(
+          InstanceIds=[host_info["id"]]
+        )
+
+        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+
     def mount_disk(self, host_info, vol_id, label):
         ec2 = boto3.client('ec2', region_name=host_info['region'])
         ec2.attach_volume(

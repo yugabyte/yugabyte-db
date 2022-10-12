@@ -53,22 +53,22 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	value, ok := tasks.Load(taskID)
 	if !ok {
 		err := fmt.Errorf("Invalid state for task %s. Exiting...", taskID)
-		util.FileLogger.Errorf(err.Error())
+		util.FileLogger().Errorf(err.Error())
 		return err
 	}
 	info := value.(*taskInfo)
 	if !info.compareAndSetRunning(true) {
-		util.FileLogger.Warnf("Task %s is still running", taskID)
+		util.FileLogger().Warnf("Task %s is still running", taskID)
 		return nil
 	}
 	defer func() {
 		info.compareAndSetRunning(false)
 	}()
-	_, err := executor.GetInstance(s.ctx).ExecuteTask(ctx, info.handler)
+	err := executor.GetInstance(s.ctx).ExecuteTask(ctx, info.handler)
 	if err != nil {
 		tasks.Delete(taskID)
 		err := fmt.Errorf("Failed to submit job %s. Error: %s", taskID, err)
-		util.FileLogger.Errorf(err.Error())
+		util.FileLogger().Errorf(err.Error())
 		return err
 	}
 	return nil
@@ -95,7 +95,7 @@ func (s *Scheduler) Schedule(
 			case <-ticker.C:
 				err := s.executeTask(ctx, taskID)
 				if err != nil {
-					util.FileLogger.Errorf("Exiting scheduled task %s", taskID)
+					util.FileLogger().Errorf("Exiting scheduled task %s", taskID)
 					return
 				}
 			}

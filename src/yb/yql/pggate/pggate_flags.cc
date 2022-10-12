@@ -47,8 +47,8 @@ DEFINE_int32(ysql_request_limit, 1024,
 DEFINE_uint64(ysql_prefetch_limit, 1024,
               "Maximum number of rows to prefetch");
 
-DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
-              "Scale factor to reduce ysql_prefetch_limit for backward scan");
+DEFINE_double(ysql_backward_prefetch_scale_factor, 1.,
+              "DEPRECATED. Feature has been removed.");
 
 DEFINE_uint64(ysql_session_max_batch_size, 3072,
               "Use session variable ysql_session_max_batch_size instead. "
@@ -138,3 +138,6 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
 
 DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
              "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");
+
+DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
+                 "Fail a refresh on a matview after the creation of a new relation.");

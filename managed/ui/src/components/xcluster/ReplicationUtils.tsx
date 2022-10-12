@@ -4,80 +4,24 @@ import moment from 'moment';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import {
-  getUniverseInfo,
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
-import { Replication } from './XClusterReplicationTypes';
-import { ReplicationStatus, REPLICATION_LAG_ALERT_NAME } from './constants';
+import {
+  ReplicationAction,
+  ReplicationStatus,
+  REPLICATION_LAG_ALERT_NAME,
+  SortOrder
+} from './constants';
+import { api } from '../../redesign/helpers/api';
+
+import { XClusterConfig } from './XClusterTypes';
+import { Universe } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
-
-export const getReplicationStatus = (replication: Replication) => {
-  switch (replication.status) {
-    case ReplicationStatus.UPDATING:
-      return (
-        <span className="replication-status-text updating">
-          <i className="fa fa-spinner fa-spin" />
-          Updating
-        </span>
-      );
-    case ReplicationStatus.RUNNING:
-      return replication.paused ? (
-        <span className="replication-status-text paused">
-          <i className="fa fa-pause-circle-o" />
-          Paused
-        </span>
-      ) : (
-        <span className="replication-status-text success">
-          <i className="fa fa-check" />
-          Enabled
-        </span>
-      );
-    case ReplicationStatus.INIT:
-      return (
-        <span className="replication-status-text success">
-          <i className="fa fa-info" />
-          Init
-        </span>
-      );
-    case ReplicationStatus.FAILED:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-info-circle" />
-          Failed
-        </span>
-      );
-    case ReplicationStatus.DELETED:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          Deleted
-        </span>
-      );
-    case ReplicationStatus.DELETED_UNIVERSE:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          {replication.sourceUniverseUUID === undefined
-            ? 'Source universe is deleted'
-            : replication.targetUniverseUUID === undefined
-            ? 'Target universe is deleted'
-            : 'One participating universe was tried to be destroyed'}
-        </span>
-      );
-    default:
-      return (
-        <span className="replication-status-text failed">
-          <i className="fa fa-close" />
-          Not Enabled
-        </span>
-      );
-  }
-};
 
 export const GetConfiguredThreshold = ({
   currentUniverseUUID
@@ -112,9 +56,9 @@ export const GetCurrentLag = ({
 }) => {
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', sourceUniverseUUID],
-    () => getUniverseInfo(sourceUniverseUUID)
+    () => api.fetchUniverse(sourceUniverseUUID)
   );
-  const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
+  const nodePrefix = universeInfo?.universeDetails.nodePrefix;
 
   const { data: metricsData, isFetching } = useQuery(
     ['xcluster-metric', replicationUUID, nodePrefix, 'metric'],
@@ -155,13 +99,15 @@ export const GetCurrentLag = ({
       })
   );
   const formattedLag = formatLagMetric(latestLag);
+  const isReplicationUnhealthy = latestLag > maxAcceptableLag;
 
   return (
     <span
       className={`replication-lag-value ${
-        maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
+        isReplicationUnhealthy ? 'above-threshold' : 'below-threshold'
       }`}
     >
+      {isReplicationUnhealthy && <i className="fa fa-exclamation-triangle" aria-hidden="true" />}
       {formattedLag ?? '-'}
     </span>
   );
@@ -241,7 +187,7 @@ export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
   return '';
 };
 
-export const convertToLocalTime = (time: string, timezone: string) => {
+export const convertToLocalTime = (time: string, timezone: string | undefined) => {
   return (timezone ? (moment.utc(time) as any).tz(timezone) : moment.utc(time).local()).format(
     'YYYY-MM-DD H:mm:ss'
   );
@@ -263,19 +209,67 @@ export const formatBytes = function (sizeInBytes: any) {
   }
 };
 
-export const findUniverseName = function (universeList: Array<any>, universeUUID: string) {
+export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 };
 
-export const isChangeDisabled = function (status: ReplicationStatus | undefined) {
-  // Allow the operation for an unknown situation to avoid bugs.
-  if (status === undefined) {
-    return true;
+export const getEnabledConfigActions = (replication: XClusterConfig): ReplicationAction[] => {
+  switch (replication.status) {
+    case ReplicationStatus.INITIALIZED:
+    case ReplicationStatus.UPDATING:
+      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+    case ReplicationStatus.RUNNING:
+      return [
+        replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
+        ReplicationAction.DELETE,
+        ReplicationAction.EDIT,
+        ReplicationAction.ADD_TABLE,
+        ReplicationAction.RESTART
+      ];
+    case ReplicationStatus.FAILED:
+      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
+    case ReplicationStatus.DELETED_UNIVERSE:
+    case ReplicationStatus.DELETION_FAILED:
+      return [ReplicationAction.DELETE];
   }
-  return (
-    status === ReplicationStatus.INIT ||
-    status === ReplicationStatus.UPDATING ||
-    status === ReplicationStatus.DELETED ||
-    status === ReplicationStatus.DELETED_UNIVERSE
-  );
 };
+
+/**
+ * Returns the UUID for all xCluster configs with the provided source and target universe.
+ */
+export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUniverse: Universe) => {
+  const sourceXClusterConfigs = sourceUniverse.universeDetails?.xclusterInfo?.sourceXClusterConfigs;
+  const targetXClusterConfigs = targetUniverse.universeDetails?.xclusterInfo?.targetXClusterConfigs;
+
+  const targetUniverseConfigUUIDs = new Set(targetXClusterConfigs);
+  return sourceXClusterConfigs
+    ? sourceXClusterConfigs.filter((configUUID) => targetUniverseConfigUUIDs.has(configUUID))
+    : [];
+};
+
+/**
+ * Adapt tableUUID to the format required for xCluster work.
+ * - tableUUID is given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format from
+ *   /customers/<customerUUID>/universes/<universeUUID>/tables endpoint
+ * - tableUUID used in xCluster endpoints have the '-' stripped away
+ */
+export const adaptTableUUID = (tableUUID: string) => tableUUID.replaceAll('-', '');
+
+export const tableSort = <RowType,>(
+  a: RowType,
+  b: RowType,
+  sortField: keyof RowType,
+  sortOrder: SortOrder,
+  tieBreakerField: keyof RowType
+) => {
+  let ord = 0;
+
+  ord = a[sortField] < b[sortField] ? -1 : 1;
+  // Break ties with the provided tie breaker field in ascending order.
+  if (a[sortField] === b[sortField]) {
+    return a[tieBreakerField] < b[tieBreakerField] ? -1 : 1;
+  }
+
+  return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
+};
+

@@ -23,9 +23,9 @@ function calls.  You can make either asynchronous calls, in which you provide a
 callback which is invoked later, or synchronous calls, where your thread blocks
 until the remote system responds.
 
-The wire format of YugaByte RPC is very close to the wire format of Hadoop IPC in
+The wire format of YugabyteDB RPC is very close to the wire format of Hadoop IPC in
 hadoop-3 and beyond. It is not identical since there are still some java-isms
-left in Hadoop IPC which we did not want to inherit. In addition, YugaByte RPC has
+left in Hadoop IPC which we did not want to inherit. In addition, YugabyteDB RPC has
 developed some extra features such as deadline propagation which are not
 available in Hadoop. However, the overall structure of the wire protocol is
 very similar.

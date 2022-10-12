@@ -1172,6 +1172,78 @@ pg_stat_get_db_numbackends(PG_FUNCTION_ARGS)
 }
 
 
+/*
+ * For this function, there exists a corresponding entry in pg_proc which dictates the input and schema of the output row.
+ * This is used in a different manner from other methods like pgstat_get_backend_activity_start which will be called individually
+ * in parallel. This method will return the rows in batched format all at once. Note that {i,o,o,o} in pg_proc means that for the
+ * corresponding entry at the same index, it is an input if labeled i but output (represented by o) otherwise.
+ */
+Datum
+yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
+{
+	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
+	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	size_t num_queries = 0;
+	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
+	for (size_t i = 0; i < num_queries; i++)
+	{
+		if (has_privs_of_role(GetUserId(), queries[i].st_userid) ||
+			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS) ||
+			IsYbDbAdminUser(GetUserId()))
+		{
+			Datum		values[PG_YBSTAT_TERMINATED_QUERIES_COLS];
+			bool		nulls[PG_YBSTAT_TERMINATED_QUERIES_COLS];
+
+			MemSet(values, 0, sizeof(values));
+			MemSet(nulls, 0, sizeof(nulls));
+
+			values[0] = ObjectIdGetDatum(queries[i].database_oid);
+			values[1] = Int32GetDatum(queries[i].backend_pid);
+			values[2] = CStringGetTextDatum(queries[i].query_string);
+			values[3] = CStringGetTextDatum(queries[i].termination_reason);
+			values[4] = TimestampTzGetDatum(queries[i].activity_start_timestamp);
+			values[5] = TimestampTzGetDatum(queries[i].activity_end_timestamp);
+
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		}
+		else
+			continue;
+	}
+
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
+}
+
 Datum
 pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS)
 {

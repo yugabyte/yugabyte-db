@@ -2511,7 +2511,6 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
   ASSERT_OK(session_.ExecuteQuery("create index index_by_value on test.key_value (value)"));
 
   std::vector<CassandraFuture> futures;
-  int num_failures = 0;
   auto prepared = ASSERT_RESULT(table.PrepareInsert(&session_, 10s));
   for (int loop = 1; loop <= kLoops; ++loop) {
     for (int key = 0; key != kKeys; ++key) {
@@ -2527,7 +2526,6 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
       auto status = it->Wait();
       if (!status.ok()) {
         LOG(WARNING) << "Failure: " << status;
-        num_failures++;
       }
       ++it;
     }
@@ -2873,7 +2871,7 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
 #ifndef NDEBUG
-  auto min_total_writes = RegularBuildVsSanitizers(750, 50);
+  auto min_total_writes = RegularBuildVsDebugVsSanitizers(750, 500, 50);
 #else
   auto min_total_writes = 1500;
 #endif

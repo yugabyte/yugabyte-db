@@ -78,6 +78,8 @@ namespace yb {
 
 class DeletedColumnPB;
 
+static const int kNoDefaultTtl = -1;
+
 // Struct for storing information about deleted columns for cleanup.
 struct DeletedColumn {
   ColumnId id;
@@ -89,6 +91,8 @@ struct DeletedColumn {
 
   static Status FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
+
+  friend bool operator==(const DeletedColumn&, const DeletedColumn&) = default;
 };
 
 // The schema for a given column.
@@ -283,6 +287,9 @@ class ColumnSchema {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
+  // Should account for every field in ColumnSchema.
+  static bool TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs);
+
  private:
   friend class SchemaBuilder;
 
@@ -469,7 +476,6 @@ class TableProperties {
   // operator== and Equivalent methods to make sure that the new property
   // is being taken into consideration when deciding whether properties between
   // two different tables are equal or equivalent.
-  static const int kNoDefaultTtl = -1;
   int64_t default_time_to_live_;
   bool contain_counters_;
   bool is_transactional_;
@@ -1019,6 +1025,10 @@ class Schema {
   size_t memory_footprint_including_this() const;
 
   static ColumnId first_column_id();
+
+  // Should account for every field in Schema.
+  // TODO: Some of them should be in Equals too?
+  static bool TEST_Equals(const Schema& lhs, const Schema& rhs);
 
  private:
 

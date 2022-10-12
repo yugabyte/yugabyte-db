@@ -354,7 +354,7 @@ class DocDBTableReader::GetHelper {
         reader_.encoded_projection_[column_index_].AsSlice());
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Seek next column: " << SubDocKey::DebugSliceToString(state_.front().key_entry);
-    reader_.iter_->SeekForward(state_.front().key_entry.AsSlice());
+    reader_.iter_->SeekForward(&state_.front().key_entry);
     state_.front().key_entry.Truncate(root_doc_key_.size());
   }
 
@@ -414,8 +414,8 @@ class DocDBTableReader::GetHelper {
     auto& current = state_.back();
     if (!IsObsolete(current.expiration)) {
       if (VERIFY_RESULT(TryDecodeValue(
-              control_fields, current.write_time.hybrid_time(), current.expiration, value_slice,
-              current.out))) {
+              control_fields.timestamp, current.write_time.hybrid_time(), current.expiration,
+              value_slice, current.out))) {
         last_found_ = column_index_;
         return true;
       }
@@ -464,7 +464,9 @@ class DocDBTableReader::GetHelper {
       return false;
     }
     return TryDecodeValue(
-        packed_column_data_.row->control_fields,
+        control_fields.has_timestamp()
+            ? control_fields.timestamp
+            : packed_column_data_.row->control_fields.timestamp,
         write_time.hybrid_time(),
         expiration,
         value,
@@ -486,7 +488,9 @@ class DocDBTableReader::GetHelper {
 
   Status Prepare() {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
-    reader_.iter_->SeekForward(root_doc_key_);
+
+    state_.front().key_entry.AppendRawBytes(root_doc_key_);
+    reader_.iter_->SeekForward(&state_.front().key_entry);
 
     Slice value;
     DocHybridTime doc_ht = reader_.table_tombstone_time_;
@@ -552,14 +556,14 @@ class DocDBTableReader::GetHelper {
   }
 
   Result<bool> TryDecodeValue(
-      const ValueControlFields& control_fields, HybridTime write_time,
+      UserTimeMicros timestamp, HybridTime write_time,
       const Expiration& expiration, const Slice& value_slice, SubDocument* out) {
     if (!out) {
       return DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
     }
     RETURN_NOT_OK(out->DecodeFromValue(value_slice));
-    if (control_fields.has_user_timestamp()) {
-      out->SetWriteTime(control_fields.user_timestamp);
+    if (timestamp != ValueControlFields::kInvalidTimestamp) {
+      out->SetWriteTime(timestamp);
     } else {
       out->SetWriteTime(write_time.GetPhysicalValueMicros());
     }

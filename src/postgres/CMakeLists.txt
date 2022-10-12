@@ -24,11 +24,16 @@ if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
          " -Wno-stringop-truncation")
 endif()
 
-if("${COMPILER_FAMILY}" STREQUAL "clang" AND
-   "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND
-   NOT APPLE)
-  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
-         " -Wno-error=unused-but-set-variable")
+if(IS_CLANG)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT APPLE)
+    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+           " -Wno-error=unused-but-set-variable")
+  endif()
+
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
+    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+           " -Wno-error=deprecated-non-prototype")
+  endif()
 endif()
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
@@ -58,12 +63,21 @@ if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
 endif()
 
+
+set(POSTGRES_EXTRA_PREPROCESSOR_FLAGS "")
+if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
+  string(CONCAT POSTGRES_EXTRA_PREPROCESSOR_FLAGS "${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
+         "-isystem ${MACOS_SDK_INCLUDE_DIR}")
+endif()
+
 list(APPEND build_postgres_args
      "${BUILD_SUPPORT_DIR}/build_postgres"
      --build_root            "${YB_BUILD_ROOT}"
      --cflags                "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
      --compiler_type         "${YB_COMPILER_TYPE}"
      --cxxflags              "${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
+     # We specify a leading space where we could otherwise get an empty argument.
+     --cppflags              " ${POSTGRES_EXTRA_PREPROCESSOR_FLAGS}"
      --ldflags               " ${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}"
      --ldflags_ex            " ${CMAKE_EXE_LINKER_FLAGS}"
      --openssl_include_dir   "${OPENSSL_INCLUDE_DIR}"

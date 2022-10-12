@@ -15,6 +15,7 @@ import time
 import subprocess
 import logging
 import re
+import psutil  # type: ignore
 
 from typing import Iterable, Set, List, Optional, Tuple, Dict
 from yb.dep_graph_common import (
@@ -34,6 +35,8 @@ from yb.build_paths import BuildPaths
 from yugabyte_pycommon import WorkDirContext  # type: ignore
 
 from pathlib import Path
+
+THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX = 'YB_THIRDPARTY_INSTALLED_DIR:STRING='
 
 
 SKIPPED_ARGS: Set[str] = {
@@ -86,18 +89,23 @@ def should_skip_argument(arg: str) -> bool:
     return arg in SKIPPED_ARGS or arg.startswith('--gcc-toolchain')
 
 
-def get_static_lib_paths(thirdparty_path: str) -> List[str]:
+def get_static_lib_paths(thirdparty_installed_dir: str) -> List[str]:
     static_lib_paths = []
+    candidate_dirs = []
     for thirdparty_subdir in ['common', 'uninstrumented']:
-        for root, dirs, files in os.walk(
-                os.path.join(thirdparty_path, 'installed', thirdparty_subdir)):
+        candidate_dir = os.path.join(thirdparty_installed_dir, thirdparty_subdir)
+        candidate_dirs.append(candidate_dir)
+        for root, dirs, files in os.walk(candidate_dir):
             for file_name in files:
                 if is_static_lib(file_name):
                     static_lib_path = os.path.join(root, file_name)
                     static_lib_paths.append(static_lib_path)
     if not static_lib_paths:
+        for candidate_dir in candidate_dirs:
+            logging.warning("Considered candidate directory: %s" % candidate_dir)
         raise ValueError(
-            "Did not find any static libraries at third-party path %s" % thirdparty_path)
+            "Did not find any static libraries in third-party installed directory %s" %
+            thirdparty_installed_dir)
     return static_lib_paths
 
 
@@ -241,6 +249,7 @@ class LinkHelper:
     yb_pgbackend_link_cmd: List[str]
 
     lto_output_suffix: Optional[str]
+    lto_output_path: Optional[str]
 
     # Populated by consume_original_link_cmd.
     final_output_name: str
@@ -257,11 +266,14 @@ class LinkHelper:
     # as described above.
     processed_shared_lib_deps_for: Set[str]
 
+    thirdparty_installed_dir: str
+
     def __init__(
             self,
             dep_graph: DependencyGraph,
             initial_node: Node,
-            lto_output_suffix: Optional[str]) -> None:
+            lto_output_suffix: Optional[str],
+            lto_output_path: Optional[str]) -> None:
         self.dep_graph = dep_graph
         self.initial_node = initial_node
 
@@ -274,16 +286,27 @@ class LinkHelper:
 
         assert initial_node.link_cmd
         self.original_link_args = process_original_link_cmd(initial_node.link_cmd)
-        self.static_lib_paths = get_static_lib_paths(self.thirdparty_path)
         self.new_args = LinkCommand([self.clang_cpp_path])
         self.obj_file_graph_nodes = set()
         self.pg_backend_build_dir, self.yb_pgbackend_link_cmd = get_yb_pgbackend_link_cmd(
             self.build_root)
 
         self.lto_output_suffix = lto_output_suffix
+        self.lto_output_path = lto_output_path
 
         self.static_libs_from_ldd = {}
         self.processed_shared_lib_deps_for = set()
+
+        self.thirdparty_installed_dir = ''
+        with open(os.path.join(self.build_root, 'CMakeCache.txt')) as cmake_cache_file:
+            for line in cmake_cache_file:
+                line = line.strip()
+                if line.startswith(THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX):
+                    self.thirdparty_installed_dir = line[
+                            len(THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX):]
+        if not self.thirdparty_installed_dir:
+            self.thirdparty_installed_dir = os.path.join(self.thirdparty_path, 'installed')
+        self.static_lib_paths = get_static_lib_paths(self.thirdparty_installed_dir)
 
     def convert_to_static_lib(self, arg: str) -> Optional[str]:
         """
@@ -420,9 +443,12 @@ class LinkHelper:
             if not output_name:
                 raise ValueError("Did not find an output name in the original link command")
             self.final_output_name = os.path.abspath(output_name)
-            logging.info("Final output file name: %s", self.final_output_name)
-            if self.lto_output_suffix is not None:
+            if self.lto_output_path is not None:
+                self.final_output_name = self.lto_output_path
+            elif self.lto_output_suffix is not None:
                 self.final_output_name += self.lto_output_suffix
+            logging.info(f"Output file name from the original link command: {output_name}")
+            logging.info(f"Final output file path: {self.final_output_name}")
             self.new_args.extend(['-o', self.final_output_name])
 
     def add_leaf_object_files(self) -> None:
@@ -485,7 +511,8 @@ class LinkHelper:
 
         for lib_name in LIBCXX_STATIC_LIB_NAMES:
             self.new_args.append(os.path.join(
-                self.thirdparty_path, 'installed', 'uninstrumented', 'libcxx', 'lib', lib_name))
+                self.thirdparty_installed_dir, 'uninstrumented', 'libcxx',
+                'lib', lib_name))
 
         with WorkDirContext(self.build_root):
             self.write_link_cmd_file(self.final_output_name + '_lto_link_cmd_args.txt')
@@ -494,18 +521,67 @@ class LinkHelper:
         with WorkDirContext(self.build_root):
             start_time_sec = time.time()
             logging.info("Running linker")
+            exit_code = 0
             try:
                 subprocess.check_call(self.new_args.as_list())
             except subprocess.CalledProcessError as ex:
                 # Avoid printing the extremely long command line.
                 logging.error("Linker returned exit code %d", ex.returncode)
+                exit_code = ex.returncode
             elapsed_time_sec = time.time() - start_time_sec
             logging.info("Linking finished in %.1f sec", elapsed_time_sec)
+            if exit_code != 0:
+                raise RuntimeError("Linker returned exit code %d" % exit_code)
 
     def write_link_cmd_file(self, out_path: str) -> None:
         logging.info("Writing the linker command line (one argument per line) to %s",
                      os.path.abspath(out_path))
         write_file('\n'.join(self.new_args.as_list()), out_path)
+
+
+def wait_for_free_memory(
+        required_mem_gib: float,
+        timeout_minutes: float) -> None:
+    BYTES_IN_GIB = 1024.0**3
+    mem_info = psutil.virtual_memory()
+    total_mem_gib = mem_info.total / BYTES_IN_GIB
+    if total_mem_gib < required_mem_gib:
+        raise RuntimeError(
+            "The system only has %.3f GiB of memory but %.3f GiB are required for LTO liniking.",
+            total_mem_gib, required_mem_gib)
+    start_time_sec = time.time()
+    iteration_number = 0
+    timeout_sec = timeout_minutes * 60.0
+
+    elapsed_time_sec: float = 0.0
+
+    def get_available_gib() -> float:
+        nonlocal mem_info
+        return mem_info.available / BYTES_IN_GIB
+
+    def get_progress_message() -> str:
+        nonlocal elapsed_time_sec, required_mem_gib, mem_info
+        return (
+            "%.1f seconds to have at least %.1f GiB of RAM available, currently "
+            "available: %.1f" % (
+                elapsed_time_sec, required_mem_gib, get_available_gib()
+            ))
+
+    while True:
+        mem_info = psutil.virtual_memory()
+        elapsed_time_sec = time.time() - start_time_sec
+        if get_available_gib() >= required_mem_gib:
+            if iteration_number != 0:
+                logging.info("Waited for " + get_progress_message())
+            return
+        iteration_number += 1
+        if elapsed_time_sec > timeout_sec:
+            raise RuntimeError(
+                ("Hit timeout of %.1f seconds after waiting for " % timeout_sec) +
+                get_progress_message())
+        time.sleep(1)
+        if iteration_number % 60 == 0:
+            logging.info("Still waiting for " + get_progress_message())
 
 
 def link_whole_program(
@@ -514,15 +590,29 @@ def link_whole_program(
         link_cmd_out_file: Optional[str],
         run_linker: bool,
         lto_output_suffix: Optional[str],
+        lto_output_path: Optional[str],
         lto_type: str) -> None:
+    if os.environ.get('YB_SKIP_FINAL_LTO_LINK') == '1':
+        raise ValueError('YB_SKIP_FINAL_LTO_LINK is set, the final LTO linking step should not '
+                         'have been invoked. Perhaps yb_build.sh should be invoked with '
+                         'the --force-run-cmake argument.')
+
+    wait_for_free_memory(required_mem_gib=13, timeout_minutes=20)
+
     initial_node_list = list(initial_nodes)
-    assert len(initial_node_list) == 1
+    if len(initial_node_list) != 1:
+        initial_node_list_str = '\n    '.join([str(node) for node in initial_node_list])
+        raise ValueError(
+            f"Expected exactly one initial node to determine object files and static libraries "
+            f"to link, got {len(initial_node_list)}:\n    {initial_node_list_str}")
+
     initial_node = initial_node_list[0]
 
     link_helper = LinkHelper(
         dep_graph=dep_graph,
         initial_node=initial_node,
-        lto_output_suffix=lto_output_suffix
+        lto_output_suffix=lto_output_suffix,
+        lto_output_path=lto_output_path
     )
 
     # We stop recursive traversal at executables because those are just code generators

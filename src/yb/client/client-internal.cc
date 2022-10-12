@@ -134,35 +134,6 @@ using internal::RemoteTablet;
 using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
 
-Status RetryFunc(
-    CoarseTimePoint deadline,
-    const string& retry_msg,
-    const string& timeout_msg,
-    const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait) {
-  DCHECK(deadline != CoarseTimePoint());
-
-  CoarseBackoffWaiter waiter(deadline, max_wait);
-
-  if (waiter.ExpiredNow()) {
-    return STATUS(TimedOut, timeout_msg);
-  }
-  for (;;) {
-    bool retry = true;
-    Status s = func(deadline, &retry);
-    if (!retry) {
-      return s;
-    }
-
-    VLOG(1) << retry_msg << " attempt=" << waiter.attempt() << " status=" << s.ToString();
-    if (!waiter.Wait()) {
-      break;
-    }
-  }
-
-  return STATUS(TimedOut, timeout_msg);
-}
-
 template<class ProxyClass, class RespClass>
 class SyncClientMasterRpc : public internal::ClientMasterRpcBase {
  public:
@@ -283,6 +254,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTransactionStatusTablets);
@@ -310,8 +282,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterEstimatedDataLoss);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

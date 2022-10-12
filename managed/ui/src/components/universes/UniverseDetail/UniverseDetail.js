@@ -47,6 +47,7 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { PerfAdvisor } from '../../queries/PerfAdvisor.tsx';
 
 import './UniverseDetail.scss';
 
@@ -389,8 +390,22 @@ class UniverseDetail extends Component {
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse}
                 visibleModal={visibleModal}
+                featureFlags={featureFlags}
               />
             </div>
+          </Tab.Pane>
+        ),
+
+        isNotHidden(currentCustomer.data.features, 'universes.details.perfadvisor', 'hidden') && (
+          <Tab.Pane
+            eventKey={'perfadvisor'}
+            tabtitle="Performance Advisor"
+            key="perfadvisor-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfadvisor')}
+          >
+            <PerfAdvisor />
           </Tab.Pane>
         ),
 

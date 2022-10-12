@@ -27,26 +27,27 @@ namespace pgwrapper {
 // <major, minor>
 typedef std::pair<int, int> Version;
 
-// <database_name, connection, version>
-typedef std::tuple<std::string, pgwrapper::PGConn, Version> DatabaseEntry;
-
 // Uses pgwrapper::PGConn to perform YSQL cluster upgrade.
 class YsqlUpgradeHelper {
  public:
   YsqlUpgradeHelper(const HostPort& ysql_proxy_addr,
                     uint64_t ysql_auth_key,
-                    uint32_t heartbeat_interval_ms);
+                    uint32_t heartbeat_interval_ms,
+                    bool use_single_connection);
 
   // Main actor method, perform the full upgrade process.
   Status Upgrade();
 
  private:
+  class DatabaseEntry;
+  class ReusableConnectionDatabaseEntry;
+  class SingletonConnectionDatabaseEntry;
+
   // Analyze the on-disk list of available migrations to determine latest_version_
   // and fill in migration_filenames_map_.
   Status AnalyzeMigrationFiles();
 
-  // Connect to the given database.
-  Result<PGConn> Connect(const std::string& database_name);
+  Result<std::unique_ptr<DatabaseEntry>> MakeDatabaseEntry(std::string database_name);
 
   // Migrate a given database to the next version, updating it in the given database entry.
   Status MigrateOnce(DatabaseEntry* db_entry);
@@ -56,6 +57,10 @@ class YsqlUpgradeHelper {
   const uint64_t ysql_auth_key_;
 
   const uint32_t heartbeat_interval_ms_;
+
+  // Perform an upgrade unsing just one connection.
+  // This is much slower but does not incur overhead for each database.
+  const bool use_single_connection_;
 
   // Whether pg_yb_catalog_version migration has been applied, and we don't need to wait for
   // heartbeats anymore.

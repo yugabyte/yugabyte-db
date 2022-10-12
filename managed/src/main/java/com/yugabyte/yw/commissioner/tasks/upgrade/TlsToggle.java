@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,10 +51,11 @@ public class TlsToggle extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          Set<NodeDetails> allNodes = toOrderedSet(nodes);
           // Verify the request params and fail if invalid
           verifyParams();
           // Copy any new certs to all nodes
-          createCopyCertTasks(nodes.getRight());
+          createCopyCertTasks(allNodes);
           // Round 1 gflags upgrade
           createRound1GFlagUpdateTasks(nodes);
           // Update TLS related params in universe details
@@ -183,7 +185,7 @@ public class TlsToggle extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  private void createCopyCertTasks(List<NodeDetails> nodes) {
+  private void createCopyCertTasks(Collection<NodeDetails> nodes) {
     // Copy cert tasks are not needed if TLS is disabled
     if (!taskParams().enableNodeToNodeEncrypt && !taskParams().enableClientToNodeEncrypt) {
       return;
