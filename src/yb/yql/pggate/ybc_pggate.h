@@ -271,7 +271,8 @@ YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
 YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
-                            YBCPgSplitDatum *split_points);
+                            YBCPgSplitDatum *split_points,
+                            bool *has_null);
 
 // INDEX -------------------------------------------------------------------------------------------
 // Create and drop index "database_name.schema_name.index_name()".
