@@ -122,7 +122,7 @@ Testing
 -------
 
 There's a `TestYsqlUpgrade#migratingIsEquivalentToReinitdb` test that would make sure your migration
-does the same as initdb. Note that it only works in the release build though!
+does the same as initdb.
 
 To check a migration manually:
 

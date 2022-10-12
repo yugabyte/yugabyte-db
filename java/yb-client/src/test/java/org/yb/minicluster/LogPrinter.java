@@ -31,7 +31,7 @@ import org.yb.util.EnvAndSysPropertyUtil;
  * Helper runnable that can log what the processes are sending on their stdout and stderr that
  * we'd otherwise miss.
  */
-public class LogPrinter {
+public class LogPrinter implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
 
@@ -199,6 +199,11 @@ public class LogPrinter {
         l.reportErrorsAtEnd();
       }
     }
+  }
+
+  @Override
+  public void close() throws Exception {
+    stop();
   }
 
   public String getError() {

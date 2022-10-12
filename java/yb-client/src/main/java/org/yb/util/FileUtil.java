@@ -38,14 +38,15 @@ public class FileUtil {
     if (!f.exists()) {
       return new ArrayList<>();
     }
-    BufferedReader reader = new BufferedReader(new InputStreamReader(
-        new FileInputStream(f)));
-    List<String> lines = new ArrayList<>();
-    String line;
-    while ((line = reader.readLine()) != null) {
-      lines.add(line);
+    try (BufferedReader reader = new BufferedReader(
+        new InputStreamReader(new FileInputStream(f)))) {
+      List<String> lines = new ArrayList<>();
+      String line;
+      while ((line = reader.readLine()) != null) {
+        lines.add(line);
+      }
+      return lines;
     }
-    return lines;
   }
 
 }

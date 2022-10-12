@@ -1,3 +1,5 @@
+CREATE TABLESPACE tsp1 LOCATION '/data';
+
 CREATE TABLE tbl1 (a SERIAL, b INT);
 INSERT INTO tbl1 (b) VALUES (100);
 
@@ -62,6 +64,7 @@ SET SESSION AUTHORIZATION tablegroup_test_user;
 
 CREATE TABLEGROUP grp1;
 CREATE TABLEGROUP grp2;
+CREATE TABLEGROUP grp_with_spc TABLESPACE tsp1;
 
 CREATE TABLE tgroup_no_options_and_tgroup (a INT) TABLEGROUP grp1;
 CREATE TABLE tgroup_one_option (a INT) WITH (autovacuum_enabled = true);
@@ -72,11 +75,12 @@ CREATE TABLE tgroup_options_tgroup_and_custom_colocation_id (a INT) WITH (autova
 CREATE TABLE tgroup_after_options (a INT) TABLEGROUP grp1;
 CREATE TABLE tgroup_in_between_options (a INT) WITH (autovacuum_enabled = true) TABLEGROUP grp1;
 CREATE TABLE tgroup_empty_options (a INT);
+CREATE TABLE tgroup_with_spc (a INT) TABLEGROUP grp_with_spc;
 BEGIN;
     SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
     UPDATE pg_class SET reloptions = ARRAY[]::TEXT[] WHERE relname = 'tgroup_empty_options';
-    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_after_options';
-    UPDATE pg_class SET reloptions = array_prepend('a=b', reloptions) WHERE relname = 'tgroup_in_between_options';
+    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_after_options';
+    UPDATE pg_class SET reloptions = array_prepend('parallel_workers=2', reloptions) WHERE relname = 'tgroup_in_between_options';
 COMMIT;
 
 RESET SESSION AUTHORIZATION;
