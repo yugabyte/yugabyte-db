@@ -129,7 +129,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-l",
-            "release=demo-az1,app=yb-master,service-type!=headless",
+            "release=demo-az1,app=yb-master,service-type notin (headless, non-endpoint)",
             "-o",
             "json"),
         command.getValue());
@@ -153,7 +153,8 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-l",
-            "release=demo-az2,app.kubernetes.io/name=yb-tserver,service-type!=headless",
+            "release=demo-az2,app.kubernetes.io/name=yb-tserver,"
+                + "service-type notin (headless, non-endpoint)",
             "-o",
             "json"),
         command.getValue());
