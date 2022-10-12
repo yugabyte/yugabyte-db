@@ -283,6 +283,20 @@ static string DescribeOneFlagInXML(
     const CommandLineFlagInfo& flag, OnlyDisplayDefaultFlagValue only_display_default_values) {
   unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+  // TODO(#14400): Until we make gflags string modifications atomic, we should not be making
+  // runtime changes to string flags. However, to not have to do two rounds of auditing, we continue
+  // to mark flags as runtime, regardless of their data type, purely based on whether they can
+  // logically be modified at runtime.
+  //
+  // To keep external clients oblivious to this, we strip the runtime tag here, so to external
+  // metadata, tooling and Platform automation, all string flags will be treated explicitly as not
+  // runtime!
+  if (flag.type == "string") {
+    auto runtime_it = tags.find(FlagTag::kRuntime);
+    if (runtime_it != tags.end()) {
+      tags.erase(runtime_it);
+    }
+  }
 
   if (only_display_default_values && tags.contains(FlagTag::kHidden)) {
     return {};
