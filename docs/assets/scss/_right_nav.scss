@@ -38,3 +38,14 @@
     }
   }
 }
+
+.td-sidebar + main {
+  .heading-content {
+    .dropdown-menu {
+      left: inherit !important;
+      right: 0 !important;
+      transform: none !important;
+      top: 100% !important;
+    }
+  }
+}

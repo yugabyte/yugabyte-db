@@ -11,7 +11,20 @@
     </div>
   {{ end }}
 
-  <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}</h1>
+  <div class="main-heading-with-version {{- if not .Params.image }} heading-without-image{{- end }}">
+    <div class="heading-content">
+      <div>
+        <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }}</h1>
+      </div>
+      {{ if .Site.Params.versions }}
+      <ul class="navbar-nav mt-2 mt-lg-0">
+        <li class="nav-item dropdown mr-4 d-none d-lg-block">
+          {{ partial "navbar-version-selector.html" . }}
+        </li>
+      </ul>
+      {{ end }}
+    </div>
+  </div>
 
 	{{ with .Params.description }}<p>{{ . | markdownify }}</p>{{ end }}
 	{{ .Content }}
