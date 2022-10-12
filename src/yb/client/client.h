@@ -590,6 +590,9 @@ class YBClient {
 
   Result<cdc::CompositeAttsMap> GetPgCompositeAttsMap(const NamespaceName& ns_name);
 
+  Result<pair<Schema, uint32_t>> GetTableSchemaFromSysCatalog(
+      const TableId& table_id, const uint64_t read_time);
+
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
   Status GetTablets(

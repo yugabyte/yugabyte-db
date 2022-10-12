@@ -235,6 +235,12 @@ class SysCatalogTable {
 
   Status FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries);
 
+  Status GetTableSchema(
+      const TableId& table_id,
+      const ReadHybridTime read_hybrid_time,
+      Schema* schema,
+      uint32_t* schema_version);
+
  private:
   friend class CatalogManager;
   friend class enterprise::CatalogManager;

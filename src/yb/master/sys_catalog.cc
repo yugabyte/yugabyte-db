@@ -49,6 +49,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
@@ -726,6 +727,77 @@ Schema SysCatalogTable::BuildTableSchema() {
   CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, BINARY));
   CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, BINARY));
   return builder.Build();
+}
+
+Status SysCatalogTable::GetTableSchema(
+    const TableId& table_id, const ReadHybridTime read_hybrid_time, Schema* current_schema,
+    uint32_t* schema_version) {
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
+  ReadHybridTime read_time = read_hybrid_time ? read_hybrid_time : ReadHybridTime::Max();
+  const Schema& schema = doc_read_context_->schema;
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      schema.CopyWithoutColumnIds(), read_time, /* table_id= */ "", CoarseTimePoint::max(),
+      tablet::AllowBootstrappingState::kTrue));
+  docdb::DocRowwiseIterator* doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+
+  const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const auto metadata_col_idx =
+      VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColMetadata));
+
+  QLConditionPB cond;
+  cond.set_op(QL_OP_AND);
+  QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, SysRowEntryType::TABLE);
+  const std::vector<docdb::KeyEntryValue> empty_hash_components;
+  docdb::DocQLScanSpec spec(
+      schema, boost::none /* hash_code */, boost::none /* max_hash_code */, empty_hash_components,
+      &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
+  bool table_schema_found = false;
+  while (VERIFY_RESULT(doc_iter->HasNext())) {
+    QLTableRow value_map;
+    QLValue found_entry_type, entry_id, metadata;
+    RETURN_NOT_OK(doc_iter->NextRow(&value_map));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+    SCHECK_EQ(
+        found_entry_type.int8_value(), SysRowEntryType::TABLE, Corruption,
+        "Found wrong entry type");
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+    const Slice& entry_id_value = entry_id.binary_value();
+    string entry_id_name;
+
+    if (table_id == entry_id_value.ToBuffer()) {
+      RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+      SCHECK_EQ(
+          metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
+      const Slice& binary_value = metadata.binary_value();
+      const Slice& entry_id_value = entry_id.binary_value();
+
+      SysTablesEntryPB metadata_pb;
+      RETURN_NOT_OK_PREPEND(
+          pb_util::ParseFromArray(&metadata_pb, binary_value.data(), binary_value.size()),
+          "Unable to parse metadata field for table_id: " + entry_id_value.ToBuffer());
+
+      RETURN_NOT_OK(SchemaFromPB(metadata_pb.schema(), current_schema));
+      *schema_version = metadata_pb.version();
+      VLOG(1) << "Found table_id: " << entry_id_value.ToBuffer()
+              << " specific schema version from system catalog table: "
+              << metadata_pb.schema().DebugString();
+      table_schema_found = true;
+      break;
+    }
+  }
+
+  if (!table_schema_found) {
+    return STATUS_FORMAT(
+        NotFound, "Failed to get specific schema version for table: $0 from system catalog",
+        table_id);
+  }
+  return Status::OK();
 }
 
 // ==================================================================

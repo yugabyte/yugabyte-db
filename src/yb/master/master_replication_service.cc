@@ -52,6 +52,8 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (WaitForReplicationDrain)
     (SetupNSUniverseReplication)
     (GetReplicationStatus)
+    (GetTableSchemaFromSysCatalog)
+
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
