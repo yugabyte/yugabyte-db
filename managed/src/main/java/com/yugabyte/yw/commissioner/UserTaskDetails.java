@@ -204,7 +204,10 @@ public class UserTaskDetails {
     UpgradingYbc,
 
     // Updating kubernetes overrides.
-    UpdatingKubernetesOverrides
+    UpdatingKubernetesOverrides,
+
+    // Fetch PVC and StorageClass information
+    KubernetesVolumeInfo
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -475,6 +478,10 @@ public class UserTaskDetails {
       case UpgradingYbc:
         title = "Upgrading Yb-controller";
         description = "Upgrading yb-controller on each node";
+        break;
+      case KubernetesVolumeInfo:
+        title = "Fetching Kubernetes Volume information";
+        description = "Fetching Volume and storage information";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
