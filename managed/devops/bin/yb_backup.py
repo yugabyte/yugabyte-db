@@ -26,6 +26,8 @@ import sys
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
+from botocore.session import get_session
+from botocore.credentials import get_credentials
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
@@ -681,6 +683,14 @@ def get_instance_profile_credentials():
                 result = access_key, secret_key, token
             except KeyError as e:
                 logging.info("Could not find {} in instance metadata".format(e))
+    else:
+        # Get credentials using session token for IMDSv2
+        session = get_session()
+        credentials = get_credentials(session)
+        if isinstance(credentials, object):
+            result = credentials.access_key, credentials.secret_key, credentials.token
+        else:
+            raise BackupException("Failed to retrieve IAM role data from AWS")
 
     return result
 
