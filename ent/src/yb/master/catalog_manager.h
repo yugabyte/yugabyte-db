@@ -165,6 +165,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
   Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
 
+  Status AddNewTableToCDCDKStreamsMetadata(
+      const TableId& table_id, const NamespaceId& ns_id) override;
+
   // Get metadata required to decode UDTs in CDCSDK.
   Status GetUDTypeMetadata(
       const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
@@ -232,6 +235,22 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status GetReplicationStatus(const GetReplicationStatusRequestPB* req,
                                       GetReplicationStatusResponsePB* resp,
                                       rpc::RpcContext* rpc);
+
+  typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+
+  // Find all CDCSDK streams which do not have metadata for the newly added tables.
+  Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
+
+  // This method scans the metadata of a CDCSDK streams and compares all tables in the namespace,
+  // to find tables which are not yet processed by CDCSDK streams.
+  void FindAllTablesMissingInCDCSDKStream(
+      scoped_refptr<CDCStreamInfo> stream_info,
+      yb::master::MetadataCowWrapper<yb::master::PersistentCDCStreamInfo>::WriteLock* stream_lock)
+      REQUIRES(mutex_);
+
+  // Add missing table details to the relevant CDCSDK streams.
+  Status AddTabletEntriesToCDCSDKStreamsForNewTables(
+      const TableStreamIdsMap& table_to_unprocessed_streams_map);
 
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
@@ -753,6 +772,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid,
                                                  CoarseTimePoint deadline);
+
+  void RemoveTableFromCDCSDKUnprocessedSet(
+      const TableId& table_id, const std::list<scoped_refptr<CDCStreamInfo>>& streams);
+  void RemoveTableFromCDCSDKUnprocessedSet(
+      const TableId& table_id, const scoped_refptr<CDCStreamInfo>& stream);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
