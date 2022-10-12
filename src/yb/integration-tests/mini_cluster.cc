@@ -130,7 +130,6 @@ using master::SysClusterConfigEntryPB;
 
 namespace {
 
-const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
 const int kTabletReportWaitTimeSeconds = 5;
 

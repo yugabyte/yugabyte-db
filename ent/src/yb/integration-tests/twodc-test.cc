@@ -672,9 +672,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 

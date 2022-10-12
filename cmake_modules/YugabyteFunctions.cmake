@@ -335,7 +335,7 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
   if(NOT EXISTS "${LIBCXX_DIR}")
     message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
   endif()
