@@ -3,23 +3,23 @@ package models
 // LiveQueryResponseYsqlQueryItem - Schema for Live Query Response YSQL Query Item
 type LiveQueryResponseYsqlQueryItem struct {
 
-	Id string `json:"id"`
+    Id string `json:"id"`
 
-	NodeName string `json:"node_name"`
+    NodeName string `json:"node_name"`
 
-	DbName string `json:"db_name"`
+    DbName string `json:"db_name"`
 
-	SessionStatus string `json:"session_status"`
+    SessionStatus string `json:"session_status"`
 
-	Query string `json:"query"`
+    Query string `json:"query"`
 
-	ElapsedMillis int64 `json:"elapsed_millis"`
+    ElapsedMillis int64 `json:"elapsed_millis"`
 
-	QueryStartTime string `json:"query_start_time"`
+    QueryStartTime string `json:"query_start_time"`
 
-	AppName string `json:"app_name"`
+    AppName string `json:"app_name"`
 
-	ClientHost string `json:"client_host"`
+    ClientHost string `json:"client_host"`
 
-	ClientPort string `json:"client_port"`
+    ClientPort string `json:"client_port"`
 }
