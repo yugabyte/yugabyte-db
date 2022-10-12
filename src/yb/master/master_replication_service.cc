@@ -48,6 +48,8 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
+    (GetTableSchemaFromSysCatalog)
+
   )
 };
 
