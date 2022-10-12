@@ -11,11 +11,26 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yugabyte-psycopg2/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
@@ -61,12 +76,6 @@ pip install psycopg2-binary
 ```
 
 The binary package is a practical choice for development and testing, but in production it is recommended to use the package built from sources.
-
-Then import the psycopg2 package.
-
-```python
-import psycopg2
-```
 
 ### Step 2: Connect to your cluster
 

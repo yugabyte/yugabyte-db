@@ -241,6 +241,9 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->StartTablespaceBgTaskIfStopped();
       }
 
+      // Restart CDCSDK parent tablet deletion bg task.
+      catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
+
       // Run background tasks related to XCluster & CDC Schema.
       WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
 

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: go-orm
     parent: go-drivers
-    weight: 400
+    weight: 600
 type: docs
 ---
 

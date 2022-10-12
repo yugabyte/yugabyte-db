@@ -3,10 +3,19 @@ package util
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
 	"time"
+)
+
+var (
+	once     sync.Once
+	certPool *x509.CertPool
 )
 
 type HttpClient struct {
@@ -15,8 +24,32 @@ type HttpClient struct {
 }
 
 func NewHttpClient(timeout int, url string) *HttpClient {
+	config := CurrentConfig()
+	once.Do(func() {
+		caCertPath := config.String(PlatformCaCertPathKey)
+		if caCertPath != "" {
+			certPool := x509.NewCertPool()
+			pem, err := os.ReadFile(caCertPath)
+			if err != nil {
+				panic(err)
+			}
+			certPool.AppendCertsFromPEM(pem)
+		}
+	})
+	var transport *http.Transport
+	if certPool == nil {
+		skipCertVerify := config.Bool(PlatformSkipVerifyCertKey)
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipCertVerify},
+		}
+	} else {
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: certPool},
+		}
+	}
 	client := &http.Client{
-		Timeout: time.Second * time.Duration(timeout),
+		Timeout:   time.Second * time.Duration(timeout),
+		Transport: transport,
 	}
 	return &HttpClient{client: client, url: url}
 }
@@ -87,8 +120,8 @@ func (c *HttpClient) Do(
 	return res, nil
 }
 
-//Validation to check if the given http method has correct
-//signature.
+// Validation to check if the given http method has correct
+// signature.
 func validate(method string, queryParams map[string]string, data any) error {
 	if !isValidMethod(method) {
 		return fmt.Errorf("Incorrect Method passed.")
@@ -101,7 +134,7 @@ func validate(method string, queryParams map[string]string, data any) error {
 	return nil
 }
 
-//Validates the method passed.
+// Validates the method passed.
 func isValidMethod(method string) bool {
 	switch method {
 	case http.MethodGet,

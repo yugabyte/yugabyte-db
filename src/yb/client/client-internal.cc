@@ -282,8 +282,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterEstimatedDataLoss);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

@@ -12,14 +12,14 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-//Claims for the JWT.
+// Claims for the JWT.
 type Claims struct {
 	JwtClientIdClaim string `json:"clientId"`
 	JwtUserIdClaim   string `json:"userId"`
 	jwt.StandardClaims
 }
 
-//Saves the cert and key to the certs directory.
+// Saves the cert and key to the certs directory.
 func SaveCerts(config *Config, cert string, key string, subDir string) error {
 	certsDir := filepath.Join(CertsDir(), subDir)
 	err := os.MkdirAll(certsDir, os.ModePerm)
@@ -52,8 +52,8 @@ func SaveCerts(config *Config, cert string, key string, subDir string) error {
 }
 
 func DeleteCerts(subDir string) error {
-	FileLogger().Infof("Deleting certs %s", subDir)
 	certsDir := filepath.Join(CertsDir(), subDir)
+	FileLogger().Infof("Deleting certs %s", certsDir)
 	err := os.RemoveAll(certsDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting certs %s, err %s", certsDir, err.Error())
@@ -62,8 +62,8 @@ func DeleteCerts(subDir string) error {
 }
 
 func DeleteRelease(release string) error {
-	FileLogger().Infof("Deleting release dir %s", release)
 	releaseDir := filepath.Join(ReleaseDir(), release)
+	FileLogger().Infof("Deleting release dir %s", releaseDir)
 	err := os.RemoveAll(releaseDir)
 	if err != nil {
 		FileLogger().Errorf("Error while deleting release dir %s, err %s", release, err.Error())

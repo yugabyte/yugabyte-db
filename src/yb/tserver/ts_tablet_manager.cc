@@ -232,12 +232,7 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
-DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
-            "If true, use pessimistic locking behavior in conflict resolution.");
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
-
-DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
+DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -488,14 +483,8 @@ Status TSTabletManager::Init() {
                                                                       local_peer_pb_.cloud_info());
 
   if (FLAGS_enable_wait_queue_based_pessimistic_locking) {
-    if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
-      LOG(WARNING) << "Ignoring enable_wait_queue_based_pessimistic_locking=true since "
-                   << "auto_promote_nonlocal_transactions_to_global is enabled. These two features "
-                   << "are not yet supported together.";
-    } else {
-      waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
-          client_future(), scoped_refptr<server::Clock>(server_->clock()));
-    }
+    waiting_txn_registry_ = std::make_unique<tablet::LocalWaitingTxnRegistry>(
+        client_future(), scoped_refptr<server::Clock>(server_->clock()));
   }
 
   deque<RaftGroupMetadataPtr> metas;
@@ -1442,8 +1431,30 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   LOG(INFO) << kLogPrefix << "Bootstrapping tablet";
   TRACE("Bootstrapping tablet");
 
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  auto s = ConsensusMetadata::Load(
+      meta->fs_manager(), tablet_id, meta->fs_manager()->uuid(), &cmeta);
+  if (!s.ok()) {
+    LOG(ERROR) << kLogPrefix << "Tablet failed to load consensus meta data: " << s;
+    tablet_peer->SetFailed(s);
+    return;
+  }
+
   consensus::ConsensusBootstrapInfo bootstrap_info;
   consensus::RetryableRequests retryable_requests(kLogPrefix);
+  bool bootstrap_retryable_requests = true;
+
+  if (cmeta->has_split_parent_tablet_id()) {
+    auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
+    if (parent_tablet_requests.ok()) {
+      retryable_requests = std::move(*parent_tablet_requests);
+      retryable_requests.set_log_prefix(kLogPrefix);
+      bootstrap_retryable_requests = false;
+    } else {
+      LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
+                << ResultToStatus(parent_tablet_requests);
+    }
+  }
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
@@ -1458,7 +1469,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
-    auto s = tablet_peer->SetBootstrapping();
+    s = tablet_peer->SetBootstrapping();
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to set bootstrapping: " << s;
       tablet_peer->SetFailed(s);
@@ -1499,6 +1510,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
       .retryable_requests = &retryable_requests,
+      .bootstrap_retryable_requests = bootstrap_retryable_requests,
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
@@ -1522,6 +1534,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         raft_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
+        std::move(cmeta),
         multi_raft_manager_.get());
 
     if (!s.ok()) {
@@ -1776,6 +1789,17 @@ Result<tablet::TabletPeerPtr> TSTabletManager::GetTablet(const TabletId& tablet_
 
 Result<tablet::TabletPeerPtr> TSTabletManager::GetTablet(const Slice& tablet_id) const {
   return DoGetTablet(tablet_id);
+}
+
+Result<consensus::RetryableRequests> TSTabletManager::GetTabletRetryableRequests(
+    const TabletId& tablet_id) const {
+  auto raft_consensus = VERIFY_RESULT(GetTablet(tablet_id))->shared_raft_consensus();
+  // raft_consensus is nullptr during bootstrap.
+  SCHECK_FORMAT(raft_consensus,
+                IllegalState,
+                "Tablet $0 raft_consensus not initialized",
+                tablet_id);
+  return raft_consensus->GetRetryableRequests();
 }
 
 template <class Key>

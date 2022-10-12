@@ -5,6 +5,8 @@ import sbt.Tests._
 
 import scala.sys.process.Process
 
+historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -91,6 +93,7 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
+lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -284,6 +287,8 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
+(Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
+
 (Compile / compilePlatform) := {
   ((Compile / compile) dependsOn buildModules).value
   buildVenv.value
@@ -323,7 +328,13 @@ buildUI := {
 
 buildModules := {
   ybLog("Building modules...")
-  val status = Process("mvn install -f parent.xml").!
+  val status = Process("mvn install -DskipTests=true", baseDirectory.value / "parent-module").!
+  status
+}
+
+buildDependentArtifacts := {
+  ybLog("Building dependencies...")
+  val status = Process("mvn install -DskipTests=true -DplatformDependenciesOnly=true", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -341,7 +352,7 @@ cleanUI := {
 
 cleanModules := {
   ybLog("Cleaning Node Agent...")
-  val status = Process("mvn clean -f parent.xml").!
+  val status = Process("mvn clean", baseDirectory.value / "parent-module").!
   status
 }
 
@@ -387,7 +398,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiConfigFile := "client/go/openapi-go-config.json"
   )
 
-packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
+packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
@@ -414,18 +425,10 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
-  // TODO(Shashank): Remove this in Step 3:
-  // Overrides to address vulnerability in swagger-play2
-  "com.typesafe.akka" %% "akka-actor" % "2.5.16"
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
-// TODO(Shashank): Remove these in Step 3:
-dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
-dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

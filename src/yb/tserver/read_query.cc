@@ -15,6 +15,7 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/gutil/bind.h"
 
@@ -70,6 +71,8 @@ METRIC_DEFINE_coarse_histogram(server, read_time_wait,
                                "Read Time Wait",
                                yb::MetricUnit::kMicroseconds,
                                "Number of microseconds read queries spend waiting for safe time");
+
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace tserver {
@@ -267,19 +270,42 @@ Status ReadQuery::DoPerform() {
   RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   if (!req_->pgsql_batch().empty()) {
     uint64_t last_breaking_catalog_version = 0; // unset.
+    uint32_t last_db_oid = kPgInvalidOid; // unset.
     for (const auto& pg_req : req_->pgsql_batch()) {
+      bool invalidated = false;
       // For postgres requests check that the syscatalog version matches.
       if (pg_req.has_ysql_catalog_version()) {
+        // For now we use either ysql_catalog_version or ysql_db_catalog_version but not both.
+        CHECK(!pg_req.has_ysql_db_catalog_version());
+        // Note that in initdb/bootstrap mode, even if FLAGS_enable_db_catalog_version_mode is
+        // on it will be ignored and we'll use ysql_catalog_version not ysql_db_catalog_version.
         if (last_breaking_catalog_version == 0) {
           // Initialize last breaking version if not yet set.
           server_.get_ysql_catalog_version(
               nullptr /* current_version */, &last_breaking_catalog_version);
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
-          return STATUS(
-              QLError, "The catalog snapshot used for this transaction has been invalidated",
-              TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
+          invalidated = true;
         }
+      } else if (pg_req.has_ysql_db_catalog_version()) {
+        CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+        CHECK_NE(pg_req.ysql_db_oid(), kPgInvalidOid);
+        if (last_db_oid == kPgInvalidOid) {
+          last_db_oid = pg_req.ysql_db_oid();
+          server_.get_ysql_db_catalog_version(
+            pg_req.ysql_db_oid(), nullptr /* current_version */, &last_breaking_catalog_version);
+        } else {
+          // There should be only one db oid in a request.
+          CHECK_EQ(last_db_oid, pg_req.ysql_db_oid());
+        }
+        if (pg_req.ysql_db_catalog_version() < last_breaking_catalog_version) {
+          invalidated = true;
+        }
+      }
+      if (invalidated) {
+        return STATUS(
+            QLError, "The catalog snapshot used for this transaction has been invalidated",
+            TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
       }
       RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
       if (IsValidRowMarkType(current_row_mark)) {

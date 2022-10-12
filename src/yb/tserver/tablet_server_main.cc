@@ -43,6 +43,8 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
 
+#include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/universe_key_manager.h"
@@ -243,6 +245,7 @@ int TabletServerMain(int argc, char** argv) {
         tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
         server->GetSharedMemoryFd());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
     pg_process_conf.certs_dir = FLAGS_certs_dir.empty()

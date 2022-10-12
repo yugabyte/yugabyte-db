@@ -20,6 +20,7 @@ The following projects are recommended for implementing Node applications using 
 | :------ | :----------------------- | :----------------------- | :--------------------|
 | YugabyteDB node-postgres Smart Driver| [Documentation](yugabyte-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3-yb-1](https://www.npmjs.com/package/pg) | 2.8 and above |
 | PostgreSQL node-postgres Driver| [Documentation](postgres-node-driver) <br /> [Hello World App](../../develop/build-apps/nodejs/ysql-pg/) | [8.7.3](https://www.npmjs.com/package/pg) | 2.6 and above |
+| YugabyteDB Node.js Driver for YCQL | [Documentation](ycql) | | |
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
@@ -52,8 +53,3 @@ To develop Node.js applications for YugabyteDB, you need the following:
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
-
-## Next steps
-
-- Learn how to build Node.js applications using [Sequelize](sequelize/).
-- Learn how to use [Prisma](prisma/) with YugabyteDB.

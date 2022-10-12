@@ -11,6 +11,21 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yb-pgx/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yb-pgx/" class="nav-link active">
@@ -60,21 +75,21 @@ Go applications can connect to the YugabyteDB database using the `pgx.Connect()`
 
 Use the `pgx.Connect()` method or `pgxpool.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
 
-The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
+| :-------- | :---------- | :------ |
+| user | User connecting to the database | yugabyte
+| password | User password | yugabyte
+| host | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
-| load_balance | enables uniform load balancing | true
-| topology_keys | enables topology-aware load balancing | true
+| dbname | Database name | yugabyte
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
 
-```go
+```sh
 postgres://username:password@localhost:5433/database_name?load_balance=true
 ```
 
@@ -89,8 +104,9 @@ conn, err := pgx.Connect(context.Background(), url)
 
 The following is an example connection string for connecting to YugabyteDB with topology-aware load balancing:
 
-```go
-postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
+```sh
+postgres://username:password@localhost:5433/database_name?load_balance=true&
+    topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 
 The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing.

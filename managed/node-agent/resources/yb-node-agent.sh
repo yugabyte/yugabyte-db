@@ -9,14 +9,14 @@ NODE_AGENT_RELEASE_DIR="$NODE_AGENT_DIR/release"
 TYPE="$1"
 VERSION="$2"
 
-# Remove the previous symlink in case of upgrade.
-if [ "$TYPE" = "upgrade" ]; then
-    unlink $NODE_AGENT_PKG_DIR
+# Remove the previous symlink if it exists.
+if [ -L "$NODE_AGENT_PKG_DIR" ]; then
+    unlink "$NODE_AGENT_PKG_DIR"
 fi
 
 
 # Create a new symlink between node-agent/pkg -> node-agent/release/<version>
-ln -s -f $NODE_AGENT_RELEASE_DIR/$VERSION $NODE_AGENT_PKG_DIR
+ln -s -f "$NODE_AGENT_RELEASE_DIR/$VERSION" "$NODE_AGENT_PKG_DIR"
 
 # Prompt for configuring the yb node agent and register during installation
 if [ "$TYPE" = "install" ]; then

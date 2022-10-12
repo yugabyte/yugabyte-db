@@ -3,19 +3,38 @@
 package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.utils.FileUtils;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,22 +45,30 @@ public class GFlagsValidation {
 
   private final Environment environment;
 
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidation.class);
 
+  public static final List<String> GFLAG_FILENAME_LIST =
+      ImmutableList.of("master_flags.xml", "tserver_flags.xml");
+
   @Inject
-  public GFlagsValidation(Environment environment) {
+  public GFlagsValidation(Environment environment, RuntimeConfigFactory runtimeConfigFactory) {
     this.environment = environment;
+    this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
       throws IOException {
-    InputStream flagStream =
-        environment.resourceAsStream(
-            "gflags_metadata/" + version + "/" + serverType.toLowerCase() + ".xml");
-    // If the metadata of the given db version (eg 2.9.2.0-b78) is present then we can take up the
-    // major version(2.9)
-    // metadata
-    if (flagStream == null) {
+    String releasesPath =
+        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
+    File file =
+        new File(
+            String.format("%s/%s/%s_flags.xml", releasesPath, version, serverType.toLowerCase()));
+    InputStream flagStream;
+    if (Files.exists(Paths.get(file.getAbsolutePath()))) {
+      flagStream = FileUtils.getInputStreamOrFail(file);
+    } else {
       String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
       flagStream =
           environment.resourceAsStream(
@@ -76,6 +103,70 @@ public class GFlagsValidation {
       return result;
     }
     return data.flags;
+  }
+
+  public void fetchGFlagsFromDBPackage(
+      String dbTarPackagePath, String dbVersion, List<String> requiredGFlagFileList) {
+    String releasesPath =
+        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
+    try (TarArchiveInputStream tarInput =
+        new TarArchiveInputStream(
+            new GzipCompressorInputStream(new FileInputStream(dbTarPackagePath)))) {
+      TarArchiveEntry currentEntry;
+      while ((currentEntry = tarInput.getNextTarEntry()) != null) {
+        // Ignore all non-flag xml files.
+        if (!currentEntry.isFile() || !currentEntry.getName().endsWith("flags.xml")) {
+          continue;
+        }
+        // Generally, we get the currentEntry variable value for the
+        // gFlag file like `dbVersion/master_flags.xml`
+        List<String> tarGFlagFilePathList = Arrays.asList(currentEntry.getName().split("/"));
+        if (tarGFlagFilePathList.size() == 0) {
+          continue;
+        }
+        String gFlagFileName = tarGFlagFilePathList.get(tarGFlagFilePathList.size() - 1);
+        // Don't modify/re-write existing gFlags files, only add missing ones.
+        if (!requiredGFlagFileList.contains(gFlagFileName)) {
+          continue;
+        }
+        String absoluteGFlagFileName =
+            String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
+        File gFlagOutputFile = new File(absoluteGFlagFileName);
+        if (!gFlagOutputFile.exists()) {
+          gFlagOutputFile.getParentFile().mkdirs();
+          gFlagOutputFile.createNewFile();
+          BufferedInputStream in = new BufferedInputStream(tarInput);
+          ByteArrayOutputStream out = new ByteArrayOutputStream();
+          IOUtils.copy(in, out);
+          try (OutputStream outputStream = new FileOutputStream(gFlagOutputFile)) {
+            out.writeTo(outputStream);
+          } catch (Exception e) {
+            LOG.error(
+                "Caught an error while adding {} for DB version{}: {}",
+                gFlagFileName,
+                dbVersion,
+                e);
+          }
+        }
+      }
+    } catch (Exception e) {
+      LOG.error("Caught an error while adding gflags metadata for version: {}", dbVersion, e);
+    }
+  }
+
+  private boolean checkGFlagFileExists(
+      String releasesPath, String dbVersion, String gFlagFileName) {
+    String filePath = String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
+    return Files.exists(Paths.get(filePath));
+  }
+
+  public List<String> getMissingGFlagFileList(String dbVersion) {
+    String releasesPath =
+        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
+    return GFLAG_FILENAME_LIST
+        .stream()
+        .filter((gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
+        .collect(Collectors.toList());
   }
 
   /** Structure to capture GFlags metadata from xml file. */

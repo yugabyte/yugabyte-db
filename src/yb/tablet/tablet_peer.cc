@@ -67,6 +67,7 @@
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
@@ -204,6 +205,7 @@ Status TabletPeer::InitTabletPeer(
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
+    std::unique_ptr<ConsensusMetadata> consensus_meta,
     consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -281,9 +283,10 @@ Status TabletPeer::InitTabletPeer(
 
     TRACE("Creating consensus instance");
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
-                                          meta_->fs_manager()->uuid(), &cmeta));
+    if (!consensus_meta) {
+      RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
+                                            meta_->fs_manager()->uuid(), &consensus_meta));
+    }
 
     if (retryable_requests) {
       retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
@@ -291,7 +294,7 @@ Status TabletPeer::InitTabletPeer(
 
     consensus_ = RaftConsensus::Create(
         options,
-        std::move(cmeta),
+        std::move(consensus_meta),
         local_peer_pb_,
         table_metric_entity,
         tablet_metric_entity,
@@ -840,6 +843,9 @@ consensus::OperationType MapOperationTypeToPB(OperationType operation_type) {
     case OperationType::kSplit:
       return consensus::SPLIT_OP;
 
+    case OperationType::kChangeAutoFlagsConfig:
+      return consensus::CHANGE_AUTO_FLAGS_CONFIG_OP;
+
     case OperationType::kEmpty:
       LOG(FATAL) << "OperationType::kEmpty cannot be converted to consensus::OperationType";
   }
@@ -1169,6 +1175,13 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
       return std::make_unique<SplitOperation>(tablet(), tablet_splitter_);
+
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+      DCHECK(replicate_msg->has_auto_flags_config())
+          << "CHANGE_AUTO_FLAGS_CONFIG_OP replica"
+             " operation must receive an AutoFlagsConfigPB";
+      return std::make_unique<ChangeAutoFlagsConfigOperation>(
+          tablet(), replicate_msg->mutable_auto_flags_config());
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;

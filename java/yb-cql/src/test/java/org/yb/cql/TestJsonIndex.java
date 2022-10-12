@@ -173,6 +173,8 @@ public class TestJsonIndex extends BaseCQLTest {
                     "  ( \"j->'a'->>'b'\" INT PRIMARY KEY, \"j->'a'->>'c'\" INT, j JSONB ) " +
                     "  WITH TRANSACTIONS = {'enabled' : true};");
 
+    waitForReadPermsOnAllIndexes("test_json_index_syntax");
+
     // Valid indexes: No name conflict.
     session.execute("CREATE INDEX jidx1 ON test_json_index_syntax(j->'a'->>'d');");
     session.execute("CREATE INDEX jidx2 ON test_json_index_syntax(j->'a'->>'c');");
@@ -213,6 +215,10 @@ public class TestJsonIndex extends BaseCQLTest {
     session.execute(schema_stmt);
     session.execute(table_stmt);
     session.execute(index_stmt);
+
+    // Wait until the index table has read permissions. We should use waitForReadPermsOnAllIndexes()
+    // but that routine is unable to locate the 'TestJsonIndex' keyspace.
+    Thread.sleep(10000);
 
     // Describe INDEX to test demangling column names.
     KeyspaceMetadata ks_metadata = cluster.getMetadata().getKeyspace("TestJsonIndex");

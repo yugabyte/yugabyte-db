@@ -70,6 +70,7 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
@@ -84,13 +85,26 @@ DEFINE_int32(
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
 
+DEFINE_bool(master_webserver_require_https, false,
+            "Require HTTPS when redirecting master UI requests to the leader.");
+TAG_FLAG(master_webserver_require_https, runtime);
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
+
+DECLARE_string(webserver_ca_certificate_file);
+
+DECLARE_string(webserver_certificate_file);
 
 namespace yb {
 
 namespace {
 
 const int64_t kCurlTimeoutSec = 180;
+
+const char* GetProtocol() {
+  return FLAGS_webserver_certificate_file.empty() || !FLAGS_master_webserver_require_https
+      ? "http" : "https";
+}
 
 std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& registration) {
   if (registration.http_addresses().empty()) {
@@ -156,7 +170,10 @@ void MasterPathHandlers::RedirectToLeader(
   std::string redirect = *redirect_result;
   EasyCurl curl;
   faststring buf;
-  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec);
+
+  curl.set_follow_redirects(true);
+  curl.set_ca_cert(FLAGS_webserver_ca_certificate_file);
+  auto s = curl.FetchURL(redirect, &buf, kCurlTimeoutSec, {} /* headers */);
   if (!s.ok()) {
     LOG(WARNING) << "Error retrieving leader master URL: " << redirect
                  << ", error :" << s.ToString();
@@ -193,7 +210,8 @@ Result<std::string> MasterPathHandlers::GetLeaderAddress(const Webserver::WebReq
     host_port.set_port(reg.http_addresses(0).port());
   }
   return Substitute(
-      "http://$0$1$2",
+      "$0://$1$2$3",
+      GetProtocol(),
       HostPortPBToString(DesiredHostPort(
           http_broadcast_addresses,
           reg.http_addresses(),
@@ -2152,8 +2170,9 @@ void MasterPathHandlers::HandlePrettyLB(
       // Point to the tablet servers link.
       TSRegistrationPB reg = desc->GetRegistration();
       *output << Substitute("<div class='panel-heading'>"
-                            "<h6 class='panel-title'><a href='http://$0'>TServer - $0    "
-                            "<i class='fa $1'></i></a></h6></div>\n",
+                            "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
+                            "<i class='fa $2'></i></a></h6></div>\n",
+                            GetProtocol(),
                             GetHttpHostPortFromServerRegistration(reg.common()),
                             icon_type);
 
@@ -2167,8 +2186,9 @@ void MasterPathHandlers::HandlePrettyLB(
         if (!master_->GetMasterRegistration(&reg).ok()) {
           continue;
         }
-        *output << Substitute("<td><h4><a href='http://$0/table?id=$1'>"
-                              "<i class='fa fa-table'></i>    $2</a></h4>\n",
+        *output << Substitute("<td><h4><a href='$0://$1/table?id=$2'>"
+                              "<i class='fa fa-table'></i>    $3</a></h4>\n",
+                              GetProtocol(),
                               GetHttpHostPortFromServerRegistration(reg),
                               table.first,
                               tname);
@@ -2356,7 +2376,8 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
   auto public_http_hp = GetPublicHttpHostPort(reg.common());
   if (public_http_hp) {
     return Substitute(
-        "<a href=\"http://$0/tablet?id=$1\">$2</a>",
+        "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
+        GetProtocol(),
         HostPortPBToString(*public_http_hp),
         EscapeForHtmlToString(tablet_id),
         EscapeForHtmlToString(public_http_hp->host()));
@@ -2370,7 +2391,8 @@ string MasterPathHandlers::RegistrationToHtml(
   string link_html = EscapeForHtmlToString(link_text);
   auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
-    link_html = Substitute("<a href=\"http://$0/\">$1</a>",
+    link_html = Substitute("<a href=\"$0://$1/\">$2</a>",
+                           GetProtocol(),
                            HostPortPBToString(*public_http_hp),
                            link_html);
   }

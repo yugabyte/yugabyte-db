@@ -132,16 +132,27 @@ using pgwrapper::PgSupervisor;
 
 namespace enterprise {
 
-class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDCTestParams> {
+struct TwoDCYsqlTestParams {
+  explicit TwoDCYsqlTestParams(int batch_size_)
+      : batch_size(batch_size_) {}
+
+  int batch_size;
+};
+
+class TwoDCYsqlTest : public TwoDCTestBase
+                    , public testing::WithParamInterface<TwoDCYsqlTestParams> {
  public:
+  void SetUp() override {
+    YB_SKIP_TEST_IN_TSAN();
+    TwoDCTestBase::SetUp();
+  }
+
   void ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_interval = false,
                                       bool enable_cdc_sdk_in_producer = false,
                                       bool do_explict_transaction = false);
 
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
-    TwoDCTestBase::SetUp();
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
-    FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
 
     // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
     // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
@@ -393,21 +404,18 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
   }
 };
-INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCYsqlTest,
-    ::testing::Values(
-        TwoDCTestParams(1, true, true), TwoDCTestParams(1, false, false),
-        TwoDCTestParams(0, true, true), TwoDCTestParams(0, false, false)));
 
-class TwoDCYsqlTestWithEnableIntentsReplication : public TwoDCYsqlTest {
+INSTANTIATE_TEST_CASE_P(TwoDCYsqlTestParams, TwoDCYsqlTest,
+                        ::testing::Values(TwoDCYsqlTestParams(0 /* batch_size */)));
+
+class TwoDCYsqlTestToggleBatching : public TwoDCYsqlTest {
 };
 
-INSTANTIATE_TEST_CASE_P(
-    TwoDCTestParams, TwoDCYsqlTestWithEnableIntentsReplication,
-    ::testing::Values(TwoDCTestParams(0, true, true), TwoDCTestParams(1, true, true)));
+INSTANTIATE_TEST_CASE_P(TwoDCYsqlTestParams, TwoDCYsqlTestToggleBatching,
+                        ::testing::Values(TwoDCYsqlTestParams(0 /* batch_size */),
+                                          TwoDCYsqlTestParams(1 /* batch_size */)));
 
-TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
-  YB_SKIP_TEST_IN_TSAN();
+TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeries) {
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -427,8 +435,7 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeries) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransactions) {
-  YB_SKIP_TEST_IN_TSAN();
+TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
@@ -451,7 +458,6 @@ TEST_P(TwoDCYsqlTestWithEnableIntentsReplication, GenerateSeriesMultipleTransact
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
-  YB_SKIP_TEST_IN_TSAN();
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4}, {6, 6}, 3, 1, false /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -485,7 +491,6 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
 }
 
 TEST_P(TwoDCYsqlTest, SimpleReplication) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = false;
 
   constexpr auto kNumRecords = 1000;
@@ -566,8 +571,8 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
       "IsDataReplicatedCorrectly"));
 
   // Enable packing
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_packed_row_size_limit = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
 
   // Disable the replication and ensure no tablets are being polled
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
@@ -579,7 +584,7 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
   }
 
   // 7. Disable packing and resume replication
-  FLAGS_ysql_enable_packed_row = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 2));
   ASSERT_OK(WaitFor(
@@ -598,7 +603,6 @@ TEST_P(TwoDCYsqlTest, SimpleReplication) {
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
-  YB_SKIP_TEST_IN_TSAN();
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   string new_column = "contact_name";
 
@@ -876,7 +880,6 @@ TEST_P(TwoDCYsqlTest, ReplicationWithBasicDDL) {
 }
 
 TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
-  YB_SKIP_TEST_IN_TSAN();
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   FLAGS_ysql_disable_index_backfill = false;
   string new_column = "alt";
@@ -893,35 +896,36 @@ TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
   ASSERT_EQ(tables.size(), 2);
   std::shared_ptr<client::YBTable> producer_table(tables[0]), consumer_table(tables[1]);
 
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-            kUniverseId, {producer_table}));
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
-  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId,
-                                      &get_universe_replication_resp));
+  ASSERT_OK(VerifyUniverseReplication(
+      consumer_cluster(), consumer_client(), kUniverseId, &get_universe_replication_resp));
 
-  auto producer_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(
-                                     producer_table->name().namespace_name()));
-  auto consumer_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(
-                                     consumer_table->name().namespace_name()));
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table->name().namespace_name()));
 
   // Add a second column & populate with data.
-  ASSERT_OK(producer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 int",
-                                        producer_table->name().table_name(), new_column));
-  ASSERT_OK(consumer_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 int",
-                                        consumer_table->name().table_name(), new_column));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 int", producer_table->name().table_name(), new_column));
+  ASSERT_OK(consumer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 int", consumer_table->name().table_name(), new_column));
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 VALUES (generate_series($1,      $1 + $2), "
-                             "generate_series($1 + 11, $1 + $2 + 11))",
+      "generate_series($1 + 11, $1 + $2 + 11))",
       producer_table->name().table_name(), count, kRecordBatch - 1));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   count += kRecordBatch;
 
   // Create an Index on the second column.
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX $0 ON $1 ($2 ASC)",
-            kIndexName, producer_table->name().table_name(), new_column));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ($2 ASC)", kIndexName, producer_table->name().table_name(),
+      new_column));
 
-  const std::string query = Format("SELECT * FROM $0 ORDER BY $1",
-                                   producer_table->name().table_name(), new_column);
+  const std::string query =
+      Format("SELECT * FROM $0 ORDER BY $1", producer_table->name().table_name(), new_column);
   ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(query)));
   PGResultPtr res = ASSERT_RESULT(producer_conn.Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), count);
@@ -930,7 +934,7 @@ TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
   // Verify that the Consumer is still getting new traffic after the index is created.
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 VALUES (generate_series($1,      $1 + $2), "
-                             "generate_series($1 + 11, $1 + $2 + 11))",
+      "generate_series($1 + 11, $1 + $2 + 11))",
       producer_table->name().table_name(), count, kRecordBatch - 1));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   count += kRecordBatch;
@@ -947,14 +951,12 @@ TEST_P(TwoDCYsqlTest, ReplicationWithCreateIndexDDL) {
   // Verify that we're still getting traffic to the Consumer after the index drop.
   ASSERT_OK(producer_conn.ExecuteFormat(
       "INSERT INTO $0 VALUES (generate_series($1,      $1 + $2), "
-                             "generate_series($1 + 11, $1 + $2 + 11))",
+      "generate_series($1 + 11, $1 + $2 + 11))",
       producer_table->name().table_name(), count, kRecordBatch - 1));
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-
 TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
@@ -1115,7 +1117,6 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
-  YB_SKIP_TEST_IN_TSAN();
   SetAtomicFlag(true, &FLAGS_xcluster_wait_on_ddl_alter);
   constexpr auto kRecordBatch = 5;
   auto count = 0;
@@ -1315,7 +1316,6 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseReplication) {
 }
 
 TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
-  YB_SKIP_TEST_IN_TSAN();
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1347,8 +1347,6 @@ TEST_P(TwoDCYsqlTest, ColocatedDatabaseDifferentColocationIds) {
 }
 
 TEST_P(TwoDCYsqlTest, TablegroupReplication) {
-  YB_SKIP_TEST_IN_TSAN();
-
   std::vector<uint32_t> tables_vector = {1, 1};
   boost::optional<std::string> kTablegroupName("mytablegroup");
   auto tables = ASSERT_RESULT(
@@ -1510,7 +1508,6 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
 }
 
 TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
-  YB_SKIP_TEST_IN_TSAN();
   ASSERT_OK(Initialize(1 /* replication_factor */));
 
   boost::optional<std::string> tablegroup_name("mytablegroup");
@@ -1564,7 +1561,6 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
 
 // Checks that in regular replication set up, bootstrap is not required
 TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -1601,7 +1597,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
   }
 
   // 2. Setup replication.
-  FLAGS_check_bootstrap_required = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::GetUniverseReplicationResponsePB verify_resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &verify_resp));
@@ -1648,8 +1644,6 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredNotFlushed) {
 
 // Checks that with missing logs, replication will require bootstrapping
 TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
-  YB_SKIP_TEST_IN_TSAN();
-
   FLAGS_enable_load_balancing = false;
   FLAGS_log_cache_size_limit_mb = 1;
   FLAGS_log_segment_size_bytes = 5_KB;
@@ -1744,7 +1738,7 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
   ASSERT_TRUE(should_bootstrap);
 
   // Setup replication should fail if this check is enabled.
-  FLAGS_check_bootstrap_required = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
   ASSERT_OK(SetupUniverseReplication(kUniverseId, producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(VerifyUniverseReplicationFailed(consumer_cluster(), consumer_client(),
@@ -1756,7 +1750,6 @@ TEST_P(TwoDCYsqlTest, IsBootstrapRequiredFlushed) {
 // TODO adapt rest of twodc-test.cc tests.
 
 TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNT = 1; // Tablets per table.
   std::vector<uint32_t> tables_vector = {kNT, kNT, kNT}; // Each entry is a table. (Currently 3)
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -1882,7 +1875,6 @@ TEST_P(TwoDCYsqlTest, DeleteTableChecks) {
 }
 
 TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -1955,13 +1947,12 @@ TEST_P(TwoDCYsqlTest, TruncateTableChecks) {
   ASSERT_NOK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_NOK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 
-  FLAGS_enable_delete_truncate_xcluster_replicated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_delete_truncate_xcluster_replicated_table) = true;
   ASSERT_OK(TruncateTable(&producer_cluster_, {producer_table_id}));
   ASSERT_OK(TruncateTable(&consumer_cluster_, {consumer_table_id}));
 }
 
 TEST_P(TwoDCYsqlTest, SetupReplicationWithMaterializedViews) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNTabletsPerTable = 1;
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
@@ -2274,38 +2265,32 @@ void TwoDCYsqlTest::ValidateRecordsTwoDCWithCDCSDK(bool update_min_cdc_indices_i
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKEnabled) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = false;
   ValidateRecordsTwoDCWithCDCSDK(false, false, false);
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKPackedRowsEnabled) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsTwoDCWithCDCSDK(false, false, false);
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTransaction) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = false;
   ValidateRecordsTwoDCWithCDCSDK(false, true, true);
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKExplictTranPackedRows) {
-  YB_SKIP_TEST_IN_TSAN();
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   ValidateRecordsTwoDCWithCDCSDK(false, true, true);
 }
 
 TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKUpdateCDCInterval) {
-  YB_SKIP_TEST_IN_TSAN();
   ValidateRecordsTwoDCWithCDCSDK(true, true, false);
 }
 
 TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
-  YB_SKIP_TEST_IN_TSAN();
   constexpr int kNumTables = 3;
   constexpr int kNTabletsPerTable = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));

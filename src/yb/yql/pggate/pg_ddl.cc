@@ -33,6 +33,7 @@ DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,
                  "Adjusts the timeout for a DDL operation from the YBClient default, if non-zero.");
 
 DECLARE_int32(max_num_tablets_for_table);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {
 namespace pggate {
@@ -41,7 +42,6 @@ using namespace std::literals;  // NOLINT
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;
-static MonoDelta kCreateDatabaseTimeout = 1s * RegularBuildVsDebugVsSanitizers(60, 150, 180);
 
 namespace {
 
@@ -55,11 +55,12 @@ CoarseTimePoint DdlDeadline() {
 
 // Make a special case for create database because it is a well-known slow operation in YB.
 CoarseTimePoint CreateDatabaseDeadline() {
-  auto timeout = MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec);
-  if (timeout == MonoDelta::kZero) {
-    timeout = kCreateDatabaseTimeout;
+  int32 timeout = FLAGS_TEST_user_ddl_operation_timeout_sec;
+  if (timeout == 0) {
+    timeout = FLAGS_yb_client_admin_operation_timeout_sec *
+              RegularBuildVsDebugVsSanitizers(1, 2, 2);
   }
-  return CoarseMonoClock::now() + timeout;
+  return CoarseMonoClock::now() + MonoDelta::FromSeconds(timeout);
 }
 
 } // namespace

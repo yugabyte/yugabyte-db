@@ -24,6 +24,9 @@
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
+
+#include "yb/master/master_replication.pb.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {
@@ -33,6 +36,7 @@ Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
     const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
     DatumMessagePB* cdc_datum_message = NULL);
 
 struct ExternalIntent {

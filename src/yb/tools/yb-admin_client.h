@@ -79,14 +79,16 @@ struct TypedNamespaceName {
 
 class TableNameResolver {
  public:
-  TableNameResolver(std::vector<client::YBTableName> tables,
-                    std::vector<master::NamespaceIdentifierPB> namespaces);
+  using Values = std::vector<client::YBTableName>;
+  TableNameResolver(
+      Values* values,
+      std::vector<client::YBTableName>&& tables,
+      std::vector<master::NamespaceIdentifierPB>&& namespaces);
   TableNameResolver(TableNameResolver&&);
   ~TableNameResolver();
 
   Result<bool> Feed(const std::string& value);
-  std::vector<client::YBTableName>& values();
-  master::NamespaceIdentifierPB last_namespace();
+  const master::NamespaceIdentifierPB* last_namespace() const;
 
  private:
   class Impl;
@@ -284,7 +286,7 @@ class ClusterAdminClient {
 
   Status AddTransactionStatusTablet(const TableId& table_id);
 
-  Result<TableNameResolver> BuildTableNameResolver();
+  Result<TableNameResolver> BuildTableNameResolver(TableNameResolver::Values* tables);
 
   Result<std::string> GetMasterLeaderUuid();
 

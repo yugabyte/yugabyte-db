@@ -166,7 +166,7 @@ func HandleUpgradeScript(config *util.Config, ctx context.Context, version strin
 	return nil
 }
 
-//Shell task process for downloading the node-agent build package
+// Shell task process for downloading the node-agent build package.
 func HandleDownloadPackageScript(config *util.Config, ctx context.Context) (string, error) {
 	util.FileLogger().Debug("Initializing the download package script")
 	jwtToken, err := util.GenerateJWT(config)

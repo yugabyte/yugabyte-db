@@ -213,6 +213,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return GetTablet(Slice(tablet_id));
   }
 
+  Result<consensus::RetryableRequests> GetTabletRetryableRequests(
+      const TabletId& tablet_id) const;
+
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.
   // Returns IllegalState if the tablet cannot serve requests.

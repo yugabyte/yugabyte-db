@@ -24,7 +24,9 @@
 #include "yb/tserver/pg_client.service.h"
 
 namespace yb {
+
 class XClusterSafeTimeMap;
+
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
@@ -58,22 +60,26 @@ namespace tserver {
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
     (CheckIfPitrActive) \
+    (GetTserverCatalogVersionInfo) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
+      TabletServerIf* const tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
       const scoped_refptr<ClockBase>& clock,
       TransactionPoolProvider transaction_pool_provider,
       const scoped_refptr<MetricEntity>& entity,
       rpc::Scheduler* scheduler,
-      const std::shared_ptr<XClusterSafeTimeMap>& xcluster_safe_time_map);
+      const XClusterSafeTimeMap* xcluster_safe_time_map);
 
   ~PgClientServiceImpl();
 
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+
+  void InvalidateTableCache();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \

@@ -10,6 +10,22 @@ menu:
     weight: 500
 type: docs
 ---
+
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yugabyte-node-driver/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yugabyte-node-driver/" class="nav-link active">
@@ -46,7 +62,7 @@ You can start using the driver in your code.
 
 ### Step 2: Set up the database connection
 
-The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
@@ -55,38 +71,30 @@ The following table describes the connection parameters required to connect, inc
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
-| loadBalance | Enables uniform load balancing | false |
-| topology_keys | Enables topology-aware load balancing | true |
+| `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
-Before connecting to the YugabyteDB cluster, import the `@yugabytedb/pg` package.
+Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
-``` js
-const pg = require('@yugabytedb/pg');
-```
-
-Create a client to connect to the cluster with uniform load balancing using a connection string, as follows:
-
-```js
-const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true"
-const client = new Client(connectionString);
-client.connect()
+```sh
+postgresql://user:password@host:port/database?loadBalance=true?
+    topology_keys=cloud.region.zone1,cloud.region.zone2
 ```
 
 #### Use SSL
 
 The following table describes the connection parameters required to connect using TLS/SSL.
 
-| Parameter | Description | Default
-| :-------- | :---------- | :------------ |
+| Parameter | Description | Default |
+| :-------- | :---------- | :------ |
 | sslmode | SSL mode | require |
 | sslrootcert | path to the root certificate on your computer | ~/.postgresql/ |
 
 The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
 
-```javascript
-const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
-const client = new Client(connectionString);
-client.connect()
+```sh
+postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
+    sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).

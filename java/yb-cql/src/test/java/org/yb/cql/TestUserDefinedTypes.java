@@ -563,8 +563,7 @@ public class TestUserDefinedTypes extends BaseCQLTest {
 
       session.execute("CREATE INDEX " + tableName2 + "_idx ON " + tableName2 + "(r,v)");
 
-      // Wait for the table alterations to complete.
-      Thread.sleep(5000);
+      waitForReadPermsOnAllIndexes(tableName2);
 
       insert_stmt = "INSERT INTO %s (h, r, v) values (1, %s, %d)";
 

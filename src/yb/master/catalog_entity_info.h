@@ -243,6 +243,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaDriveInfo(const std::string& ts_uuid,
                               const TabletReplicaDriveInfo& drive_info);
 
+  // Returns the per-stream replication status bitmasks.
+  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
@@ -250,6 +253,10 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
   uint32_t reported_schema_version(const TableId& table_id);
+
+  // Accessors for the initial leader election protege.
+  void SetInitiaLeaderElectionProtege(const std::string& protege_uuid) EXCLUDES(lock_);
+  std::string InitiaLeaderElectionProtege() EXCLUDES(lock_);
 
   bool colocated() const;
 
@@ -303,9 +310,14 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
 
+  // The protege UUID to use for the initial leader election (in-memory only).
+  std::string initial_leader_election_protege_ GUARDED_BY(lock_);
+
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
+
+  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };

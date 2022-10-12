@@ -293,7 +293,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       return;
     }
 
-    *resp->mutable_config() = server_->GetAutoFlagConfig();
+    *resp->mutable_config() = server_->GetAutoFlagsConfig();
 
     rpc.RespondSuccess();
   }
@@ -304,6 +304,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalanced)
     (IsLoadBalancerIdle)
     (SetPreferredZones)
+    (PromoteAutoFlags)
   )
 };
 

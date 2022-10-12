@@ -58,6 +58,11 @@ class XClusterSafeTimeService {
 
   void ScheduleTaskIfNeeded() EXCLUDES(shutdown_cond_lock_, task_enqueue_lock_);
 
+  // Calculate the max_safe_time - min_safe_time for each namespace.
+  Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec();
+
+  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap();
+
  private:
   friend class XClusterSafeTimeServiceMocked;
   FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
@@ -83,7 +88,11 @@ class XClusterSafeTimeService {
   // Returns true if we need to run again
   Result<bool> ComputeSafeTime(const int64_t leader_term) EXCLUDES(mutex_);
 
-  virtual Result<std::map<ProducerTabletInfo, HybridTime>> GetSafeTimeFromTable() REQUIRES(mutex_);
+  typedef std::map<ProducerTabletInfo, HybridTime> ProducerTabletToSafeTimeMap;
+
+  virtual Result<ProducerTabletToSafeTimeMap> GetSafeTimeFromTable() REQUIRES(mutex_);
+
+  Result<XClusterNamespaceToSafeTimeMap> GetMaxNamespaceSafeTimeFromTable() REQUIRES(mutex_);
 
   // Update our producer_tablet_namespace_map_ if it is stale.
   // Returns true if an update was made, else false.
@@ -98,6 +107,8 @@ class XClusterSafeTimeService {
 
   virtual Status CleanupEntriesFromTable(const std::vector<ProducerTabletInfo>& entries_to_delete)
       REQUIRES(mutex_);
+
+  Result<int64_t> GetLeaderTermFromCatalogManager();
 
   Master* const master_;
   CatalogManager* const catalog_manager_;

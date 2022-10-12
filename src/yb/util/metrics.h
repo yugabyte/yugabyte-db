@@ -541,6 +541,8 @@ class MetricRegistry {
     return tablets_shutdown_.find(id) != tablets_shutdown_.end();
   }
 
+  void get_all_prototypes(std::set<std::string>&) const;
+
  private:
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
   EntityMap entities_;

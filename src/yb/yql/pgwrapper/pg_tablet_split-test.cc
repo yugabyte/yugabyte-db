@@ -149,8 +149,7 @@ class PgPartitioningVersionTest :
   using PartitionBounds = std::pair<std::string, std::string>;
 
   void SetUp() override {
-    // Additional disabling is required as YB_DISABLE_TEST_IN_TSAN is not allowed in parameterized
-    // test with TEST_P and calling path cannot reach test body due to initdb timeout in TSAN mode.
+    // Additional disabling is required due to initdb timeout in TSAN mode.
     YB_SKIP_TEST_IN_TSAN();
     PgTabletSplitTest::SetUp();
   }
@@ -322,8 +321,6 @@ class PgPartitioningVersionTest :
 // as of now, it is ok to keep only one test as manual and automatic splitting use the same
 // execution path in context of table/tablet validation.
 TEST_P(PgPartitioningVersionTest, ManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   const auto expected_partitioning_version = GetParam();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
@@ -389,8 +386,6 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key when it contains NULLs in user columns.
   const auto expected_partitioning_version = GetParam();
@@ -500,8 +495,6 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
-  YB_SKIP_TEST_IN_TSAN();
-
   // The purpose of the test is to verify operations are forwarded to the correct tablets based on
   // partition_key, where `ybuniqueidxkeysuffix` value is set to null.
   const auto expected_partitioning_version = GetParam();
@@ -600,8 +593,6 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
 }
 
 TEST_P(PgPartitioningVersionTest, SplitAt) {
-  YB_SKIP_TEST_IN_TSAN();
-
   const auto expected_partitioning_version = GetParam();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
@@ -649,7 +640,6 @@ TEST_P(PgPartitioningVersionTest, SplitAt) {
       "idx2", 4,
       adjust_partitions(expected_partitioning_version, {{"\"800\""}, {"\"600\""}, {"\"400\""}})));
 }
-
 
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,

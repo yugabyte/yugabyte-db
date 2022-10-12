@@ -228,12 +228,14 @@ add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
     "--program_name" "${YB_MASTER_DYNAMIC_EXE_NAME}"
     "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
+    "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
   BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
 
 # Generate auto_flags.json
 set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
   "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
+  "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
   "--output_file_path" "${AUTO_FLAGS_FILE}")
 add_custom_target(
   gen_auto_flags_json ALL

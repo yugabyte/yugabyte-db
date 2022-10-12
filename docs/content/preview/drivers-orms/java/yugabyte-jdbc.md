@@ -1,7 +1,7 @@
 ---
 title: Connect an application
 linkTitle: Connect an app
-description: JDBC drivers for YSQL
+description: JDBC driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,11 +11,26 @@ menu:
 type: docs
 ---
 
+<div class="custom-tabs tabs-style-2">
+  <ul class="tabs-name">
+    <li class="active">
+      <a href="../yugabyte-jdbc/" class="nav-link">
+        YSQL
+      </a>
+    </li>
+    <li>
+      <a href="../ycql/" class="nav-link">
+        YCQL
+      </a>
+    </li>
+  </ul>
+</div>
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
     <a href="../yugabyte-jdbc/" class="nav-link active">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
@@ -77,23 +92,23 @@ Set up the driver properties to configure the credentials and SSL Certificates f
 
 Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB database, which can be used for performing DDLs and DMLs against the database.
 
-The following table describes the connection parameters required to connect, including smart driver parameters for uniform and topology load balancing.
+The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | JDBC Parameter | Description | Default |
-| :---------- | :---------- | :------ |
+| :------------- | :---------- | :------ |
 | hostname  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
-| load-balance | Enables uniform load balancing | true
-| topology_keys | enables topology-aware load balancing | true
+| `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB.
 
-```java
-string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true"
-DriverManager.getConnection(yburl);
+```sh
+jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 
 #### Use SSL
@@ -108,9 +123,9 @@ The following table describes the connection parameters required to connect usin
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
-```java
-string yburl = "jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
-Connection conn = DriverManager.getConnection(yburl);
+```sh
+jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).

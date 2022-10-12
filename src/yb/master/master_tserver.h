@@ -52,8 +52,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
+  // Get the global catalog versions.
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override;
+  // Get the per-db catalog versions for database db_oid.
+  void get_ysql_db_catalog_version(uint32_t db_oid,
+                                   uint64_t* current_version,
+                                   uint64_t* last_breaking_version) const override;
 
   Status get_ysql_db_oid_to_cat_version_info_map(
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;

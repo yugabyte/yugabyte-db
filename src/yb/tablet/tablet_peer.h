@@ -162,6 +162,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
+      std::unique_ptr<consensus::ConsensusMetadata> consensus_meta,
       consensus::MultiRaftManager* multi_raft_manager);
 
   // Starts the TabletPeer, making it available for Write()s. If this
