@@ -73,6 +73,11 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   std::string ToString() const override;
 
+  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
+  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
+  //  this object before accessing this member.
+  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
+
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;
