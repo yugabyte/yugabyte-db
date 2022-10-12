@@ -136,6 +136,10 @@ public enum TaskType {
 
   UpdateDiskSize("UpdateDiskSize"),
 
+  UpdateKubernetesDiskSize("UpdateKubernetesDiskSize"),
+
+  KubernetesCheckStorageClass("subtasks.KubernetesCheckStorageClass"),
+
   StartMasterOnNode("StartMasterOnNode"),
 
   CreateXClusterConfig("CreateXClusterConfig"),
