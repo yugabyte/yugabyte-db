@@ -1007,11 +1007,25 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
         break;
       }
       RETURN_NOT_OK(status);
+      bool split_happened = false;
       for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
         if (peer->tablet_id() == tablet_id) {
-          current_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
+          // 1. If shared_tablet is NULL, it means peer has shut down and split happen.
+          // 2. If shared_tablet hasn't been reset, but RocksDB has been shut down,
+          //    shared_tablet->GetCurrentVersionSstFilesSize() will return 0 as default.
+          //    Then next loop of inserting and flush, the code will detect splitting
+          //    happen and break the loop. Thus, we don't need to handle it here.
+          const auto shared_tablet = peer->shared_tablet();
+          if (shared_tablet) {
+            current_size = shared_tablet->GetCurrentVersionSstFilesSize();
+          } else {
+            split_happened = true;
+          }
           break;
         }
+      }
+      if (split_happened) {
+        break;
       }
     }
     RETURN_NOT_OK(WaitForTabletSplitCompletion(
