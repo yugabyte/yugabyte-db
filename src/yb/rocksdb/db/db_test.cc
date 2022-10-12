@@ -4848,11 +4848,9 @@ static bool CompareIterators(int step,
   options.snapshot = db_snap;
   Iterator* dbiter = db->NewIterator(options);
   bool ok = true;
-  int count = 0;
   for (miter->SeekToFirst(), dbiter->SeekToFirst();
        ok && miter->Valid() && dbiter->Valid();
        miter->Next(), dbiter->Next()) {
-    count++;
     if (miter->key().compare(dbiter->key()) != 0) {
       fprintf(stderr, "step %d: Key mismatch: '%s' vs. '%s'\n",
               step,

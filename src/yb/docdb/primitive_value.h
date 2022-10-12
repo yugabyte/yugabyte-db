@@ -36,6 +36,8 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 
+#include "yb/docdb/key_entry_value.h"
+
 namespace yb {
 namespace docdb {
 
@@ -46,12 +48,6 @@ YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
-
-enum class SystemColumnIds : ColumnIdRep {
-  kLivenessColumn = 0  // Stores the TTL for QL rows inserted using an INSERT statement.
-};
-
-using FrozenContainer = std::vector<KeyEntryValue>;
 
 class PrimitiveValue {
  public:
@@ -309,197 +305,6 @@ void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, std::string* out);
 size_t EncodedValueSize(const QLValuePB& value);
 
-class KeyEntryValue {
- public:
-  static const KeyEntryValue kLivenessColumn;
-
-  using Type = KeyEntryType;
-
-  KeyEntryValue();
-  explicit KeyEntryValue(KeyEntryType type);
-  ~KeyEntryValue();
-
-  KeyEntryValue(const KeyEntryValue& other);
-  KeyEntryValue(KeyEntryValue&& other);
-
-  explicit KeyEntryValue(
-      const Slice& str, SortOrder sort_order = SortOrder::kAscending,
-      bool is_collate = false);
-
-  explicit KeyEntryValue(const DocHybridTime& hybrid_time);
-  explicit KeyEntryValue(const HybridTime& hybrid_time);
-
-  KeyEntryValue& operator =(const KeyEntryValue& other);
-  KeyEntryValue& operator =(KeyEntryValue&& other);
-
-  KeyEntryType type() const {
-    return type_;
-  }
-
-  void AppendToKey(KeyBytes* key_bytes) const;
-  KeyBytes ToKeyBytes() const;
-
-  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
-
-  int CompareTo(const KeyEntryValue& other) const;
-
-  bool IsInfinity() const;
-
-  // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
-  // format and consumes a prefix of the slice.
-  static Status DecodeKey(Slice* slice, KeyEntryValue* out);
-
-  Status DecodeFromKey(Slice* slice);
-  static Result<KeyEntryValue> FullyDecodeFromKey(const Slice& slice);
-
-  void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
-
-  bool IsString() const;
-  bool IsInt32() const;
-  bool IsInt64() const;
-  bool IsFloat() const;
-  bool IsDouble() const;
-  bool IsColumnId() const;
-  bool IsUuid() const;
-  bool IsInetAddress() const;
-  bool IsFrozen() const;
-  bool IsUInt32() const;
-  bool IsUInt64() const;
-  bool IsDecimal() const;
-  bool IsVarInt() const;
-  bool IsTimestamp() const;
-
-  const std::string& GetString() const;
-  int32_t GetInt32() const;
-  int64_t GetInt64() const;
-  float GetFloat() const;
-  double GetDouble() const;
-  ColumnId GetColumnId() const;
-  uint8_t GetGinNull() const;
-  uint32_t GetUInt32() const;
-  uint64_t GetUInt64() const;
-  const Uuid& GetUuid() const;
-  const InetAddress& GetInetAddress() const;
-  const std::string& GetDecimal() const;
-  const std::string& GetVarInt() const;
-  Timestamp GetTimestamp() const;
-  const FrozenContainer& GetFrozen() const;
-
-  static KeyEntryValue NullValue(SortingType sorting_type);
-
-  static KeyEntryValue FromQLValuePB(const QLValuePB& value, SortingType sorting_type);
-  static KeyEntryValue FromQLValuePBForKey(const QLValuePB& value, SortingType sorting_type);
-  static KeyEntryValue FromQLValuePB(const LWQLValuePB& value, SortingType sorting_type);
-  static KeyEntryValue FromQLValuePBForKey(const LWQLValuePB& value, SortingType sorting_type);
-  static KeyEntryValue FromQLVirtualValue(QLVirtualValuePB value);
-
-  static KeyEntryValue Double(double d, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue Float(float f, SortOrder sort_order = SortOrder::kAscending);
-  // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
-  static KeyEntryValue Decimal(const Slice& decimal_str, SortOrder sort_order);
-  static KeyEntryValue VarInt(const Slice& varint_str, SortOrder sort_order);
-  static KeyEntryValue ArrayIndex(int64_t index);
-  static KeyEntryValue UInt16Hash(uint16_t hash);
-  static KeyEntryValue MakeColumnId(ColumnId column_id);
-  static KeyEntryValue SystemColumnId(ColumnId column_id);
-  static KeyEntryValue SystemColumnId(SystemColumnIds system_column_id);
-  static KeyEntryValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue Int64(int64_t v, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue MakeTimestamp(
-      const Timestamp& timestamp, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue MakeInetAddress(
-      const InetAddress& value, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue MakeUuid(const Uuid& value, SortOrder sort_order = SortOrder::kAscending);
-  static KeyEntryValue GinNull(uint8_t v);
-
-  static KeyEntryValue Create(int64_t value) {
-    return KeyEntryValue::Int64(value);
-  }
-
-  static KeyEntryValue Create(int32_t value) {
-    return KeyEntryValue::Int32(value);
-  }
-
-  static KeyEntryValue Create(const std::string& value) {
-    return KeyEntryValue(value);
-  }
-
- private:
-  friend bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs);
-
-  template <class PB>
-  static KeyEntryValue DoFromQLValuePB(const PB& value, SortingType sorting_type);
-
-  KeyEntryType type_;
-
-  bool IsStoredAsString() const;
-  void Destroy();
-
-  union {
-    int32_t int32_val_;
-    uint32_t uint32_val_;
-    int64_t int64_val_;
-    uint64_t uint64_val_;
-    uint16_t uint16_val_;
-    DocHybridTime hybrid_time_val_;
-    std::string str_val_;
-    float float_val_;
-    double double_val_;
-    Timestamp timestamp_val_;
-    InetAddress* inetaddress_val_;
-    Uuid uuid_val_;
-    FrozenContainer* frozen_val_;
-    ColumnId column_id_val_;
-    uint8_t gin_null_val_;
-  };
-};
-
-bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs);
-
-inline bool operator!=(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  return !(lhs == rhs);
-}
-
-inline bool operator<(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  return lhs.CompareTo(rhs) < 0;
-}
-
-inline bool operator<=(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  return lhs.CompareTo(rhs) <= 0;
-}
-
-inline bool operator>(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  return lhs.CompareTo(rhs) > 0;
-}
-
-inline bool operator>=(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  return lhs.CompareTo(rhs) >= 0;
-}
-
-inline std::ostream& operator<<(std::ostream& out, const KeyEntryValue& rhs) {
-  return out << rhs.ToString();
-}
-
-// A variadic template utility for creating vectors with PrimitiveValue elements out of arbitrary
-// sequences of arguments of supported types.
-inline void AppendKeyEntryValues(std::vector<KeyEntryValue>* dest) {}
-
-template <class T, class ...U>
-inline void AppendKeyEntryValues(std::vector<KeyEntryValue>* dest,
-                                  T first_arg,
-                                  U... more_args) {
-  dest->push_back(KeyEntryValue::Create(first_arg));
-  AppendKeyEntryValues(dest, more_args...);
-}
-
-template <class ...T>
-inline std::vector<KeyEntryValue> KeyEntryValues(T... args) {
-  std::vector<KeyEntryValue> v;
-  AppendKeyEntryValues(&v, args...);
-  return v;
-}
 
 }  // namespace docdb
 }  // namespace yb
