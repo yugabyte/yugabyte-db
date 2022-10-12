@@ -23,9 +23,9 @@ To create your Sandbox cluster:
 
 1. Enter a name for the cluster, choose the cloud provider (AWS or GCP), and choose the region in which to deploy the cluster, then click **Next**.
 
-    <!-- 1. Click **Add Current IP Address**. The IP address of your machine is added to the IP allow list. This allows you to connect to your sandbox cluster from applications and your desktop after it is created.
+1. Click **Add Current IP Address**. The IP address of your machine is added to the IP allow list. This allows you to connect to your sandbox cluster from applications and your desktop after it is created.
 
-    1. Click **Next**. -->
+1. Click **Next**.
 
 1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
 
@@ -60,7 +60,7 @@ To connect to your cluster, do the following:
     ```
 
 1. Enter the password for the admin user credentials that you saved when you created the cluster.\
-\
+
     The shell prompt appears and is ready to use.
 
     ```output
