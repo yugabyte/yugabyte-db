@@ -356,13 +356,6 @@ func divideMetricByConstant(metricValues [][]float64, constant float64) {
     }
 }
 
-// GetBulkClusterMetrics - Get bulk cluster metrics
-func (c *Container) GetBulkClusterMetrics(ctx echo.Context) error {
-    return ctx.JSON(http.StatusOK, models.HelloWorld{
-        Message: "Hello World",
-    })
-}
-
 // GetClusterMetric - Get a metric for a cluster
 func (c *Container) GetClusterMetric(ctx echo.Context) error {
     metricsParam := strings.Split(ctx.QueryParam("metrics"), ",")
@@ -723,13 +716,6 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         }
     }
     return ctx.JSON(http.StatusOK, tableListResponse)
-}
-
-// GetClusterTablespaces - Get list of DB tables for YSQL
-func (c *Container) GetClusterTablespaces(ctx echo.Context) error {
-    return ctx.JSON(http.StatusOK, models.HelloWorld{
-        Message: "Hello World",
-    })
 }
 
 // GetLiveQueries - Get the live queries in a cluster
