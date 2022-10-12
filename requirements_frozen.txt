@@ -2,6 +2,7 @@ attrs==21.4.0
 autorepr==0.3.0
 bashlex==0.16
 boto==2.49.0
+botocore==1.4.59
 certifi==2021.5.30
 cffi==1.14.6
 charset-normalizer==2.0.6
