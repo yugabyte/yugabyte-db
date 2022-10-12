@@ -27,6 +27,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/key_entry_value.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"

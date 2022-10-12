@@ -130,7 +130,6 @@ using master::SysClusterConfigEntryPB;
 
 namespace {
 
-const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
 const int kTabletReportWaitTimeSeconds = 5;
 
@@ -1092,11 +1091,12 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     if (filter && !filter(peer.get())) {
       continue;
     }
-    auto intents_count = participant->TEST_CountIntents();
-    if (intents_count.first) {
-      result += intents_count.first;
+    auto intents_count_result = participant->TEST_CountIntents();
+    if (intents_count_result.ok() && intents_count_result->first) {
+      result += intents_count_result->first;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count.first, intents_count.second);
+                          peer->permanent_uuid(), intents_count_result->first,
+                          intents_count_result->second);
     }
   }
   return result;

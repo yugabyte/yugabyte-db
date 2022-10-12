@@ -68,7 +68,9 @@ uint32_t GetRandomSeed32() {
 
 std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng) {
   std::vector<uint8_t> data(len);
-  std::generate(data.begin(), data.end(), [=] { return RandomUniformInt(0, UCHAR_MAX, rng); });
+  std::generate(data.begin(), data.end(), [=] {
+    return RandomUniformInt<uint8_t>(0, std::numeric_limits<uint8_t>::max(), rng);
+  });
   return data;
 }
 
@@ -76,7 +78,8 @@ std::string RandomString(size_t len, std::mt19937_64* rng) {
   std::string str;
   str.reserve(len);
   while (len > 0) {
-    str += yb::RandomUniformInt<char>();
+    str += static_cast<char>(
+        RandomUniformInt<uint8_t>(0, std::numeric_limits<uint8_t>::max(), rng));
     len--;
   }
   return str;
