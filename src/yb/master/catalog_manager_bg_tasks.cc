@@ -72,6 +72,8 @@ DECLARE_bool(enable_ysql);
 namespace yb {
 namespace master {
 
+typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+
 CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
     : closing_(false),
       pending_updates_(false),
@@ -226,6 +228,27 @@ void CatalogManagerBgTasks::Run() {
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
+      }
+
+      {
+        // Find if there have been any new tables added to any namespace with an active cdcsdk
+        // stream.
+        TableStreamIdsMap table_unprocessed_streams_map;
+        // In case of master leader restart of leadership changes, we will scan all streams for
+        // unprocessed tables, but from the second iteration onwards we will only consider the
+        // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
+        Status s =
+            catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
+
+        if (s.ok() && !table_unprocessed_streams_map.empty()) {
+          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
+              table_unprocessed_streams_map);
+        }
+        if (!s.ok()) {
+          YB_LOG_EVERY_N(WARNING, 10)
+              << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
+              << s.ToString();
+        }
       }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
