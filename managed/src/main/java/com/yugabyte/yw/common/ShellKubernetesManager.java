@@ -171,15 +171,22 @@ public class ShellKubernetesManager extends KubernetesManager {
       boolean newNamingStyle) {
     String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
     String appName = isMaster ? "yb-master" : "yb-tserver";
-    // TODO(bhavin192): this might need to be changed when we support
-    // multi-cluster environments.
+    // We don't use service-type=endpoint selector for backwards
+    // compatibility with old charts which don't have service-type
+    // label on endpoint/exposed services.
     String selector =
-        String.format("release=%s,%s=%s,service-type!=headless", universePrefix, appLabel, appName);
+        String.format(
+            "release=%s,%s=%s,service-type notin (headless, non-endpoint)",
+            universePrefix, appLabel, appName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "get", "svc", "--namespace", namespace, "-l", selector, "-o", "json");
     ShellResponse response = execCommand(config, commandList).processErrors();
     List<Service> services = deserialize(response.message, ServiceList.class).getItems();
+    // TODO: PLAT-5625: This might need a change when we have one
+    // common TServer/Master endpoint service across multiple Helm
+    // releases. Currently we call getPreferredServiceIP for each AZ
+    // deployment/Helm release, and return all the IPs.
     if (services.size() != 1) {
       throw new RuntimeException(
           "There must be exactly one Master or TServer endpoint service, got " + services.size());
