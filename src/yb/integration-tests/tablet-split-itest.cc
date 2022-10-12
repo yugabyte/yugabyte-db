@@ -961,10 +961,22 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     // Wait for the write transaction to move from intents db to regular db on each peer before
     // trying to flush.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-      RETURN_NOT_OK(WaitFor([&]() {
-        return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
-      }, 30s, "Did not apply write transactions from intents db in time."));
       if (peer->tablet_id() == tablet_id) {
+        RETURN_NOT_OK(WaitFor([&]() {
+          // This tablet might has been shut down or in the process of shutting down.
+          // Thus, we need to check whether shared_tablet is nullptr or not
+          // TEST_CountIntent return non ok status also means shutdown has started.
+          const auto shared_tablet = peer->shared_tablet();
+          if (!shared_tablet) {
+            return true;
+          }
+          auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+          return !result.ok() || result->first == 0;
+        }, 30s, "Did not apply write transactions from intents db in time."));
+
+        if (peer->IsShutdownStarted()) {
+          return STATUS(NotFound, "The tablet has been shut down.");
+        }
         RETURN_NOT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
@@ -990,7 +1002,12 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       }
       // Flush all replicas of this shard to ensure that even if the leader changed we will be in a
       // state where yb-master should initiate a split.
-      RETURN_NOT_OK(FlushAllTabletReplicas(tablet_id, table_->id()));
+      auto status = FlushAllTabletReplicas(tablet_id, table_->id());
+      if (status.IsNotFound()) {
+        // The parent tablet has been shut down, which means tablet split is triggered.
+        break;
+      }
+      RETURN_NOT_OK(status);
       for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
         if (peer->tablet_id() == tablet_id) {
           current_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();

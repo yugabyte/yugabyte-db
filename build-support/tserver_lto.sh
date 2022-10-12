@@ -24,7 +24,7 @@ else
 fi
 
 if [[ $( uname -m ) == "x86_64" ]]; then
-  build_root_basename="$build_type-clang13-linuxbrew-full-lto-ninja"
+  build_root_basename="$build_type-clang14-full-lto-ninja"
 else
   build_root_basename="$build_type-clang12-full-lto-ninja"
 fi

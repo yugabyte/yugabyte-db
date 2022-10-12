@@ -492,7 +492,37 @@ else()
   message(FATAL_ERROR "Unknown compiler family: ${COMPILER_FAMILY}")
 endif()
 
-set(YB_PREFIX_COMMON "${YB_THIRDPARTY_DIR}/installed/common")
+set(YB_THIRDPARTY_INSTALLED_DIR_BASE
+    "${YB_THIRDPARTY_DIR}/installed")
+
+# We support a layout of third-party dependencies where there are build-type-specific subdirectories
+# inside "build" and "installed" directories, such as clang15-x86_64, clang15-full-lto-x86_64, or
+# clang15-linuxbrew-full-lto-x86_64. The logic below should match how the subdir_items list is
+# constructed in https://bit.ly/yb_thirdparty_fs_layout_py.
+set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_COMPILER_TYPE}")
+if(USING_LINUXBREW)
+  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-linuxbrew")
+endif()
+if("${YB_LINKING_TYPE}" MATCHES "^.*-lto$")
+  set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-${YB_LINKING_TYPE}")
+endif()
+set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-$ENV{YB_TARGET_ARCH}")
+
+set(YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC
+    "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/${YB_THIRDPARTY_SPECIFIC_BASENAME}")
+if(EXISTS "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
+  message("Using the per-compiler-type/architecture subdirectory of third-party installed dir: "
+          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
+  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}")
+else()
+  message("Per-compiler-type/architecture third-party install directory not found: "
+          "${YB_THIRDPARTY_INSTALLED_DIR_SPECIFIC}, using default third-party install directory.")
+  set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR_BASE}")
+endif()
+set(YB_THIRDPARTY_INSTALLED_DIR "${YB_THIRDPARTY_INSTALLED_DIR}" CACHE STRING
+    "Directory where the third-party dependencies are installed" FORCE)
+
+set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
 
 if(NOT APPLE AND IS_CLANG)
   YB_SETUP_CLANG()
@@ -652,7 +682,7 @@ set(CMAKE_PREFIX_PATH ${YB_PREFIX_COMMON} ${CMAKE_PREFIX_PATH})
 ADD_LINKER_FLAGS("-L${YB_PREFIX_COMMON}/lib")
 
 set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
-    "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}")
+  "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}")
 set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
 ADD_LINKER_FLAGS("-L${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
 

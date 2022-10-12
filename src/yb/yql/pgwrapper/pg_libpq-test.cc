@@ -396,7 +396,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentInsertTruncateForeignKey))
   for (int i = 0; i != kTruncateThreads; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
       auto truncate_conn = ASSERT_RESULT(Connect());
-      int idx = 0;
+      int idx __attribute__((unused)) = 0;
       while (!stop.load(std::memory_order_acquire)) {
         auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
         ++idx;

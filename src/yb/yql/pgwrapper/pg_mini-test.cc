@@ -1827,7 +1827,9 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     for (const auto& peer : peers) {
       auto tp = peer->tablet()->transaction_participant();
       if (tp) {
-        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+        const auto count_intents_result = tp->TEST_CountIntents();
+        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
       }
     }
 

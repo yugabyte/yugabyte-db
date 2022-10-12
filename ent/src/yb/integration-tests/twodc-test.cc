@@ -672,9 +672,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
@@ -1808,19 +1806,8 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
   ASSERT_OK(VerifyNumRecords(tables[0]->name(), producer_client(), 10));
 
   // Write conflicting records on both clusters (1 clusters adds key, another deletes key).
-  std::vector<std::thread> threads;
-  for (int i = 0; i < 2; ++i) {
-    auto client = i == 0 ? producer_client() : consumer_client();
-    int index = i;
-    bool is_delete = i == 0;
-    threads.emplace_back([this, client, index, tables, is_delete] {
-      WriteWorkload(10, 20, client, tables[index]->name(), is_delete);
-    });
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  WriteWorkload(0, 5, consumer_client(), tables[1]->name());
+  WriteWorkload(5, 10, producer_client(), tables[0]->name(), true /* is_delete */);
 
   // Ensure that same records exist on both universes.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));

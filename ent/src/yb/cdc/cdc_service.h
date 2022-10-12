@@ -364,12 +364,21 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
 
   // Update enum map in cache if required and get it.
-  Result<EnumOidLabelMap> UpdateCacheAndGetEnumMap(const NamespaceName& ns_name);
+  Result<EnumOidLabelMap> UpdateEnumCacheAndGetMap(const NamespaceName& ns_name);
 
   // Update enum map in cache.
   Result<EnumOidLabelMap> UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
+  // Get composite attributes map from the cache.
+  Result<CompositeAttsMap> GetCompositeAttsMapFromCache(const NamespaceName& ns_name);
+
+  // Update composite attributes map in cache if required and get it.
+  Result<CompositeAttsMap> UpdateCompositeCacheAndGetMap(const NamespaceName& ns_name);
+
+  // Update composite map in cache.
+  Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
+      REQUIRES(mutex_);
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
@@ -393,6 +402,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Map of namespace name to (map of enum oid to enumlabel).
   EnumLabelCache enumlabel_cache_ GUARDED_BY(mutex_);
+
+  // Map of namespace name to (map of type id to attributes).
+  CompositeTypeCache composite_type_cache_ GUARDED_BY(mutex_);
 
   // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
   // CDC service proxy.

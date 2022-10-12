@@ -202,6 +202,8 @@ using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
+using yb::master::GetTableSchemaFromSysCatalogRequestPB;
+using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -2123,8 +2125,7 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(
   return result;
 }
 
-Result<std::unordered_map<uint32_t, string>> YBClient::GetPgEnumOidLabelMap(
-    const NamespaceName& ns_name) {
+Result<cdc::EnumOidLabelMap> YBClient::GetPgEnumOidLabelMap(const NamespaceName& ns_name) {
   GetUDTypeMetadataRequestPB req;
   GetUDTypeMetadataResponsePB resp;
 
@@ -2136,13 +2137,53 @@ Result<std::unordered_map<uint32_t, string>> YBClient::GetPgEnumOidLabelMap(
 
   VLOG(1) << "For namespace " << ns_name << " found " << resp.enums_size() << " enums";
 
-  std::unordered_map<uint32_t, string> enum_map;
+  cdc::EnumOidLabelMap enum_map;
   for (int i = 0; i < resp.enums_size(); i++) {
     const master::PgEnumInfoPB& enum_info = resp.enums(i);
     VLOG(1) << "Enum oid " << enum_info.oid() << " enum label: " << enum_info.label();
     enum_map.insert({enum_info.oid(), enum_info.label()});
   }
   return enum_map;
+}
+
+Result<cdc::CompositeAttsMap> YBClient::GetPgCompositeAttsMap(const NamespaceName& ns_name) {
+  GetUDTypeMetadataRequestPB req;
+  GetUDTypeMetadataResponsePB resp;
+
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.mutable_namespace_()->set_name(ns_name);
+  req.set_pg_composite_info(true);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetUDTypeMetadata);
+
+  VLOG(1) << "For namespace " << ns_name << " found " << resp.composites_size() << " composites";
+
+  cdc::CompositeAttsMap type_atts_map;
+  for (int i = 0; i < resp.composites_size(); i++) {
+    const master::PgCompositeInfoPB& composite_info = resp.composites(i);
+    VLOG(1) << "Composite type oid " << composite_info.oid()
+            << " field count: " << composite_info.attributes_size();
+    const vector<master::PgAttributePB>& atts{
+        composite_info.attributes().begin(), composite_info.attributes().end()};
+    type_atts_map.insert({composite_info.oid(), atts});
+  }
+  return type_atts_map;
+}
+
+Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
+    const TableId& table_id, const uint64_t read_time) {
+  master::GetTableSchemaFromSysCatalogRequestPB req;
+  master::GetTableSchemaFromSysCatalogResponsePB resp;
+
+  req.mutable_table()->set_table_id(table_id);
+  req.set_read_time(read_time);
+  Schema current_schema;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetTableSchemaFromSysCatalog);
+  RETURN_NOT_OK(SchemaFromPB(resp.schema(), &current_schema));
+  VLOG(1) << "For table_id " << table_id << " found specific schema version from system catalog.";
+
+  return make_pair(current_schema, resp.version());
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {
