@@ -528,6 +528,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
+  // Add new table metadata to all CDCSDK streams of required namespace.
+  virtual Status AddNewTableToCDCDKStreamsMetadata(
+      const TableId& table_id, const NamespaceId& ns_id) EXCLUDES(mutex_);
+
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 

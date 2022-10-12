@@ -979,7 +979,8 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
 
   CDCStreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options), CDCError(CDCErrorPB::INTERNAL_ERROR));
+      client()->CreateCDCStream(ns_id, options, false /*active*/),
+      CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   master::NamespaceIdentifierPB ns_identifier;
   ns_identifier.set_id(ns_id);
@@ -1014,8 +1015,12 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
       RETURN_NOT_OK_SET_CODE(CheckCdcCompatibility(table), CDCError(CDCErrorPB::INVALID_REQUEST));
     }
 
+    // We only change the stream's state to "ACTIVE", while we are inserting the last table for the
+    // stream.
+    bool set_active = table_iter == table_list.back();
+
     const CDCStreamId stream_id = VERIFY_RESULT_OR_SET_CODE(
-        client()->CreateCDCStream(table_iter.table_id(), options, true, db_stream_id),
+        client()->CreateCDCStream(table_iter.table_id(), options, set_active, db_stream_id),
         CDCError(CDCErrorPB::INTERNAL_ERROR));
 
     creation_state.created_cdc_streams.push_back(stream_id);
@@ -1218,6 +1223,23 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       CDCErrorPB::INVALID_REQUEST, context);
 
   const auto& table_id = req->table_info().table_id();
+
+  // Look up stream in sys catalog.
+  std::vector<TableId> table_ids;
+  NamespaceId ns_id;
+  std::unordered_map<std::string, std::string> options;
+  RPC_STATUS_RETURN_ERROR(
+      client()->GetCDCStream(req->table_info().stream_id(), &ns_id, &table_ids, &options),
+      resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+  // This means the table has not been added to the stream's metadata.
+  if (std::find(table_ids.begin(), table_ids.end(), table_id) == table_ids.end()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotFound, Format("Table $0 not found under stream", req->table_info().table_id())),
+        CDCErrorPB::TABLE_NOT_FOUND, &context);
+    return;
+  }
 
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
