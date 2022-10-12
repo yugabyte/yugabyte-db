@@ -577,7 +577,8 @@ static Status CheckAndDecodeKeyEntryValue(docdb::DocKeyDecoder& decoder,
 static Status GetSplitPoints(YBCPgTableDesc table_desc,
                              const YBCPgTypeEntity **type_entities,
                              YBCPgTypeAttrs *type_attrs_arr,
-                             YBCPgSplitDatum *split_datums) {
+                             YBCPgSplitDatum *split_datums,
+                             bool *has_null) {
   CHECK(table_desc->IsRangePartitioned());
   const Schema& schema = table_desc->schema();
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
@@ -621,7 +622,10 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
         bool is_null;
         RETURN_NOT_OK(PgValueFromPB(type_entities[col_idx], type_attrs_arr[col_idx], ql_value,
                                     &split_datums[split_datum_idx].datum, &is_null));
-        CHECK(!is_null);
+        if (is_null) {
+          *has_null = true;
+          return Status::OK();
+        }
       }
     }
   }
@@ -636,8 +640,10 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
 YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
-                            YBCPgSplitDatum *split_datums) {
-  return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums));
+                            YBCPgSplitDatum *split_datums,
+                            bool *has_null) {
+  return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums,
+                                    has_null));
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
