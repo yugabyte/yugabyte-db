@@ -202,6 +202,8 @@ using yb::master::AddTransactionStatusTabletRequestPB;
 using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
+using yb::master::GetTableSchemaFromSysCatalogRequestPB;
+using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -2166,6 +2168,22 @@ Result<cdc::CompositeAttsMap> YBClient::GetPgCompositeAttsMap(const NamespaceNam
     type_atts_map.insert({composite_info.oid(), atts});
   }
   return type_atts_map;
+}
+
+Result<pair<Schema, uint32_t>> YBClient::GetTableSchemaFromSysCatalog(
+    const TableId& table_id, const uint64_t read_time) {
+  master::GetTableSchemaFromSysCatalogRequestPB req;
+  master::GetTableSchemaFromSysCatalogResponsePB resp;
+
+  req.mutable_table()->set_table_id(table_id);
+  req.set_read_time(read_time);
+  Schema current_schema;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetTableSchemaFromSysCatalog);
+  RETURN_NOT_OK(SchemaFromPB(resp.schema(), &current_schema));
+  VLOG(1) << "For table_id " << table_id << " found specific schema version from system catalog.";
+
+  return make_pair(current_schema, resp.version());
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {

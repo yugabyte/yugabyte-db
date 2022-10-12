@@ -23,6 +23,7 @@ import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
+import "yb/common/common.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
@@ -372,6 +373,25 @@ message GetXClusterSafeTimeResponsePB {
   repeated NamespaceSafeTimePB namespace_safe_times = 2;
 }
 
+message GetTableSchemaFromSysCatalogRequestPB {
+  required TableIdentifierPB table = 1;
+  optional  int64 read_time = 2;
+}
+
+message GetTableSchemaFromSysCatalogResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+
+  // This is the schema that every TS should be able to understand
+  // if your alter is keeping the schema compatible.
+  // In case of an alter table in progress, this is the previous schema;
+  // otherwise it is the latest schema.
+  optional SchemaPB schema = 2;
+
+  // Table schema version
+  optional uint32 version = 3;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -390,6 +410,8 @@ service MasterReplication {
   rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
   rpc WaitForReplicationDrain (WaitForReplicationDrainRequestPB)
       returns (WaitForReplicationDrainResponsePB);
+  rpc GetTableSchemaFromSysCatalog(GetTableSchemaFromSysCatalogRequestPB)
+      returns(GetTableSchemaFromSysCatalogResponsePB);
 
   // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
