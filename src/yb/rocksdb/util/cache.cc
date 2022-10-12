@@ -236,7 +236,7 @@ class HandleTable {
     }
     LRUHandle** new_list = new LRUHandle*[new_length];
     memset(new_list, 0, sizeof(new_list[0]) * new_length);
-    uint32_t count = 0;
+    uint32_t count __attribute__((unused)) = 0;
     LRUHandle* h;
     LRUHandle* next;
     LRUHandle** ptr;

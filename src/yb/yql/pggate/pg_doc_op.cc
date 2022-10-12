@@ -45,7 +45,7 @@ struct PgDocReadOpCachedHelper {
 class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
  public:
   PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
-      : PgDocOp(pg_session, &dummy_table), data_(move(data)) {
+      : PgDocOp(pg_session, &dummy_table), data_(std::move(data)) {
   }
 
   Result<std::list<PgDocResult>> GetResult() override {

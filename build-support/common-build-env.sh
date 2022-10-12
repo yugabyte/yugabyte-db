@@ -175,23 +175,13 @@ make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc5
-  gcc6
-  gcc7
-  gcc8
-  gcc9
-  gcc10
   gcc11
   gcc12
   clang
-  clang7
-  clang8
-  clang9
-  clang10
-  clang11
   clang12
   clang13
   clang14
+  clang15
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -1232,16 +1222,8 @@ download_toolchain() {
           -n ${YB_THIRDPARTY_DIR:-} && ${YB_THIRDPARTY_DIR##*/} == *linuxbrew* ]]; then
     # TODO: get rid of the hard-coded URL below and always include linuxbrew_url.txt in the
     # thirdparty archives that are built for Linuxbrew.
-    local linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
+    linuxbrew_url="https://github.com/yugabyte/brew-build/releases/download/"
     linuxbrew_url+="20181203T161736v9/linuxbrew-20181203T161736v9.tar.gz"
-  else
-    for file_name_part in linuxbrew toolchain; do
-      local url_file_path="$YB_THIRDPARTY_DIR/${file_name_part}_url.txt"
-      if [[ -f $url_file_path ]]; then
-        toolchain_urls+=( "$(<"$url_file_path")" )
-        break
-      fi
-    done
   fi
 
   if [[ -n ${linuxbrew_url:-} ]]; then
