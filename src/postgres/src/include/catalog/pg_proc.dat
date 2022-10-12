@@ -10366,4 +10366,19 @@
   proargmodes => '{i,o}',
   proargnames => '{table_oid,range_split_clause}',
   prosrc => 'yb_get_range_split_clause' },
+
+{ oid => '8043', descr => 'get the region of the currently connected node',
+  proname => 'yb_server_region', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_region' },
+
+{ oid => '8044', descr => 'get the cloud of the currently connected node',
+  proname => 'yb_server_cloud', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_cloud' },
+
+{ oid => '8045', descr => 'get the zone of the currently connected node',
+  proname => 'yb_server_zone', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_zone' },
 ]
