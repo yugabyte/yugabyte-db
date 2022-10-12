@@ -6,6 +6,7 @@ headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
+body_class: yb-page-style
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
