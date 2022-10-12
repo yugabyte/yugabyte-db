@@ -124,6 +124,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  CreateCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Get the Table schema from system catalog table.
+  Status GetTableSchemaFromSysCatalog(
+      const GetTableSchemaFromSysCatalogRequestPB* req,
+      GetTableSchemaFromSysCatalogResponsePB* resp, rpc::RpcContext* rpc);
+
   // Delete the specified CDCStream.
   Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                          DeleteCDCStreamResponsePB* resp,
