@@ -12,10 +12,16 @@
 
 #include <gmock/gmock.h>
 
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+
+using namespace std::literals;
+
+DECLARE_bool(TEST_hang_on_namespace_transition);
 
 namespace yb {
 namespace tools {
@@ -36,6 +42,16 @@ class ClusterAdminClientTest : public pgwrapper::PgCommandTestBase {
     cluster_admin_client_ = std::make_unique<enterprise::ClusterAdminClient>(
         cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(60));
     ASSERT_OK(cluster_admin_client_->Init());
+  }
+
+  Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
+    auto* ts = cluster_->tablet_server(
+        RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
+    return pgwrapper::PGConnBuilder({
+      .host = ts->bind_host(),
+      .port = ts->pgsql_rpc_port(),
+      .dbname = db_name
+    }).Connect();
   }
 };
 
@@ -91,6 +107,44 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithou
   auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>()));
   EXPECT_EQ(resp.snapshots_size(), 1);
   EXPECT_EQ(resp.snapshots(0).entry().entries_size(), 0);
+}
+
+TEST_F(
+    ClusterAdminClientTest,
+    YB_DISABLE_TEST_IN_TSAN(CreateSnapshotAfterMultiNamespaceCreateIssuedWithSameName)) {
+  std::string db_name = "test_pgsql";
+  TestThreadHolder threads;
+  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+
+  auto create_database = [this, &db_name] {
+    auto conn = ASSERT_RESULT(PgConnect());
+    auto res = conn.ExecuteFormat("CREATE DATABASE $0", db_name);
+    if (!res.ok()) {
+      ASSERT_STR_CONTAINS(res.ToString(), Format("Keyspace '$0' already exists", db_name));
+    }
+  };
+
+  threads.AddThreadFunctor(create_database);
+  threads.AddThreadFunctor(create_database);
+  threads.Stop();
+
+  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+
+  ASSERT_OK(WaitFor([this, &db_name]() -> Result<bool> {
+    bool create_in_progress = true;
+    RETURN_NOT_OK(client_->IsCreateNamespaceInProgress(
+        db_name, YQL_DATABASE_PGSQL, "" /* namespace_id */, &create_in_progress));
+
+    return !create_in_progress;
+  }, 15s, "Wait for create namespace to finish async setup tasks."));
+
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  const TypedNamespaceName database {
+    .db_type = YQL_DATABASE_PGSQL,
+    .name = db_name
+  };
+  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(database));
 }
 
 }  // namespace enterprise
