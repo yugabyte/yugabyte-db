@@ -1548,6 +1548,45 @@ public class YBClient implements AutoCloseable {
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   * Get the list of tablets by reading the entries in the cdc_state table for a given table and
+   * DB stream ID.
+   * @param table the {@link YBTable} instance of the table
+   * @param streamId the DB stream ID to read from in the cdc_state table
+   * @param tableId the UUID of the table to get the tablet list for
+   * @return an RPC response containing the list of tablets to poll for a given table
+   * @throws Exception
+   */
+  public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
+    YBTable table, String streamId, String tableId) throws Exception {
+    Deferred<GetTabletListToPollForCDCResponse> d = asyncClient
+      .getTabletListToPollForCdc(table, streamId, tableId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * [Test purposes only] Split the provided tablet.
+   * @param tabletId the UUID of the tablet to split
+   * @return {@link SplitTabletResponse}
+   * @throws Exception
+   */
+  public SplitTabletResponse splitTablet(String tabletId) throws Exception {
+    Deferred<SplitTabletResponse> d = asyncClient.splitTablet(tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * [Test purposes only] Flush and compact the provided table. Note that you will need to wait
+   * accordingly for the table to get flushed and the SST files to get created.
+   * @param tableId the UUID of the table to compact
+   * @return an RPC response of type {@link FlushTableResponse} containing the flush request ID
+   * @throws Exception
+   */
+  public FlushTableResponse flushTable(String tableId) throws Exception {
+    Deferred<FlushTableResponse> d = asyncClient.flushTable(tableId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
   public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
                                                 String tabletId,
                                                 long term,
