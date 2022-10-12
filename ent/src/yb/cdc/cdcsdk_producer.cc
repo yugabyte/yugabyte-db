@@ -14,12 +14,15 @@
 
 #include "yb/cdc/cdc_common_util.h"
 
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_expr.h"
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_key.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
@@ -646,6 +649,35 @@ void FillDDLInfo(RowMessage* row_message, const SchemaPB& schema, const uint32_t
   SetTableProperties(table_properties, cdc_sdk_table_properties_pb);
 }
 
+bool VerifyTabletSplitOnParentTablet(
+    const TableId& table_id, const TabletId& tablet_id,
+    const std::shared_ptr<yb::consensus::ReplicateMsg>& msg, client::YBClient* client) {
+  if (!(msg->has_split_request() && msg->split_request().has_tablet_id() &&
+        msg->split_request().tablet_id() == tablet_id)) {
+    LOG(WARNING) << "The replicate message for split-op does not have the parent tablet_id set to: "
+                 << tablet_id << ". Could not verify tablet-split for tablet: " << tablet_id;
+    return false;
+  }
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  client::YBTableName table_name;
+  table_name.set_table_id(table_id);
+  RETURN_NOT_OK_RET(
+      client->GetTablets(
+          table_name, 0, &tablets, /* partition_list_version =*/nullptr,
+          RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue),
+      false);
+
+  uint children_tablet_count = 0;
+  for (const auto& tablet : tablets) {
+    if (tablet.has_split_parent_tablet_id() && tablet.split_parent_tablet_id() == tablet_id) {
+      children_tablet_count += 1;
+    }
+  }
+
+  return (children_tablet_count == 2);
+}
+
 // CDC get changes is different from 2DC as it doesn't need
 // to read intents from WAL.
 
@@ -657,6 +689,7 @@ Status GetChangesForCDCSDK(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const MemTrackerPtr& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
+    client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     std::string* commit_timestamp,
@@ -670,6 +703,8 @@ Status GetChangesForCDCSDK(
   RowMessage* row_message = nullptr;
   CDCSDKCheckpointPB checkpoint;
   bool checkpoint_updated = false;
+  bool report_tablet_split = false;
+  OpId split_op_id = OpId::Invalid();
 
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
@@ -910,6 +945,47 @@ Status GetChangesForCDCSDK(
           }
           break;
 
+          case yb::consensus::OperationType::SPLIT_OP: {
+            // It is possible that we found records corresponding to SPLIT_OP even when it failed.
+            // We first verify if a split has indeed occured succesfully on the tablet by checking:
+            // 1. There are two children tablets for the tablet
+            // 2. The split op is the last operation on the tablet
+            // If either of the conditions are false, we will know the splitOp is not succesfull.
+            const TableId& table_id = tablet_peer->tablet()->metadata()->table_id();
+
+            if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, msg, client))) {
+              SetCheckpoint(
+                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              checkpoint_updated = true;
+              LOG_WITH_FUNC(WARNING)
+                  << "Found SplitOp record with index: " << msg->id()
+                  << ", but did not find any children tablets for the parent tablet: " << tablet_id;
+            } else {
+              if (checkpoint_updated) {
+                // If we have records which are yet to be streamed which we discovered in the same
+                // 'GetChangesForCDCSDK' call, we will not update the checkpoint to the SplitOp
+                // record's OpId and return the records seen till now. Next time the client will
+                // call 'GetChangesForCDCSDK' with the OpId just before the SplitOp's record.
+                LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                          << ", will stream all seen records until now.";
+              } else {
+                // If 'GetChangesForCDCSDK' was called with the OpId just before the SplitOp's
+                // record, and if there is no more data to stream and we can notify the client
+                // about the split and update the checkpoint. At this point, we will store the
+                // split_op_id.
+                LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                          << ", and if we did not see any other records we will report the tablet "
+                             "split to the client";
+                SetCheckpoint(
+                    msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint,
+                    last_streamed_op_id);
+                checkpoint_updated = true;
+                split_op_id = OpId::FromPB(msg->id());
+              }
+            }
+          }
+          break;
+
           default:
             // Nothing to do for other operation types.
             break;
@@ -932,6 +1008,13 @@ Status GetChangesForCDCSDK(
              last_seen_op_id.index < *last_readable_opid_index);
   }
 
+  // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
+  // know that after the split there are no more actionable messages, and this confirms that the
+  // SPLIT OP was succesfull.
+  if (split_op_id.term == checkpoint.term() && split_op_id.index == checkpoint.index()) {
+    report_tablet_split = true;
+  }
+
   if (consumption) {
     consumption.Add(resp->SpaceUsedLong());
   }
@@ -950,6 +1033,12 @@ Status GetChangesForCDCSDK(
             << resp->cdc_sdk_checkpoint().ShortDebugString();
     VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().ShortDebugString();
   }
+
+  if (report_tablet_split) {
+    return STATUS_FORMAT(
+        TabletSplit, "Tablet Split on tablet: $0, no more records to stream", tablet_id);
+  }
+
   return Status::OK();
 }
 

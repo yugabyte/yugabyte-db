@@ -1858,7 +1858,7 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
-  xcluster_parent_tablet_deletion_task_.StartShutdown();
+  cdc_parent_tablet_deletion_task_.StartShutdown();
 
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
@@ -1871,7 +1871,7 @@ void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
-  xcluster_parent_tablet_deletion_task_.CompleteShutdown();
+  cdc_parent_tablet_deletion_task_.CompleteShutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -9161,7 +9161,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+  cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
   return Status::OK();
 }
@@ -9443,21 +9443,25 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
           .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
         });
 
-        if (!tablets_data.back().hide_only && IsTableCdcProducer(*tablet->table())) {
-          // For xCluster, the only time we try to delete a tablet that is part of an active stream
-          // is during tablet splitting, where we need to keep the parent tablet around until we
-          // have replicated its SPLIT_OP record.
+        if (!tablets_data.back().hide_only &&
+            (IsTableCdcProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
+          // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
+          // active stream is during tablet splitting, where we need to keep the parent tablet
+          // around until we have replicated its SPLIT_OP record.
 
           // There are a few cases to handle here:
           // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
-          //    the tablet and also add it to retained_by_xcluster_ so that it stays hidden.
-          // 2. The tablet is hidden and part of retained_by_xcluster_. Keep this tablet hidden.
-          // 3. This tablet is hidden but not part of retained_by_xcluster_. This means that the
-          //    bg task DoProcessXClusterParentTabletDeletion processed it and found that all
-          //    streams for this tablet have replicated the split record. We can now delete it as
-          //    long as it isn't being kept by a snapshot schedule.
+          //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
+          //    it stays hidden.
+          // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
+          //    this tablet hidden.
+          // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
+          //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
+          //    that all streams for this tablet have replicated the split record. We can now delete
+          //    it as long as it isn't being kept by a snapshot schedule.
           if (!tablets_data.back().lock->ListedAsHidden() ||
-              retained_by_xcluster_.contains(tablet->id())) {
+              retained_by_xcluster_.contains(tablet->id()) ||
+              retained_by_cdcsdk_.contains(tablet->id())) {
             tablets_data.back().hide_only = HideOnly(true);
           }
         }
@@ -9513,7 +9517,9 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
     for (const auto& tablet : marked_as_hidden) {
-      if (IsTableCdcProducer(*tablet->table()) ) {
+      bool is_table_cdc_producer = IsTableCdcProducer(*tablet->table());
+      bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
+      if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = tablet->LockForRead();
         const auto& children = tablet_lock->pb.split_tablet_ids();
         if (children.size() < 2) {
@@ -9527,7 +9533,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
                              : "",
           .split_tablets_ = {children.Get(0), children.Get(1)}
         };
-        retained_by_xcluster_.emplace(tablet->id(), info);
+        if (is_table_cdc_producer) {
+          retained_by_xcluster_.emplace(tablet->id(), info);
+        }
+        if (is_table_part_of_cdcsdk) {
+          retained_by_cdcsdk_.emplace(tablet->id(), info);
+        }
       }
     }
   }

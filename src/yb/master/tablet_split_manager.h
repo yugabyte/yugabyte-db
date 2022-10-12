@@ -16,6 +16,7 @@
 
 #include <unordered_set>
 
+#include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_fwd.h"
 
 namespace yb {
@@ -28,7 +29,7 @@ class TabletSplitManager {
  public:
   TabletSplitManager(TabletSplitCandidateFilterIf* filter,
                      TabletSplitDriverIf* driver,
-                     XClusterSplitDriverIf* xcluster_split_driver);
+                     CDCSplitDriverIf* cdcsdk_split_driver);
 
   // Temporarily disable splitting for the specified amount of time.
   void DisableSplittingFor(const MonoDelta& disable_duration, const std::string& feature_name);
@@ -86,7 +87,7 @@ class TabletSplitManager {
 
   TabletSplitCandidateFilterIf* filter_;
   TabletSplitDriverIf* driver_;
-  XClusterSplitDriverIf* xcluster_split_driver_;
+  CDCSplitDriverIf* cdc_split_driver_;
 
   // Used to signal (e.g. to IsTabletSplittingComplete) that the tablet split manager is not
   // running, and hence it is safe to assume that no more splitting will occur if splitting was
