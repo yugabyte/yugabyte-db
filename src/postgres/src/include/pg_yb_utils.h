@@ -674,4 +674,9 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
 
+/*
+ * If the tserver gflag --ysql_disable_server_file_access is set to
+ * true, then prevent any server file writes/reads/execution.
+ */
+extern void YBCheckServerAccessIsAllowed();
 #endif /* PG_YB_UTILS_H */
