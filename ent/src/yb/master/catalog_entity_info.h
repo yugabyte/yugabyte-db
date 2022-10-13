@@ -67,9 +67,9 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const CDCStreamId& id() const override { return stream_id_; }
 
-  const google::protobuf::RepeatedPtrField<std::string>& table_id() const;
+  const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
 
@@ -196,7 +196,7 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   SysSnapshotEntryPB::State state() const;
 
-  const std::string& state_name() const;
+  const std::string state_name() const;
 
   std::string ToString() const override;
 
