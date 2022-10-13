@@ -3,7 +3,7 @@ import moment from 'moment';
 import {
   CUSTOM_METRIC_TIME_RANGE_OPTION,
   DROPDOWN_DIVIDER,
-  MetricNames,
+  MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   ReplicationStatus,
   YBTableRelationType
@@ -54,7 +54,7 @@ export interface MetricTrace {
   name: string;
   type: string;
   x: number[];
-  y: number[];
+  y: string[] | number[];
   mode?: string;
   line?: {
     dash: string;
@@ -62,8 +62,8 @@ export interface MetricTrace {
   };
 }
 
-export type Metrics<Name extends MetricNames> = {
-  [metricName in Name]: {
+export type Metrics<MetricNameType extends MetricName> = {
+  [metricName in MetricNameType]: {
     data: MetricTrace[];
     directURLs: string[];
     layout: {
