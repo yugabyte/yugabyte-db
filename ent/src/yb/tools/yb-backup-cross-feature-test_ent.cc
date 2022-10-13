@@ -69,7 +69,7 @@ class YBBackupTestNumTablets : public YBBackupTest {
 // - --extra-daemon-flags "--vmodule=client=1,table_creator=1"
 // - --test-args "--verbose_yb_backup"
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLChangeDefaultNumTablets),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLChangeDefaultNumTablets),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = table_name + "_v_key";
@@ -131,7 +131,7 @@ TEST_F_EX(YBBackupTest,
 // 5. restore, which will initially create 4 pre-split tablets then realize the partition boundaries
 //    differ
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLManualTabletSplit),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
@@ -254,7 +254,7 @@ TEST_F_EX(YBBackupTest,
 // 4. drop table
 // 5. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestPreSplitYSQLRangeSplitTable),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTable),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
@@ -336,7 +336,7 @@ TEST_F_EX(YBBackupTest,
 // 5. drop table
 // 6. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestPreSplitYSQLRangeSplitTableAndIndex),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTableAndIndex),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
@@ -429,7 +429,7 @@ TEST_F_EX(YBBackupTest,
 // 4. drop table
 // 5. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLAutomaticTabletSplitRangeTable),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
   constexpr int expected_num_tablets = 4;
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
@@ -499,7 +499,7 @@ TEST_F_EX(YBBackupTest,
 // 5. drop table
 // 6. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLManualTabletSplitRangeTable),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplitRangeTable),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
@@ -588,7 +588,7 @@ TEST_F_EX(YBBackupTest,
 // 5. drop table
 // 6. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLTabletSplitRangeUniqueIndexOnHiddenColumn),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeUniqueIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
@@ -705,7 +705,7 @@ TEST_F_EX(YBBackupTest,
 // 5. drop table
 // 6. restore
 TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
@@ -804,7 +804,7 @@ class YBBackupAfterFailedMatviewRefresh : public YBBackupTest {
 // Test that backup and restore succeed when an orphaned table is left behind
 // after a failed refresh on a materialized view.
 TEST_F_EX(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupAfterFailedMatviewRefresh),
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAfterFailedMatviewRefresh),
        YBBackupAfterFailedMatviewRefresh) {
   const string kDatabaseName = "yugabyte";
   const string kNewDatabaseName = "yugabyte_new";
@@ -883,7 +883,7 @@ class YBBackupPartitioningVersionTest : public YBBackupTest {
   }
 };
 
-TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLPartitioningVersion),
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLPartitioningVersion),
     YBBackupPartitioningVersionTest) {
   // The test checks that partitioning_version is restored correctly for the tables backuped before
   // the next increment of the partitioning_version.
@@ -925,7 +925,7 @@ TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLPartitionin
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPartitioningVersion),
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPartitioningVersion),
     YBBackupPartitioningVersionTest) {
   // The test checks that range partitions are restored correctly depending on partitioning_version.
 
@@ -1036,7 +1036,7 @@ class YBBackupTestOneTablet : public YBBackupTest {
 // Test that backups taken after a tablet has been split but before the child tablets are compacted
 // don't expose the extra data in the child tablets when queried.
 TEST_F_EX(
-    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestScanSplitTableAfterRestore),
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestScanSplitTableAfterRestore),
     YBBackupTestOneTablet) {
   const string table_name = "mytbl";
 
@@ -1098,7 +1098,7 @@ TEST_F_EX(
 }
 
 TEST_F_EX(
-    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUncompactedChildTabletAndSplit),
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUncompactedChildTabletAndSplit),
     YBBackupTestOneTablet) {
   const string table_name = "mytbl";
 
@@ -1149,7 +1149,7 @@ TEST_F_EX(
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplication)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestColocationDuplication)) {
   // Create a colocated database.
   ASSERT_NO_FATALS(RunPsqlCommand(
       "CREATE DATABASE demo WITH COLOCATED=TRUE", "CREATE DATABASE"));
@@ -1231,7 +1231,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestColocationDuplicat
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupChecksumsDisabled)) {
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupChecksumsDisabled)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (101, 'bar')"));
@@ -1270,7 +1270,7 @@ class YBBackupTestWithPackedRows : public YBBackupTest {
 };
 
 TEST_F(YBBackupTestWithPackedRows,
-    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(YSQLSchemaPackingWithSnapshotGreaterVersionThanRestore)) {
+    YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotGreaterVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
@@ -1348,7 +1348,7 @@ TEST_F(YBBackupTestWithPackedRows,
 }
 
 TEST_F(YBBackupTestWithPackedRows,
-    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(YSQLSchemaPackingWithSnapshotLowerVersionThanRestore)) {
+    YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotLowerVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0(a INT)", table_name)));
