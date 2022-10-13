@@ -135,19 +135,12 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
-<<<<<<< HEAD
-      const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
+      const std::string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
       const MonoDelta& cdc_sdk_op_id_expiration,
       RollBackTabletIdCheckpointMap* rollback_tablet_id_map);
 
   void RollbackCdcReplicatedIndexEntry(
-      const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info);
-=======
-      const std::string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
-      const MonoDelta& cdc_sdk_op_id_expiration);
-
-  void RollbackCdcReplicatedIndexEntry(const std::string& tablet_id);
->>>>>>> 5d3f9dddea... Remove using from headers
+      const std::string& tablet_id, const std::pair<int64_t, OpId>& rollback_checkpoint_info);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
