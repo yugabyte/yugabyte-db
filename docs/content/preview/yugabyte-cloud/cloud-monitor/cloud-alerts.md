@@ -146,9 +146,11 @@ YugabyteDB Managed sends a notification when the number of YSQL connections on a
 - YSQL connections exceeds 80% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).
 
-If your cluster experiences frequent spikes in connections, consider optimizing your workload.
+If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
 
-Check your application's connection code. If connections are opened but never closed, your application will eventually exceed the connection limit. You may need to implement some form of connection pooling.
+If connections are opened but never closed, your application will eventually exceed the connection limit.
+
+You may need to implement some form of connection pooling.
 
 If the number of connections is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
