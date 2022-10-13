@@ -1045,6 +1045,10 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
   return Status::OK();
 }
 
+int64_t TabletPeer::get_cdc_min_replicated_index() {
+  return meta_->cdc_min_replicated_index();
+}
+
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
   LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
                         << cdc_sdk_min_checkpoint_op_id.ToString();
