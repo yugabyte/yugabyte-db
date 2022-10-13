@@ -61,6 +61,7 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+import org.yb.util.ServerInfo;
 
 import java.util.*;
 import java.util.Map.Entry;
@@ -69,6 +70,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -962,6 +965,32 @@ public class YBClient implements AutoCloseable {
      throws Exception {
     Deferred<IsServerReadyResponse> d = asyncClient.isServerReady(hp, isTserver);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   *
+   * @param servers string array of node addresses (master and/or tservers) in the
+   *                format host:port
+   * @return 'true' when all certificates are reloaded
+   * @throws RuntimeException      when the operation fails
+   * @throws IllegalStateException when the input 'servers' array is empty or null
+   */
+  public boolean reloadCertificates(HostAndPort server)
+      throws RuntimeException, IllegalStateException {
+    if (server == null || server.getHost() == null || "".equals(server.getHost().trim()))
+      throw new IllegalStateException("No servers to act upon");
+
+    LOG.debug("attempting to reload certificates for {}", (Object) server);
+
+    Deferred<ReloadCertificateResponse> deferred = asyncClient.reloadCertificates(server);
+    try {
+      ReloadCertificateResponse response = deferred.join(getDefaultAdminOperationTimeoutMs());
+      LOG.debug("received certificate reload response from {}", response.getNodeAddress());
+      return true;
+
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public interface Condition {
