@@ -23,6 +23,7 @@ import { YBButton, YBModal } from '../../common/forms/fields';
 import { api } from '../../../redesign/helpers/api';
 import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { assertUnreachableCase } from '../../../utils/ErrorUtils';
+import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 
 import { TableType, Universe } from '../../../redesign/helpers/dtos';
 import { XClusterTableType, YBTable } from '../XClusterTypes';
@@ -141,7 +142,11 @@ export const CreateConfigModal = ({
         });
       },
       onError: (err: any) => {
-        toast.error(err.response.data.error);
+        toast.error(
+          err.response.data.error instanceof String
+            ? err.response.data.error
+            : JSON.stringify(err.response.data.error)
+        );
       }
     }
   );
@@ -349,7 +354,11 @@ const validateForm = async (
 
       if (!values.configName) {
         errors.configName = 'Replication name is required.';
+      } else if (XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(values.configName)) {
+        errors.configName =
+          "The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '\"' NULL])";
       }
+
       if (!values.targetUniverse) {
         errors.targetUniverse = 'Target universe is required.';
       } else if (
