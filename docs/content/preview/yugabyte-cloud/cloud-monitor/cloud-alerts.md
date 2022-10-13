@@ -137,13 +137,13 @@ Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-q
 
 High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
-If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed clusters support [10 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU.YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
-- YSQL connections exceeds 80% of the limit (Warning).
+- YSQL connections exceeds 60% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).
 
 If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
@@ -152,7 +152,7 @@ If connections are opened but never closed, your application will eventually exc
 
 You may need to implement some form of connection pooling.
 
-If the number of connections is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+If the number of connections is continuously higher than 80%, your workload may also exceed the capacity of your cluster. To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 ### Billing alerts
 
