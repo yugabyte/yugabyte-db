@@ -1689,5 +1689,3 @@ fi
 
 # global_exit_code is declared with "-i" so it is always an integer.
 exit ${global_exit_code}
-
-

@@ -131,5 +131,3 @@ The build produces two sets of binaries:
 * For an in-depth design and the YugabyteDB architecture, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
 * Tech Talks and [Videos](https://www.youtube.com/c/YugaByte).
 * See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/preview/faq/comparisons/).
-
-
