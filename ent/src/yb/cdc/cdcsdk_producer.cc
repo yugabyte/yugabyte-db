@@ -1117,9 +1117,10 @@ Status GetChangesForCDCSDK(
               SetCheckpoint(
                   msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
               checkpoint_updated = true;
-              LOG_WITH_FUNC(WARNING)
-                  << "Found SplitOp record with index: " << msg->id()
-                  << ", but did not find any children tablets for the parent tablet: " << tablet_id;
+              LOG(INFO) << "Found SPLIT_OP record with index: " << msg->id()
+                        << ", but did not find any children tablets for the tablet: " << tablet_id
+                        << ". This is possible when we have just started calling 'GetChanges' on a "
+                           "child tablet.";
             } else {
               if (checkpoint_updated) {
                 // If we have records which are yet to be streamed which we discovered in the same
@@ -1127,6 +1128,7 @@ Status GetChangesForCDCSDK(
                 // record's OpId and return the records seen till now. Next time the client will
                 // call 'GetChangesForCDCSDK' with the OpId just before the SplitOp's record.
                 LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                          << ", for parent tablet: " << tablet_id
                           << ", will stream all seen records until now.";
               } else {
                 // If 'GetChangesForCDCSDK' was called with the OpId just before the SplitOp's
@@ -1134,6 +1136,7 @@ Status GetChangesForCDCSDK(
                 // about the split and update the checkpoint. At this point, we will store the
                 // split_op_id.
                 LOG(INFO) << "Found SPLIT_OP record with OpId: " << msg->id()
+                          << ", for parent tablet: " << tablet_id
                           << ", and if we did not see any other records we will report the tablet "
                              "split to the client";
                 SetCheckpoint(
