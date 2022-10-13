@@ -2824,3 +2824,12 @@ bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
   yb_xcluster_consistency_level = *((int*)extra);
 }
+
+void YBCheckServerAccessIsAllowed() {
+	if (*YBCGetGFlags()->ysql_disable_server_file_access)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("server file access disabled"),
+				 errdetail("tserver flag ysql_disable_server_file_access is "
+						   "set to true")));
+}
