@@ -34,8 +34,14 @@
 
 #include <gflags/gflags.h>
 #include "yb/util/auto_flags.h"
+#include "yb/util/flag_tags.h"
 
 namespace yb {
+
+#define REGISTER_VALIDATOR(flag_name, validator) \
+  static const bool BOOST_PP_CAT(dummy_, BOOST_PP_CAT(BOOST_PP_CAT(FLAGS_, flag_name), _val)) \
+      __attribute__((unused)) = \
+          google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, flag_name), (validator))
 
 // Looks for flags in argv and parses them.  Rearranges argv to put
 // flags first, or removes them entirely if remove_flags is true.
