@@ -7639,6 +7639,83 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap
   LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTime)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  GetChangesResponsePB change_resp;
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Here we are creating a scenario where active_time is not set in the cdc_state table because of
+  // older server version, if we upgrade the server where active_time is part of cdc_state table,
+  // GetChanges call should successful not intents GCed error.
+  client::TableHandle cdc_state;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+
+  const auto op = cdc_state.NewUpdateOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablets[0].tablet_id());
+  QLAddStringRangeValue(req, stream_id);
+  // Intensionally set the active_time field to null
+  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
+
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EXISTS);
+  auto session = test_client()->NewSession();
+  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+
+  // Now Read the cdc_state table check active_time is set to null.
+  const auto read_op = cdc_state.NewReadOp();
+  auto* const req_read = read_op->mutable_request();
+  QLAddStringHashValue(req_read, tablets[0].tablet_id());
+  auto req_cond = req_read->mutable_where_expr()->mutable_condition();
+  req_cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(
+      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+  cdc_state.AddColumns({master::kCdcData}, req_read);
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
+        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+        if (row_block->row_count() == 1 && row_block->row(0).column(0).IsNull()) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60),
+      "Failed to update active_time null in cdc_state table."));
+
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
+  LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+}
+
 }  // namespace enterprise
 }  // namespace cdc
 }  // namespace yb
