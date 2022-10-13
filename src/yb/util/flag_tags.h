@@ -99,8 +99,8 @@
 //         These flags contain sensitive information. Avoid displaying their values anywhere.
 //
 // - "auto":
-//         These are AutoFlags. Do not explicitly set this tag. Use DEFINE_AUTO_type or
-//         DEFINE_AUTO_NON_RUNTIME_type instead.
+//         These are AutoFlags. Do not explicitly set this tag. Use DEFINE_RUNTIME_AUTO_type or
+//         DEFINE_NON_RUNTIME_AUTO_type instead.
 //
 // - "pg":
 //         These are gFlag wrappers over postgres guc variables. Only define these using the
@@ -173,11 +173,12 @@ YB_DEFINE_ENUM(
 // This also validates that 'tag' is a valid flag as defined in the FlagTag
 // enum above.
 #define TAG_FLAG(flag_name, tag) \
-  COMPILE_ASSERT(sizeof(FLAGS_##flag_name), flag_does_not_exist); \
-  COMPILE_ASSERT(sizeof(FLAG_TAG_##tag), invalid_tag); \
+  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
+  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAG_TAG_, tag)), invalid_tag); \
   namespace { \
-  ::yb::flag_tags_internal::FlagTagger t_##flag_name##_##tag( \
-      AS_STRING(flag_name), FLAG_TAG_##tag); \
+  ::yb::flag_tags_internal::FlagTagger BOOST_PP_CAT( \
+      t_, BOOST_PP_CAT(flag_name, BOOST_PP_CAT(_, tag)))( \
+      AS_STRING(flag_name), BOOST_PP_CAT(FLAG_TAG_, tag)); \
   }
 
 // Fetch the list of flags associated with the given flag.
