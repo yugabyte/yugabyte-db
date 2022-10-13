@@ -18,13 +18,13 @@
 using std::string;
 using std::vector;
 
-DEFINE_AUTO_int32(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
-DEFINE_AUTO_bool(test_auto_bool, kLocalPersisted, false, true, "Testing!");
-DEFINE_AUTO_int32(test_auto_int32, kExternal, 1, 2, "Testing!");
-DEFINE_AUTO_int64(test_auto_int64, kExternal, 1, 2, "Testing!");
-DEFINE_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
-DEFINE_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
-DEFINE_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
+DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
+DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kLocalPersisted, false, true, "Testing!");
+DEFINE_RUNTIME_AUTO_int32(test_auto_int32, kExternal, 1, 2, "Testing!");
+DEFINE_RUNTIME_AUTO_int64(test_auto_int64, kExternal, 1, 2, "Testing!");
+DEFINE_RUNTIME_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
+DEFINE_RUNTIME_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
+DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
 
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
