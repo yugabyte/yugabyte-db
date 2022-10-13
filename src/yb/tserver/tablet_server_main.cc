@@ -77,6 +77,8 @@
 
 #include "yb/tserver/server_main_util.h"
 
+using std::string;
+
 #if defined(YB_PROFGEN) && defined(__clang__)
 extern "C" int __llvm_profile_write_file(void);
 extern "C" void __llvm_profile_set_filename(const char *);

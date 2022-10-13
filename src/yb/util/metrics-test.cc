@@ -53,6 +53,7 @@
 using std::string;
 using std::unordered_set;
 using std::vector;
+using std::pair;
 
 DECLARE_int32(metrics_retirement_age_ms);
 

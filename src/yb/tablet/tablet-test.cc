@@ -62,6 +62,8 @@
 
 using std::shared_ptr;
 using std::unordered_set;
+using std::string;
+using std::vector;
 
 namespace yb {
 namespace tablet {

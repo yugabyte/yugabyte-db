@@ -27,6 +27,7 @@
 
 using std::vector;
 using std::unordered_map;
+using std::string;
 using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::uint32;

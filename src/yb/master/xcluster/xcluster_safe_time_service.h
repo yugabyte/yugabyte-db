@@ -68,7 +68,7 @@ class XClusterSafeTimeService {
   FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
 
   struct ProducerTabletInfo {
-    string cluster_uuid;
+    std::string cluster_uuid;
     TabletId tablet_id;
 
     bool operator==(const ProducerTabletInfo& rhs) const {

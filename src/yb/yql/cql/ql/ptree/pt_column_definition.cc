@@ -23,6 +23,8 @@
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+using std::string;
+
 DEFINE_bool(cql_allow_static_column_index, false,
             "Raise unsupported error when creating an index on static columns");
 

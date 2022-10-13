@@ -57,6 +57,7 @@ using std::map;
 using std::string;
 using std::stringstream;
 using std::vector;
+using std::pair;
 
 using yb::debug::CategoryFilter;
 using yb::debug::TraceLog;

@@ -26,6 +26,8 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
+using std::string;
+
 DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");

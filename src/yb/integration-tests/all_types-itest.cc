@@ -79,6 +79,7 @@ namespace yb {
 namespace client {
 
 using std::shared_ptr;
+using std::string;
 
 static const int kNumTabletServers = 3;
 static const int kNumTablets = 3;

@@ -77,6 +77,12 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+using std::vector;
+using std::min;
+using std::max;
+using std::pair;
+
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
 
 DEFINE_int32(cdc_read_rpc_timeout_ms, 30 * 1000,

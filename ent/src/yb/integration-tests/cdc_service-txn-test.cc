@@ -41,6 +41,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 
+using std::string;
+
 namespace yb {
 namespace cdc {
 

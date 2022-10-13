@@ -41,6 +41,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::pair;
+using std::make_pair;
+using std::vector;
+
 namespace yb {
 
 class TestMemcmpableVarint : public YBTest {
