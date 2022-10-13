@@ -70,6 +70,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
     case ValueEntryType::kRedisTS: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kRowLock: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kTombstone: \
   break
 
@@ -274,6 +275,8 @@ std::string PrimitiveValue::ToString() const {
       return FormatBytesAsStr(str_val_);
     case ValueEntryType::kUuid:
       return uuid_val_.ToString();
+    case ValueEntryType::kRowLock:
+      return "l";
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueEntryType::kPackedRow:
@@ -331,7 +334,6 @@ std::string PrimitiveValue::ToString() const {
     case KeyEntryType::kMaxByte: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
-    case KeyEntryType::kRowLock: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kUserTimestamp: \
       break
@@ -1256,6 +1258,10 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
             slice.size(), kUuidSize);
       }
       new(&uuid_val_) Uuid(VERIFY_RESULT(Uuid::FromComparable(slice)));
+      type_ = value_type;
+      return Status::OK();
+    }
+    case ValueEntryType::kRowLock: {
       type_ = value_type;
       return Status::OK();
     }
@@ -2418,7 +2424,6 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kObsoleteIntentType:
       return Format("Intent($0)", uint16_val_);
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kRowLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kBitSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGroupEnd: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED;
