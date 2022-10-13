@@ -258,7 +258,7 @@ Status TransactionalWriter::operator()(
 
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
-  const auto row_lock_value_type = KeyEntryTypeAsChar::kRowLock;
+  const auto row_lock_value_type = ValueEntryTypeAsChar::kRowLock;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
   const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
@@ -518,7 +518,7 @@ Result<bool> ApplyIntentsContext::Entry(
     write_id_ = decoded_value.write_id;
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+    if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
       return false;
     }
 
