@@ -124,7 +124,6 @@ DECLARE_string(cql_proxy_bind_address);
 DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_bool(start_pgsql_proxy);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 

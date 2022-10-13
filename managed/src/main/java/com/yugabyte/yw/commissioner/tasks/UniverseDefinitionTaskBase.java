@@ -1168,18 +1168,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
-      if (opType == UniverseOpType.EDIT
-          && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        if (univCluster == null) {
-          throw new IllegalStateException(
-              "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
+      if (opType == UniverseOpType.EDIT) {
+        if (cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
+          if (univCluster == null) {
+            throw new IllegalStateException(
+                "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
+          }
+          if (!univCluster
+              .userIntent
+              .instanceTags
+              .get(NODE_NAME_KEY)
+              .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
+            throw new IllegalArgumentException("'Name' tag value cannot be changed.");
+          }
         }
-        if (!univCluster
-            .userIntent
-            .instanceTags
-            .get(NODE_NAME_KEY)
-            .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
-          throw new IllegalArgumentException("'Name' tag value cannot be changed.");
+        if (cluster.userIntent.deviceInfo != null
+            && cluster.userIntent.deviceInfo.volumeSize != null
+            && cluster.userIntent.deviceInfo.volumeSize
+                < univCluster.userIntent.deviceInfo.volumeSize) {
+          String errMsg =
+              String.format(
+                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                  univCluster.userIntent.deviceInfo.volumeSize,
+                  cluster.userIntent.deviceInfo.volumeSize);
+          throw new IllegalStateException(errMsg);
         }
       }
       PlacementInfoUtil.verifyNodesAndRF(

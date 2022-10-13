@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.TaskInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -203,7 +204,10 @@ public class UserTaskDetails {
     UpgradingYbc,
 
     // Updating kubernetes overrides.
-    UpdatingKubernetesOverrides
+    UpdatingKubernetesOverrides,
+
+    // Fetch PVC and StorageClass information
+    KubernetesVolumeInfo
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -475,6 +479,10 @@ public class UserTaskDetails {
         title = "Upgrading Yb-controller";
         description = "Upgrading yb-controller on each node";
         break;
+      case KubernetesVolumeInfo:
+        title = "Fetching Kubernetes Volume information";
+        description = "Fetching Volume and storage information";
+        break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
         return null;
@@ -500,10 +508,14 @@ public class UserTaskDetails {
     // The state of the task.
     private TaskInfo.State state;
 
+    // Extra task details about a subtask like progress in tablet movement.
+    public List<JsonNode> extraDetails;
+
     private SubTaskDetails(String title, String description) {
       this.title = title;
       this.description = description;
       this.state = TaskInfo.State.Unknown;
+      this.extraDetails = new ArrayList<>();
     }
 
     public void setState(TaskInfo.State state) {
@@ -520,6 +532,12 @@ public class UserTaskDetails {
 
     public TaskInfo.State getState() {
       return state;
+    }
+
+    public void populateDetails(JsonNode data) {
+      if (data != null) {
+        this.extraDetails.add(data);
+      }
     }
   }
 }

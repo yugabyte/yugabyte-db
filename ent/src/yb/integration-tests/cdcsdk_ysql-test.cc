@@ -73,7 +73,7 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
-
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -100,6 +100,8 @@ DECLARE_bool(enable_single_record_update);
 DECLARE_bool(enable_delete_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 
 namespace yb {
 
@@ -415,11 +417,25 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status CreateTableWithoutPK(Cluster* cluster) {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1_no_pk(id1 int, id2 int)"));
+    return Status::OK();
+  }
+
   Status CreateColocatedObjects(Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) TABLEGROUP tg1;"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test2(id2 text primary key) TABLEGROUP tg1;"));
+    return Status::OK();
+  }
+
+  Status AddColocatedTable(
+      Cluster* cluster, const TableName& table_name, const std::string& table_group_name = "tg1") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(id2 text primary key) TABLEGROUP $1;", table_name, table_group_name));
     return Status::OK();
   }
 
@@ -1554,6 +1570,42 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           return (tablets_after_split.size() == expected_num_tablets);
         },
         MonoDelta::FromSeconds(120), "Tabelt Split not succesful"));
+  }
+
+  void CheckTabletsInCDCStateTable(
+      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const CDCStreamId& stream_id = "") {
+    const client::YBTableName cdc_state_table(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+
+    client::TableIteratorOptions options;
+    options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
+
+    ASSERT_OK(WaitFor(
+        [&]() {
+          client::TableHandle table;
+          std::unordered_set<TabletId> seen_tablet_ids;
+          auto s = table.Open(cdc_state_table, client);
+          if (!s.ok()) {
+            return false;
+          }
+
+          uint32_t seen_rows = 0;
+          for (const auto& row : client::TableRange(table, options)) {
+            const auto& cur_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+            if (cur_stream_id != stream_id && stream_id != "") {
+              continue;
+            }
+            const auto& tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+            seen_tablet_ids.insert(tablet_id);
+            seen_rows += 1;
+          }
+
+          return (
+              expected_tablet_ids == seen_tablet_ids && seen_rows == expected_tablet_ids.size());
+        },
+        MonoDelta::FromSeconds(60),
+        "Tablets in cdc_state table associated with the stream are not the same as expected"));
   }
 };
 
@@ -4226,27 +4278,40 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletS
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
-  ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ false));
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   change_resp_1 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   change_resp_1 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
-  ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
-  SleepFor(MonoDelta::FromSeconds(60));
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+  LOG(INFO) << "Tablet split succeded";
 
   // Now that we have streamed all records from the parent tablet, we expect further calls of
   // 'GetChangesFromCDC' to the same tablet to fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint());
+        if (result.ok() && !result->has_error()) {
+          change_resp_1 = *result;
+          return false;
+        }
+
+        LOG(INFO) << "Encountered error on calling 'GetChanges' on initial parent tablet";
+        return true;
+      },
+      MonoDelta::FromSeconds(90), "GetChanges did not report error for tablet split"));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
-  LOG(INFO) << "Number of tablets after the split: " << tablets_after_split.size();
   ASSERT_EQ(tablets_after_split.size(), num_tablets * 2);
 
   ASSERT_OK(WriteRowsHelper(200, 300, &test_cluster_, true));
@@ -5180,6 +5245,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAf
 // namespace. stream-id-1 and stream-id-2 are now associated with test_table_1. drop test_table_1,
 // call GetDBStreamInfo on both stream-id, we should not get any information related to drop table.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDropTable)) {
+  // Prevent newly added tables to be added to existing active streams.
+  FLAGS_cdcsdk_table_processing_limit_per_run = 0;
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const vector<string> table_list_suffix = {"_1", "_2"};
@@ -5219,7 +5286,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDrop
           }
           // stream-1 is associated with a single table, so as part of table drop, stream-1 should
           // be cleaned and wait until the background thread is done with cleanup.
-          if (idx == 1 && false == get_resp->has_error() && get_resp->table_info_size() > 0) {
+          if (idx == 1 && false == get_resp->has_error()) {
             continue;
           }
           // stream-2 is associated with both tables, so dropping one table, should not clean the
@@ -5268,11 +5335,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiStreamOnSameTableAndDele
           if (!get_resp.ok()) {
             return false;
           }
-          // stream-1 which is not deleted, so there should not be any cleanup
-          // for it.
-          if (idx == 1 && get_resp->table_info_size() != 1) {
-            continue;
-          }
+
           // stream-2 is deleted, so its metadata from the master cache as well as from the system
           // catalog should be cleaned and wait until the background thread is done with the
           // cleanup.
@@ -7179,6 +7242,491 @@ TEST_F(
   change_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   ValidateColumnCounts(change_resp, 2);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStream)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::vector<TableId> expected_table_ids;
+  expected_table_ids.reserve(2);
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  expected_table_ids.push_back(table_id);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+  expected_table_ids.push_back(table_2_id);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(
+      test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_2) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2);
+
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActiveStreamMasterRestart)) {
+  FLAGS_catalog_manager_bg_task_wait_ms = 60 * 1000;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::vector<TableId> expected_table_ids;
+  expected_table_ids.reserve(2);
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  expected_table_ids.push_back(table_id);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+  LOG(INFO) << "Verified tablets of first table exist in cdc_state table";
+
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+  expected_table_ids.push_back(table_2_id);
+  LOG(INFO) << "Created second table";
+
+  test_cluster_.mini_cluster_->mini_master()->Shutdown();
+  ASSERT_OK(test_cluster_.mini_cluster_->StartMasters());
+  LOG(INFO) << "Restarted Master";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(
+      test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_2) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2);
+
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+  LOG(INFO) << "Verified the number of tablets in the cdc_state table";
+
+  test_cluster_.mini_cluster_->mini_master()->Shutdown();
+  ASSERT_OK(test_cluster_.mini_cluster_->StartMasters());
+  LOG(INFO) << "Restarted Master";
+
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+
+  auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_2_id));
+  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
+    const auto& tablet_id = tablet_checkpoint_pair.tablet_id();
+    ASSERT_TRUE(expected_tablet_ids.contains(tablet_id));
+  }
+  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 3);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceWithActiveStream)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+
+  ASSERT_OK(CreateColocatedObjects(&test_cluster_));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::vector<TableId> expected_table_ids;
+  expected_table_ids.reserve(3);
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test1"));
+  TableId table_id_2 = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test2"));
+  expected_table_ids.push_back(table_id);
+  expected_table_ids.push_back(table_id_2);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+
+  ASSERT_OK(AddColocatedTable(&test_cluster_, "test3"));
+  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test3"));
+  TableId table_id_3 = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test3"));
+  expected_table_ids.push_back(table_id_3);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_3;
+  ASSERT_OK(
+      test_client()->GetTablets(table_3, 0, &tablets_3, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_3) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  // Since we added a new table to an existing table group, no new tablet details is expected.
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithMultipleActiveStreams)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::vector<TableId> expected_table_ids;
+  expected_table_ids.reserve(2);
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  expected_table_ids.push_back(table_id);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+
+  auto table_1 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
+  TableId table_1_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+  expected_table_ids.push_back(table_1_id);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(
+      test_client()->GetTablets(table_1, 0, &tablets_1, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_1) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2);
+
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_2"));
+  expected_table_ids.push_back(table_2_id);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(
+      test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_2) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 3);
+
+  // Check that 'cdc_state' table has all the expected tables for both streams.
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_1);
+
+  // Check that both the streams metadata has all the 3 table ids.
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+
+  options.clear();
+  stream_table_ids.clear();
+  ASSERT_OK(test_client()->GetCDCStream(stream_id_1, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+}
+
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableWithMultipleActiveStreamsMasterRestart)) {
+  FLAGS_catalog_manager_bg_task_wait_ms = 60 * 1000;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::vector<TableId> expected_table_ids;
+  expected_table_ids.reserve(2);
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  expected_table_ids.push_back(table_id);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets);
+
+  auto table_1 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1", num_tablets));
+  TableId table_1_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_1"));
+  expected_table_ids.push_back(table_1_id);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(
+      test_client()->GetTablets(table_1, 0, &tablets_1, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_1) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2);
+
+  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto table_2 =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2", num_tablets));
+  TableId table_2_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, "test_table_2"));
+  expected_table_ids.push_back(table_2_id);
+
+  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  test_cluster_.mini_cluster_->mini_master()->Shutdown();
+  ASSERT_OK(test_cluster_.mini_cluster_->StartMasters());
+  LOG(INFO) << "Restarted Master";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(
+      test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets_2) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 3);
+
+  // Check that 'cdc_state' table has all the expected tables for both streams.
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_1);
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id_2);
+
+  // Check that both the streams metadata has all the 3 table ids.
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+
+  options.clear();
+  stream_table_ids.clear();
+  ASSERT_OK(test_client()->GetCDCStream(stream_id_1, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+
+  options.clear();
+  stream_table_ids.clear();
+  ASSERT_OK(test_client()->GetCDCStream(stream_id_2, &ns_id, &stream_table_ids, &options));
+  ASSERT_EQ(stream_table_ids, expected_table_ids);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWithActiveStream)) {
+  // We set the limit of newly added tables per iteration to 1.
+  FLAGS_cdcsdk_table_processing_limit_per_run = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  std::unordered_set<TableId> expected_table_ids;
+  std::unordered_set<TabletId> expected_tablet_ids;
+  const uint32_t num_tablets = 2;
+  const uint32_t num_new_tables = 3;
+  expected_table_ids.reserve(num_new_tables + 1);
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : tablets) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  expected_table_ids.insert(table_id);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  // We add another table without a primary key. And we do not include the table_id in
+  // 'expected_table_ids' nor do we add the tablets to 'expected_tablet_ids', since this table will
+  // not be added to the stream.
+  ASSERT_OK(CreateTableWithoutPK(&test_cluster_));
+
+  // Add 5 more tables after the stream is created.
+  for (uint32_t i = 1; i <= num_new_tables; ++i) {
+    std::string table_name = "test_table_" + std::to_string(i);
+    auto table =
+        ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, table_name, num_tablets));
+    TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, table_name));
+    expected_table_ids.insert(table_id);
+
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+
+    for (const auto& tablet : tablets) {
+      expected_tablet_ids.insert(tablet.tablet_id());
+    }
+  }
+
+  CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
+
+  NamespaceId ns_id;
+  std::vector<TableId> stream_table_ids;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
+  std::unordered_set<TableId> stream_table_ids_set;
+  for (const auto& stream_id : stream_table_ids) {
+    stream_table_ids_set.insert(stream_id);
+  }
+  ASSERT_EQ(stream_table_ids_set, expected_table_ids);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  EnableCDCServiceInAllTserver(3);
+  // Insert some records.
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
+
+  // Forcefully change the tablet state from RUNNING to BOOTSTRAPPING and check metadata should not
+  // set to MAX.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); i++) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_OK(tablet_peer->UpdateState(
+            tablet::RaftGroupStatePB::RUNNING, tablet::RaftGroupStatePB::BOOTSTRAPPING,
+            "Incorrect state to start TabletPeer, "));
+      }
+    }
+  }
+  SleepFor(MonoDelta::FromSeconds(10));
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); i++) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+        ASSERT_OK(tablet_peer->UpdateState(
+            tablet::RaftGroupStatePB::BOOTSTRAPPING, tablet::RaftGroupStatePB::RUNNING,
+            "Incorrect state to start TabletPeer, "));
+      }
+    }
+  }
+  LOG(INFO) << "All nodes will be restarted";
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    test_cluster()->mini_tablet_server(i)->Shutdown();
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
+    ASSERT_OK(test_cluster()->mini_tablet_server(i)->WaitStarted());
+  }
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
+  LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTime)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  // We want to force every GetChanges to update the cdc_state table.
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  GetChangesResponsePB change_resp;
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Here we are creating a scenario where active_time is not set in the cdc_state table because of
+  // older server version, if we upgrade the server where active_time is part of cdc_state table,
+  // GetChanges call should successful not intents GCed error.
+  client::TableHandle cdc_state;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(cdc_state.Open(cdc_state_table, test_client()));
+
+  const auto op = cdc_state.NewUpdateOp();
+  auto* const req = op->mutable_request();
+  QLAddStringHashValue(req, tablets[0].tablet_id());
+  QLAddStringRangeValue(req, stream_id);
+  // Intensionally set the active_time field to null
+  cdc_state.AddStringColumnValue(req, master::kCdcData, "");
+
+  auto* condition = req->mutable_if_expr()->mutable_condition();
+  condition->set_op(QL_OP_EXISTS);
+  auto session = test_client()->NewSession();
+  EXPECT_OK(session->TEST_ApplyAndFlush(op));
+
+  // Now Read the cdc_state table check active_time is set to null.
+  const auto read_op = cdc_state.NewReadOp();
+  auto* const req_read = read_op->mutable_request();
+  QLAddStringHashValue(req_read, tablets[0].tablet_id());
+  auto req_cond = req_read->mutable_where_expr()->mutable_condition();
+  req_cond->set_op(QLOperator::QL_OP_AND);
+  QLAddStringCondition(
+      req_cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+  cdc_state.AddColumns({master::kCdcData}, req_read);
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        EXPECT_OK(session->TEST_ApplyAndFlush(read_op));
+        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+        if (row_block->row_count() == 1 && row_block->row(0).column(0).IsNull()) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60),
+      "Failed to update active_time null in cdc_state table."));
+
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(record_size, 100);
+  LOG(INFO) << "Total records read by GetChanges call on stream_id_1: " << record_size;
 }
 
 }  // namespace enterprise
