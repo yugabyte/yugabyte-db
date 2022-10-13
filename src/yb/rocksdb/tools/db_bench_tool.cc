@@ -86,6 +86,8 @@
 #include <io.h>  // open/close
 #endif
 
+using std::unique_ptr;
+
 namespace {
 using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::RegisterFlagValidator;

@@ -18,6 +18,8 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
+using std::string;
+
 namespace yb {
 namespace ql {
 

@@ -73,6 +73,7 @@ namespace yb {
 
 using std::vector;
 using std::shared_ptr;
+using std::string;
 using master::MiniMaster;
 using master::TSDescriptor;
 using master::TabletLocationsPB;

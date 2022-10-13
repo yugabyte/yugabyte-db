@@ -148,7 +148,7 @@ class QLEnv {
   // canonical resource.
   // keyspace and table are only used to generate the error message.
   // If the permission is not found, the client will refresh the cache from the master once.
-  virtual Status HasResourcePermission(const string& canonical_name,
+  virtual Status HasResourcePermission(const std::string& canonical_name,
                                                const ql::ObjectType& object_type,
                                                const PermissionType permission,
                                                const NamespaceName& keyspace = "",

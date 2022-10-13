@@ -109,6 +109,7 @@ METRIC_DEFINE_gauge_uint64(tablet, change_auto_flags_config_operations_inflight,
 using namespace std::literals;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 
 namespace yb {
 namespace tablet {

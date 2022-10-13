@@ -229,7 +229,7 @@ class QLValue {
     return varint_value(pb_);
   }
 
-  void AppendToKeyBytes(string *bytes) const {
+  void AppendToKeyBytes(std::string *bytes) const {
     AppendToKey(pb_, bytes);
   }
 
@@ -596,7 +596,7 @@ void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* re
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
-vector<QLValuePB> SortTuplesbyOrdering(
+std::vector<QLValuePB> SortTuplesbyOrdering(
     const QLSeqValuePB& options, const std::vector<bool>& reverse);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \

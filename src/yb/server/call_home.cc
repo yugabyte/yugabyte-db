@@ -32,6 +32,9 @@
 #include "yb/util/user.h"
 #include "yb/util/version_info.h"
 
+using std::string;
+using std::vector;
+
 static const char* kLowLevel = "low";
 static const char* kMediumLevel = "medium";
 static const char* kHighLevel = "high";

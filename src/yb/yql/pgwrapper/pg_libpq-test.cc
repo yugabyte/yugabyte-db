@@ -47,6 +47,9 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::string;
+using std::make_pair;
+
 using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);

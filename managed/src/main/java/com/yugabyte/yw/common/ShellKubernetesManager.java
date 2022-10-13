@@ -2,12 +2,17 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimCondition;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -16,22 +21,28 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
+
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 @Singleton
+@Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
 
   @Inject ReleaseManager releaseManager;
@@ -60,7 +71,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private <T> T deserialize(String json, Class<T> type) {
     try {
-      return new ObjectMapper().readValue(json, type);
+      return new ObjectMapper().configure(Feature.ALLOW_SINGLE_QUOTES, true).readValue(json, type);
     } catch (Exception e) {
       throw new RuntimeException("Error deserializing response from kubectl command: ", e);
     }
@@ -246,6 +257,7 @@ public class ShellKubernetesManager extends KubernetesManager {
     execCommand(config, masterCommandList).processErrors("Unable to delete pod");
   }
 
+  @Override
   public List<Event> getEvents(Map<String, String> config, String namespace) {
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "events", "-n", namespace, "-o", "json");
@@ -274,5 +286,128 @@ public class ShellKubernetesManager extends KubernetesManager {
       LOG.error(e.getMessage());
       throw new RuntimeException("Error writing Namespace YAML file.");
     }
+  }
+
+  @Override
+  public boolean deleteStatefulSet(Map<String, String> config, String namespace, String stsName) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "delete",
+            "statefulset",
+            stsName,
+            "--cascade=orphan");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to delete StatefulSet");
+    return response.isSuccess();
+  }
+
+  @Override
+  public boolean expandPVC(
+      Map<String, String> config,
+      String namespace,
+      String universePrefix,
+      String appLabel,
+      String newDiskSize) {
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "name");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get PVCs");
+    log.info("Expanding PVCs: {}", response.getMessage());
+    ObjectNode patchObj = Json.newObject();
+    patchObj
+        .putObject("spec")
+        .putObject("resources")
+        .putObject("requests")
+        .put("storage", newDiskSize);
+    String patchStr = patchObj.toString();
+    boolean patchSuccess = true;
+    for (String pvcName : response.getMessage().split("\n")) {
+      commandList =
+          ImmutableList.of("kubectl", "--namespace", namespace, "patch", pvcName, "-p", patchStr);
+      response = execCommand(config, commandList, false).processErrors("Unable to patch PVC");
+      patchSuccess &= response.isSuccess() && waitForPVCExpand(config, namespace, pvcName);
+    }
+    return patchSuccess;
+  }
+
+  // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
+  // The PVC status condition is cleared once PVC resize is done.
+  private boolean waitForPVCExpand(Map<String, String> config, String namespace, String pvcName) {
+    RetryTaskUntilCondition<List<PersistentVolumeClaimCondition>> waitForExpand =
+        new RetryTaskUntilCondition<>(
+            // task
+            () -> {
+              List<String> commandList =
+                  ImmutableList.of(
+                      "kubectl", "--namespace", namespace, "get", pvcName, "-o", "json");
+              ShellResponse response =
+                  execCommand(config, commandList, false).processErrors("Unable to get PVC");
+              List<PersistentVolumeClaimCondition> pvcConditions =
+                  deserialize(response.message, PersistentVolumeClaim.class)
+                      .getStatus()
+                      .getConditions();
+              return pvcConditions;
+            },
+            // until condition
+            pvcConditions -> {
+              if (!pvcConditions.isEmpty()) {
+                log.info(
+                    "Waiting for condition to clear from PVC {}/{}: {}",
+                    namespace,
+                    pvcName,
+                    pvcConditions.get(0));
+              }
+              return pvcConditions.isEmpty();
+            },
+            // delay between retry of task
+            2,
+            // timeout for retry in secs
+            getTimeoutSecs());
+    return waitForExpand.retryUntilCond();
+  }
+
+  @Override
+  public String getStorageClassName(
+      Map<String, String> config, String namespace, boolean forMaster) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "get",
+            "sts",
+            forMaster ? "yb-master" : "yb-tserver",
+            "-o",
+            "jsonpath='{.spec.volumeClaimTemplates[0].spec.storageClassName}'");
+    ShellResponse response =
+        execCommand(config, commandList, false)
+            .processErrors("Unable to read StorageClass name from yb-tserver sts");
+    return deserialize(response.getMessage(), String.class);
+  }
+
+  @Override
+  public boolean storageClassAllowsExpansion(
+      Map<String, String> config, String namespace, String storageClassName) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "get",
+            "sc",
+            storageClassName,
+            "-o",
+            "jsonpath='{.allowVolumeExpansion}'");
+    ShellResponse response =
+        execCommand(config, commandList, false)
+            .processErrors("Unable to read StorageClass volume expansion");
+    String allowsExpansion = deserialize(response.getMessage(), String.class);
+    return allowsExpansion.equalsIgnoreCase("true");
   }
 }

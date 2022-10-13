@@ -59,6 +59,7 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
+import org.yb.util.ServerInfo;
 
 import java.util.*;
 import java.util.Map.Entry;
@@ -67,6 +68,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * A synchronous and thread-safe client for YB.
@@ -968,6 +971,32 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  /**
+   *
+   * @param servers string array of node addresses (master and/or tservers) in the
+   *                format host:port
+   * @return 'true' when all certificates are reloaded
+   * @throws RuntimeException      when the operation fails
+   * @throws IllegalStateException when the input 'servers' array is empty or null
+   */
+  public boolean reloadCertificates(HostAndPort server)
+      throws RuntimeException, IllegalStateException {
+    if (server == null || server.getHost() == null || "".equals(server.getHost().trim()))
+      throw new IllegalStateException("No servers to act upon");
+
+    LOG.debug("attempting to reload certificates for {}", (Object) server);
+
+    Deferred<ReloadCertificateResponse> deferred = asyncClient.reloadCertificates(server);
+    try {
+      ReloadCertificateResponse response = deferred.join(getDefaultAdminOperationTimeoutMs());
+      LOG.debug("received certificate reload response from {}", response.getNodeAddress());
+      return true;
+
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   public interface Condition {
     boolean get() throws Exception;
   }
@@ -1545,6 +1574,45 @@ public class YBClient implements AutoCloseable {
   public GetDBStreamInfoResponse getDBStreamInfo(String streamId) throws Exception {
     Deferred<GetDBStreamInfoResponse> d = asyncClient
       .getDBStreamInfo(streamId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the list of tablets by reading the entries in the cdc_state table for a given table and
+   * DB stream ID.
+   * @param table the {@link YBTable} instance of the table
+   * @param streamId the DB stream ID to read from in the cdc_state table
+   * @param tableId the UUID of the table to get the tablet list for
+   * @return an RPC response containing the list of tablets to poll for a given table
+   * @throws Exception
+   */
+  public GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
+    YBTable table, String streamId, String tableId) throws Exception {
+    Deferred<GetTabletListToPollForCDCResponse> d = asyncClient
+      .getTabletListToPollForCdc(table, streamId, tableId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * [Test purposes only] Split the provided tablet.
+   * @param tabletId the UUID of the tablet to split
+   * @return {@link SplitTabletResponse}
+   * @throws Exception
+   */
+  public SplitTabletResponse splitTablet(String tabletId) throws Exception {
+    Deferred<SplitTabletResponse> d = asyncClient.splitTablet(tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * [Test purposes only] Flush and compact the provided table. Note that you will need to wait
+   * accordingly for the table to get flushed and the SST files to get created.
+   * @param tableId the UUID of the table to compact
+   * @return an RPC response of type {@link FlushTableResponse} containing the flush request ID
+   * @throws Exception
+   */
+  public FlushTableResponse flushTable(String tableId) throws Exception {
+    Deferred<FlushTableResponse> d = asyncClient.flushTable(tableId);
     return d.join(2*getDefaultAdminOperationTimeoutMs());
   }
 

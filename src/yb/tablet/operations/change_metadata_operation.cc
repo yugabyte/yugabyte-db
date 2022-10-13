@@ -51,6 +51,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+using std::string;
+
 namespace yb {
 namespace tablet {
 

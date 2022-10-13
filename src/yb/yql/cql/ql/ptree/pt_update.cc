@@ -29,6 +29,9 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
+using std::string;
+using std::max;
+
 namespace yb {
 namespace ql {
 

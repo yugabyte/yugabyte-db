@@ -5,7 +5,7 @@ import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-quer
 import { useSelector } from 'react-redux';
 import { useInterval } from 'react-use';
 
-import { getXclusterConfig } from '../../actions/xClusterReplication';
+import { fetchXClusterConfig } from '../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
 import { TRANSITORY_STATES, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
@@ -45,18 +45,18 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   const xClusterConfigQueries = useQueries(
     universeXClusterConfigUUIDs.map((uuid: string) => ({
       queryKey: ['Xcluster', uuid],
-      queryFn: () => getXclusterConfig(uuid),
+      queryFn: () => fetchXClusterConfig(uuid),
       enabled: universeQuery.data?.universeDetails !== undefined
     }))
   ) as UseQueryResult<XClusterConfig>[];
 
   useInterval(() => {
-    xClusterConfigQueries.forEach((xClusterConfig: any) => {
+    xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
         xClusterConfig?.data?.status &&
         _.includes(TRANSITORY_STATES, xClusterConfig.data.status)
       ) {
-        queryClient.invalidateQueries('Xcluster');
+        queryClient.invalidateQueries(['Xcluster', xClusterConfig.data.uuid]);
       }
     });
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);

@@ -27,6 +27,8 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/status_log.h"
 
+using std::vector;
+
 namespace yb {
 namespace master {
 

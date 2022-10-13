@@ -69,6 +69,8 @@
 #include "yb/util/format.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 #define ASSERT_REPORT_HAS_UPDATED_TABLET(report, tablet_id) \
   ASSERT_NO_FATALS(AssertReportHasUpdatedTablet(report, tablet_id))
 

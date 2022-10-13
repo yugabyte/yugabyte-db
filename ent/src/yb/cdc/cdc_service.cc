@@ -77,6 +77,12 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+using std::vector;
+using std::min;
+using std::max;
+using std::pair;
+
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
 
 DEFINE_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
@@ -2061,7 +2067,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       last_replicated_time_str = timestamp_ql_value.timestamp_value().ToFormattedString();
     }
 
-    int64_t last_active_time_cdc_state_table;
+    int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
     if (!row.column(4).IsNull()) {
       last_active_time_cdc_state_table = VERIFY_RESULT(
             CheckedStoInt<int64_t>(row.column(4).map_value().values(0).string_value()));
@@ -2115,6 +2121,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // Don't consider those inactive stream for the min_checkpoint calculation.
     int64_t latest_active_time = 0;
     if (record.source_type == CDCSDK) {
+      // Support backward compatibility, where active_time as not part of cdc_state table.
+      if (last_active_time_cdc_state_table == std::numeric_limits<int64_t>::min()) {
+        LOG(WARNING)
+            << "In previous server version, active time was not part of cdc_state table,"
+               "as a part of upgrade, updating the active time forcefully for the tablet_id: "
+            << tablet_id;
+        last_active_time_cdc_state_table = GetCurrentTimeMicros();
+      }
       auto session = client()->NewSession();
       auto status = CheckStreamActive(producer_tablet, session, last_active_time_cdc_state_table);
       if (!status.ok()) {
@@ -2643,22 +2657,22 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
   // If we fail to update at least one tablet, roll back the replicated index for all mutated
   // tablets.
   std::vector<const std::string*> rollback_tablet_id_vec;
-  auto scope_exit = ScopeExit([this, &rollback_tablet_id_vec] {
-    for (const auto& tablet_id : rollback_tablet_id_vec) {
-      RollbackCdcReplicatedIndexEntry(*tablet_id);
+  RollBackTabletIdCheckpointMap rollback_tablet_id_map;
+  auto scope_exit = ScopeExit([this, &rollback_tablet_id_map] {
+    for (const auto& [tablet_id, rollback_checkpoint_info] : rollback_tablet_id_map) {
+      VLOG(1) << "Rolling back the cdc replicated index for the tablet_id: " << tablet_id;
+      RollbackCdcReplicatedIndexEntry(*tablet_id, rollback_checkpoint_info);
     }
   });
 
   // Backwards compatibility for deprecated fields.
   if (req->has_tablet_id() && req->has_replicated_index()) {
-    rollback_tablet_id_vec.emplace_back(&req->tablet_id());
     Status s = UpdateCdcReplicatedIndexEntry(
-        req->tablet_id(),
-        req->replicated_index(),
-        OpId::Max(),
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
+        req->tablet_id(), req->replicated_index(), OpId::Max(),
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+        &rollback_tablet_id_map);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
-    rollback_tablet_id_vec.clear();
+    rollback_tablet_id_map.clear();
     context.RespondSuccess();
     return;
   }
@@ -2684,25 +2698,28 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(const UpdateCdcReplicatedIndexRequ
         req->cdc_sdk_ops_expiration_ms().empty() ? GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)
                                                  : req->cdc_sdk_ops_expiration_ms(i));
 
-    rollback_tablet_id_vec.emplace_back(&req->tablet_ids(i));
     Status s = UpdateCdcReplicatedIndexEntry(
-        req->tablet_ids(i),
-        req->replicated_indices(i),
-        cdc_sdk_op,
-        cdc_sdk_op_id_expiration);
+        req->tablet_ids(i), req->replicated_indices(i), cdc_sdk_op, cdc_sdk_op_id_expiration,
+        &rollback_tablet_id_map);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
   }
 
-  rollback_tablet_id_vec.clear();
+  rollback_tablet_id_map.clear();
   context.RespondSuccess();
 }
 
 Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
-    const MonoDelta& cdc_sdk_op_id_expiration) {
+    const MonoDelta& cdc_sdk_op_id_expiration,
+    RollBackTabletIdCheckpointMap* rollback_tablet_id_map) {
   auto tablet_peer = VERIFY_RESULT(context_->GetServingTablet(tablet_id));
   if (!tablet_peer->log_available()) {
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
+  }
+
+  if (rollback_tablet_id_map) {
+    (*rollback_tablet_id_map)[&tablet_id] = {
+        tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id()};
   }
 
   RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(replicated_index));
@@ -2716,19 +2733,23 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
   return Status::OK();
 }
 
-void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(const string& tablet_id) {
+void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
+    const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info) {
   auto tablet_peer = context_->GetServingTablet(tablet_id);
   if (!tablet_peer.ok()) {
     LOG(WARNING) << "Unable to rollback replicated index for " << tablet_id;
     return;
   }
 
-  const TabletCDCCheckpointInfo kOpIdMax;
-  WARN_NOT_OK((**tablet_peer).set_cdc_min_replicated_index(kOpIdMax.cdc_op_id.index),
-              "Unable to update min index for tablet $0 " + tablet_id);
-  WARN_NOT_OK((**tablet_peer).SetCDCSDKRetainOpIdAndTime(
-                kOpIdMax.cdc_op_id, kOpIdMax.cdc_sdk_op_id_expiration),
-              "Unable to update op id and expiration time for tablet $0 " + tablet_id);
+  WARN_NOT_OK(
+      (**tablet_peer).set_cdc_min_replicated_index(rollback_checkpoint_info.first),
+      "Unable to update min index for tablet $0 " + tablet_id);
+  WARN_NOT_OK(
+      (**tablet_peer)
+          .SetCDCSDKRetainOpIdAndTime(
+              rollback_checkpoint_info.second,
+              MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms))),
+      "Unable to update op id and expiration time for tablet $0 " + tablet_id);
 }
 
 Result<OpId> CDCServiceImpl::TabletLeaderLatestEntryOpId(const TabletId& tablet_id) {

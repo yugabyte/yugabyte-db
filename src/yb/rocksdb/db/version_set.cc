@@ -77,6 +77,8 @@
 
 #include "yb/util/test_kill.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {

@@ -83,6 +83,7 @@ TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
 TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
 
 using std::shared_ptr;
+using std::string;
 
 using strings::Substitute;
 

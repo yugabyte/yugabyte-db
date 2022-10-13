@@ -101,6 +101,7 @@ using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
+using std::vector;
 
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
@@ -1043,6 +1044,10 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
+}
+
+int64_t TabletPeer::get_cdc_min_replicated_index() {
+  return meta_->cdc_min_replicated_index();
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {

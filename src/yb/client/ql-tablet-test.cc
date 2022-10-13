@@ -77,6 +77,9 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals; // NOLINT
 
 DECLARE_uint64(initial_seqno);

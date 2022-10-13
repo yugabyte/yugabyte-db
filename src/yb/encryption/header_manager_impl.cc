@@ -27,6 +27,8 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 static const string kEncryptionMagic = "encrypt!";
 
 namespace yb {

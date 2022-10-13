@@ -66,7 +66,7 @@ var postgres = Postgres{"Postgres",
 var prometheus = Prometheus{"Prometheus",
 	"/etc/systemd/system/prometheus.service",
 	INSTALL_ROOT + "/prometheus/conf/prometheus.yml",
-	"2.37.0", false}
+	"2.39.0", false}
 
 var platform = Platform{"Platform",
 	"/etc/systemd/system/yb-platform.service",

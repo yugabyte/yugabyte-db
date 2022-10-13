@@ -46,6 +46,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 using namespace std::literals;  // NOLINT
 
 DECLARE_int32(heartbeat_interval_ms);

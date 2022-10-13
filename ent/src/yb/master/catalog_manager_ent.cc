@@ -114,6 +114,7 @@ using std::string;
 using std::unique_ptr;
 using std::unordered_set;
 using std::vector;
+using std::set;
 
 using strings::Substitute;
 
@@ -5711,10 +5712,11 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     const SplitTabletIds& split_tablet_ids) {
   // First check if this table has any streams associated with it.
   std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
   {
     SharedLock lock(mutex_);
     streams = FindCDCStreamsForTableUnlocked(producer_table_id, cdc::XCLUSTER);
-    auto cdcsdk_streams = FindCDCStreamsForTableUnlocked(producer_table_id, cdc::CDCSDK);
+    cdcsdk_streams = FindCDCStreamsForTableUnlocked(producer_table_id, cdc::CDCSDK);
     // Combine cdcsdk streams and xcluster streams into a single vector: 'streams'.
     streams.insert(std::end(streams), std::begin(cdcsdk_streams), std::end(cdcsdk_streams));
   }
@@ -5732,6 +5734,9 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     std::shared_ptr<client::YBSession> session = ybclient->NewSession();
 
     for (const auto& stream : streams) {
+      bool is_cdcsdk_stream =
+          std::find(cdcsdk_streams.begin(), cdcsdk_streams.end(), stream) != cdcsdk_streams.end();
+
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
         // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
@@ -5748,6 +5753,12 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
         cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
+        if (is_cdcsdk_stream) {
+          auto last_active_time = GetCurrentTimeMicros();
+          auto column_id = cdc_table.ColumnId(master::kCdcData);
+          cdc_table.AddMapColumnValue(
+              insert_req, column_id, "active_time", std::to_string(last_active_time));
+        }
         session->Apply(insert_op);
       }
     }

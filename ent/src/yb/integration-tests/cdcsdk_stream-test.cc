@@ -66,6 +66,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+using std::vector;
+using std::string;
+
 namespace yb {
 
 using client::YBClient;

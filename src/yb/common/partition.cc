@@ -64,6 +64,8 @@ namespace yb {
 using std::set;
 using std::string;
 using std::vector;
+using std::max;
+using std::min;
 
 using google::protobuf::RepeatedPtrField;
 using strings::Substitute;

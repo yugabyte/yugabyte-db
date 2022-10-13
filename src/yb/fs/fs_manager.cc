@@ -97,6 +97,10 @@ using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
 using std::map;
 using std::unordered_set;
+using std::string;
+using std::set;
+using std::vector;
+using std::ostream;
 using strings::Substitute;
 
 namespace yb {

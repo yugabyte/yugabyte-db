@@ -24,6 +24,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 using namespace std::literals;
 
 namespace yb {

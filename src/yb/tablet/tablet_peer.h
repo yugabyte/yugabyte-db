@@ -382,6 +382,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Status reset_cdc_min_replicated_index_if_stale();
 
+  int64_t get_cdc_min_replicated_index();
+
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 
   OpId cdc_sdk_min_checkpoint_op_id();

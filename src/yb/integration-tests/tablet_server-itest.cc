@@ -18,6 +18,8 @@
 
 #include "yb/util/status_log.h"
 
+using std::string;
+
 namespace yb {
 namespace tserver {
 

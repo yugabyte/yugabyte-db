@@ -52,6 +52,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
