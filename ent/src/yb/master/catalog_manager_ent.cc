@@ -114,6 +114,7 @@ using std::string;
 using std::unique_ptr;
 using std::unordered_set;
 using std::vector;
+using std::set;
 
 using strings::Substitute;
 

@@ -125,6 +125,7 @@ namespace log {
 using env_util::ReadFully;
 using std::vector;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 

@@ -24,6 +24,8 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::unique_ptr;
+using std::string;
+using std::vector;
 
 using yb::util::TrimStr;
 using yb::util::TrimTrailingWhitespaceFromEveryLine;

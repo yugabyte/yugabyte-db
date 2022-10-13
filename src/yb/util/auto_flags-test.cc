@@ -15,6 +15,9 @@
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 DEFINE_AUTO_int32(test_auto_flag, kLocalVolatile, 0, 100, "Testing");
 DEFINE_AUTO_bool(test_auto_bool, kLocalPersisted, false, true, "Testing!");
 DEFINE_AUTO_int32(test_auto_int32, kExternal, 1, 2, "Testing!");

@@ -759,7 +759,7 @@ struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryTyp
     return pb.field_names_size();
   }
 
-  const string& field_names(int index) const {
+  const std::string& field_names(int index) const {
     return pb.field_names(index);
   }
 
@@ -786,7 +786,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
   int field_names_size() const;
 
-  const string& field_names(int index) const;
+  const std::string& field_names(int index) const;
 
   int field_types_size() const;
 

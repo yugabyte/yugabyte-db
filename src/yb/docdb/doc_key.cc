@@ -34,6 +34,7 @@
 #include "yb/util/uuid.h"
 
 using std::ostringstream;
+using std::string;
 
 using strings::Substitute;
 

@@ -42,6 +42,7 @@
 #include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
+using std::min;
 
 DEFINE_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "

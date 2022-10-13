@@ -46,7 +46,6 @@
 
 #include <stdlib.h> // For strtol* functions.
 #include <string>
-using std::string;
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
@@ -96,11 +95,11 @@ inline int64 atoi64(const char *nptr) {
 }
 
 // Convenience versions of the above that take a string argument.
-inline int32 atoi32(const string &s) {
+inline int32 atoi32(const std::string &s) {
   return atoi32(s.c_str());
 }
 
-inline int64 atoi64(const string &s) {
+inline int64 atoi64(const std::string &s) {
   return atoi64(s.c_str());
 }
 

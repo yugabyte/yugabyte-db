@@ -57,19 +57,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
-using std::deque;
-using std::binary_function;
-using std::less;
-using std::back_insert_iterator;
-using std::iterator_traits;
-using std::string;
-using std::vector;
 
 
 namespace yb {
@@ -95,8 +82,8 @@ template<class T> void STLClearObject(T* obj) {
 // Specialization for deque. Same as STLClearObject but doesn't call reserve
 // since deque doesn't have reserve.
 template <class T, class A>
-void STLClearObject(deque<T, A>* obj) {
-  deque<T, A> tmp;
+void STLClearObject(std::deque<T, A>* obj) {
+  std::deque<T, A> tmp;
   tmp.swap(*obj);
 }
 
@@ -112,7 +99,7 @@ template <class T> inline void STLClearIfBig(T* obj, size_t limit = 1<<20) {
 
 // Specialization for deque, which doesn't implement capacity().
 template <class T, class A>
-inline void STLClearIfBig(deque<T, A>* obj, size_t limit = 1<<20) {
+inline void STLClearIfBig(std::deque<T, A>* obj, size_t limit = 1<<20) {
   if (obj->size() >= limit) {
     STLClearObject(obj);
   } else {
@@ -232,7 +219,7 @@ void STLDeleteContainerPairSecondPointers(ForwardIterator begin,
 }
 
 template<typename T>
-inline void STLAssignToVector(vector<T>* vec,
+inline void STLAssignToVector(std::vector<T>* vec,
                               const T* ptr,
                               size_t n) {
   vec->resize(n);
@@ -243,7 +230,7 @@ inline void STLAssignToVector(vector<T>* vec,
 // Not faster; but we need the specialization so the function works at all
 // on the vector<bool> specialization.
 template<>
-inline void STLAssignToVector(vector<bool>* vec,
+inline void STLAssignToVector(std::vector<bool>* vec,
                               const bool* ptr,
                               size_t n) {
   vec->clear();
@@ -260,7 +247,7 @@ inline void STLAssignToVector(vector<bool>* vec,
 //      STLAssignToVectorChar(&vec, ptr, size);
 //      STLAssignToString(&str, ptr, size);
 
-inline void STLAssignToVectorChar(vector<char>* vec,
+inline void STLAssignToVectorChar(std::vector<char>* vec,
                                   const char* ptr,
                                   size_t n) {
   STLAssignToVector(vec, ptr, n);
@@ -284,7 +271,7 @@ struct InternalStringRepGCC4 {
 // "*str" as a result of resizing may be left uninitialized, rather
 // than being filled with '0' bytes.  Typically used when code is then
 // going to overwrite the backing store of the string with known data.
-inline void STLStringResizeUninitialized(string* s, size_t new_size) {
+inline void STLStringResizeUninitialized(std::string* s, size_t new_size) {
   if (sizeof(*s) == sizeof(InternalStringRepGCC4)) {
     if (new_size > s->capacity()) {
       s->reserve(new_size);
@@ -309,17 +296,17 @@ inline void STLStringResizeUninitialized(string* s, size_t new_size) {
 
 // Returns true if the string implementation supports a resize where
 // the new characters added to the string are left untouched.
-inline bool STLStringSupportsNontrashingResize(const string& s) {
+inline bool STLStringSupportsNontrashingResize(const std::string& s) {
   return (sizeof(s) == sizeof(InternalStringRepGCC4));
 }
 
-inline void STLAssignToString(string* str, const char* ptr, size_t n) {
+inline void STLAssignToString(std::string* str, const char* ptr, size_t n) {
   STLStringResizeUninitialized(str, n);
   if (n == 0) return;
   memcpy(&*str->begin(), ptr, n);
 }
 
-inline void STLAppendToString(string* str, const char* ptr, size_t n) {
+inline void STLAppendToString(std::string* str, const char* ptr, size_t n) {
   if (n == 0) return;
   size_t old_size = str->size();
   STLStringResizeUninitialized(str, old_size + n);
@@ -336,7 +323,7 @@ inline void STLAppendToString(string* str, const char* ptr, size_t n) {
 // change this as well.
 
 template<typename T, typename Allocator>
-inline T* vector_as_array(vector<T, Allocator>* v) {
+inline T* vector_as_array(std::vector<T, Allocator>* v) {
 # ifdef NDEBUG
   return &*v->begin();
 # else
@@ -345,7 +332,7 @@ inline T* vector_as_array(vector<T, Allocator>* v) {
 }
 
 template<typename T, typename Allocator>
-inline const T* vector_as_array(const vector<T, Allocator>* v) {
+inline const T* vector_as_array(const std::vector<T, Allocator>* v) {
 # ifdef NDEBUG
   return &*v->begin();
 # else
@@ -365,7 +352,7 @@ inline const T* vector_as_array(const vector<T, Allocator>* v) {
 // contiguous is officially part of the C++11 standard [string.require]/5.
 // According to Matt Austern, this should already work on all current C++98
 // implementations.
-inline char* string_as_array(string* str) {
+inline char* string_as_array(std::string* str) {
   // DO NOT USE const_cast<char*>(str->data())! See the unittest for why.
   return str->empty() ? NULL : &*str->begin();
 }
@@ -798,7 +785,7 @@ BinaryOperateOnSecond<Pair, BinaryOp> BinaryOperate2nd(const BinaryOp& f) {
 // F has to be a model of AdaptableBinaryFunction.
 // G1 and G2 have to be models of AdabtableUnaryFunction.
 template<typename F, typename G1, typename G2>
-class BinaryComposeBinary : public binary_function<typename G1::argument_type,
+class BinaryComposeBinary : public std::binary_function<typename G1::argument_type,
                                                    typename G2::argument_type,
                                                    typename F::result_type> {
  public:

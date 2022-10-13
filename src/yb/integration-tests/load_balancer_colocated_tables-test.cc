@@ -36,6 +36,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 
+using std::string;
+
 using namespace std::literals;
 
 namespace yb {

@@ -18,6 +18,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace tserver {
 

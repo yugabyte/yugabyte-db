@@ -150,6 +150,8 @@ using namespace yb::ql; // NOLINT
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::ostream;
+using std::string;
 
 using client::YBClient;
 using client::YBSession;

@@ -30,7 +30,6 @@
 
 using namespace std::chrono_literals;
 
-using std::vector;
 
 namespace yb {
 class ThreadPool;

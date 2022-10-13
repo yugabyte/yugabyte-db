@@ -34,6 +34,9 @@
 
 #include "yb/util/backoff_waiter.h"
 
+using std::string;
+using std::vector;
+
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_int64(is_raft_leader);

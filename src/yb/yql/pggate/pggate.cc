@@ -77,6 +77,9 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
+using std::make_shared;
+using std::string;
+using std::vector;
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
@@ -300,8 +303,6 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 }
 
 } // namespace
-
-using std::make_shared;
 
 //--------------------------------------------------------------------------------------------------
 

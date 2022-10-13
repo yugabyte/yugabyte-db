@@ -47,6 +47,7 @@
 #include "yb/util/thread.h"
 
 using std::shared_ptr;
+using std::vector;
 
 DEFINE_int32(catalog_manager_bg_task_wait_ms, 1000,
              "Amount of time the catalog manager background task thread waits "

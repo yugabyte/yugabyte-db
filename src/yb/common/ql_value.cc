@@ -45,6 +45,7 @@ namespace yb {
 using std::string;
 using std::shared_ptr;
 using std::to_string;
+using std::vector;
 using util::Decimal;
 using common::Jsonb;
 

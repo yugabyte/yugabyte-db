@@ -172,8 +172,8 @@ Result<OpId> GetLastOpIdForReplica(
     const MonoDelta& timeout);
 
 // Creates server vector from map.
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
-vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
+std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
 // Creates copy of tablet server map, which does n  ot own TServerDetails.
 TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers,

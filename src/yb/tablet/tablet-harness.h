@@ -49,8 +49,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
-using std::string;
-using std::vector;
 
 namespace yb {
 namespace tablet {
@@ -66,7 +64,7 @@ std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schem
 class TabletHarness {
  public:
   struct Options {
-    explicit Options(string root_dir)
+    explicit Options(std::string root_dir)
         : env(Env::Default()),
           tablet_id("test_tablet_id"),
           root_dir(std::move(root_dir)),
@@ -74,8 +72,8 @@ class TabletHarness {
           enable_metrics(true) {}
 
     Env* env;
-    string tablet_id;
-    string root_dir;
+    std::string tablet_id;
+    std::string root_dir;
     TableType table_type;
     bool enable_metrics;
   };

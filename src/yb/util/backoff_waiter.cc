@@ -17,6 +17,8 @@
 
 #include <glog/logging.h>
 
+using std::string;
+
 namespace yb {
 
 Status RetryFunc(

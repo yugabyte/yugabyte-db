@@ -28,6 +28,8 @@
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 class DBPropertiesTest : public DBTestBase {

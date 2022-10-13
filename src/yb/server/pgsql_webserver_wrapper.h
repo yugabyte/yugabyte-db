@@ -15,7 +15,6 @@
 
 #ifdef __cplusplus
 #include <atomic>
-using std::atomic_ullong;
 using int64 = int64_t;
 using uint8 = uint8_t;
 using uint64 = uint64_t;
@@ -28,15 +27,18 @@ using uint64 = uint64_t;
 #ifdef __cplusplus
 namespace yb {
 extern "C" {
+#define YB_ATOMIC_ULLONG std::atomic_ullong
+#else
+#define YB_ATOMIC_ULLONG atomic_ullong
 #endif
 
 struct WebserverWrapper;
 
 typedef struct ybpgmEntry {
   char name[100];
-  atomic_ullong calls;
-  atomic_ullong total_time;
-  atomic_ullong rows;
+  YB_ATOMIC_ULLONG calls;
+  YB_ATOMIC_ULLONG total_time;
+  YB_ATOMIC_ULLONG rows;
 } ybpgmEntry;
 
 typedef struct rpczEntry {

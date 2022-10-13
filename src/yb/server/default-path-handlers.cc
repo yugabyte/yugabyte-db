@@ -101,6 +101,8 @@ using std::ifstream;
 using std::string;
 using std::endl;
 using std::shared_ptr;
+using std::map;
+using std::vector;
 using strings::Substitute;
 
 using namespace std::placeholders;
