@@ -85,6 +85,7 @@ struct TabletCDCCheckpointInfo {
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
+using RollBackTabletIdCheckpointMap = std::unordered_map<const std::string*, pair<int64_t, OpId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -134,9 +135,11 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdateCdcReplicatedIndexEntry(
       const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
-      const MonoDelta& cdc_sdk_op_id_expiration);
+      const MonoDelta& cdc_sdk_op_id_expiration,
+      RollBackTabletIdCheckpointMap* rollback_tablet_id_map);
 
-  void RollbackCdcReplicatedIndexEntry(const string& tablet_id);
+  void RollbackCdcReplicatedIndexEntry(
+      const string& tablet_id, const pair<int64_t, OpId>& rollback_checkpoint_info);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -274,8 +277,7 @@ class CDCServiceImpl : public CDCServiceIf {
                                         const client::YBSessionPtr& session);
 
   Status UpdatePeersCdcMinReplicatedIndex(
-      const TabletId& tablet_id,
-      const TabletCDCCheckpointInfo& cdc_checkpoint_min);
+      const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min);
 
   // Used as a callback function for parallelizing async cdc rpc calls.
   // Given a finished tasks counter, and the number of total rpc calls
