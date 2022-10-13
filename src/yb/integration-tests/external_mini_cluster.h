@@ -227,8 +227,6 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
 
-  void UpdateMasterAddressesOnTserver();
-
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
   void Shutdown(NodeSelectionMode mode = ALL);
@@ -858,8 +856,6 @@ class ExternalTabletServer : public ExternalDaemon {
       bool set_proxy_addrs = true,
       std::vector<std::pair<std::string, std::string>> extra_flags = {});
 
-  void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
-
   // Restarts the daemon. Requires that it has previously been shutdown.
   Status Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
@@ -914,13 +910,8 @@ class ExternalTabletServer : public ExternalDaemon {
   Status BuildServerStateFromInfoPath() override;
 
  private:
-<<<<<<< HEAD
-  string GetCQLServerInfoPath();
-  std::string master_addrs_;
-=======
   std::string GetCQLServerInfoPath();
   const std::string master_addrs_;
->>>>>>> d220ee0d89e63420bfa0ea5279ced2c6e2c65e3d
   const std::string bind_host_;
   const uint16_t rpc_port_;
   const uint16_t http_port_;
