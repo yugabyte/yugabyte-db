@@ -40,6 +40,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
              "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "

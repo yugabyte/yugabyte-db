@@ -52,6 +52,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {

@@ -208,6 +208,7 @@ using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
 using std::vector;
+using std::make_pair;
 using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
@@ -256,6 +257,7 @@ namespace client {
 using internal::MetaCache;
 using ql::ObjectType;
 using std::shared_ptr;
+using std::pair;
 
 namespace {
 

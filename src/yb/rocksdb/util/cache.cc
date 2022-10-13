@@ -37,6 +37,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 
+using std::shared_ptr;
+
 // 0 value means that there exist no single_touch cache and
 // 1 means that the entire cache is treated as a multi-touch cache.
 DEFINE_double(cache_single_touch_ratio, 0.2,

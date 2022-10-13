@@ -148,6 +148,8 @@ namespace tablet {
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 using log::Log;
 using log::LogEntryPB;

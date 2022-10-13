@@ -55,6 +55,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);

@@ -117,6 +117,7 @@ DECLARE_int32(max_tables_metrics_breakdowns);
 
 using std::shared_ptr;
 using std::vector;
+using std::set;
 using strings::Substitute;
 
 namespace yb {

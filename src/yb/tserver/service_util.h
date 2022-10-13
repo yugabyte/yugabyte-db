@@ -61,10 +61,10 @@ Result<bool> CheckUuidMatch(TabletPeerLookupIf* tablet_manager,
                             const char* method_name,
                             const ReqClass* req,
                             const std::string& requestor_string) {
-  const string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
+  const std::string& local_uuid = tablet_manager->NodeInstance().permanent_uuid();
   if (req->dest_uuid().empty()) {
     // Maintain compat in release mode, but complain.
-    string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
+    std::string msg = strings::Substitute("$0: Missing destination UUID in request from $1: $2",
         method_name, requestor_string, req->ShortDebugString());
 #ifdef NDEBUG
     YB_LOG_EVERY_N(ERROR, 100) << msg;

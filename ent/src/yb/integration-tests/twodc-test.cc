@@ -75,6 +75,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);

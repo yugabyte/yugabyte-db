@@ -53,6 +53,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(TEST_record_segments_violate_max_time_policy);
 DECLARE_bool(TEST_record_segments_violate_min_space_policy);
 DECLARE_bool(enable_load_balancing);

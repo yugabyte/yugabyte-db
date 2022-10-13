@@ -44,6 +44,7 @@
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::min;
 using strings::Substitute;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;

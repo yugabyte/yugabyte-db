@@ -38,6 +38,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+using std::numeric_limits;
+using std::string;
+
 using yb::BinaryOutputFormat;
 
 using yb::server::HybridClock;

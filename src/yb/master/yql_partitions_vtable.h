@@ -88,7 +88,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   mutable bool update_cache_ GUARDED_BY(mutex_) = true;
 
   // Store the table as a map for more efficient modifications.
-  mutable std::map<TableId, std::map<string, QLRow>> table_to_partition_start_to_row_map_
+  mutable std::map<TableId, std::map<std::string, QLRow>> table_to_partition_start_to_row_map_
       GUARDED_BY(mutex_);
 
   // Convert the map to the expected vtable format.

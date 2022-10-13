@@ -42,6 +42,8 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
+using std::string;
+
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
 

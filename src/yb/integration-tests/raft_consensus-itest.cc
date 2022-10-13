@@ -122,6 +122,7 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 using std::shared_ptr;
+using std::string;
 
 using client::YBSession;
 using client::YBTable;

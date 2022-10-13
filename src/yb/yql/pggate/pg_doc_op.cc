@@ -34,6 +34,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::string;
+
 namespace yb {
 namespace pggate {
 namespace {

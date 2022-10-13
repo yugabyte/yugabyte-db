@@ -23,6 +23,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
+using std::string;
+
 namespace yb {
 namespace common {
 

@@ -26,6 +26,7 @@
 #include "yb/util/auto_flags_util.h"
 
 using std::string;
+using std::vector;
 
 DEFINE_int32(
     limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),

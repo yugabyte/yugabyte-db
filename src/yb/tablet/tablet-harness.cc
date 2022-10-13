@@ -25,6 +25,8 @@
 
 #include "yb/util/result.h"
 
+using std::vector;
+
 namespace yb {
 namespace tablet {
 

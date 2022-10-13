@@ -171,7 +171,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // and returns a bad Status.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
-      const string& tablet_id,
+      const std::string& tablet_id,
       const Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,

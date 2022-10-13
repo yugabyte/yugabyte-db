@@ -48,6 +48,9 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);

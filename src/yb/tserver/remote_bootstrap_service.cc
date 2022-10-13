@@ -63,6 +63,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
+using std::string;
+
 using namespace std::literals;
 
 // Note, this macro assumes the existence of a local var named 'context'.

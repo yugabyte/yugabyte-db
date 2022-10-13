@@ -36,6 +36,8 @@
 
 #include "yb/util/test_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 const uint32_t optLength = 100;

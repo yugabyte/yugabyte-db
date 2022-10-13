@@ -69,6 +69,7 @@ using rpc::Messenger;
 using rpc::MessengerBuilder;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::string;
 
 const char* kTableId = "test-peers-table";
 const char* kTabletId = "test-peers-tablet";
