@@ -45,6 +45,9 @@
 
 #include "yb/util/status_format.h"
 
+using std::make_shared;
+using std::vector;
+
 namespace yb {
 namespace pggate {
 
@@ -96,8 +99,6 @@ inline void ApplyBound(
 }
 
 } // namespace
-
-using std::make_shared;
 
 //--------------------------------------------------------------------------------------------------
 // PgDmlRead

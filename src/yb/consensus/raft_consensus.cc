@@ -247,6 +247,7 @@ using rpc::PeriodicTimer;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::weak_ptr;
+using std::string;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 

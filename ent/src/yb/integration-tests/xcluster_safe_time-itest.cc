@@ -36,6 +36,8 @@
 #include "yb/integration-tests/twodc_test_base.h"
 #include "yb/client/table.h"
 
+using std::string;
+
 using namespace std::chrono_literals;
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);

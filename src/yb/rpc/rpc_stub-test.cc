@@ -92,6 +92,7 @@ using yb::rpc_test::PingRequestPB;
 using yb::rpc_test::PingResponsePB;
 
 using std::vector;
+using std::string;
 
 using rpc_test::AddRequestPartialPB;
 using rpc_test::CalculatorServiceProxy;

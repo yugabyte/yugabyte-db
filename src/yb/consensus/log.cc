@@ -233,6 +233,7 @@ using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using std::shared_lock;
 using std::unique_ptr;
+using std::string;
 using strings::Substitute;
 
 namespace {

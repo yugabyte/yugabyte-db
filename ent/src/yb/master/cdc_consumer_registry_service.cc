@@ -29,6 +29,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace master {
 namespace enterprise {

@@ -70,6 +70,7 @@
 #include "yb/util/status.h"
 
 using std::pair;
+using std::string;
 
 using yb::consensus::Consensus;
 using yb::consensus::ConsensusOptions;

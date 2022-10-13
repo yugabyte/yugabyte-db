@@ -53,6 +53,7 @@ namespace yb {
 
 using debug::ScopedLeakCheckDisabler;
 using std::vector;
+using std::string;
 
 class MultiThreadedMetricsTest : public YBTest {
  public:

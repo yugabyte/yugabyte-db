@@ -56,6 +56,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals;
 using namespace std::placeholders;
 

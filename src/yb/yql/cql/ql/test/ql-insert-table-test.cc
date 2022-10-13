@@ -21,6 +21,8 @@
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+using std::string;
+
 namespace yb {
 namespace ql {
 

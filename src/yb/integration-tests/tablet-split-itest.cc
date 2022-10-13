@@ -91,6 +91,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 

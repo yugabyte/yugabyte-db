@@ -34,6 +34,8 @@
 // added as a special include path to CMakeLists.txt
 #include "pg_type_d.h" // NOLINT
 
+using std::string;
+
 using yb::pggate::PgValueFromPB;
 using yb::pggate::PgValueToPB;
 

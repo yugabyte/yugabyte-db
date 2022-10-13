@@ -123,6 +123,7 @@ using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::min;
 using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;

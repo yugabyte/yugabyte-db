@@ -52,6 +52,8 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+using std::string;
+
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,

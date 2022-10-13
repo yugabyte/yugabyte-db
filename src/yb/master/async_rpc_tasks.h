@@ -200,7 +200,7 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   // Note: This is the last thing function called, to guarantee it's the last work done by the task.
   virtual void UnregisterAsyncTaskCallback();
 
-  string table_name() const;
+  std::string table_name() const;
 
   Master* const master_;
   ThreadPool* const callback_pool_;
@@ -209,8 +209,8 @@ class RetryingTSRpcTask : public server::MonitoredTask {
   AsyncTaskThrottlerBase* async_task_throttler_;
 
   void UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
-                     const string& metric_name,
-                     const string& metric_type);
+                     const std::string& metric_name,
+                     const std::string& metric_type);
 
   MonoTime start_ts_;
   MonoTime attempt_start_ts_;

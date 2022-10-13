@@ -133,8 +133,8 @@ class ParseTree {
   std::unordered_set<client::YBTableName, boost::hash<client::YBTableName>> analyzed_tables_;
 
   // Set of types used during semantic analysis.
-  std::unordered_set<std::pair<string, string>,
-                     boost::hash<std::pair<string, string>>> analyzed_types_;
+  std::unordered_set<std::pair<std::string, std::string>,
+                     boost::hash<std::pair<std::string, std::string>>> analyzed_types_;
 
   // Parse tree memory pool. This pool is used to allocate parse tree and its nodes. This pool
   // should be part of the generated parse tree that is stored within parse_context. Once the

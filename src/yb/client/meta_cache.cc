@@ -86,6 +86,7 @@
 
 using std::map;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using namespace std::literals;
 using namespace std::placeholders;

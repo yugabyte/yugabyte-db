@@ -22,7 +22,6 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
 
-using std::string;
 
 
 
@@ -94,7 +93,7 @@ class SubstituteArg {
   // -V:scratch_:730
   inline SubstituteArg(const char* value)  // NOLINT(runtime/explicit)
     : text_(value), size_(value == NULL ? 0 : strlen(text_)) {}
-  inline SubstituteArg(const string& value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(const std::string& value)  // NOLINT(runtime/explicit)
     : text_(value.data()), size_(value.size()) {}
   inline SubstituteArg(const GStringPiece& value)  // NOLINT(runtime/explicit)
     : text_(value.data()), size_(value.size()) {}
@@ -188,7 +187,7 @@ char* SubstituteToBuffer(GStringPiece format,
 }  // namespace internal
 
 void SubstituteAndAppend(
-    string* output, GStringPiece format,
+    std::string* output, GStringPiece format,
     const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
@@ -201,7 +200,7 @@ void SubstituteAndAppend(
     const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg);
 
-inline string Substitute(
+inline std::string Substitute(
     GStringPiece format,
     const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
@@ -214,7 +213,7 @@ inline string Substitute(
     const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
     const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg) {
-  string result;
+  std::string result;
   SubstituteAndAppend(
       &result, format, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
   return result;

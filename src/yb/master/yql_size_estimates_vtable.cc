@@ -23,6 +23,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 

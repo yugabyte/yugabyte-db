@@ -47,6 +47,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
+using std::string;
+
 DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
              "Override the max thread pool size for CDCConsumerHandler, which is used by "
              "CDCPollers. If set to 0, then the thread pool will use the default size (number of "

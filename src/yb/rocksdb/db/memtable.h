@@ -387,7 +387,7 @@ class MemTable {
   const size_t kArenaBlockSize;
   ConcurrentArena arena_;
   MemTableAllocator allocator_;
-  unique_ptr<MemTableRep> table_;
+  std::unique_ptr<MemTableRep> table_;
 
   // Total data size of all data inserted
   std::atomic<uint64_t> data_size_;

@@ -114,6 +114,10 @@ using namespace std::literals;
 
 using std::cout;
 using std::endl;
+using std::string;
+using std::pair;
+using std::make_pair;
+using std::vector;
 
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::util::MessageToJsonString;
