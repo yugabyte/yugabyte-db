@@ -10,7 +10,7 @@ import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import { FormikErrors, FormikProps } from 'formik';
 
-import { fetchTablesInUniverse, getXclusterConfig } from '../../../actions/xClusterReplication';
+import { fetchTablesInUniverse, fetchXClusterConfig } from '../../../actions/xClusterReplication';
 import { api } from '../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -240,7 +240,7 @@ export const SelectTablesStep = ({
   const sharedXClusterConfigQueries = useQueries(
     sharedXClusterConfigUUIDs.map((UUID) => ({
       queryKey: ['Xcluster', UUID],
-      queryFn: () => getXclusterConfig(UUID)
+      queryFn: () => fetchXClusterConfig(UUID)
     }))
   ) as UseQueryResult<XClusterConfig>[];
 

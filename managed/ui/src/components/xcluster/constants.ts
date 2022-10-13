@@ -112,13 +112,23 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: Metrics<'tserver_async_replication_la
   }
 };
 
-// MetricNames currently does not include all possible metric names.
-// Please update as needed.
-export const MetricNames = {
+/**
+ * MetricName currently does not include all possible metric names.
+ * Please update as needed.
+ */
+export const MetricName = {
   TSERVER_ASYNC_REPLICATION_LAG_METRIC: 'tserver_async_replication_lag_micros',
   DISK_USAGE: 'disk_usage'
 } as const;
-export type MetricNames = typeof MetricNames[keyof typeof MetricNames];
+export type MetricName = typeof MetricName[keyof typeof MetricName];
+
+// TODO: Add as type for layout alias keys in Metric type.
+export const MetricTraceName = {
+  [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]: {
+    COMMITTED_LAG: 'async_replication_committed_lag_micros',
+    SENT_LAG: 'async_replication_sent_lag_micros'
+  }
+} as const;
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
