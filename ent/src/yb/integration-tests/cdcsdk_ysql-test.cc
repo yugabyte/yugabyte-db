@@ -7574,7 +7574,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
   // not be added to the stream.
   ASSERT_OK(CreateTableWithoutPK(&test_cluster_));
 
-  // Add 5 more tables after the stream is created.
+  // Add 3 more tables after the stream is created.
   for (uint32_t i = 1; i <= num_new_tables; ++i) {
     std::string table_name = "test_table_" + std::to_string(i);
     auto table =
@@ -7604,7 +7604,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap)) {
+  FLAGS_enable_load_balancing = false;
   FLAGS_update_min_cdc_indices_interval_secs = 1;
+
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
