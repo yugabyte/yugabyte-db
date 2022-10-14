@@ -53,6 +53,19 @@
     }
   }
 
+  /*
+  @media(min-width:768px){
+    h4[id]{
+      &:not(:first-child){
+        margin: 2rem 0 1rem 0;
+      }
+      &:before{
+        margin-top: -2rem;
+        height: 2rem;
+      }
+    }
+  }
+  */
   h1,
   .h1,
   h2,
@@ -162,5 +175,9 @@
     font-weight: 600;
     line-height: 24px;
     margin-bottom: 8px;
+
+    &:not(:first-child) {
+      margin: 2rem 0 1rem 0;
+    }
   }
 }

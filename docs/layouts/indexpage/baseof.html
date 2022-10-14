@@ -9,20 +9,22 @@
     </header>
     <div class="container-fluid td-outer">
       <div class="td-main">
-        <div class="row flex-xl-nowrap {{- if  (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }}">
-          <aside class="col-12 col-md-3 col-xl-2 td-sidebar d-print-none">
-            {{ partial "sidebar.html" . }}
-          </aside>
-          {{ if .Params.showRightNav }}
-            <aside class="d-none d-xl-block col-xl-2 td-sidebar-toc d-print-none">
-              {{ partial "toc.html" . }}
-            </aside>
-          {{ end }}
-          <main class="col-12 col-md-9{{- if .Params.showRightNav }} col-xl-8{{- else }} col-xl-10{{- end }} pl-md-5" role="main">
-            {{ partial "version-banner.html" . }}
-            {{ if not .Site.Params.ui.breadcrumb_disable }}{{ partial "breadcrumb.html" . }}{{ end }}
-            {{ block "main" . }}{{ end }}
-          </main>
+        <aside class="td-sidebar d-print-none">
+          {{ partial "sidebar.html" . }}
+        </aside>
+        <div class="row flex-xl-nowrap {{- if  (.Params.showRightNav)}} right-sidebar{{- else}} no-right-sidebar{{- end }} content-parent">
+          <div class="content-child">
+              {{ if .Params.showRightNav }}
+              <aside class="d-none d-xl-block   td-sidebar-toc d-print-none">
+                {{ partial "toc.html" . }}
+              </aside>
+              {{ end }}
+              <main class="content-area col-xl-12" role="main">
+                {{ partial "version-banner.html" . }}
+                {{ if not .Site.Params.ui.breadcrumb_disable }}{{ partial "breadcrumb.html" . }}{{ end }}
+                {{ block "main" . }}{{ end }}
+              </main>
+          </div>
         </div>
       </div>
       {{ partial "footer.html" . }}

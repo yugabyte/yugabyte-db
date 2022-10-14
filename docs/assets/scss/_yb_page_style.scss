@@ -3,10 +3,21 @@ body.yb-page-style {
     margin-top: 48px;
   }
 
+  .border {
+    border: 1px solid #d7dee4 !important;
+  }
+
   .two-side {
     display: flex;
     border-radius: 8px;
     height: 100%;
+    overflow: hidden;
+
+    &:hover {
+      background: #f2f6ff;
+      border: 2px solid #cbdbff;
+      border-radius: 8px;
+    }
 
     .body {
       padding: 12px;
@@ -19,35 +30,76 @@ body.yb-page-style {
       margin-top: auto;
       margin-bottom: 10px;
       margin-right: auto;
-      font-size: 14px;
-      line-height: 17px;
       display: flex;
       align-items: center;
-      font-weight: 500;
-      color: $yb-anchor-color;
+      font-weight: 600;
+      font-size: 13px;
+      line-height: 16px;
+      color: #fff;
+      background: #7879f1;
+      border-radius: 8px;
+      padding: 8px 15px 8px 12px;
+      text-transform: capitalize;
 
       &::after {
         content: '';
-        width: 15px;
-        height: 8px;
-        margin-left: 15px;
-        background: url(/images/homepage/arrow.svg) no-repeat;
-        background-position: -5px;
+        width: 13px;
+        height: 9px;
+        margin-left: 10px;
+        margin-right: 8px;
+        background: url(/images/homepage/arrow-white.svg) center no-repeat;
         display: inline-block;
-        margin-top: 2px;
+        margin-top: 1px;
       }
 
       &:hover {
-        text-decoration: underline;
+        background: #5d5fef;
       }
     }
 
     .image {
       display: flex;
 
+      .icon,
       img {
+        height: auto;
+        width: auto;
         margin-top: auto;
         margin-bottom: 0;
+      }
+    }
+  }
+
+  .three-box-row {
+    margin-top: 28px;
+
+    .col-12 {
+      padding-bottom: 14px;
+    }
+
+    .text-link {
+      margin-top: auto;
+      margin-bottom: 0;
+      margin-right: auto;
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 24px;
+      display: inline-block;
+      color: #507ce1;
+
+      &::after {
+        content: '';
+        width: 13px;
+        height: 9px;
+        margin-left: 10px;
+        margin-right: 8px;
+        background: url(/images/homepage/arrow-blue.svg) center no-repeat;
+        display: inline-block;
+        margin-top: 2px;
+      }
+
+      &:hover {
+        text-decoration: underline;
       }
     }
   }
@@ -65,7 +117,7 @@ body.yb-page-style {
     align-items: center;
     margin-bottom: 13px;
 
-    >span {
+    > span {
       color: #0b1117;
       font-size: 18px;
       min-width: 100%;
@@ -148,33 +200,22 @@ body.yb-page-style {
 
   .body-content {
     font-size: 14px;
-    line-height: 21px;
-    color: #4e5f6d;
-    margin-bottom: 5px;
+    line-height: 22px;
+    color: #25323d;
     max-width: 332px;
-  }
-
-  .three-box-row {
-    margin-top: 28px;
-
-    .col-12 {
-      padding-bottom: 14px;
-    }
-
-    h2 {
-      font-weight: 600;
-      font-size: 21px;
-      line-height: 26px;
-      display: flex;
-      align-items: center;
-      color: #0b1117;
-      margin-bottom: 24px !important;
-    }
+    margin-bottom: 16px;
   }
 
   .box.border {
     border-radius: 8px;
     height: 100%;
+    overflow: hidden;
+
+    &:hover {
+      background: #f2f6ff;
+      border: 1px solid #cbdbff !important;
+      border-radius: 8px;
+    }
 
     .image {
       height: 122px;
@@ -218,7 +259,7 @@ body.yb-page-style {
   }
 
   .other-content {
-    padding: 15px 15px 25px;
+    padding: 24px;
     height: calc(100% - 122px);
     display: flex;
     flex-flow: column;
@@ -242,12 +283,12 @@ body.yb-page-style {
 
   .heading {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 16px;
     line-height: 24px;
     display: flex;
     align-items: center;
     color: #0b1117;
-    margin-bottom: 8px;
+    margin-bottom: 16px;
   }
 
   .tag-line {
@@ -261,15 +302,17 @@ body.yb-page-style {
   .detail-copy {
     font-weight: 400;
     font-size: 14px;
-    line-height: 19px;
+    line-height: 22px;
     display: flex;
     align-items: center;
-    color: #4e5f6d;
+    color: #25323d;
     margin-bottom: 15px;
   }
 
   .icon {
-    margin-bottom: 24px;
+    margin-bottom: 10px;
+    width: 40px;
+    height: 40px;
   }
 }
 
@@ -282,7 +325,7 @@ body.yb-page-style {
     }
 
     .box-top {
-      >span {
+      > span {
         min-width: calc(100% - 90px);
       }
     }

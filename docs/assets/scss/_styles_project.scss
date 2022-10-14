@@ -31,7 +31,6 @@
 }
 
 /******* Variables for Color Theme Switcher **********/
-
 :root {
   --theme-color: #312965;
   --theme-dark-color: #5b5480;
@@ -55,6 +54,10 @@ ol.breadcrumb {
     line-height: 28px;
     display: flex;
     align-items: center;
+
+    &:only-child {
+      visibility: hidden;
+    }
 
     .td-breadcrumbs &.active a {
       color: $yb-font-gray;
@@ -93,6 +96,8 @@ body.td-homepage {
 @media (min-width: 768px) {
   .td-main main {
     padding-top: 9.5rem;
+    padding-top: 129px;
+    margin-top: 32px;
   }
 
   .pl-md-5,
@@ -187,46 +192,36 @@ body.td-homepage {
 .td-main {
   .td-content {
     [class^=col] {
-      padding: 0 14px;
-      margin-bottom: 12px;
+      padding: 0 16px;
+      margin-bottom: 16px;
     }
 
     a.section-link {
-      padding: 25px 32px 30px;
+      padding: 24px;
       display: flex;
-      margin-top: 15px;
-      min-height: 120px;
+      margin-top: 0;
+      min-height: 10px;
       flex-direction: column;
       position: relative;
-      background-color: #fff;
-      background: $YB_LIGHT_GRAY;
-      border: none !important;
-      height: 180px;
       color: $YB_DARK_BLUE;
-      text-decoration: none !important;
-      border-radius: 12px;
+      background: #fff;
+      border: 1px solid #d7dee4 !important;
+      border-radius: 8px;
+      height: 100%;
 
       @include transition(0.125s);
 
-      @media only screen and (min-width: 768px) and (max-width: 1024px) {
-        height: 235px;
-      }
-
-      @media only screen and (max-width: 520px) {
-        height: 235px;
-      }
-
-      &::after {
-        content: " ";
-        height: 100%;
-        width: 100%;
-        background: #fff;
-        border-radius: 12px;
-        bottom: 0 !important;
-        left: 0 !important;
-        box-shadow: 0 7px 16px rgba($YB_DARK_BLUE, 0.17);
-        z-index: 1;
-      }
+      /* &::after {
+		content: " ";
+		height: 100%;
+		width: 100%;
+		background: #fff;
+		border-radius: 12px;
+		bottom: 0 !important;
+		left: 0 !important;
+		//box-shadow: 0 7px 16px rgba($YB_DARK_BLUE, 0.17);
+		z-index: 1;
+	  } */
 
       &::before,
       &::after {
@@ -237,43 +232,29 @@ body.td-homepage {
       }
 
       &:hover {
-        @include transition(0.3s);
-
-        transform: scale(1.03, 1.03);
-        z-index: 2000;
-
-        &::before {
-          color: rgba($YB_DARK_BLUE, 0.7);
-          padding-right: 37px;
-
-          @include transition(0.3s);
-        }
-
-        &::after {
-          @include transition(0.3s);
-
-          box-shadow: 0 19px 40px rgba($YB_DARK_BLUE, 0.17);
-          border-radius: 15px;
-        }
+        background: #f2f6ff;
+        border: 1px solid #cbdbff;
+        border-radius: 8px;
       }
 
       .head {
         position: relative;
         z-index: 2;
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
 
         .icon {
-          float: left;
-          margin-left: -10px;
-          margin-top: -7px;
-          width: 65px;
+          width: 40px;
+          height: 40px;
 
           i {
             font-size: 40px;
-            margin: 10px 15px;
-            line-height: 48px;
+            margin: 0;
+            line-height: 40px;
             margin-bottom: 0;
             display: block;
-            height: 48px;
+            height: 40px;
             text-align: center;
           }
         }
@@ -287,8 +268,12 @@ body.td-homepage {
         }
 
         .title {
-          margin-left: 78px;
-          letter-spacing: -0.02em;
+          margin: 0;
+          margin-left: 20px;
+          font-weight: 600;
+          font-size: 14px;
+          line-height: 24px;
+          color: #0b1117;
           text-overflow: ellipsis;
           overflow: hidden;
           white-space: nowrap;
@@ -296,15 +281,16 @@ body.td-homepage {
       }
 
       .body {
-        padding-top: 14px;
-        letter-spacing: -0.02em;
+        font-size: 14px;
+        line-height: 22px;
+        color: #25323d;
         word-wrap: break-word;
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3; /* number of lines to show */
-        max-height: 59px;
+        -webkit-line-clamp: 3;
+        //max-height: 59px;
         position: relative;
         z-index: 2;
 
@@ -345,7 +331,6 @@ body:not(.td-home) .td-main main {
   .highlight {
     background: transparent !important;
     padding: 0 !important;
-    margin: 0 !important;
     border: none !important;
     max-width: 100% !important;
 
@@ -415,10 +400,24 @@ body:not(.td-home) .td-main main {
       text-underline-offset: 4px;
     }
   }
+
+  th a,
+  td a {
+    font-size: inherit;
+  }
+
+  a {
+    .link-external-icon {
+      margin: 0 3px;
+    }
+
+    &:has(.link-external-icon) {
+      white-space: nowrap;
+    }
+  }
 }
 
 /******* For Inline SVG **********/
-
 svg.rrdiagram {
   max-width: 100%;
 }

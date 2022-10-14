@@ -27,6 +27,12 @@ aside.td-sidebar {
   background: rgb(246, 246, 248);
 
   .left-sidebar-wrap {
+    height: calc(100vh - 129px);
+    position: sticky;
+    margin-top: 0;
+    top: 129px;
+    transition: width 0.5s linear;
+
     &.parent-active-remove::before {
       content: "";
       background: #f5f1f2;
@@ -36,12 +42,6 @@ aside.td-sidebar {
       z-index: 3;
       left: 0;
     }
-
-    height: calc(100vh - 129px);
-    position: sticky;
-    margin-top: 129px;
-    top: 129px;
-    transition: width 0.5s linear;
 
     .hover-collapse {
       display: none;
@@ -1225,7 +1225,7 @@ aside.td-sidebar nav > ul li.bottom-link.submenu:not(.arrow-menu) {
 
 @media (max-width: 947px) and (min-width: 768px) {
   .td-main main {
-    max-width: calc(100% - 237px) !important;
+    //max-width: calc(100% - 237px) !important;
     padding-left: 1rem !important;
   }
 }

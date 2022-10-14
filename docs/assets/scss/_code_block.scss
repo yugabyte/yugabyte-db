@@ -55,10 +55,35 @@ main {
       //text-decoration: underline;
     }
 
+    > pre,
+    .highlight {
+      margin: 16px 0;
+    }
+
+    >.highlight + pre,
+    .highlight + .highlight {
+      margin-top: 24px;
+    }
+
+    p + pre,
+    p + .highlight {
+      margin-top: -8px;
+    }
+
+    li > p + pre,
+    li > p + .highlight {
+      margin-top: 16px;
+    }
+
+    pre + p,
+    .highlight + p {
+      margin-top: 24px;
+    }
+
     pre {
       background: transparent !important;
       padding: 0 !important;
-      margin: 12px 0 28px !important;
+      margin: 0;
       position: relative !important;
       overflow: hidden;
 

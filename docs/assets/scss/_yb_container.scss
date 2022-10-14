@@ -1,13 +1,34 @@
-
 /******* Container Styling **********/
 .td-main {
   border-top: 1px solid #e9eef2;
   background: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
 
   .td-sidebar:not(.close-bar) {
     padding: 0 0 0 11px !important;
     background: rgba(247, 250, 252, 0.5);
+    transition: none;
     border-right: 1px solid #e9eef2;
+    max-width: 300px;
+    margin-left: -15px;
+  }
+
+  .content-parent {
+    max-width: calc(100% - 280px);
+    width: 100%;
+    justify-content: center;
+
+    .content-child {
+      width: 1120px;
+      max-width: calc(100% - 40px);
+      display: flex;
+    }
+  }
+
+  .row {
+    //padding-left: 300px;
   }
 
   .td-sidebar-toc {
@@ -16,28 +37,27 @@
   }
 }
 
-@media (min-width: 1380px) {
+.td-outer {
+  position: relative;
+}
+
+@media (min-width: 1200px) {
   .td-main {
-    border-top: 1px solid #e9eef2;
     margin: 0 auto;
-    background: #fff;
     width: 100%;
     max-width: 100% !important;
 
     .td-sidebar:not(.close-bar) {
       width: 300px;
-      margin-right: 40px;
+      margin-right: 0;
       padding: 0 0 0 11px !important;
       flex: none;
       max-width: none !important;
-      background: rgba(247, 250, 252, 0.5);
-      border-right: 1px solid #e9eef2;
-      transition: none;
 
       + {
         main {
           flex: none;
-          max-width: calc(100% - calc(300px + 60px)) !important;
+          max-width: calc(100% - 60px) !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
@@ -56,7 +76,8 @@
       + {
         main {
           flex: none;
-          max-width: calc(100% - calc(300px + 60px + 252px)) !important;
+          width: 828px;
+          max-width: calc(100% - 252px) !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
         }
@@ -67,18 +88,12 @@
 
 @media (min-width: 1500px) {
   .td-main {
-    max-width: calc(1490px) !important;
-
-    .row {
-      margin: 0;
-    }
-
     .td-sidebar:not(.close-bar) {
       margin-right: 110px;
 
       + {
         main {
-          max-width: calc(100% - calc(300px + 110px)) !important;
+          max-width: calc(828px + 60px + 110px) !important;
         }
       }
     }
@@ -86,8 +101,45 @@
     .td-sidebar-toc {
       + {
         main {
-          max-width: calc(100% - calc(300px + 110px + 252px)) !important;
+          //max-width: 828px !important;
         }
+      }
+    }
+  }
+}
+
+@media (max-width: 1199px) {
+  .td-main {
+    .content-parent {
+      max-width: calc(100% - 250px);
+      justify-content: flex-end;
+      padding-right: 20px;
+
+      .content-child {
+        max-width: 100%;
+      }
+
+      main {
+        width: 100%;
+        max-width: 828px;
+      }
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .td-main {
+    flex-flow: column;
+
+    .content-parent {
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      padding: 0 0;
+      justify-content: flex-start;
+
+      .content-child {
+        padding-left: 0;
       }
     }
   }

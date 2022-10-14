@@ -65,15 +65,7 @@ main {
           font-weight: 600;
           font-size: 12px;
           line-height: 24px;
-          padding: 10px 5px;
-
-          &:first-child {
-            padding-left: 10px;
-          }
-
-          &:last-child {
-            padding-right: 10px;
-          }
+          padding: 12.75px 15px;
         }
 
         td {
@@ -84,15 +76,7 @@ main {
           font-size: 14px;
           line-height: 26px;
           color: #4e5f6d;
-          padding: 10px 5px;
-
-          &:first-child {
-            padding-left: 10px;
-          }
-
-          &:last-child {
-            padding-right: 10px;
-          }
+          padding: 11.5px 16px;
         }
 
         code {
