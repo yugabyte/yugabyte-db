@@ -5690,7 +5690,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
   std::unordered_set<TableId> expected_table_ids;
   std::unordered_set<TabletId> expected_tablet_ids;
   const uint32_t num_tablets = 2;
-  const uint32_t num_new_tables = 5;
+  const uint32_t num_new_tables = 3;
   expected_table_ids.reserve(num_new_tables + 1);
 
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
@@ -5708,7 +5708,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
   // not be added to the stream.
   ASSERT_OK(CreateTableWithoutPK(&test_cluster_));
 
-  // Add 5 more tables after the stream is created.
+  // Add 3 more tables after the stream is created.
   for (uint32_t i = 1; i <= num_new_tables; ++i) {
     std::string table_name = "test_table_" + std::to_string(i);
     auto table =
@@ -6487,7 +6487,6 @@ TEST_F(
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   ValidateColumnCounts(change_resp, 2);
 }
-
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompatibillitySupportActiveTime)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
