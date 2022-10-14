@@ -12,10 +12,11 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -55,7 +57,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
@@ -509,6 +511,220 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         subTasksByPosition,
         KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS,
         getExpectedChangeInstaceTypeResults(),
+        "change");
+  }
+
+  private static final List<TaskType> KUBERNETES_CHANGE_VOLUME_SIZE_TASKS =
+      ImmutableList.of(
+          TaskType.KubernetesCheckStorageClass,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.UpdatePlacementInfo,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
+
+  private List<JsonNode> KUBERNETES_CHANGE_VOLUME_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", CommandType.STS_DELETE.name())),
+          Json.toJson(ImmutableMap.of("commandType", CommandType.PVC_EXPAND_SIZE.name())),
+          Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
+  @Test
+  public void testChangeVolumeSize() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    when(mockKubernetesManager.getStorageClassName(any(), any(), any(), eq(false)))
+        .thenReturn("tServerStorageClassName");
+    when(mockKubernetesManager.storageClassAllowsExpansion(any(), eq("tServerStorageClassName")))
+        .thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.deviceInfo.volumeSize += 200; // originally 100
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockKubernetesManager, times(1))
+        .deleteStatefulSet(eq(config), eq(NODE_PREFIX), eq("yb-tserver"));
+    verify(mockKubernetesManager, times(1))
+        .helmUpgrade(
+            eq(YB_SOFTWARE_VERSION),
+            eq(config),
+            eq(NODE_PREFIX),
+            eq(NODE_PREFIX),
+            expectedOverrideFile.capture());
+    verify(mockKubernetesManager, times(1))
+        .getPodInfos(eq(config), eq(NODE_PREFIX), eq(NODE_PREFIX));
+
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CHANGE_VOLUME_SIZE_TASKS,
+        KUBERNETES_CHANGE_VOLUME_RESULTS,
+        "change");
+  }
+
+  private static final List<TaskType> KUBERNETES_CHANGE_VOLUME_SIZE_AND_INSTANCE_TYPE_TASKS =
+      ImmutableList.of(
+          TaskType.KubernetesCheckStorageClass,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.UpdatePlacementInfo,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.UniverseUpdateSucceeded);
+
+  private List<JsonNode> KUBERNETES_CHANGE_VOLUME_SIZE_AND_INSTANCE_TYPE_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", CommandType.STS_DELETE.name())),
+          Json.toJson(ImmutableMap.of("commandType", CommandType.PVC_EXPAND_SIZE.name())),
+          Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+          Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+          Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+          Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()));
+
+  @Test
+  public void testChangeVolumeSizeAndInstanceType() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+
+    ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
+    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    when(mockKubernetesManager.getStorageClassName(any(), any(), any(), eq(false)))
+        .thenReturn("tServerStorageClassName");
+    when(mockKubernetesManager.storageClassAllowsExpansion(any(), eq("tServerStorageClassName")))
+        .thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    InstanceType.upsert(
+        defaultProvider.uuid, "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.instanceType = "c5.xlarge";
+    newUserIntent.deviceInfo.volumeSize += 200; // originally 100
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockKubernetesManager, times(1))
+        .deleteStatefulSet(eq(config), eq(NODE_PREFIX), eq("yb-tserver"));
+    verify(mockKubernetesManager, times(4))
+        .helmUpgrade(
+            eq(YB_SOFTWARE_VERSION),
+            eq(config),
+            eq(NODE_PREFIX),
+            eq(NODE_PREFIX),
+            expectedOverrideFile.capture());
+    for (int i = 0; i < 3; i++) {
+      String podName = String.format("yb-tserver-%d", i);
+      verify(mockKubernetesManager, times(1))
+          .getPodStatus(eq(config), eq(NODE_PREFIX), eq(podName));
+    }
+    verify(mockKubernetesManager, times(1))
+        .getPodInfos(eq(config), eq(NODE_PREFIX), eq(NODE_PREFIX));
+
+    assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CHANGE_VOLUME_SIZE_AND_INSTANCE_TYPE_TASKS,
+        KUBERNETES_CHANGE_VOLUME_SIZE_AND_INSTANCE_TYPE_RESULTS,
         "change");
   }
 }
