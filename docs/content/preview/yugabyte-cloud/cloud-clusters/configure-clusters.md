@@ -92,7 +92,11 @@ Depending on the number of nodes, the scaling operation can take several minutes
 
 ### Partition by region cluster
 
-You can scale geo-partitioned clusters horizontally and vertically. In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
+You can scale geo-partitioned clusters horizontally and vertically.
+
+In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
+
+For availability zone-level fault tolerant clusters, you must scale nodes in increments of 3.
 
 To scale a multi-region geo-partioned cluster:
 
@@ -104,7 +108,7 @@ To scale a multi-region geo-partioned cluster:
 1. To add a region, click **Add Region**, choose the region, select the VPC where you want to deploy the cluster, and enter the number of nodes. The new region has the same fault tolerance as the primary cluster.
 
 1. To scale the cluster, enter the number of nodes, vCPUs per node, and disk size in GB per node. The same number of nodes and node sizes apply across all regions.
-    \
+
     **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Confirm and Save Changes** when you are done.

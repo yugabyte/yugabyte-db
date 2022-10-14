@@ -139,12 +139,8 @@ YugabyteDB is open source under the very permissive Apache 2.0 license.
 
 You can now read about the following:
 
-{{< note title="" >}}
-
 - [Overview of the architectural layers in YugabyteDB](../layered-architecture/)
 - [Architecture of DocDB](../docdb/)
 - [Transactions in DocDB](../transactions/)
 - [Design of the query layer](../query-layer/)
 - [How various functions work, like the read and write IO paths](../core-functions/)
-
-{{< /note >}}

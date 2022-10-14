@@ -72,6 +72,8 @@ Select a fault tolerance for the regions. Fault tolerance determines how resilie
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 
+Fault tolerance is applied to all regions in the cluster, including those added after cluster creation.
+
 #### Select regions and node size
 
 ![Add Cluster Wizard - Primary region and size](/images/yb-cloud/cloud-addcluster-partition.png)
