@@ -3818,14 +3818,19 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           LOG(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
+        bool has_pk = true;
         for (const auto& col : schema.columns()) {
           if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
             // ybrowid column is added for tables that don't have user-specified primary key.
             RemoveTableFromCDCSDKUnprocessedSet(table_id, stream_info);
             VLOG(1) << "Table: " << table_id
                     << ", will not be added to CDCSDK stream, since it does not have a primary key";
-            continue;
+            has_pk = false;
+            break;
           }
+        }
+        if (!has_pk) {
+          continue;
         }
 
         if (std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id) ==
