@@ -52,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -366,6 +367,10 @@ public class Schedule extends Model {
   @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
+  }
+
+  public static Optional<Schedule> maybeGet(UUID scheduleUUID) {
+    return Optional.ofNullable(get(scheduleUUID));
   }
 
   public static Schedule getOrBadRequest(UUID scheduleUUID) {
