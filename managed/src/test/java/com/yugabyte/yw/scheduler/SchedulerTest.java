@@ -161,6 +161,34 @@ public class SchedulerTest extends FakeDBApplication {
   }
 
   @Test
+  public void schedulerDeletesExpiredBackupsCreatedFromDeletedSchedule() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    UUID fakeScheduleUUID = UUID.randomUUID();
+    for (int i = 0; i < 5; i++) {
+      Backup backup =
+          ModelFactory.createExpiredBackupWithScheduleUUID(
+              defaultCustomer.uuid,
+              universe.universeUUID,
+              s3StorageConfig.configUUID,
+              fakeScheduleUUID);
+      backup.transitionState(Backup.BackupState.Completed);
+    }
+    for (int i = 0; i < 2; i++) {
+      Backup backup =
+          ModelFactory.createBackupWithExpiry(
+              defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+      backup.transitionState(Backup.BackupState.Completed);
+    }
+    scheduler.scheduleRunner();
+    assertEquals(7, Backup.getExpiredBackups().get(defaultCustomer).size());
+
+    // 2 time for independent and 2 times from deleted scheduled expired backups.
+    verify(mockCommissioner, times(4)).submit(any(), any());
+  }
+
+  @Test
   public void testSkippedFutureScheduleTask() {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
