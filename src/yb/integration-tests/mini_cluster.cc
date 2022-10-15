@@ -1243,4 +1243,19 @@ Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
     Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
 }
 
+void ActivateCompactionTimeLogging(MiniCluster* cluster) {
+  class CompactionListener : public rocksdb::EventListener {
+   public:
+    void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+      LOG(INFO) << "Compaction time: " << ci.stats.elapsed_micros;
+    }
+  };
+
+  auto listener = std::make_shared<CompactionListener>();
+
+  for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
+    cluster->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(listener);
+  }
+}
+
 }  // namespace yb
