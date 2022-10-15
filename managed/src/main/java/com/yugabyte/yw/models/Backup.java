@@ -2,15 +2,13 @@
 
 package com.yugabyte.yw.models;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static java.lang.Math.abs;
-import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -404,7 +402,7 @@ public class Backup extends Model {
     // Get current timestamp.
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).eq("state", BackupState.Completed).findList();
+        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
 
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
@@ -604,7 +602,8 @@ public class Backup extends Model {
     return universes;
   }
 
-  public static List<Backup> fetchAllBackupsByScheduleUUID(UUID customerUUID, UUID scheduleUUID) {
+  public static List<Backup> fetchAllCompletedBackupsByScheduleUUID(
+      UUID customerUUID, UUID scheduleUUID) {
     return find.query()
         .where()
         .eq("customer_uuid", customerUUID)
