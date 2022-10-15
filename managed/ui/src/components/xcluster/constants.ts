@@ -112,13 +112,23 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: Metrics<'tserver_async_replication_la
   }
 };
 
-// MetricNames currently does not include all possible metric names.
-// Please update as needed.
-export const MetricNames = {
+/**
+ * MetricName currently does not include all possible metric names.
+ * Please update as needed.
+ */
+export const MetricName = {
   TSERVER_ASYNC_REPLICATION_LAG_METRIC: 'tserver_async_replication_lag_micros',
   DISK_USAGE: 'disk_usage'
 } as const;
-export type MetricNames = typeof MetricNames[keyof typeof MetricNames];
+export type MetricName = typeof MetricName[keyof typeof MetricName];
+
+// TODO: Add as type for layout alias keys in Metric type.
+export const MetricTraceName = {
+  [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]: {
+    COMMITTED_LAG: 'async_replication_committed_lag_micros',
+    SENT_LAG: 'async_replication_sent_lag_micros'
+  }
+} as const;
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
@@ -140,9 +150,10 @@ export const SortOrder = {
 export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const XClusterModalName = {
-  ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
   EDIT_CONFIG: 'editXClusterConfigModal',
   DELETE_CONFIG: 'deleteXClusterConfigModal',
-  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',
-  REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal'
+  RESTART_CONFIG: 'restartXClusterConfigModal',
+  ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
+  REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
+  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
 } as const;

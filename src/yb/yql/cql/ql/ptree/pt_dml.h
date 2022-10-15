@@ -369,7 +369,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Access for selected result.
-  const std::shared_ptr<vector<ColumnSchema>>& selected_schemas() const {
+  const std::shared_ptr<std::vector<ColumnSchema>>& selected_schemas() const {
     return selected_schemas_;
   }
 
@@ -511,7 +511,7 @@ class PTDmlStmt : public PTCollection {
   // Selected schema - a vector pair<name, datatype> - is used when describing the result set.
   // NOTE: Only SELECT and DML with RETURN clause statements have outputs.
   //       We prepare this vector once at compile time and use it at execution times.
-  std::shared_ptr<vector<ColumnSchema>> selected_schemas_;
+  std::shared_ptr<std::vector<ColumnSchema>> selected_schemas_;
 
   // The set of indexes that index primary key columns of the indexed table only and the set of
   // indexes that do not.

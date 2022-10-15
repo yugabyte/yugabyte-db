@@ -115,6 +115,7 @@ using std::set;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::pair;
 using strings::Substitute;
 
 using namespace std::placeholders;

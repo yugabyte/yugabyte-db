@@ -26,6 +26,8 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
+using std::string;
+
 DEFINE_bool(use_node_to_node_encryption, false, "Use node to node encryption.");
 
 DEFINE_bool(node_to_node_encryption_use_client_certificates, false,

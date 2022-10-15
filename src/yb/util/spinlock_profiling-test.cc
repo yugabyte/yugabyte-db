@@ -38,6 +38,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
 
+using std::string;
+
 // Can't include gutil/synchronization_profiling.h directly as it'll
 // declare a weak symbol directly in this unit test, which the runtime
 // linker will prefer over equivalent strong symbols for some reason. By

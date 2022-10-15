@@ -28,6 +28,7 @@
 #include "yb/gutil/macros.h"
 
 using std::vector;
+using std::string;
 
 #ifdef _MSC_VER
 enum { IS__MSC_VER = 1 };

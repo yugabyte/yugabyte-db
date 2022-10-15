@@ -93,8 +93,16 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             createSetupServerTasks(nodes.getRight(), param -> param.isSystemdUpgrade = true);
           }
 
+          // Commenting this for now, as this was mainly used to install xxhash in the db nodes
+          // as part of the software upgrade. Now we will be uploading the xxhash binaries to the
+          // db nodes(as part of backup/restore), instead of installing the package by
+          // package manager. Can be used at later point in time if required to install some other
+          // package.
+          // if (!isUniverseOnPremManualProvisioned) {
+          //   createPackageInstallTasks(allNodes);
+          // }
+
           String newVersion = taskParams().ybSoftwareVersion;
-          createPackageInstallTasks(allNodes);
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
@@ -144,20 +152,21 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
   }
 
-  private void createPackageInstallTasks(Collection<NodeDetails> nodes) {
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
-    for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(
-              node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
+  // private void createPackageInstallTasks(Collection<NodeDetails> nodes) {
+  //   String subGroupDescription =
+  //       String.format(
+  //           "AnsibleConfigureServers (%s) for: %s",
+  //           SubTaskGroupType.UpdatePackage, taskParams().nodePrefix);
+  //   SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription,
+  // executor);
+  //   for (NodeDetails node : nodes) {
+  //     subTaskGroup.addSubTask(
+  //         getAnsibleConfigureServerTask(
+  //             node, ServerType.TSERVER, UpgradeTaskSubType.PackageReInstall, null));
+  //   }
+  //   subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatePackage);
+  //   getRunnableTask().addSubTaskGroup(subTaskGroup);
+  // }
 
   private void createXClusterSourceRootCertDirPathGFlagTasks() {
     Universe targetUniverse = getUniverse();

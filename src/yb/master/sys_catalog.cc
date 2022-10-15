@@ -106,6 +106,8 @@ using namespace yb::size_literals;
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::string;
+using std::vector;
 
 using yb::consensus::CONSENSUS_CONFIG_ACTIVE;
 using yb::consensus::ConsensusMetadata;

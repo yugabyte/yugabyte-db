@@ -35,6 +35,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 namespace rocksdb {
 
 class MemFile {

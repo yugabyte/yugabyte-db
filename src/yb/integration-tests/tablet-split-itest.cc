@@ -91,6 +91,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
@@ -2696,6 +2699,16 @@ TEST_F_EX(
   ASSERT_OK(cluster_->WaitForTSToCrash(server_to_bootstrap));
 
   ASSERT_OK(WriteRows());
+
+  // With enable_leader_failure_detection=false when creating child tablets on leader and
+  // other_follower, Only child tablet peer on server_to_bootstrap can detect leader failure.
+  // If hinted leader is not disabled, it's possible that:
+  // 1) child tablet leader is elected on other_follower
+  // 2) other_follower crash
+  // 3) server_to_bootstrap detects leader failure, but its log is behind old leader's log,
+  //    so we can't elect a leader for child tablet.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->GetLeaderMaster(), "use_create_table_leader_hint", "false"));
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     auto* ts = cluster_->tablet_server(i);

@@ -507,6 +507,36 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<GetTabletListToPollForCDCResponse> getTabletListToPollForCdc(YBTable table,
+                                                                               String streamId,
+                                                                               String tableId) {
+    checkIsClosed();
+    GetTabletListToPollForCDCRequest rpc = new GetTabletListToPollForCDCRequest(table, streamId,
+      tableId);
+    Deferred<GetTabletListToPollForCDCResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<SplitTabletResponse> splitTablet(String tabletId) {
+    checkIsClosed();
+    SplitTabletRequest rpc = new SplitTabletRequest(this.masterTable, tabletId);
+    Deferred<SplitTabletResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<FlushTableResponse> flushTable(String tableId) {
+    checkIsClosed();
+    FlushTableRequest rpc = new FlushTableRequest(this.masterTable, tableId);
+    Deferred<FlushTableResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   public Deferred<SetCheckpointResponse> setCheckpointWithBootstrap(YBTable table,
                                                                     String streamId,
                                                                     String tabletId,
@@ -1439,6 +1469,33 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Reload certificates that are in the currently present in the configured
+   * folder
+   *
+   * @param server address of a node
+   *
+   * @return deferred object for the server host & port passed
+   * @throws IllegalArgumentException when server address is syntactically invalid
+   * @throws InterruptedException
+   */
+  public Deferred<ReloadCertificateResponse> reloadCertificates(HostAndPort hostPort)
+      throws IllegalArgumentException {
+
+    if (hostPort == null || hostPort.getHost() == null || "".equals(hostPort.getHost())) {
+      throw new IllegalArgumentException("Server address cannot be empty");
+    }
+    LOG.debug("server to be contacted = {}", hostPort);
+    ReloadCertificateRequest req = new ReloadCertificateRequest(this.masterTable, hostPort);
+    req.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+
+    TabletClient client = newSimpleClient(hostPort);
+    client.sendRpc(req);
+
+    LOG.debug("servers {} are directed to reload their certs ...", hostPort);
+    return req.getDeferred();
+  }
+
+  /**
    * An RPC that we're never going to send, but can be used to keep track of timeouts and to access
    * its Deferred. Specifically created for the openTable functions. If the table was just created,
    * the Deferred will only get returned when all the tablets have been successfully created.
@@ -1600,6 +1657,11 @@ public class AsyncYBClient implements AutoCloseable {
     if (request instanceof SetCheckpointRequest) {
       String tabletId = ((SetCheckpointRequest)request).getTabletId();
       tablet = getTablet(tableId, tabletId);
+    }
+    if (request instanceof GetTabletListToPollForCDCRequest ||
+        request instanceof SplitTabletRequest ||
+        request instanceof FlushTableRequest) {
+      tablet = getFirstTablet(tableId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

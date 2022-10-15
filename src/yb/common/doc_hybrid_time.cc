@@ -25,6 +25,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/varint.h"
 
+using std::string;
+
 using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarIntUnsafe;

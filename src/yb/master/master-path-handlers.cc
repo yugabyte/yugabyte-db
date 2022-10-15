@@ -127,6 +127,7 @@ using std::map;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
+using std::min;
 using strings::Substitute;
 using server::MonitoredTask;
 

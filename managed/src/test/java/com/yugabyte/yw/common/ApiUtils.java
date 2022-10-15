@@ -484,6 +484,7 @@ public class ApiUtils {
     ui.providerType = Common.CloudType.valueOf(p.code);
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
+    ui.deviceInfo = getDummyDeviceInfo(1, 100);
     return ui;
   }
 

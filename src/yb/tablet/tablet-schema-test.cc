@@ -58,6 +58,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+using std::vector;
+
 using strings::Substitute;
 
 namespace yb {

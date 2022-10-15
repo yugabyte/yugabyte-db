@@ -41,6 +41,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/stats/perf_step_timer.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {

@@ -17,6 +17,8 @@
 
 #include <openssl/md5.h>
 
+using std::string;
+
 namespace yb {
 namespace cqlserver {
 

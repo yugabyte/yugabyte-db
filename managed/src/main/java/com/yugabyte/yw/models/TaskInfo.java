@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -61,28 +62,39 @@ public class TaskInfo extends Model {
   /** These are the various states of the task and taskgroup. */
   public enum State {
     @EnumValue("Created")
-    Created,
+    Created(3),
 
     @EnumValue("Initializing")
-    Initializing,
+    Initializing(1),
 
     @EnumValue("Running")
-    Running,
+    Running(4),
 
     @EnumValue("Success")
-    Success,
+    Success(2),
 
     @EnumValue("Failure")
-    Failure,
+    Failure(7),
 
     @EnumValue("Unknown")
-    Unknown,
+    Unknown(0),
 
     @EnumValue("Abort")
-    Abort,
+    Abort(5),
 
     @EnumValue("Aborted")
-    Aborted
+    Aborted(6);
+
+    // State override precedence to report the aggregated state for a SubGroupType.
+    private final int precedence;
+
+    private State(int precedence) {
+      this.precedence = precedence;
+    }
+
+    public int getPrecedence() {
+      return precedence;
+    }
   }
 
   // The task UUID.
@@ -301,6 +313,10 @@ public class TaskInfo extends Model {
     return sb.toString();
   }
 
+  public UserTaskDetails getUserTaskDetails() {
+    return getUserTaskDetails(null);
+  }
+
   /**
    * Retrieve the UserTaskDetails for the task mapped to this TaskInfo object. Should only be called
    * on the user-level parent task, since only that task will have subtasks. Nothing will break if
@@ -311,37 +327,47 @@ public class TaskInfo extends Model {
    * @return UserTaskDetails object for this TaskInfo, including info on the state on each of the
    *     subTaskGroups.
    */
-  public UserTaskDetails getUserTaskDetails() {
+  public UserTaskDetails getUserTaskDetails(TaskCache taskCache) {
     UserTaskDetails taskDetails = new UserTaskDetails();
     List<TaskInfo> result = getSubTasks();
     Map<SubTaskGroupType, SubTaskDetails> userTasksMap = new HashMap<>();
-    boolean customerTaskFailure = TaskInfo.ERROR_STATES.contains(taskState);
+    SubTaskGroupType lastGroupType = SubTaskGroupType.Invalid;
     for (TaskInfo taskInfo : result) {
       SubTaskGroupType subTaskGroupType = taskInfo.getSubTaskGroupType();
       if (subTaskGroupType == SubTaskGroupType.Invalid) {
         continue;
       }
-      SubTaskDetails subTask = userTasksMap.get(subTaskGroupType);
+      SubTaskDetails subTask = null;
+      if (userTasksMap.containsKey(subTaskGroupType)) {
+        // The type is already seen, group it with the last task if it is present.
+        // This is done not to move back the progress for the group type on the UI
+        // if the type shows up later.
+        subTask =
+            lastGroupType == SubTaskGroupType.Invalid
+                ? userTasksMap.get(subTaskGroupType)
+                : userTasksMap.get(lastGroupType);
+      }
       if (subTask == null) {
         subTask = createSubTask(subTaskGroupType);
         taskDetails.add(subTask);
-      } else {
-        if (TaskInfo.ERROR_STATES.contains(subTask.getState())) {
-          // If error is set, report the error.
-          continue;
-        }
-        if (State.Running.equals(subTask.getState())) {
-          // If no error but at least one them is running, report running.
-          continue;
-        }
+        userTasksMap.put(subTaskGroupType, subTask);
+        // Move only when it is new.
+        // This works for patterns like A B A B C.
+        lastGroupType = subTaskGroupType;
       }
-      State subTaskState = taskInfo.getTaskState();
-      if (State.Created.equals(subTaskState)) {
-        subTask.setState(customerTaskFailure ? State.Unknown : State.Created);
-      } else if (!State.Success.equals(subTaskState)) {
-        subTask.setState(subTaskState);
+      if (taskCache != null) {
+        // Populate extra details about task progress from Task Cache.
+        JsonNode cacheData = taskCache.get(taskInfo.getTaskUUID().toString());
+        subTask.populateDetails(cacheData);
       }
-      userTasksMap.put(subTaskGroupType, subTask);
+      if (subTask.getState().getPrecedence() < taskInfo.getTaskState().getPrecedence()) {
+        State overrideState = taskInfo.getTaskState();
+        if (subTask.getState() == State.Success && taskInfo.getTaskState() == State.Created) {
+          // SubTask was already running, so skip to running to fix this very short transition.
+          overrideState = State.Running;
+        }
+        subTask.setState(overrideState);
+      }
     }
     return taskDetails;
   }

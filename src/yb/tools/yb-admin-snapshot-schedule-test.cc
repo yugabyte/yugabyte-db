@@ -48,6 +48,9 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::string;
+using std::vector;
+
 DECLARE_uint64(max_clock_skew_usec);
 
 DECLARE_int32(num_tablet_servers);

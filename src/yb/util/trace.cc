@@ -50,6 +50,9 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/size_literals.h"
 
+using std::vector;
+using std::string;
+
 DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
 TAG_FLAG(enable_tracing, runtime);

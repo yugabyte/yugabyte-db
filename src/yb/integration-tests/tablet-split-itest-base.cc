@@ -61,6 +61,9 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::vector;
+using std::string;
+
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);

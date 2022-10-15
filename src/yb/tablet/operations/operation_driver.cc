@@ -67,6 +67,8 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DEFINE_test_flag(int32, delay_execute_async_ms, 0,

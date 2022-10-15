@@ -43,6 +43,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,

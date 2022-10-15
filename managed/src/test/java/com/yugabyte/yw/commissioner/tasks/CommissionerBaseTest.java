@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -96,6 +98,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected EncryptionAtRestManager mockEARManager;
   protected SupportBundleComponent mockSupportBundleComponent;
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
+  protected ReleaseManager mockReleaseManager;
+  protected GFlagsValidation mockGFlagsValidation;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -166,6 +170,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockEARManager = mock(EncryptionAtRestManager.class);
     mockSupportBundleComponent = mock(SupportBundleComponent.class);
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
+    mockReleaseManager = mock(ReleaseManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -199,7 +205,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
-                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager)))
+                .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+                .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
+                .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .build();
   }
 

@@ -43,6 +43,9 @@
 
 #include "yb/util/test_macros.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 namespace rocksdb {
 
 static const int kValueSize = 1000;

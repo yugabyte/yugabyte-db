@@ -30,6 +30,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 

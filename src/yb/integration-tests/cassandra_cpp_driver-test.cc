@@ -47,6 +47,7 @@ using std::ostringstream;
 using std::unique_ptr;
 using std::tuple;
 using std::get;
+using std::map;
 
 using rapidjson::Value;
 using strings::Substitute;

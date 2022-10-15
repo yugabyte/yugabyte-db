@@ -55,12 +55,12 @@ namespace tserver {
 class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapAnchorClient> {
  public:
   RemoteBootstrapAnchorClient(
-      const string& rbs_client_uuid,
-      const string& owner_info,
+      const std::string& rbs_client_uuid,
+      const std::string& owner_info,
       rpc::ProxyCache* proxy_cache,
       const HostPort& tablet_leader_peer_addr);
 
-  Status RegisterLogAnchor(const string& tablet_id, const OpId& op_id);
+  Status RegisterLogAnchor(const std::string& tablet_id, const OpId& op_id);
 
   Status UpdateLogAnchorAsync(const OpId& op_id);
 
@@ -79,9 +79,9 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
  private:
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
 
-  const string tablet_leader_peer_uuid_;
-  const string rbs_client_uuid_;
-  const string owner_info_;
+  const std::string tablet_leader_peer_uuid_;
+  const std::string rbs_client_uuid_;
+  const std::string owner_info_;
 
   mutable std::mutex log_anchor_status_mutex_;
   Status log_anchor_refresh_status_ GUARDED_BY(log_anchor_status_mutex_) = Status::OK();
