@@ -18,6 +18,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -157,6 +158,10 @@ public class Schedule extends Model {
   @Deprecated
   public static Schedule get(UUID scheduleUUID) {
     return find.query().where().idEq(scheduleUUID).findOne();
+  }
+
+  public static Optional<Schedule> maybeGet(UUID scheduleUUID) {
+    return Optional.ofNullable(get(scheduleUUID));
   }
 
   public static Schedule getOrBadRequest(UUID scheduleUUID) {

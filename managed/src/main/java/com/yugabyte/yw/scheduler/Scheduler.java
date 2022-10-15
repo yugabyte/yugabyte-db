@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -50,6 +51,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
@@ -222,24 +224,32 @@ public class Scheduler {
       UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
     List<Backup> backupsToDelete = new ArrayList<Backup>();
     int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
-        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
+        totalBackupsCount =
+            Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.maybeGet(scheduleUUID).orElse(null);
+    if (schedule != null && schedule.getTaskParams().has("minNumBackupsToRetain")) {
       minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
-
+    backupsToDelete.addAll(
+        expiredBackups
+            .stream()
+            .filter(backup -> !backup.state.equals(BackupState.Completed))
+            .collect(Collectors.toList()));
+    expiredBackups.removeIf(backup -> !backup.state.equals(BackupState.Completed));
     int numBackupsToDelete =
         Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
-    Collections.sort(
-        expiredBackups,
-        new Comparator<Backup>() {
-          @Override
-          public int compare(Backup b1, Backup b2) {
-            return b1.getCreateTime().compareTo(b2.getCreateTime());
-          }
-        });
-    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
-      backupsToDelete.add(expiredBackups.get(i));
+    if (numBackupsToDelete > 0) {
+      Collections.sort(
+          expiredBackups,
+          new Comparator<Backup>() {
+            @Override
+            public int compare(Backup b1, Backup b2) {
+              return b1.getCreateTime().compareTo(b2.getCreateTime());
+            }
+          });
+      for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+        backupsToDelete.add(expiredBackups.get(i));
+      }
     }
     return backupsToDelete;
   }

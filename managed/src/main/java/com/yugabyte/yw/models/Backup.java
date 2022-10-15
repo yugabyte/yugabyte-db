@@ -8,6 +8,7 @@ import static java.lang.Math.abs;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -126,6 +127,9 @@ public class Backup extends Model {
   public Date getUpdateTime() {
     return updateTime;
   }
+
+  public static final Set<BackupState> IN_PROGRESS_STATES =
+      Sets.immutableEnumSet(BackupState.InProgress);
 
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
@@ -263,7 +267,7 @@ public class Backup extends Model {
     // Get current timestamp.
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).eq("state", BackupState.Completed).findList();
+        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
 
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
@@ -355,7 +359,8 @@ public class Backup extends Model {
     return universes;
   }
 
-  public static List<Backup> fetchAllBackupsByScheduleUUID(UUID customerUUID, UUID scheduleUUID) {
+  public static List<Backup> fetchAllCompletedBackupsByScheduleUUID(
+      UUID customerUUID, UUID scheduleUUID) {
     return find.query()
         .where()
         .eq("customer_uuid", customerUUID)
