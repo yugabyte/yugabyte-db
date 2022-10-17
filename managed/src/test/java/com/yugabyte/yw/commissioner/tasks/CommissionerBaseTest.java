@@ -46,6 +46,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
@@ -87,6 +88,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
+  protected MetricQueryHelper mockMetricQueryHelper;
   protected MetricService metricService;
   protected AlertService alertService;
   protected AlertDefinitionService alertDefinitionService;
@@ -122,7 +124,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
-    alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
+    alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
 
     // Enable custom hooks in tests
@@ -164,6 +166,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
@@ -194,6 +197,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+                .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
                 .overrides(
                     bind(SupportBundleComponent.class).toInstance(mockSupportBundleComponent))

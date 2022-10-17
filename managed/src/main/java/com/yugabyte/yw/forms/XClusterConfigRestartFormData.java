@@ -23,11 +23,14 @@ public class XClusterConfigRestartFormData {
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public BootstrapParams bootstrapParams;
 
+  @ApiModelProperty("Run the pre-checks without actually running the subtasks")
+  public boolean dryRun = false;
+
   @ApiModel(description = "Bootstrap parameters for restarting")
   @ToString
   public static class BootstrapParams {
     @Constraints.Required
     @ApiModelProperty(value = "Parameters used to do Backup/restore", required = true)
-    public BackupRequestParams backupRequestParams;
+    public XClusterConfigCreateFormData.BootstrapParams.BackupRequestParams backupRequestParams;
   }
 }
