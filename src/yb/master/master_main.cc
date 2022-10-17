@@ -59,6 +59,8 @@
 
 #include "yb/tserver/server_main_util.h"
 
+using std::string;
+
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
 DECLARE_double(default_memory_limit_to_ram_ratio);

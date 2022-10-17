@@ -697,6 +697,16 @@ ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
 		ExplainPropertyBool("Partial Aggregate", true, es);
 }
 
+void
+YbExecUpdateInstrumentForeignScan(ForeignScanState *node,
+								  Instrumentation *instr)
+{
+	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
+	if (ybc_state->handle)
+		YbUpdateReadRpcStats(ybc_state->handle,
+							 &instr->yb_read_rpcs, &instr->yb_tbl_read_rpcs);
+}
+
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 

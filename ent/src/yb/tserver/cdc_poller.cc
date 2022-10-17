@@ -71,48 +71,74 @@ DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
+using namespace std::placeholders;
+
 namespace yb {
 namespace tserver {
 namespace enterprise {
 
-CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
-                     const cdc::ConsumerTabletInfo& consumer_tablet_info,
-                     std::function<bool(void)> should_continue_polling,
-                     std::function<void(void)> remove_self_from_pollers_map,
-                     ThreadPool* thread_pool,
-                     rpc::Rpcs* rpcs,
-                     const std::shared_ptr<CDCClient>& local_client,
-                     const std::shared_ptr<CDCClient>& producer_client,
-                     CDCConsumer* cdc_consumer,
-                     bool use_local_tserver,
-                     client::YBTablePtr global_transaction_status_table,
-                     bool enable_replicate_transaction_status_table) :
-    producer_tablet_info_(producer_tablet_info),
-    consumer_tablet_info_(consumer_tablet_info),
-    should_continue_polling_(std::move(should_continue_polling)),
-    remove_self_from_pollers_map_(std::move(remove_self_from_pollers_map)),
-    op_id_(consensus::MinimumOpId()),
-    validated_schema_version_(0),
-    resp_(std::make_unique<cdc::GetChangesResponsePB>()),
-    output_client_(CreateTwoDCOutputClient(
-        cdc_consumer,
-        consumer_tablet_info,
-        producer_tablet_info,
-        local_client,
-        rpcs,
-        std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1),
-        use_local_tserver,
-        global_transaction_status_table,
-        enable_replicate_transaction_status_table)),
-    producer_client_(producer_client),
-    thread_pool_(thread_pool),
-    rpcs_(rpcs),
-    poll_handle_(rpcs_->InvalidHandle()),
-    cdc_consumer_(cdc_consumer),
-    producer_safe_time_(HybridTime::kInvalid) {}
+CDCPoller::CDCPoller(
+    const cdc::ProducerTabletInfo& producer_tablet_info,
+    const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    ThreadPool* thread_pool,
+    rpc::Rpcs* rpcs,
+    const std::shared_ptr<CDCClient>& local_client,
+    const std::shared_ptr<CDCClient>& producer_client,
+    CDCConsumer* cdc_consumer,
+    bool use_local_tserver,
+    client::YBTablePtr global_transaction_status_table,
+    bool enable_replicate_transaction_status_table)
+    : producer_tablet_info_(producer_tablet_info),
+      consumer_tablet_info_(consumer_tablet_info),
+      op_id_(consensus::MinimumOpId()),
+      validated_schema_version_(0),
+      resp_(std::make_unique<cdc::GetChangesResponsePB>()),
+      output_client_(CreateTwoDCOutputClient(
+          cdc_consumer,
+          consumer_tablet_info,
+          producer_tablet_info,
+          local_client,
+          thread_pool,
+          rpcs,
+          std::bind(&CDCPoller::HandleApplyChanges, this, _1),
+          use_local_tserver,
+          global_transaction_status_table,
+          enable_replicate_transaction_status_table)),
+      producer_client_(producer_client),
+      thread_pool_(thread_pool),
+      rpcs_(rpcs),
+      poll_handle_(rpcs_->InvalidHandle()),
+      cdc_consumer_(cdc_consumer),
+      producer_safe_time_(HybridTime::kInvalid) {}
 
 CDCPoller::~CDCPoller() {
-  rpcs_->Abort({&poll_handle_});
+  VLOG(1) << "Destroying CDCPoller";
+  DCHECK(shutdown_);
+}
+
+void CDCPoller::Shutdown() {
+  // The poller is shutdown in two cases:
+  // 1. The regular case where the poller is deleted via CDCConsumer's TriggerDeletionOfOldPollers.
+  //    This happens when the stream is deleted or the consumer tablet leader changes.
+  // 2. During CDCConsumer::Shutdown(). Note that in this scenario, we may still be processing a
+  //    GetChanges request / handle callback, so we shutdown what we can here (note that
+  //    thread_pool_ is shutdown before we shutdown the pollers, so that will force most
+  //    codepaths to exit early), and then using shared_from_this, destroy the object once all
+  //    callbacks are complete.
+  DCHECK(!shutdown_);
+  shutdown_ = true;
+
+  rpc::RpcCommandPtr rpc_to_abort;
+  {
+    std::lock_guard<std::mutex> l(data_mutex_);
+    output_client_->Shutdown();
+    if (poll_handle_ != rpcs_->InvalidHandle()) {
+      rpc_to_abort = *poll_handle_;
+    }
+  }
+  if (rpc_to_abort) {
+    rpc_to_abort->Abort();
+  }
 }
 
 std::string CDCPoller::LogPrefixUnlocked() const {
@@ -123,15 +149,17 @@ std::string CDCPoller::LogPrefixUnlocked() const {
                              consumer_tablet_info_.tablet_id);
 }
 
-bool CDCPoller::CheckOnline() {
-  return cdc_consumer_ != nullptr;
-}
+bool CDCPoller::CheckOffline() { return shutdown_.load(); }
 
 #define RETURN_WHEN_OFFLINE() \
-  if (!CheckOnline()) { \
+  if (CheckOffline()) { \
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDC Poller went offline"; \
     return; \
   }
+
+#define ACQUIRE_MUTEX_IF_ONLINE() \
+  RETURN_WHEN_OFFLINE(); \
+  std::lock_guard<std::mutex> l(data_mutex_);
 
 void CDCPoller::SetSchemaVersion(uint32_t cur_version) {
   RETURN_WHEN_OFFLINE();
@@ -141,9 +169,7 @@ void CDCPoller::SetSchemaVersion(uint32_t cur_version) {
 }
 
 void CDCPoller::DoSetSchemaVersion(uint32_t cur_version) {
-  RETURN_WHEN_OFFLINE();
-  auto retained = shared_from_this();
-  std::lock_guard<std::mutex> l(data_mutex_);
+  ACQUIRE_MUTEX_IF_ONLINE();
 
   if (validated_schema_version_ < cur_version) {
     validated_schema_version_ = cur_version;
@@ -151,29 +177,43 @@ void CDCPoller::DoSetSchemaVersion(uint32_t cur_version) {
     if (!is_polling_) {
       is_polling_ = true;
       LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id;
-      WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, this)),
+      WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, shared_from_this())),
                   "Could not submit Poll to thread pool");
+    }
+  }
+}
+
+HybridTime CDCPoller::GetSafeTime() const {
+  SharedLock lock(safe_time_lock_);
+  return producer_safe_time_;
+}
+
+cdc::ConsumerTabletInfo CDCPoller::GetConsumerTabletInfo() const { return consumer_tablet_info_; }
+
+void CDCPoller::UpdateSafeTime(int64 new_time) {
+  HybridTime new_hybrid_time(new_time);
+  if (!new_hybrid_time.is_special()) {
+    std::lock_guard l(safe_time_lock_);
+    if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
+      producer_safe_time_ = new_hybrid_time;
     }
   }
 }
 
 void CDCPoller::Poll() {
   RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, this)),
+  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, shared_from_this())),
               "Could not submit Poll to thread pool");
 }
 
 void CDCPoller::DoPoll() {
-  RETURN_WHEN_OFFLINE();
+  ACQUIRE_MUTEX_IF_ONLINE();
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
     Poll();
     return;
   }
-
-  auto retained = shared_from_this();
-  std::lock_guard<std::mutex> l(data_mutex_);
 
   // determine if we should delay our upcoming poll
   int64_t delay = GetAtomicFlag(&FLAGS_async_replication_polling_delay_ms);  // normal throttling.
@@ -227,10 +267,11 @@ void CDCPoller::DoPoll() {
     *req.mutable_from_checkpoint() = checkpoint;
   }
 
-  auto rpcs = rpcs_;
-  poll_handle_ = rpcs->Prepare();
-  if (poll_handle_ == rpcs->InvalidHandle()) {
-    return remove_self_from_pollers_map_();
+  poll_handle_ = rpcs_->Prepare();
+  if (poll_handle_ == rpcs_->InvalidHandle()) {
+    DCHECK(CheckOffline());
+    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to perform poll, rpcs_ is shutdown";
+    return;
   }
 
   *poll_handle_ = CreateGetChangesCDCRpc(
@@ -238,41 +279,26 @@ void CDCPoller::DoPoll() {
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(),
       &req,
-      [this](const Status &status, cdc::GetChangesResponsePB &&new_resp) {
-        auto retained = rpcs_->Unregister(&poll_handle_);
-        auto resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(new_resp));
-        WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::HandlePoll, this,
-                                                       status, resp)),
-                    "Could not submit HandlePoll to thread pool");
-      });
+      std::bind(&CDCPoller::HandlePoll, shared_from_this(), _1, _2));
   (**poll_handle_).SendRpc();
 }
 
-HybridTime CDCPoller::GetSafeTime() const {
-  SharedLock lock(safe_time_lock_);
-  return producer_safe_time_;
-}
-
-void CDCPoller::UpdateSafeTime(int64 new_time) {
-  HybridTime new_hybrid_time(new_time);
-  if (!new_hybrid_time.is_special()) {
-    std::lock_guard l(safe_time_lock_);
-    if (producer_safe_time_.is_special() || new_hybrid_time > producer_safe_time_) {
-      producer_safe_time_ = new_hybrid_time;
-    }
+void CDCPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
+  rpc::RpcCommandPtr retained;
+  {
+    std::lock_guard<std::mutex> l(data_mutex_);
+    retained = rpcs_->Unregister(&poll_handle_);
   }
-}
-
-void CDCPoller::HandlePoll(yb::Status status,
-                           std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   RETURN_WHEN_OFFLINE();
+  auto new_resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(resp));
+  WARN_NOT_OK(
+      thread_pool_->SubmitFunc(
+          std::bind(&CDCPoller::DoHandlePoll, shared_from_this(), status, new_resp)),
+      "Could not submit HandlePoll to thread pool");
+}
 
-  auto retained = shared_from_this();
-  std::lock_guard<std::mutex> l(data_mutex_);
-
-  if (!should_continue_polling_()) {
-    return remove_self_from_pollers_map_();
-  }
+void CDCPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
+  ACQUIRE_MUTEX_IF_ONLINE();
 
   status_ = status;
   resp_ = resp;
@@ -312,20 +338,13 @@ void CDCPoller::HandlePoll(yb::Status status,
 
 void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
   RETURN_WHEN_OFFLINE();
-
-  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoHandleApplyChanges, this, response)),
+  WARN_NOT_OK(thread_pool_->SubmitFunc(
+              std::bind(&CDCPoller::DoHandleApplyChanges, shared_from_this(), response)),
               "Could not submit HandleApplyChanges to thread pool");
 }
 
 void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
-  RETURN_WHEN_OFFLINE();
-
-  auto retained = shared_from_this();
-  std::lock_guard<std::mutex> l(data_mutex_);
-
-  if (!should_continue_polling_()) {
-    return remove_self_from_pollers_map_();
-  }
+  ACQUIRE_MUTEX_IF_ONLINE();
 
   if (!response.status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
@@ -354,6 +373,8 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
     Poll();
   }
 }
+
+#undef ACQUIRE_MUTEX_IF_ONLINE
 #undef RETURN_WHEN_OFFLINE
 
 } // namespace enterprise

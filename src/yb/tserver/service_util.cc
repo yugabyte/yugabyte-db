@@ -29,6 +29,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 
+using std::string;
+
 DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness, false,
                  "If set, we verify that the consistency level is CONSISTENT_PREFIX, and that "
                  "a follower receives the request, but that it gets rejected because it's a stale "

@@ -73,6 +73,8 @@
 
 using std::unordered_set;
 using std::vector;
+using std::string;
+using std::numeric_limits;
 using strings::Substitute;
 
 DEFINE_string(

@@ -42,6 +42,8 @@
 
 #include "yb/util/test_util.h"
 
+using std::string;
+
 namespace rocksdb {
 
 class RedisListsTest : public RocksDBTest {

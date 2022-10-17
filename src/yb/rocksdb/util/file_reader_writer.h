@@ -205,7 +205,7 @@ class WritableFileWriter {
 };
 
 extern Status NewWritableFile(Env* env, const std::string& fname,
-                              unique_ptr<WritableFile>* result,
+                              std::unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
 }  // namespace rocksdb
 

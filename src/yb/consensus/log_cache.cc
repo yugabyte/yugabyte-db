@@ -57,6 +57,9 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
+using std::vector;
+using std::string;
+
 using namespace std::literals;
 
 DEFINE_int32(log_cache_size_limit_mb, 128,

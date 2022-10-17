@@ -65,6 +65,7 @@ public class NodeConfigValidator {
     private InstanceType instanceType;
     private Provider provider;
     private NodeConfig nodeConfig;
+    private NodeInstanceData nodeInstanceData;
   }
 
   private final Function<Provider, Config> PROVIDER_CONFIG =
@@ -112,6 +113,7 @@ public class NodeConfigValidator {
               .instanceType(instanceType)
               .provider(provider)
               .nodeConfig(nodeConfig)
+              .nodeInstanceData(nodeData)
               .build();
       boolean isValid = isNodeConfigValid(input);
       boolean isRequired = isNodeConfigRequired(input);

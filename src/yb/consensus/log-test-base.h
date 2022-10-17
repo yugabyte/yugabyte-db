@@ -140,9 +140,9 @@ static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
 class LogTestBase : public YBTest {
  public:
 
-  typedef pair<int, int> DeltaId;
+  typedef std::pair<int, int> DeltaId;
 
-  typedef std::tuple<int, int, string> TupleForAppend;
+  typedef std::tuple<int, int, std::string> TupleForAppend;
 
   LogTestBase()
       : schema_({ ColumnSchema("key", INT32, false, true),
@@ -196,10 +196,10 @@ class LogTestBase : public YBTest {
 
   void CheckRightNumberOfSegmentFiles(int expected) {
     // Test that we actually have the expected number of files in the fs. We should have n segments.
-    const vector<string> files =
+    const std::vector<std::string> files =
         ASSERT_RESULT(env_->GetChildren(tablet_wal_path_, ExcludeDots::kTrue));
     int count = 0;
-    for (const string& s : files) {
+    for (const std::string& s : files) {
       if (HasPrefixString(s, FsManager::kWalFileNamePrefix)) {
         count++;
       }
@@ -330,8 +330,8 @@ class LogTestBase : public YBTest {
     return log_->AllocateSegmentAndRollOver();
   }
 
-  string DumpSegmentsToString(const SegmentSequence& segments) {
-    string dump;
+  std::string DumpSegmentsToString(const SegmentSequence& segments) {
+    std::string dump;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
       dump.append("------------\n");
       strings::SubstituteAndAppend(&dump, "Segment: $0, Path: $1\n",
@@ -360,7 +360,7 @@ class LogTestBase : public YBTest {
   // Reusable entries vector that deletes the entries on destruction.
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
-  string tablet_wal_path_;
+  std::string tablet_wal_path_;
   RestartSafeCoarseMonoClock restart_safe_coarse_mono_clock_;
 };
 
@@ -371,7 +371,7 @@ enum CorruptionType {
   FLIP_BYTE
 };
 
-Status CorruptLogFile(Env* env, const string& log_path,
+Status CorruptLogFile(Env* env, const std::string& log_path,
                       CorruptionType type, size_t corruption_offset) {
   faststring buf;
   RETURN_NOT_OK_PREPEND(ReadFileToString(env, log_path, &buf),

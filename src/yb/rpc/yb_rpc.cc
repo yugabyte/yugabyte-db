@@ -35,6 +35,8 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;
 using namespace std::literals;

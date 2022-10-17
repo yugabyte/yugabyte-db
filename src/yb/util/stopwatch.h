@@ -344,7 +344,7 @@ class LogTiming {
   const char *file_;
   const int line_;
   const google::LogSeverity severity_;
-  const string prefix_;
+  const std::string prefix_;
   const std::string description_;
   const int64_t max_expected_millis_;
   const bool should_print_;

@@ -28,6 +28,7 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
+#include "yb/master/master_replication.pb.h"
 
 namespace yb {
 
@@ -35,8 +36,11 @@ class MemTracker;
 
 namespace cdc {
 
-using EnumOidLabelMap = std::unordered_map<std::uint32_t, std::string>;
+using EnumOidLabelMap = std::unordered_map<uint32_t, std::string>;
 using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
+
+using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
+using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
 
 struct StreamMetadata {
   NamespaceId ns_id;
@@ -71,11 +75,13 @@ Status GetChangesForCDCSDK(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const std::shared_ptr<MemTracker>& mem_tracker,
     const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
     client::YBClient* client,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     std::string* commit_timestamp,
     std::shared_ptr<Schema>* cached_schema,
+    uint32_t* cached_schema_version,
     OpId* last_streamed_op_id,
     int64_t* last_readable_opid_index = nullptr,
     const CoarseTimePoint deadline = CoarseTimePoint::max());

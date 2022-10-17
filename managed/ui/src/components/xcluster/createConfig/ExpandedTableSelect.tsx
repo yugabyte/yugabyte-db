@@ -6,61 +6,71 @@ import {
   TableHeaderColumn
 } from 'react-bootstrap-table';
 
-import { YBTable } from '../XClusterTypes';
-import { KeyspaceRow } from './SelectTablesStep';
+import { XClusterTable, KeyspaceRow } from './SelectTablesStep';
 import { YBControlledSelect } from '../../common/forms/fields';
 import YBPagination from '../../tables/YBPagination/YBPagination';
 import { SortOrder } from '../constants';
 import { formatBytes, tableSort } from '../ReplicationUtils';
+import { TableEligibilityPill, XClusterTableEligibility } from '../common/TableEligibilityPill';
 
 import styles from './ExpandedTableSelect.module.scss';
+
+const TABLE_MIN_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;
 
 interface ExpandedTableSelectProps {
   row: KeyspaceRow;
   selectedTableUUIDs: string[];
   minPageSize: number;
-  handleTableSelect: (row: YBTable, isSelected: boolean) => void;
-  handleAllTableSelect: (isSelected: boolean, rows: YBTable[]) => boolean;
+  hideCheckboxes: boolean;
+  handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
+  handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
-const TABLE_MIN_PAGE_SIZE = 10;
-const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
 
 export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs,
   handleTableSelect,
-  handleAllTableSelect
+  handleAllTableSelect,
+  hideCheckboxes
 }: ExpandedTableSelectProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof YBTable>('tableName');
+  const [sortField, setSortField] = useState<keyof XClusterTable>('tableName');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
-      // Each row of the table is of type YBTable.
-      setSortField(sortName as keyof YBTable);
+      // Each row of the table is of type XClusterTable.
+      setSortField(sortName as keyof XClusterTable);
       setSortOrder(sortOrder);
     }
   };
+  const unselectableTableUUIDs = row.tables
+    .filter((table) => table.eligibilityDetails.state !== XClusterTableEligibility.ELIGIBLE)
+    .map((table) => table.tableUUID);
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable
+        maxHeight="300px"
+        tableContainerClass={styles.bootstrapTable}
         data={row.tables
-          .sort((a, b) => tableSort<YBTable>(a, b, sortField, sortOrder, 'tableName'))
+          .sort((a, b) => tableSort<XClusterTable>(a, b, sortField, sortOrder, 'tableName'))
           .slice((activePage - 1) * pageSize, activePage * pageSize)}
         selectRow={{
           mode: 'checkbox',
           onSelect: handleTableSelect,
           onSelectAll: handleAllTableSelect,
-          selected: selectedTableUUIDs
+          selected: selectedTableUUIDs,
+          hideSelectColumn: hideCheckboxes,
+          unselectable: unselectableTableUUIDs
         }}
         options={tableOptions}
       >
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField="tableName" dataSort={true}>
+        <TableHeaderColumn dataField="tableName" dataSort={true} dataFormat={formatTableName}>
           Table Name
         </TableHeaderColumn>
         <TableHeaderColumn
@@ -97,3 +107,17 @@ export const ExpandedTableSelect = ({
     </div>
   );
 };
+
+const formatTableName = (tableName: string, xClusterTable: XClusterTable) => {
+  return (
+    <div className={styles.tableNameContainer}>
+      <div className={styles.tableName}>{tableName}</div>
+      {shouldShowTableEligibilityPill(xClusterTable) && (
+        <TableEligibilityPill eligibilityDetails={xClusterTable.eligibilityDetails} />
+      )}
+    </div>
+  );
+};
+
+const shouldShowTableEligibilityPill = (xClusterTable: XClusterTable) =>
+  xClusterTable.eligibilityDetails.state !== XClusterTableEligibility.ELIGIBLE;

@@ -74,8 +74,8 @@ class YBTableTestBase : public YBTest {
   virtual void CreateTable();
   void OpenTable();
   virtual void DeleteTable();
-  virtual void PutKeyValue(yb::client::YBSession* session, string key, string value);
-  virtual void PutKeyValue(string key, string value);
+  virtual void PutKeyValue(yb::client::YBSession* session, std::string key, std::string value);
+  virtual void PutKeyValue(std::string key, std::string value);
   void RestartCluster();
   std::vector<std::pair<std::string, std::string>> GetScanResults(const client::TableRange& range);
   void FetchTSMetricsPage();
@@ -110,8 +110,8 @@ class YBTableTestBase : public YBTest {
 
   virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
 
-  vector<string> master_rpc_addresses_as_strings() {
-    vector<string> host_ports;
+  std::vector<std::string> master_rpc_addresses_as_strings() {
+    std::vector<std::string> host_ports;
     size_t num_masters = use_external_mini_cluster() ? external_mini_cluster()->num_masters()
                                                      : mini_cluster()->num_masters();
     for (size_t i = 0; i < num_masters; i++) {
@@ -141,7 +141,7 @@ class YBTableTestBase : public YBTest {
   std::unique_ptr<Env> ts_env_;
   std::unique_ptr<rocksdb::Env> ts_rocksdb_env_;
 
-  vector<uint16_t> master_rpc_ports();
+  std::vector<uint16_t> master_rpc_ports();
   // Calls CreateYBClient and assigns it to local class field.
   void CreateClient();
   // Creates a ClientYB client without assigning it to the class field.
@@ -159,11 +159,11 @@ class YBTableTestBase : public YBTest {
 
   // All the default tables that are pre-created. Used to skip the initial create table step, when
   // the given table has been already pre-created.
-  vector<string> default_tables_created_;
+  std::vector<std::string> default_tables_created_;
 
   // For tests that use multiple tables, store the tables here.
   // For tests with a single table, this is equivalent to table_name().
-  vector<client::YBTableName> table_names_;
+  std::vector<client::YBTableName> table_names_;
 };
 
 }  // namespace integration_tests

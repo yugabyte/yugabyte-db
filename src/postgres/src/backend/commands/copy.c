@@ -813,10 +813,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	Oid			relid;
 	RawStmt    *query = NULL;
 
-	/*
-	 * Disallow COPY to/from file or program except to users with the
-	 * appropriate role.
-	 */
+	YBCheckServerAccessIsAllowed();
+
 	if (!pipe)
 	{
 		if (stmt->is_program)

@@ -31,6 +31,9 @@
 #include "yb/util/status_format.h"
 #include "yb/util/uuid.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace docdb {
 

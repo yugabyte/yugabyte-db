@@ -41,7 +41,7 @@ namespace bfpg {
 // In/Out parameter: return_type
 //   If return_type is given, check if it is compatible with the declaration.
 //   If not, return_type is an output parameter whose value is the return type of the builtin.
-Status FindOpcodeByType(const string& ql_name,
+Status FindOpcodeByType(const std::string& ql_name,
                         const std::vector<DataType>& actual_types,
                         BFOpcode *opcode,
                         const BFDecl **bfdecl,
@@ -53,7 +53,7 @@ Status FindOpcodeByType(const string& ql_name,
 //   PTypePtrCollection can be any standard collection of PType raw or shared pointer.
 //     std::vector<PTypePtr>, std::list<PTypePtr>,  std::set<PTypePtr>, ...
 template<typename PTypePtrCollection, typename RTypePtr>
-Status FindOpcode(const string& ql_name,
+Status FindOpcode(const std::string& ql_name,
                   const PTypePtrCollection& params,
                   BFOpcode *opcode,
                   const BFDecl **bfdecl,

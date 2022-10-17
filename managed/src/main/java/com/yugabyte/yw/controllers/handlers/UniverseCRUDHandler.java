@@ -215,7 +215,17 @@ public class UniverseCRUDHandler {
         PlacementInfoUtil.updateUniverseDefinition(
             taskParams, universe, customer.getCustomerId(), cluster.uuid);
         try {
-          taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
+          if (taskParams
+              .getPrimaryCluster()
+              .userIntent
+              .providerType
+              .equals(Common.CloudType.kubernetes)) {
+            taskParams.updateOptions =
+                Collections.singleton(
+                    UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+          } else {
+            taskParams.updateOptions = getUpdateOptions(taskParams, cluster, universe);
+          }
         } catch (Exception e) {
           LOG.error("Failed to calculate update options", e);
         }
@@ -1333,8 +1343,7 @@ public class UniverseCRUDHandler {
         .userIntent
         .providerType
         .equals(Common.CloudType.kubernetes)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Kubernetes disk size increase not yet supported.");
+      taskType = TaskType.UpdateKubernetesDiskSize;
     }
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);

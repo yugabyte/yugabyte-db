@@ -34,8 +34,14 @@
 
 #include <gflags/gflags.h>
 #include "yb/util/auto_flags.h"
+#include "yb/util/flag_tags.h"
 
 namespace yb {
+
+#define REGISTER_VALIDATOR(flag_name, validator) \
+  static const bool BOOST_PP_CAT(dummy_, BOOST_PP_CAT(BOOST_PP_CAT(FLAGS_, flag_name), _val)) \
+      __attribute__((unused)) = \
+          google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, flag_name), (validator))
 
 // Looks for flags in argv and parses them.  Rearranges argv to put
 // flags first, or removes them entirely if remove_flags is true.
@@ -55,7 +61,7 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);
 
-Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value);
+Status SetFlagDefaultAndCurrent(const std::string& flag_name, const std::string& value);
 
 using PgConfigReloader = std::function<Status(void)>;
 void RegisterPgConfigReloader(const PgConfigReloader reloader);
@@ -66,7 +72,7 @@ YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE)(PG_SE
 // Set the current value of the flag if it is runtime safe or if force is set. old_value is only
 // set on success.
 SetFlagResult SetFlag(
-    const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
-    string* output_msg);
+    const std::string& flag_name, const std::string& new_value, const SetFlagForce force, std::string* old_value,
+    std::string* output_msg);
 } // namespace yb
 #endif /* YB_UTIL_FLAGS_H */

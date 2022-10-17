@@ -46,16 +46,19 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig.uuid,
+        taskParams().getXClusterConfig().uuid,
         taskParams().tableIds);
   }
 
   @Override
   public void run() {
     log.info("Running {}", getName());
+    long startTime = System.nanoTime();
 
     // Each bootstrap producer task must belong to a parent xCluster config.
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+    xClusterConfig.setStatusForTables(
+        taskParams().tableIds, XClusterTableConfig.Status.Bootstrapping);
 
     Universe sourceUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
     String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
@@ -113,7 +116,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
           String errMsg =
               String.format(
                   "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                  taskParams().tableIds.get(i), taskParams().xClusterConfig.uuid);
+                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().uuid);
           throw new RuntimeException(errMsg);
         }
       }
@@ -127,6 +130,6 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
       throw new RuntimeException(e);
     }
 
-    log.info("Completed {}", getName());
+    log.info("Completed (time: {}) {}", System.nanoTime() - startTime, getName());
   }
 }

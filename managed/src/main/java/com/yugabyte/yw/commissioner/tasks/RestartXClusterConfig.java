@@ -5,12 +5,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import java.util.List;
-import java.util.Map;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
 public class RestartXClusterConfig extends CreateXClusterConfig {
@@ -41,22 +39,20 @@ public class RestartXClusterConfig extends CreateXClusterConfig {
         xClusterConfig.setNeedBootstrapForTables(
             xClusterConfig.getTables(), true /* needBootstrap */);
 
-        Set<String> tableIds = xClusterConfig.getTables();
-        Map<String, List<String>> mainTableIndexTablesMap =
-            getMainTableIndexTablesMap(sourceUniverse, tableIds);
-        addIndexTables(tableIds, mainTableIndexTablesMap);
-
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-            getRequestedTableInfoList(tableIds, sourceUniverse, targetUniverse);
-        xClusterConfig.setTableType(requestedTableInfoList);
-
         // Delete the xCluster config.
-        createDeleteXClusterConfigSubtasks(xClusterConfig, true /* keepEntry */);
+        createDeleteXClusterConfigSubtasks(
+            xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
 
+        xClusterConfig.setStatusForTables(
+            getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+
         addSubtasksToCreateXClusterConfig(
-            sourceUniverse, targetUniverse, requestedTableInfoList, mainTableIndexTablesMap);
+            sourceUniverse,
+            targetUniverse,
+            taskParams().getTableInfoList(),
+            taskParams().getMainTableIndexTablesMap());
 
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -75,6 +71,11 @@ public class RestartXClusterConfig extends CreateXClusterConfig {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       setXClusterConfigStatus(XClusterConfig.XClusterConfigStatusType.Failed);
+      // Set tables in updating status to failed.
+      Set<String> tablesInUpdatingStatus =
+          xClusterConfig.getTableIdsInStatus(
+              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+      xClusterConfig.setStatusForTables(tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.

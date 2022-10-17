@@ -72,9 +72,9 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void ConnectDB(const string& db_name = kDefaultDatabase);
+  void SetupDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void ConnectDB(const std::string& db_name = kDefaultDatabase);
 
  protected:
   void BeginDDLTransaction();

@@ -94,6 +94,7 @@ METRIC_DEFINE_entity(cluster);
 using namespace std::literals;
 using std::min;
 using std::vector;
+using std::string;
 
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;

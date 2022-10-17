@@ -92,6 +92,7 @@
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 

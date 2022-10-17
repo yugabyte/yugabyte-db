@@ -66,14 +66,6 @@
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::numeric_limits;
-using std::reverse;
-using std::sort;
-using std::swap;
-using std::vector;
 
 namespace yb {
 
@@ -187,7 +179,7 @@ class BufferAllocator {
   // For unbounded allocators (like raw HeapBufferAllocator) this is the highest
   // size_t value possible.
   // TODO(user): consider making pure virtual.
-  virtual size_t Available() const { return numeric_limits<size_t>::max(); }
+  virtual size_t Available() const { return std::numeric_limits<size_t>::max(); }
 
  protected:
   friend class Buffer;
@@ -260,7 +252,7 @@ class HeapBufferAllocator : public BufferAllocator {
   }
 
   size_t Available() const override {
-    return numeric_limits<size_t>::max();
+    return std::numeric_limits<size_t>::max();
   }
 
  private:
@@ -374,7 +366,7 @@ class Mediator {
   virtual void Free(size_t amount) = 0;
 
   // TODO(user): consider making pure virtual.
-  virtual size_t Available() const { return numeric_limits<size_t>::max(); }
+  virtual size_t Available() const { return std::numeric_limits<size_t>::max(); }
 };
 
 // Optionally thread-safe skeletal implementation of a 'quota' abstraction,
@@ -488,7 +480,7 @@ class MediatingBufferAllocator : public BufferAllocator {
   virtual ~MediatingBufferAllocator() {}
 
   size_t Available() const override {
-    return min(delegate_->Available(), mediator_->Available());
+    return std::min(delegate_->Available(), mediator_->Available());
   }
 
  private:
@@ -580,7 +572,7 @@ class SoftQuotaBypassingBufferAllocator : public BufferAllocator {
     const size_t usage = allocator_.GetUsage();
     size_t available = allocator_.Available();
     if (bypassed_amount_ > usage) {
-      available = max(bypassed_amount_ - usage, available);
+      available = std::max(bypassed_amount_ - usage, available);
     }
     return available;
   }
@@ -592,7 +584,7 @@ class SoftQuotaBypassingBufferAllocator : public BufferAllocator {
   // with increased minimal size is more likely to fail because of exceeding
   // hard quota, so we also fall back to the original minimal size.
   size_t AdjustMinimal(size_t requested, size_t minimal) const {
-    return min(requested, max(minimal, Available()));
+    return std::min(requested, std::max(minimal, Available()));
   }
 
   Buffer AllocateInternal(size_t requested,
@@ -883,7 +875,7 @@ class OwningBufferAllocator : public BufferAllocator {
 
   // Not using PointerVector here because we want to guarantee certain order of
   // deleting elements (starting from the ones added last).
-  vector<OwnedType*> owned_;
+  std::vector<OwnedType*> owned_;
   BufferAllocator* delegate_;
 };
 
@@ -947,7 +939,7 @@ size_t Quota<thread_safe>::Allocate(const size_t requested,
   size_t allocation;
   if (usage_ > quota || minimal > quota - usage_) {
     // OOQ (Out of quota).
-    if (!enforced() && minimal <= numeric_limits<size_t>::max() - usage_) {
+    if (!enforced() && minimal <= std::numeric_limits<size_t>::max() - usage_) {
       // The quota is unenforced and the value of "minimal" won't cause an
       // overflow. Perform a minimal allocation.
       allocation = minimal;
@@ -963,7 +955,7 @@ size_t Quota<thread_safe>::Allocate(const size_t requested,
                  << ((allocation == 0) ? "Did not allocate any memory."
                  : "Allocated the minimal value requested.");
   } else {
-    allocation = min(requested, quota - usage_);
+    allocation = std::min(requested, quota - usage_);
   }
   usage_ += allocation;
   return allocation;
@@ -975,7 +967,7 @@ void Quota<thread_safe>::Free(size_t amount) {
   usage_ -= amount;
   // threads allocate/free memory concurrently via the same Quota object that is
   // not protected with a mutex (thread_safe == false).
-  if (usage_ > (numeric_limits<size_t>::max() - (1 << 28))) {
+  if (usage_ > (std::numeric_limits<size_t>::max() - (1 << 28))) {
     LOG(ERROR) << "Suspiciously big usage_ value: " << usage_
                << " (could be a result size_t wrapping around below 0, "
                << "for example as a result of race condition).";

@@ -18,6 +18,9 @@
 #include "yb/master/ts_manager.h"
 #include "yb/util/version_info.h"
 
+using std::string;
+using std::vector;
+
 using strings::Substitute;
 using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;

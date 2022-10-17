@@ -53,6 +53,7 @@
 
 using std::pair;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 using namespace std::literals;

@@ -33,7 +33,7 @@ public class CheckBootstrapRequired extends XClusterConfigTaskBase {
         "%s(sourceUniverse=%s,xClusterUuid=%s,tableIds=%s)",
         super.getName(),
         taskParams().universeUUID,
-        taskParams().xClusterConfig,
+        taskParams().getXClusterConfig(),
         taskParams().tableIds);
   }
 

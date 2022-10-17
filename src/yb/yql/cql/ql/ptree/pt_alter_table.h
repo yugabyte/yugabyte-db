@@ -36,7 +36,7 @@ typedef enum AlterColumnType : int {
   ALTER_TYPE
 } ModColumnType;
 
-const string supported_properties[] = {"ttl"};
+const std::string supported_properties[] = {"ttl"};
 
 //--------------------------------------------------------------------------------------------------
 // Drop/rename/alter type column operation details

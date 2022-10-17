@@ -122,7 +122,7 @@ set(gen_initial_sys_catalog_snapshot_cmd
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
 if(NOT "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
   list(APPEND gen_initial_sys_catalog_snapshot_cmd
-       "--external_daemon_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+       "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
 endif()
 
 if ("${YB_BUILD_TYPE}" STREQUAL "tsan")

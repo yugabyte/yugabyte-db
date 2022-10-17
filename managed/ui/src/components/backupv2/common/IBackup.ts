@@ -71,8 +71,8 @@ export interface IBackup {
   onDemand: boolean;
   updateTime: number;
   expiryTime: number;
-  kmsConfigUUID?: null | string;
   fullChainSizeInBytes: number;
+  kmsConfigUUID?: null | string;
 }
 
 export interface IUniverse {

@@ -44,6 +44,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(enable_ysql);
 
 using namespace std::literals;

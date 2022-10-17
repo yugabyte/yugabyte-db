@@ -31,6 +31,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 using namespace std::literals; // NOLINT
 
 namespace yb {

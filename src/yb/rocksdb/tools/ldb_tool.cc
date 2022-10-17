@@ -23,6 +23,8 @@
 
 #include "yb/util/flag_tags.h"
 
+using std::string;
+
 DEFINE_test_flag(bool, exit_on_finish, true, "Exit the process on finishing.");
 
 namespace rocksdb {

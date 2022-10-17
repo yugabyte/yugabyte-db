@@ -247,6 +247,7 @@ using rpc::PeriodicTimer;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::weak_ptr;
+using std::string;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
@@ -3507,6 +3508,14 @@ size_t RaftConsensus::LogCacheSize() {
 
 size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
   return queue_->EvictLogCache(bytes_to_evict);
+}
+
+Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
+  }
+  return state_->retryable_requests();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

@@ -600,7 +600,7 @@ typedef struct PgStat_YBStatQueryEntry
 	Oid query_oid;
 
 	/*
-	 * We need to store the owner ID of the database for 
+	 * We need to store the owner ID of the database for
 	 * security validation when the queries are fetched by the user.
 	 */
 	Oid st_userid;
@@ -610,7 +610,7 @@ typedef struct PgStat_YBStatQueryEntry
 	TimestampTz activity_end_timestamp;
 
 	/*
-	 * query_string_size: records the length of the string 
+	 * query_string_size: records the length of the string
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
@@ -618,7 +618,7 @@ typedef struct PgStat_YBStatQueryEntry
 	char query_string[QUERY_TEXT_SIZE];
 
 	/*
-	 * termination_reason_size: records the length of the string 
+	 * termination_reason_size: records the length of the string
 	 * so that when writing this string to file, we only write
 	 * that many characters.
 	 */
@@ -1295,7 +1295,7 @@ extern void yb_pgstat_clear_entry_pid(int pid);
 extern void pgstat_report_activity(BackendState state, const char *cmd_str);
 extern void pgstat_report_tempfile(size_t filesize);
 extern void pgstat_report_query_termination(const char *termination_reason,
-						Oid db_oid, int32 backend_pid, int backend_id);
+						int32 backend_pid);
 extern void pgstat_report_appname(const char *appname);
 extern void pgstat_report_xact_timestamp(TimestampTz tstamp);
 extern const char *pgstat_get_wait_event(uint32 wait_event_info);

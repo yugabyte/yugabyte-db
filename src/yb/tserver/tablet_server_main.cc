@@ -77,6 +77,8 @@
 
 #include "yb/tserver/server_main_util.h"
 
+using std::string;
+
 #if defined(YB_PROFGEN) && defined(__clang__)
 extern "C" int __llvm_profile_write_file(void);
 extern "C" void __llvm_profile_set_filename(const char *);
@@ -124,7 +126,6 @@ DECLARE_string(cql_proxy_bind_address);
 DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_bool(start_pgsql_proxy);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 

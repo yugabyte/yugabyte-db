@@ -386,8 +386,15 @@ public class UpgradeUniverseHandler {
     // Update request params with additional metadata for upgrade task
     mergeResizeNodeParamsWithIntent(requestParams, universe);
 
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return submitUpgradeTask(
-        TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.UpdateKubernetesDiskSize
+            : TaskType.ResizeNode,
+        CustomerTask.TaskType.ResizeNode,
+        requestParams,
+        customer,
+        universe);
   }
 
   public UUID thirdpartySoftwareUpgrade(

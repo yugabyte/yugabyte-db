@@ -37,6 +37,8 @@
 
 #include "yb/util/test_macros.h"
 
+using std::unique_ptr;
+
 DECLARE_bool(never_fsync);
 
 namespace rocksdb {

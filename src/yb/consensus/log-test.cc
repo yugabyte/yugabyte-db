@@ -66,6 +66,8 @@ namespace yb {
 namespace log {
 
 using std::shared_ptr;
+using std::vector;
+using std::string;
 using consensus::MakeOpId;
 using strings::Substitute;
 

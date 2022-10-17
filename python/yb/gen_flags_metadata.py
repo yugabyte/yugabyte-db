@@ -27,6 +27,8 @@ from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--program_name', type=str, help="Program name")
+    parser.add_argument('--dynamically_linked_exe_suffix', type=str,
+                        help="Executable suffix used in case of dynamic linking")
     parser.add_argument('--output_file_path', type=str, help="Path to output file")
     args = parser.parse_args()
 
@@ -38,6 +40,7 @@ def main() -> None:
                     [
                         os.path.join(build_root, 'bin', args.program_name),
                         "--dump_flags_xml",
+                        "--dynamically_linked_exe_suffix", args.dynamically_linked_exe_suffix,
                     ],
                     shell=True
                 )

@@ -1702,9 +1702,6 @@ ybcBeginScan(Relation relation,
 
 	/* Set up YugaByte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	memset(ybScan->keys, 0, sizeof(ybScan->keys));
-	ybScan->nkeys = 0;
-	ybScan->nhash_keys = 0;
 	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = &keys[i];
@@ -1958,6 +1955,13 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	return NULL;
 }
 
+void ybc_free_ybscan(YbScanDesc ybscan)
+{
+	Assert(PointerIsValid(ybscan));
+	YBCPgDeleteStatement(ybscan->handle);
+	pfree(ybscan);
+}
+
 SysScanDesc ybc_systable_beginscan(Relation relation,
                                    Oid indexId,
                                    bool indexOK,
@@ -2046,11 +2050,10 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 	return tuple;
 }
 
-
 void ybc_systable_endscan(SysScanDesc scan_desc)
 {
-	Assert(PointerIsValid(scan_desc->ybscan));
-	pfree(scan_desc->ybscan);
+	ybc_free_ybscan(scan_desc->ybscan);
+	pfree(scan_desc);
 }
 
 HeapScanDesc ybc_heap_beginscan(Relation relation,
@@ -2097,8 +2100,7 @@ HeapTuple ybc_heap_getnext(HeapScanDesc scan_desc)
 
 void ybc_heap_endscan(HeapScanDesc scan_desc)
 {
-	Assert(PointerIsValid(scan_desc->ybscan));
-	pfree(scan_desc->ybscan);
+	ybc_free_ybscan(scan_desc->ybscan);
 	if (scan_desc->rs_temp_snap)
 		UnregisterSnapshot(scan_desc->rs_snapshot);
 	pfree(scan_desc);
@@ -2310,7 +2312,7 @@ static double ybcIndexEvalClauseSelectivity(Relation index,
 	{
 		/* For unique indexes full key guarantees single row. */
 		if (is_unique_idx)
-			return (reltuples == 0) ? YBC_SINGLE_ROW_SELECTIVITY : 
+			return (reltuples == 0) ? YBC_SINGLE_ROW_SELECTIVITY :
 									 (double)(1.0 / reltuples);
 		else
 			return YBC_SINGLE_KEY_SELECTIVITY;

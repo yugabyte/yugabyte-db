@@ -46,6 +46,7 @@ namespace ql {
 
 using client::YBColumnSchema;
 using std::shared_ptr;
+using std::string;
 
 //--------------------------------------------------------------------------------------------------
 

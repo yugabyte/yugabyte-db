@@ -40,6 +40,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 
+using std::string;
+
 using namespace yb::size_literals;
 using yb::consensus::MakeOpIdPB;
 

@@ -69,7 +69,7 @@ using yb::env_util::CopyFile;
 // Returns error status in case of I/O errors.
 template <class TEnv>
 Status CopyDirectory(
-    TEnv* env, const string& src_dir, const string& dest_dir, UseHardLinks use_hard_links,
+    TEnv* env, const std::string& src_dir, const std::string& dest_dir, UseHardLinks use_hard_links,
     CreateIfMissing create_if_missing, RecursiveCopy recursive_copy = RecursiveCopy::kTrue) {
   RETURN_NOT_OK_PREPEND(
       FileExists(env, src_dir), Format("Source directory does not exist: $0", src_dir));
@@ -85,12 +85,12 @@ Status CopyDirectory(
   }
 
   // Copy files.
-  std::vector<string> files;
+  std::vector<std::string> files;
   RETURN_NOT_OK_PREPEND(
       env->GetChildren(src_dir, &files),
       Format("Cannot get list of files for directory: $0", src_dir));
 
-  for (const string& file : files) {
+  for (const std::string& file : files) {
     if (file != "." && file != "..") {
       const auto src_path = JoinPathSegments(src_dir, file);
       const auto dest_path = JoinPathSegments(dest_dir, file);

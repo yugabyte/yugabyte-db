@@ -85,6 +85,8 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
+using std::vector;
+using std::string;
 
 // This integration test tries to trigger all the update-related bits while also serving as a
 // foundation for benchmarking. It first inserts 'row_count' rows and then starts two threads,

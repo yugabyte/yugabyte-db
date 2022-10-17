@@ -80,7 +80,7 @@ SLEEP_IN_LEADERS_SEARCHING_ROUND_SEC = 20  # 5*(100 + 20) sec = 10 minutes
 
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
-XXH64HASH_TOOL_PATH = '/usr/bin/xxh64sum'
+XXH64HASH_TOOL_PATH = '/home/yugabyte/bin/xxhash'
 XXH64_FILE_EXT = 'xxh64'
 SHA_TOOL_PATH = '/usr/bin/sha256sum'
 SHA_FILE_EXT = 'sha256'
@@ -1388,9 +1388,15 @@ class YBBackup:
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
 
-        if self.args.mac:
-            XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
-            SHA_TOOL_PATH = '/usr/bin/shasum'
+        for address in self.args.ts_web_hosts_ports.split(','):
+            ip, _ = address.split(":")
+            node_machine_arch = self.run_ssh_cmd(['uname', '-m'], ip).strip()
+            xxhash_bin_path = "/usr/bin/xxhsum_x86"
+            if node_machine_arch and 'x86' not in node_machine_arch:
+                xxhash_bin_path = "/usr/bin/xxhsum_aarch"
+            self.upload_file_from_local(ip,
+                                        xxhash_bin_path,
+                                        XXH64HASH_TOOL_PATH)
 
         if self.args.disable_checksums:
             self.use_xxhash_checksum = False
@@ -1715,7 +1721,10 @@ class YBBackup:
             backup_size_cmd = self.storage.backup_obj_size_cmd(filepath)
             try:
                 resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
-                backup_size += int(resp.strip().split()[0])
+                # if using IMDSv2, s3cmd can return WARNINGs so check each line and ignore
+                for line in resp.splitlines():
+                    if 'WARNING' not in line:
+                        backup_size += int(resp.strip().split()[0])
             except Exception as ex:
                 logging.error(
                     'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
