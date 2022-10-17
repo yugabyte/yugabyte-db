@@ -57,7 +57,7 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 The following sections demonstrate how to perform common tasks required for Java application development.
 
-To start building your application, make sure you have met the [prerequisites](/preview/drivers-orms/java/#prerequisites).
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Set up the client dependencies
 
@@ -143,7 +143,6 @@ Create a new Java class called `QuickStartApp.java` in the base package director
 
 ```sh
 touch ./src/main/java/com/yugabyte/QuickStartApp.java
-
 ```
 
 Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
@@ -194,11 +193,13 @@ public class QuickStartApp {
 }
 ```
 
-When you run the project, `QuickStartApp.java` should output something like the following:
+Run the project `QuickStartApp.java` using the following command:
 
 ```sh
 mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.QuickStartApp
 ```
+
+You should see output similar to the following:
 
 ```text
 Connected to the YugabyteDB Cluster successfully.
@@ -211,8 +212,9 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Learn more
 
-- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/#load-balancing) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
+- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver Architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- Build Java applications using [Spring Framework](../../../integrations/spring-framework/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../hibernate/)
