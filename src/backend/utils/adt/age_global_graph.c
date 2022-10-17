@@ -858,7 +858,8 @@ static bool delete_specific_GRAPH_global_contexts(char *graph_name)
             return true;
         }
 
-        /* advance to the next one */
+        /* save the current as previous and advance to the next one */
+        prev_ggctx = curr_ggctx;
         curr_ggctx = next_ggctx;
     }
 
