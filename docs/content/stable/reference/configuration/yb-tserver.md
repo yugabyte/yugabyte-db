@@ -504,7 +504,7 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 ##### --ysql_pg_conf
 
-  Deprecated. Use `--ysql_pg_conf_csv` instead.
+Deprecated. Use `--ysql_pg_conf_csv` instead.
 
 ##### --ysql_pg_conf_csv
 

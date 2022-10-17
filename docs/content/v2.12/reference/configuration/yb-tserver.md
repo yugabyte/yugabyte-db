@@ -496,7 +496,19 @@ To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` 
 
 ##### --ysql_pg_conf
 
-Comma-separated list of PostgreSQL setting assignments.
+Deprecated. Use `--ysql_pg_conf_csv` instead.
+
+##### --ysql_pg_conf_csv
+
+Comma-separated list of PostgreSQL server configuration parameters that is appended to the `postgresql.conf` file.
+
+For example:
+
+```sh
+--ysql_pg_conf_csv="suppress_nonpg_logs=true,log_connections=on"
+```
+
+For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
 ##### --ysql_timezone
 
