@@ -3,9 +3,9 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Date;
 import java.util.UUID;
 
@@ -52,4 +52,7 @@ public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer task retryable")
   public boolean retryable;
+
+  @ApiModelProperty(value = "Correlation id")
+  public String correlationId;
 }

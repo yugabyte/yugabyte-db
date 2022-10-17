@@ -5,7 +5,6 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import pluralize from 'pluralize';
 
-import { YBLoadingCircleIcon } from '../../common/indicators';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   getPrimaryCluster,
@@ -30,7 +29,6 @@ export default class NodeDetailsTable extends Component {
       currentUniverse,
       providers
     } = this.props;
-    const loadingIcon = <YBLoadingCircleIcon size="inline" />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
