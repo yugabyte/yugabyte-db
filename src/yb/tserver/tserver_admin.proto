@@ -41,6 +41,7 @@ import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver.proto";
 import "yb/tserver/tserver_types.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
@@ -348,6 +349,8 @@ service TabletServerAdminService {
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc ReadIntents(ReadIntentsRequestPB) returns (ReadIntentsResponsePB);
 
   rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
 

@@ -89,6 +89,7 @@ set(SERVER_PROCESS_SRCS
   default-path-handlers.cc
   generic_service.cc
   glog_metrics.cc
+  intentsdb-path-handler.cc
   monitored_task.cc
   pgsql_webserver_wrapper.cc
   pprof-path-handlers.cc
@@ -109,6 +110,8 @@ set(SERVER_PROCESS_SRCS
 add_library(server_process ${SERVER_PROCESS_SRCS})
 target_link_libraries(server_process
   server_base_proto
+  tserver_proto
+  tserver_service_proto
   server_common
   yb_common
   yb_fs

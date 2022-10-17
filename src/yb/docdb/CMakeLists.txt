@@ -28,6 +28,7 @@ ADD_YB_LIBRARY(docdb_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_ENCODING_SRCS
+    docdb-internal.cc
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc
