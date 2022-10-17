@@ -59,8 +59,7 @@ class XClusterSafeTimeService {
   void ScheduleTaskIfNeeded() EXCLUDES(shutdown_cond_lock_, task_enqueue_lock_);
 
   // Calculate the max_safe_time - min_safe_time for each namespace.
-  Result<std::unordered_map<NamespaceId, uint64_t>>
-  GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec();
 
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap();
 
@@ -69,7 +68,7 @@ class XClusterSafeTimeService {
   FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
 
   struct ProducerTabletInfo {
-    string cluster_uuid;
+    std::string cluster_uuid;
     TabletId tablet_id;
 
     bool operator==(const ProducerTabletInfo& rhs) const {

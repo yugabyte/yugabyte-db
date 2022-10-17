@@ -36,6 +36,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using std::string;
 using std::placeholders::_1;
 using std::placeholders::_2;
 

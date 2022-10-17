@@ -18,6 +18,8 @@
 #include "yb/util/date_time.h"
 #include "yb/util/stol_utils.h"
 
+using std::string;
+
 DEFINE_string(csv_delimiter, ",", "The character used to separate different columns.");
 DEFINE_string(
     csv_quote_character, "\"", "The character used to quote a column that may have a delimiter.");

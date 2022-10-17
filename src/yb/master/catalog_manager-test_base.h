@@ -34,17 +34,16 @@ DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
 
 namespace yb {
 namespace master {
-using std::shared_ptr;
 
-const string default_cloud = "aws";
-const string default_region = "us-west-1";
+const std::string default_cloud = "aws";
+const std::string default_region = "us-west-1";
 const int kDefaultNumReplicas = 3;
-const string kLivePlacementUuid = "live";
-const string kReadReplicaPlacementUuidPrefix = "rr_$0";
+const std::string kLivePlacementUuid = "live";
+const std::string kReadReplicaPlacementUuidPrefix = "rr_$0";
 
 inline scoped_refptr<TabletInfo> CreateTablet(
-    const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const string& start_key,
-    const string& end_key, uint64_t split_depth = 0) {
+    const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const std::string& start_key,
+    const std::string& end_key, uint64_t split_depth = 0) {
   scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
   auto l = tablet->LockForWrite();
   PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
@@ -60,13 +59,13 @@ inline scoped_refptr<TabletInfo> CreateTablet(
   return tablet;
 }
 
-void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
-                 TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
+void CreateTable(const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
+                 TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
   const size_t kNumSplits = split_keys.size();
   for (size_t i = 0; i <= kNumSplits; i++) {
-    const string& start_key = (i == 0) ? "" : split_keys[i - 1];
-    const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
-    string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
+    const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
+    const std::string& end_key = (i == kNumSplits) ? "" : split_keys[i];
+    std::string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
 
     tablets->push_back(CreateTablet(table, tablet_id, start_key, end_key));
   }
@@ -92,11 +91,11 @@ void SetupRaftPeer(consensus::PeerMemberType member_type, std::string az,
   cloud_info->set_placement_zone(az);
 }
 
-void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info) {
+void SetupClusterConfig(std::vector<std::string> azs, ReplicationInfoPB* replication_info) {
 
   PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
   placement_info->set_num_replicas(kDefaultNumReplicas);
-  for (const string& az : azs) {
+  for (const std::string& az : azs) {
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
     pb->mutable_cloud_info()->set_placement_region(default_region);
@@ -105,8 +104,8 @@ void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info)
   }
 }
 
-void SetupClusterConfigWithReadReplicas(vector<string> live_azs,
-                                        vector<vector<string>> read_replica_azs,
+void SetupClusterConfigWithReadReplicas(std::vector<std::string> live_azs,
+                                        std::vector<std::vector<std::string>> read_replica_azs,
                                         ReplicationInfoPB* replication_info) {
   replication_info->Clear();
   SetupClusterConfig(live_azs, replication_info);
@@ -133,7 +132,7 @@ void NewReplica(
   replica->role = role;
 }
 
-std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
+std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string& az) {
   NodeInstancePB node;
   node.set_permanent_uuid(uuid);
 
@@ -155,7 +154,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
 template<class ClusterLoadBalancerMockedClass>
 class TestLoadBalancerBase {
  public:
-  TestLoadBalancerBase(ClusterLoadBalancerMockedClass* cb, const string& table_id)
+  TestLoadBalancerBase(ClusterLoadBalancerMockedClass* cb, const std::string& table_id)
       : cb_(cb),
         blacklist_(cb->blacklist_),
         leader_blacklist_(cb->leader_blacklist_),
@@ -168,10 +167,10 @@ class TestLoadBalancerBase {
         pending_remove_replica_tasks_(cb->pending_remove_replica_tasks_),
         pending_stepdown_leader_tasks_(cb->pending_stepdown_leader_tasks_) {
     scoped_refptr<TableInfo> table(new TableInfo(table_id));
-    vector<scoped_refptr<TabletInfo>> tablets;
+    std::vector<scoped_refptr<TabletInfo>> tablets;
 
     // Generate 12 tablets total: 4 splits and 3 replicas each.
-    vector<string> splits = {"a", "b", "c"};
+    std::vector<std::string> splits = {"a", "b", "c"};
     const int num_replicas = 3;
     total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
 
@@ -304,7 +303,7 @@ class TestLoadBalancerBase {
     ResetState();
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
+    std::string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
         expected_from_ts, expected_to_ts;
 
     // With ts2 leader blacklisted, the leader on ts2 should be moved to ts1.
@@ -359,7 +358,7 @@ class TestLoadBalancerBase {
     // Prepare the data.
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, expected_from_ts, expected_to_ts;
+    std::string placeholder, expected_from_ts, expected_to_ts;
     // Expecting that we move load from ts0 which is blacklisted, to ts5. This is because ts4 is
     // also blacklisted and ts0 has a valid placement, so we try to find a server in the same
     // placement.
@@ -425,7 +424,7 @@ class TestLoadBalancerBase {
     MoveTabletLeader(tablets_[1].get(), ts_descs_[4]);
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id;
+    std::string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id);
@@ -501,7 +500,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(cb_->CountPendingTasksUnlocked(cur_table_uuid_, &pending_add_count, &count, &count));
     ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
     ASSERT_OK(AnalyzeTablets());
-    string placeholder, tablet_id;
+    std::string placeholder, tablet_id;
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &placeholder, &placeholder)));
 
     // Clear pending_add_replica_tasks_ and reset the state of ClusterLoadBalancer.
@@ -510,7 +509,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Check that if adding replicas, we'll notice the wrong placement and adjust it.
-    string expected_tablet_id, expected_from_ts, expected_to_ts;
+    std::string expected_tablet_id, expected_from_ts, expected_to_ts;
     expected_tablet_id = tablets_[2]->tablet_id();
     expected_from_ts = ts_descs_[2]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
@@ -592,8 +591,8 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // First we'll fill up the missing placements for all 4 tablets.
-    string placeholder;
-    string expected_to_ts, expected_from_ts;
+    std::string placeholder;
+    std::string expected_to_ts, expected_from_ts;
     expected_to_ts = ts_descs_[2]->permanent_uuid();
     TestAddLoad(placeholder, placeholder, expected_to_ts);
     expected_to_ts = ts_descs_[3]->permanent_uuid();
@@ -627,9 +626,9 @@ class TestLoadBalancerBase {
 
     // Equal load across the first three TSs, but placement dictates we can only move from ts0 to
     // ts4 or ts5. We should pick the lowest uuid one, which is ts4.
-    string placeholder;
-    string expected_from_ts = ts_descs_[0]->permanent_uuid();
-    string expected_to_ts = ts_descs_[4]->permanent_uuid();
+    std::string placeholder;
+    std::string expected_from_ts = ts_descs_[0]->permanent_uuid();
+    std::string expected_to_ts = ts_descs_[4]->permanent_uuid();
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
 
     // Recompute and expect to move to next least loaded TS, which matches placement, which should
@@ -658,11 +657,11 @@ class TestLoadBalancerBase {
     ResetState();
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder;
+    std::string placeholder;
     // Lowest load should be the last, empty TS.
-    string expected_to_ts = ts_descs_[3]->permanent_uuid();
+    std::string expected_to_ts = ts_descs_[3]->permanent_uuid();
     // Equal load across the first three TSs. Picking the one with largest ID in string compare.
-    string expected_from_ts = ts_descs_[2]->permanent_uuid();
+    std::string expected_from_ts = ts_descs_[2]->permanent_uuid();
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
 
     // Perform another round on the updated in-memory load. The move should have made ts2 less
@@ -718,7 +717,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Since tablet 0 on ts0 is the leader, it won't be moved.
-    string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id1, actual_tablet_id2;
+    std::string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id1, actual_tablet_id2;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
     TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id1);
@@ -751,8 +750,8 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // First we'll fill up the missing placements for all 4 tablets.
-    string placeholder;
-    string expected_to_ts;
+    std::string placeholder;
+    std::string expected_to_ts;
     expected_to_ts = ts_descs_[2]->permanent_uuid();
     TestAddLoad(placeholder, placeholder, expected_to_ts);
     TestAddLoad(placeholder, placeholder, expected_to_ts);
@@ -798,7 +797,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Only 2 leaders should be moved off from ts0, 1 to ts2 and then another to ts1.
-    string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
+    std::string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
         expected_from_ts, expected_to_ts;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[1]->permanent_uuid();
@@ -877,7 +876,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Only 2 leaders should be moved off from ts0 to ts1 and ts2 each.
-    string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
+    std::string placeholder, tablet_id_1, tablet_id_2, expected_tablet_id,
         expected_from_ts, expected_to_ts;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[1]->permanent_uuid();
@@ -948,7 +947,7 @@ class TestLoadBalancerBase {
     ResetState();
     ASSERT_OK(AnalyzeTablets());
 
-    string placeholder, expected_tablet_id, expected_from_ts, expected_to_ts;
+    std::string placeholder, expected_tablet_id, expected_from_ts, expected_to_ts;
 
     // Make sure a replica is added for tablet 0 to ts 0.
     expected_tablet_id = tablets_[0]->tablet_id();
@@ -1010,9 +1009,9 @@ class TestLoadBalancerBase {
   }
 
   // Tester methods that actually do the calls and asserts.
-  void TestRemoveLoad(const string& expected_tablet_id, const string& expected_from_ts)
+  void TestRemoveLoad(const std::string& expected_tablet_id, const std::string& expected_from_ts)
     NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
-    string tablet_id, from_ts;
+    std::string tablet_id, from_ts;
     ASSERT_TRUE(ASSERT_RESULT(cb_->HandleRemoveReplicas(&tablet_id, &from_ts)));
     if (!expected_tablet_id.empty()) {
       ASSERT_EQ(expected_tablet_id, tablet_id);
@@ -1022,13 +1021,13 @@ class TestLoadBalancerBase {
     }
   }
 
-  void TestAddLoad(const string& expected_tablet_id,
-                   const string& expected_from_ts,
-                   const string& expected_to_ts,
-                   string* actual_tablet_id = nullptr,
-                   string* actual_from_ts = nullptr,
-                   string* actual_to_ts = nullptr) NO_THREAD_SAFETY_ANALYSIS {
-    string tablet_id, from_ts, to_ts;
+  void TestAddLoad(const std::string& expected_tablet_id,
+                   const std::string& expected_from_ts,
+                   const std::string& expected_to_ts,
+                   std::string* actual_tablet_id = nullptr,
+                   std::string* actual_from_ts = nullptr,
+                   std::string* actual_to_ts = nullptr) NO_THREAD_SAFETY_ANALYSIS {
+    std::string tablet_id, from_ts, to_ts;
     auto over_replication_at_start = cb_->get_total_over_replication();
     ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
     if (actual_tablet_id) {
@@ -1057,10 +1056,10 @@ class TestLoadBalancerBase {
     }
   }
 
-  void TestMoveLeader(string* tablet_id,
-                      const string& expected_from_ts,
-                      const string& expected_to_ts) {
-    string from_ts, to_ts;
+  void TestMoveLeader(std::string* tablet_id,
+                      const std::string& expected_from_ts,
+                      const std::string& expected_to_ts) {
+    std::string from_ts, to_ts;
     ASSERT_TRUE(ASSERT_RESULT(HandleLeaderMoves(tablet_id, &from_ts, &to_ts)));
     if (!expected_from_ts.empty()) {
       ASSERT_EQ(expected_from_ts, from_ts);
@@ -1115,18 +1114,18 @@ class TestLoadBalancerBase {
   ClusterLoadBalancerMockedClass* cb_;
 
   int total_num_tablets_;
-  vector<scoped_refptr<TabletInfo>> tablets_;
+  std::vector<scoped_refptr<TabletInfo>> tablets_;
   BlacklistPB& blacklist_;
   BlacklistPB& leader_blacklist_;
   TableId cur_table_uuid_;
   TSDescriptorVector& ts_descs_;
-  vector<AffinitizedZonesSet>& affinitized_zones_;
+  std::vector<AffinitizedZonesSet>& affinitized_zones_;
   TabletInfoMap& tablet_map_;
   TableInfoMap& table_map_;
   ReplicationInfoPB& replication_info_;
-  vector<TabletId>& pending_add_replica_tasks_;
-  vector<TabletId>& pending_remove_replica_tasks_;
-  vector<TabletId>& pending_stepdown_leader_tasks_;
+  std::vector<TabletId>& pending_add_replica_tasks_;
+  std::vector<TabletId>& pending_remove_replica_tasks_;
+  std::vector<TabletId>& pending_stepdown_leader_tasks_;
 };
 
 } // namespace master

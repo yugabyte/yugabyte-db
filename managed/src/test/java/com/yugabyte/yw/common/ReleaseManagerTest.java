@@ -12,22 +12,20 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyMap;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
-import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata.Package;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import java.io.File;
 import java.io.IOException;
-import java.lang.Object;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -248,11 +246,15 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testLoadReleasesWithReleasePath() {
+  public void testLoadReleasesWithReleasePath() throws IOException {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
     createDummyReleases(versions, false, false);
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
 
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -273,11 +275,15 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testLoadReleasesWithoutChart() {
+  public void testLoadReleasesWithoutChart() throws IOException {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
     createDummyReleases(versions, false, false, true, false, false);
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
 
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -363,14 +369,18 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testLoadReleasesWithReleaseAndDockerPathDuplicate() {
+  public void testLoadReleasesWithReleaseAndDockerPathDuplicate() throws IOException {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(versions, false, false);
     List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(dockerVersions, false, true);
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -392,11 +402,15 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testLoadReleasesWithAlmaPath() {
+  public void testLoadReleasesWithAlmaPath() throws IOException {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(versions, false, false, false, true, true, "almalinux8");
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.importLocalReleases();
+    verify(mockGFlagsValidation, times(1))
+        .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -618,5 +632,19 @@ public class ReleaseManagerTest extends FakeDBApplication {
     Mockito.verify(configHelper, times(1))
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     assertReleases(expectedMap, releaseMap.getValue());
+  }
+
+  @Test
+  public void testAddGFlagMetadataForCloudRelease() {
+    ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
+    metadata.s3 = new ReleaseMetadata.S3Location();
+    metadata.s3.paths = new ReleaseMetadata.PackagePaths();
+    metadata.s3.paths.x86_64 = "s3://foo";
+    metadata.s3.accessKeyId = "abc";
+    metadata.s3.secretAccessKey = "abc";
+    when(mockGFlagsValidation.getMissingGFlagFileList(any()))
+        .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    releaseManager.addGFlagsMetadataFiles("0.0.1", metadata);
+    verify(mockCommissioner, times(1)).submit(any(), any());
   }
 }

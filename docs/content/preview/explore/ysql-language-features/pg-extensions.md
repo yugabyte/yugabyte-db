@@ -218,7 +218,7 @@ ERROR:  password is too short
 ```
 
 ```sql
-yugabyte=# create role test_role password 'nonumbersinpassword';
+yugabyte=# create role test_role password 'nonumbers';
 ```
 
 ```output
@@ -226,7 +226,7 @@ ERROR:  password must contain both letters and nonletters
 ```
 
 ```sql
-yugabyte=# create role test_role password '123test_role123';
+yugabyte=# create role test_role password '12test_role12';
 ```
 
 ```output

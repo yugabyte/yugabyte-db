@@ -78,6 +78,8 @@
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // Maintains state for each sub-compaction

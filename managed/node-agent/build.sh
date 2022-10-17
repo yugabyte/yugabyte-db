@@ -47,6 +47,9 @@ setup_protoc() {
             protoc_os=osx
         fi
         local protoc_arch=$build_arch
+        if [ $protoc_arch == "arm64" ]; then
+            protoc_arch=aarch_64
+        fi
         local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
         pushd $GOPATH
         curl -fsSLO ${release_url}/download/v${protoc_version}/${protoc_filename}

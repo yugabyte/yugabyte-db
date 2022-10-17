@@ -48,6 +48,9 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+using std::vector;
+
 namespace rocksdb {
 
 namespace {

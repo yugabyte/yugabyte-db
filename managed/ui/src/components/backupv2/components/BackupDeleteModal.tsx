@@ -69,17 +69,19 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(time) => <FormatUnixTimeStampTimeToTimezone timestamp={time} />}
+            dataFormat={(_, row: IBackup) => (
+              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
+            )}
           >
             Created At
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="state"
-            dataFormat={(state) => {
-              return <StatusBadge statusType={state} />;
+            dataField="lastBackupState"
+            dataFormat={(lastBackupState) => {
+              return <StatusBadge statusType={lastBackupState} />;
             }}
           >
-            Status
+            Last Status
           </TableHeaderColumn>
         </BootstrapTable>
       </div>

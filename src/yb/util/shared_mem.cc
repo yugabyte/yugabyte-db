@@ -30,6 +30,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 namespace yb {
 
 namespace {

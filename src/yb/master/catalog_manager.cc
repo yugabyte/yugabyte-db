@@ -544,6 +544,10 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::set;
+using std::min;
+using std::map;
+using std::pair;
 
 using namespace std::placeholders;
 
@@ -1922,7 +1926,7 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
-  xcluster_parent_tablet_deletion_task_.StartShutdown();
+  cdc_parent_tablet_deletion_task_.StartShutdown();
 
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
@@ -1935,7 +1939,7 @@ void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
-  xcluster_parent_tablet_deletion_task_.CompleteShutdown();
+  cdc_parent_tablet_deletion_task_.CompleteShutdown();
   xcluster_safe_time_service_->Shutdown();
 
   if (background_tasks_) {
@@ -4043,6 +4047,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             << ns->ToString() << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
 
+  // Add the new table's entry to the in-memory structure cdc_stream_map_.
+  // This will be used by the background task to determine if the table needs to associated to an
+  // active CDCSDK stream. We do not consider the dummy parent table created for tablegroups.
+  if (!colocated || joining_colocation_group) {
+    WARN_NOT_OK(
+        AddNewTableToCDCDKStreamsMetadata(table->id(), ns->id()),
+        "Could not add table: " + table->id() + ", details to required CDCSDK streams");
+  }
+
   if (FLAGS_master_enable_metrics_snapshotter &&
       !(req.table_type() == TableType::YQL_TABLE_TYPE &&
         namespace_id == kSystemNamespaceId &&
@@ -5128,7 +5141,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, table_oid);
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
@@ -7752,8 +7765,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Verify that the namespace does not already exist.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr && db_type != YQL_DATABASE_PGSQL) {
-      // PGSQL databases have name uniqueness handled at a different layer, so ignore overlaps.
+    if (ns == nullptr) {
+      // For PGSQL databases having name uniqueness handled at a different layer, we still need to
+      // verify it to avoid the race condition caused by multiple CreateNamespace requests with the
+      // same db name running in parallel.
       ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     }
     if (ns != nullptr) {
@@ -9078,6 +9093,11 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
   return Status::OK();
 }
 
+Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
+    const TableId& table_id, const NamespaceId& ns_id) {
+  return Status::OK();
+}
+
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;
 }
@@ -9470,7 +9490,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+  cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
   RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
@@ -9762,21 +9782,25 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
           .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
         });
 
-        if (!tablets_data.back().hide_only && IsTableCdcProducer(*tablet->table())) {
-          // For xCluster, the only time we try to delete a tablet that is part of an active stream
-          // is during tablet splitting, where we need to keep the parent tablet around until we
-          // have replicated its SPLIT_OP record.
+        if (!tablets_data.back().hide_only &&
+            (IsTableCdcProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
+          // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
+          // active stream is during tablet splitting, where we need to keep the parent tablet
+          // around until we have replicated its SPLIT_OP record.
 
           // There are a few cases to handle here:
           // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
-          //    the tablet and also add it to retained_by_xcluster_ so that it stays hidden.
-          // 2. The tablet is hidden and part of retained_by_xcluster_. Keep this tablet hidden.
-          // 3. This tablet is hidden but not part of retained_by_xcluster_. This means that the
-          //    bg task DoProcessXClusterParentTabletDeletion processed it and found that all
-          //    streams for this tablet have replicated the split record. We can now delete it as
-          //    long as it isn't being kept by a snapshot schedule.
+          //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
+          //    it stays hidden.
+          // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
+          //    this tablet hidden.
+          // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
+          //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
+          //    that all streams for this tablet have replicated the split record. We can now delete
+          //    it as long as it isn't being kept by a snapshot schedule.
           if (!tablets_data.back().lock->ListedAsHidden() ||
-              retained_by_xcluster_.contains(tablet->id())) {
+              retained_by_xcluster_.contains(tablet->id()) ||
+              retained_by_cdcsdk_.contains(tablet->id())) {
             tablets_data.back().hide_only = HideOnly(true);
           }
         }
@@ -9840,7 +9864,9 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
     for (const auto& tablet : marked_as_hidden) {
-      if (IsTableCdcProducer(*tablet->table()) ) {
+      bool is_table_cdc_producer = IsTableCdcProducer(*tablet->table());
+      bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
+      if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = tablet->LockForRead();
         const auto& children = tablet_lock->pb.split_tablet_ids();
         if (children.size() < 2) {
@@ -9854,7 +9880,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
                              : "",
           .split_tablets_ = {children.Get(0), children.Get(1)}
         };
-        retained_by_xcluster_.emplace(tablet->id(), info);
+        if (is_table_cdc_producer) {
+          retained_by_xcluster_.emplace(tablet->id(), info);
+        }
+        if (is_table_part_of_cdcsdk) {
+          retained_by_cdcsdk_.emplace(tablet->id(), info);
+        }
       }
     }
   }
@@ -12015,8 +12046,7 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
 Status CatalogManager::GetXClusterEstimatedDataLoss(
     const GetXClusterEstimatedDataLossRequestPB* req,
     GetXClusterEstimatedDataLossResponsePB* resp) {
-  const auto result =
-      xcluster_safe_time_service_->GetEstimatedDataLossFromSafeTimeForEachNamespace();
+  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
   if (!result) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
   }
@@ -12025,7 +12055,7 @@ Status CatalogManager::GetXClusterEstimatedDataLoss(
   for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
     auto entry = resp->add_namespace_data_loss();
     entry->set_namespace_id(namespace_id);
-    entry->set_data_loss_ns(data_loss);
+    entry->set_data_loss_us(data_loss);
   }
   return Status::OK();
 }

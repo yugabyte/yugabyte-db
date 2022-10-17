@@ -15,6 +15,8 @@
 #include "yb/gutil/walltime.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+using std::string;
+
 using strings::Substitute;
 
 namespace yb {

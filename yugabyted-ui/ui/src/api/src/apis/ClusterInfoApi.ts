@@ -20,20 +20,13 @@ import type { AxiosInstance } from 'axios';
 // @ts-ignore
 import type {
   ApiError,
-  ClusterInstantMetricsListResponse,
   ClusterNodesResponse,
   ClusterTableListResponse,
-  ClusterTablespacesListResponse,
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
 } from '../models';
 
-export interface GetBulkClusterMetricsForQuery {
-  accountId: string;
-  projectId: string;
-  cluster_ids: Set<string>;
-}
 export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
@@ -44,95 +37,9 @@ export interface GetClusterMetricForQuery {
 export interface GetClusterTablesForQuery {
   api?: GetClusterTablesApiEnum;
 }
-export interface GetClusterTablespacesForQuery {
-  accountId: string;
-  projectId: string;
-  clusterId: string;
-}
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
 }
-
-/**
- * Get bulk cluster metrics
- * Get bulk cluster metrics
- */
-
-export const getBulkClusterMetricsAxiosRequest = (
-  requestParameters: GetBulkClusterMetricsForQuery,
-  customAxiosInstance?: AxiosInstance
-) => {
-  return Axios<ClusterInstantMetricsListResponse>(
-    {
-      url: '/public/accounts/{accountId}/projects/{projectId}/cluster_metrics'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))),
-      method: 'GET',
-      params: {
-        cluster_ids: requestParameters['cluster_ids'],
-      }
-    },
-    customAxiosInstance
-  );
-};
-
-export const getBulkClusterMetricsQueryKey = (
-  requestParametersQuery: GetBulkClusterMetricsForQuery,
-  pageParam = -1,
-  version = 1,
-) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/cluster_metrics`,
-  pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
-];
-
-
-export const useGetBulkClusterMetricsInfiniteQuery = <T = ClusterInstantMetricsListResponse, Error = ApiError>(
-  params: GetBulkClusterMetricsForQuery,
-  options?: {
-    query?: UseInfiniteQueryOptions<ClusterInstantMetricsListResponse, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  pageParam = -1,
-  version = 1,
-) => {
-  const queryKey = getBulkClusterMetricsQueryKey(params, pageParam, version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useInfiniteQuery<ClusterInstantMetricsListResponse, Error, T>(
-    queryKey,
-    () => getBulkClusterMetricsAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-export const useGetBulkClusterMetricsQuery = <T = ClusterInstantMetricsListResponse, Error = ApiError>(
-  params: GetBulkClusterMetricsForQuery,
-  options?: {
-    query?: UseQueryOptions<ClusterInstantMetricsListResponse, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  version = 1,
-) => {
-  const queryKey = getBulkClusterMetricsQueryKey(params,  version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useQuery<ClusterInstantMetricsListResponse, Error, T>(
-    queryKey,
-    () => getBulkClusterMetricsAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-
 
 /**
  * Get metrics for a Yugabyte cluster
@@ -364,86 +271,6 @@ export const useGetClusterTablesQuery = <T = ClusterTableListResponse, Error = A
   const query = useQuery<ClusterTableListResponse, Error, T>(
     queryKey,
     () => getClusterTablesAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-
-
-/**
- * Get list of tablespaces for YSQL
- * Get list of DB tables for YSQL
- */
-
-export const getClusterTablespacesAxiosRequest = (
-  requestParameters: GetClusterTablespacesForQuery,
-  customAxiosInstance?: AxiosInstance
-) => {
-  return Axios<ClusterTablespacesListResponse>(
-    {
-      url: '/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces'.replace(`{${'accountId'}}`, encodeURIComponent(String(requestParameters.accountId))).replace(`{${'projectId'}}`, encodeURIComponent(String(requestParameters.projectId))).replace(`{${'clusterId'}}`, encodeURIComponent(String(requestParameters.clusterId))),
-      method: 'GET',
-      params: {
-      }
-    },
-    customAxiosInstance
-  );
-};
-
-export const getClusterTablespacesQueryKey = (
-  requestParametersQuery: GetClusterTablespacesForQuery,
-  pageParam = -1,
-  version = 1,
-) => [
-  `/v${version}/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces`,
-  pageParam,
-  ...(requestParametersQuery ? [requestParametersQuery] : [])
-];
-
-
-export const useGetClusterTablespacesInfiniteQuery = <T = ClusterTablespacesListResponse, Error = ApiError>(
-  params: GetClusterTablespacesForQuery,
-  options?: {
-    query?: UseInfiniteQueryOptions<ClusterTablespacesListResponse, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  pageParam = -1,
-  version = 1,
-) => {
-  const queryKey = getClusterTablespacesQueryKey(params, pageParam, version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useInfiniteQuery<ClusterTablespacesListResponse, Error, T>(
-    queryKey,
-    () => getClusterTablespacesAxiosRequest(params, customAxiosInstance),
-    queryOptions
-  );
-
-  return {
-    queryKey,
-    ...query
-  };
-};
-
-export const useGetClusterTablespacesQuery = <T = ClusterTablespacesListResponse, Error = ApiError>(
-  params: GetClusterTablespacesForQuery,
-  options?: {
-    query?: UseQueryOptions<ClusterTablespacesListResponse, Error, T>;
-    customAxiosInstance?: AxiosInstance;
-  },
-  version = 1,
-) => {
-  const queryKey = getClusterTablespacesQueryKey(params,  version);
-  const { query: queryOptions, customAxiosInstance } = options ?? {};
-
-  const query = useQuery<ClusterTablespacesListResponse, Error, T>(
-    queryKey,
-    () => getClusterTablespacesAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

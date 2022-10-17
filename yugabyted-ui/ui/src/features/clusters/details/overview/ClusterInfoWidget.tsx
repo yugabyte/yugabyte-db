@@ -1,11 +1,11 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
+import { Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 import { intlFormat } from 'date-fns';
 // import clsx from 'clsx';
 
 // Local imports
-import { ClusterData, ClusterRegionInfo, useGetRegionsQuery } from '@app/api/src';
+import type { ClusterData } from '@app/api/src';
 // import { getCloudProviderIcon } from '@app/features/clusters/list/ClusterCard';
 import {
   roundDecimal,
@@ -82,15 +82,12 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   // const context = useContext(ClusterContext);
 
   const clusterSpec = cluster?.spec;
-  const cloud = clusterSpec?.cloud_info?.code;
-  const { data: regions } = useGetRegionsQuery({ cloud });
 
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
   const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
   const totalRamUsageMb = clusterSpec?.cluster_info?.node_info.memory_mb ?? 0;
   const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
 
-  const availableRegions: ClusterRegionInfo[] = clusterSpec?.cluster_region_info ?? [];
 
   // const editingDisabled =
   //   isClusterEditingDisabled(cluster) || clusterSpec?.cluster_info?.cluster_tier === ClusterTier.Free;
@@ -200,36 +197,6 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
             {getDate(cluster?.info.metadata?.created_on)}
           </Typography>
         </div>
-      </Grid>
-
-      <Grid container className={classes.container}>
-        {availableRegions && regions && (
-          <Box mt={4} display="flex">
-            <Box>
-              <Typography variant="subtitle2" className={classes.label}>
-                {t('clusterDetail.overview.regions')}
-              </Typography>
-              <Box display="flex">
-                {availableRegions?.map((region) => (
-                  <Box mr={1} className={classes.chip} key={region?.placement_info?.cloud_info?.region}>
-                    {/* <RegionWithFlag code={region?.placement_info?.cloud_info?.region} regions={regions?.data} /> */}
-                    {region?.placement_info?.cloud_info?.region}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-            {/* <Box alignSelf="flex-end">
-              <YBButton
-                variant="secondary"
-                onClick={() => openEditInfraModal()}
-                disabled={editingDisabled}
-                className={clsx(classes.chip, classes.btnAddRegion)}
-              >
-                <PlusIcon />
-              </YBButton>
-              </Box> */}
-          </Box>
-        )}
       </Grid>
     </Paper>
   );

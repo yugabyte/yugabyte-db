@@ -24,6 +24,8 @@ interface PointInTimeRecoveryDisableModalProps {
   config: any;
 }
 
+const TOAST_AUTO_CLOSE_INTERVAL = 3000;
+
 export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModalProps> = ({
   visible,
   onHide,
@@ -34,12 +36,16 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
 
   const deletePITR = useMutation((pUUID: string) => deletePITRConfig(universeUUID, pUUID), {
     onSuccess: () => {
-      toast.success(`Point-in-time recovery disabled successfully for ${config.dbName}`);
+      toast.success(`Point-in-time recovery disabled successfully for ${config.dbName}`, {
+        autoClose: TOAST_AUTO_CLOSE_INTERVAL
+      });
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },
     onError: (err: any) => {
-      toast.error(`Failed to disable point-in-time recovery for ${config.dbName}`);
+      toast.error(`Failed to disable point-in-time recovery for ${config.dbName}`, {
+        autoClose: TOAST_AUTO_CLOSE_INTERVAL
+      });
       onHide();
     }
   });
@@ -50,8 +56,7 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
 
   if (!config) return <></>;
 
-  const activeSnapShots = config.snapshots.filter((snapshot: any) => snapshot.state === 'COMPLETE');
-  const minTime = Math.min(...activeSnapShots.map((snapshot: any) => snapshot.recoveryTime));
+  const minTime = config.minRecoverTimeInMillis;
   const retentionDays = config.retentionPeriod / (24 * 60 * 60);
 
   return (

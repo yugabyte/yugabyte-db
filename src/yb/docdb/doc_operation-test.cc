@@ -42,6 +42,8 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 
+using std::vector;
+
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);

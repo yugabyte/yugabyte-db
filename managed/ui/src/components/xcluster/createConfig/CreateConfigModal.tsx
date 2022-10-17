@@ -15,7 +15,7 @@ import {
 import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { adaptTableUUID } from '../ReplicationUtils';
+import { adaptTableUUID, parseFloatIfDefined } from '../ReplicationUtils';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTablesStep } from './SelectTablesStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
@@ -419,7 +419,7 @@ const validateForm = async (
         const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
           (trace) => trace.name === 'free'
         );
-        const freeDiskSpace = freeSpaceTrace?.y[freeSpaceTrace.y.length - 1];
+        const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
 
         if (freeDiskSpace !== undefined && freeDiskSpace < MIN_FREE_DISK_SPACE_GB) {
           errors.tableUUIDs = {
@@ -442,7 +442,7 @@ const validateForm = async (
         errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
       } else if (
         shouldValidateParallelThread &&
-        values.parallelThreads > PARALLEL_THREADS_RANGE.MIN
+        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
       ) {
         errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
       }

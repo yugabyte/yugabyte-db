@@ -46,6 +46,7 @@
 DECLARE_int32(memstore_arena_size_kb);
 
 using std::atomic;
+using std::unique_ptr;
 
 namespace rocksdb {
 

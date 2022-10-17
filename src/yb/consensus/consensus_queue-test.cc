@@ -53,6 +53,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
+using std::string;
+
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 

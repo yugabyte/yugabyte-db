@@ -87,6 +87,10 @@ public class CDCSubscriber {
     this.dbStreamId = dbStreamId;
   }
 
+  public String getDbStreamId() {
+    return this.dbStreamId;
+  }
+
   public void setTableName(String tableName) {
     this.tableName = tableName;
   }
@@ -101,6 +105,10 @@ public class CDCSubscriber {
 
   public void setNumberOfTablets(int numberOfTablets) {
     this.numberOfTablets = numberOfTablets;
+  }
+
+  public String getTabletId() {
+    return this.tabletId;
   }
 
   /**

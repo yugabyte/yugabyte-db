@@ -58,6 +58,7 @@ class PgOperationBuffer {
       const PgTableDesc& table, const PgsqlOp& op, bool transactional);
   size_t Size() const;
   void Clear();
+  void GetAndResetRpcStats(uint64_t* count, uint64_t* wait_time);
 
  private:
   class Impl;

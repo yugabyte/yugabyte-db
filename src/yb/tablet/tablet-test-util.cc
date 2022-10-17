@@ -28,6 +28,8 @@
 
 #include "yb/util/status_log.h"
 
+using std::string;
+
 DECLARE_bool(enable_data_block_fsync);
 
 namespace yb {

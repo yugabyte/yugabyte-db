@@ -56,6 +56,7 @@ namespace yb {
 
 using strings::Substitute;
 using std::unique_ptr;
+using std::deque;
 
 
 ThreadPoolMetrics::~ThreadPoolMetrics() = default;

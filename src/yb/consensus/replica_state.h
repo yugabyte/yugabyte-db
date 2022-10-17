@@ -427,6 +427,11 @@ class ReplicaState {
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
       OpIds* applied_op_ids);
 
+  const RetryableRequests& retryable_requests() const {
+    DCHECK(IsLocked());
+    return retryable_requests_;
+  }
+
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
 

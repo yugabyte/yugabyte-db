@@ -36,6 +36,8 @@ from yugabyte_pycommon import WorkDirContext  # type: ignore
 
 from pathlib import Path
 
+THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX = 'YB_THIRDPARTY_INSTALLED_DIR:STRING='
+
 
 SKIPPED_ARGS: Set[str] = {
     '-fPIC',
@@ -87,18 +89,23 @@ def should_skip_argument(arg: str) -> bool:
     return arg in SKIPPED_ARGS or arg.startswith('--gcc-toolchain')
 
 
-def get_static_lib_paths(thirdparty_path: str) -> List[str]:
+def get_static_lib_paths(thirdparty_installed_dir: str) -> List[str]:
     static_lib_paths = []
+    candidate_dirs = []
     for thirdparty_subdir in ['common', 'uninstrumented']:
-        for root, dirs, files in os.walk(
-                os.path.join(thirdparty_path, 'installed', thirdparty_subdir)):
+        candidate_dir = os.path.join(thirdparty_installed_dir, thirdparty_subdir)
+        candidate_dirs.append(candidate_dir)
+        for root, dirs, files in os.walk(candidate_dir):
             for file_name in files:
                 if is_static_lib(file_name):
                     static_lib_path = os.path.join(root, file_name)
                     static_lib_paths.append(static_lib_path)
     if not static_lib_paths:
+        for candidate_dir in candidate_dirs:
+            logging.warning("Considered candidate directory: %s" % candidate_dir)
         raise ValueError(
-            "Did not find any static libraries at third-party path %s" % thirdparty_path)
+            "Did not find any static libraries in third-party installed directory %s" %
+            thirdparty_installed_dir)
     return static_lib_paths
 
 
@@ -259,6 +266,8 @@ class LinkHelper:
     # as described above.
     processed_shared_lib_deps_for: Set[str]
 
+    thirdparty_installed_dir: str
+
     def __init__(
             self,
             dep_graph: DependencyGraph,
@@ -277,7 +286,6 @@ class LinkHelper:
 
         assert initial_node.link_cmd
         self.original_link_args = process_original_link_cmd(initial_node.link_cmd)
-        self.static_lib_paths = get_static_lib_paths(self.thirdparty_path)
         self.new_args = LinkCommand([self.clang_cpp_path])
         self.obj_file_graph_nodes = set()
         self.pg_backend_build_dir, self.yb_pgbackend_link_cmd = get_yb_pgbackend_link_cmd(
@@ -288,6 +296,17 @@ class LinkHelper:
 
         self.static_libs_from_ldd = {}
         self.processed_shared_lib_deps_for = set()
+
+        self.thirdparty_installed_dir = ''
+        with open(os.path.join(self.build_root, 'CMakeCache.txt')) as cmake_cache_file:
+            for line in cmake_cache_file:
+                line = line.strip()
+                if line.startswith(THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX):
+                    self.thirdparty_installed_dir = line[
+                            len(THIRDPARTY_INSTALLED_DIR_CMAKE_VAR_PREFIX):]
+        if not self.thirdparty_installed_dir:
+            self.thirdparty_installed_dir = os.path.join(self.thirdparty_path, 'installed')
+        self.static_lib_paths = get_static_lib_paths(self.thirdparty_installed_dir)
 
     def convert_to_static_lib(self, arg: str) -> Optional[str]:
         """
@@ -492,7 +511,8 @@ class LinkHelper:
 
         for lib_name in LIBCXX_STATIC_LIB_NAMES:
             self.new_args.append(os.path.join(
-                self.thirdparty_path, 'installed', 'uninstrumented', 'libcxx', 'lib', lib_name))
+                self.thirdparty_installed_dir, 'uninstrumented', 'libcxx',
+                'lib', lib_name))
 
         with WorkDirContext(self.build_root):
             self.write_link_cmd_file(self.final_output_name + '_lto_link_cmd_args.txt')

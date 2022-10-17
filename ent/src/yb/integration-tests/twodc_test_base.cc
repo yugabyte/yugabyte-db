@@ -43,6 +43,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+using std::string;
+
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);

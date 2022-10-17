@@ -14,6 +14,8 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
+using std::string;
+
 namespace yb {
 
 namespace {

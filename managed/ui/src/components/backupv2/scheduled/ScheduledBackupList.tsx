@@ -123,7 +123,8 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           }}
           disabled={
             tablesInUniverse?.data.length === 0 ||
-            currentUniverse.data?.universeConfig?.takeBackups === 'false'
+            currentUniverse.data?.universeConfig?.takeBackups === 'false' ||
+            currentUniverse?.data?.universeDetails?.universePaused
           }
         />
         <BackupCreateModal

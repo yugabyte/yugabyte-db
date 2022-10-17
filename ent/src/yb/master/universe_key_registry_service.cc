@@ -23,6 +23,8 @@
 
 #include "yb/gutil/endian.h"
 
+using std::string;
+
 namespace yb {
 namespace master {
 namespace enterprise {

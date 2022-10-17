@@ -38,6 +38,7 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<rpc::CallResponsePtr> Get();
+  Result<rpc::CallResponsePtr> Get(MonoDelta* wait_time);
 
  private:
   std::future<PerformResult> future_;

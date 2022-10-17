@@ -35,6 +35,7 @@ typedef struct ExplainState
 	bool		buffers;		/* print buffer usage */
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
+	bool		rpc;			/* print RPC stats */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */
@@ -45,6 +46,8 @@ typedef struct ExplainState
 	List	   *rtable_names;	/* alias names for RTEs */
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
+	double		yb_total_read_rpc_count;	/* total read RPC count */
+	double		yb_total_read_rpc_wait;	/* total read RPC wait time */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

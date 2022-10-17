@@ -51,6 +51,8 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::string;
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
 namespace yb {

@@ -29,6 +29,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 
+using std::min;
+
 using namespace std::chrono_literals;
 
 DEFINE_int32(xcluster_safe_time_table_num_tablets, 1,
@@ -158,7 +160,7 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 }
 
 Result<std::unordered_map<NamespaceId, uint64_t>>
-XClusterSafeTimeService::GetEstimatedDataLossFromSafeTimeForEachNamespace() {
+XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
   // Recompute safe times again before fetching maps.
   const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
 
@@ -183,7 +185,7 @@ XClusterSafeTimeService::GetEstimatedDataLossFromSafeTimeForEachNamespace() {
       // Very rare case that could happen since clocks are not synced.
       safe_time_diff_map[namespace_id] = 0;
     } else {
-      safe_time_diff_map[namespace_id] = max_safe_time.ToUint64() - safe_time.ToUint64();
+      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time);
     }
   }
 

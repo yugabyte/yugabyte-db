@@ -41,6 +41,7 @@ namespace yb {
 namespace ql {
 
 using std::shared_ptr;
+using std::string;
 using client::YBTable;
 using client::YBTableName;
 using client::YBColumnSchema;

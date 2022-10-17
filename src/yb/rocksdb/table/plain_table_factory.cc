@@ -28,6 +28,8 @@
 #include "yb/rocksdb/table/plain_table_reader.h"
 #include "yb/rocksdb/port/port.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 Status PlainTableFactory::NewTableReader(

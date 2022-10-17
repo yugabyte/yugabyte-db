@@ -20,6 +20,8 @@
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
+using std::string;
+
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
