@@ -1194,6 +1194,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       RETURN_NOT_OK(EvalCondition(
         index->where_predicate_spec()->where_expr().condition(), existing_row,
         &index_pred_existing_row));
+    } else {
+      VLOG(3) << "No where predicate for index " << index->table_id();
     }
 
     if (is_row_deleted) {
@@ -1375,6 +1377,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     RETURN_NOT_OK(expr_executor->EvalCondition(
       index->where_predicate_spec()->where_expr().condition(), new_row,
       &new_row_satisfies_idx_pred));
+    VLOG(1) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
     if (index_pred_new_row) {
       *index_pred_new_row = new_row_satisfies_idx_pred;
     }
@@ -1387,6 +1390,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
           index->table_id();
       update_this_index = true;
     }
+  } else {
+    VLOG(3) << "No where predicate for index " << index->table_id();
   }
 
   if (index_has_write_permission &&
