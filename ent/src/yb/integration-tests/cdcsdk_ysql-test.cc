@@ -4349,6 +4349,67 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletS
       change_resp_2.cdc_sdk_proto_records_size() + change_resp_3.cdc_sdk_proto_records_size(), 100);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesReportsTabletSplitErrorOnRetries)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(WriteRowsHelper(i * 100, (i + 1) * 100, &test_cluster_, true));
+  }
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  // Get the OpId of the last latest successful operation.
+  tablet::RemoveIntentsData data;
+  for (const auto& peer : test_cluster()->GetTabletPeers(0)) {
+    if (peer->tablet_id() == tablets[0].tablet_id()) {
+      ASSERT_OK(peer->tablet()->transaction_participant()->context()->GetLastReplicatedData(&data));
+    }
+  }
+
+  // Create a CDCSDK checkpoint term with the OpId of the last successful operation.
+  CDCSDKCheckpointPB new_checkpoint;
+  new_checkpoint.set_term(data.op_id.term);
+  new_checkpoint.set_index(data.op_id.index);
+
+  // Initiate a tablet split request, since there are around 5000 rows in the table/ tablet, it will
+  // take some time for the child tablets to be in tunning state.
+  ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
+
+  // Verify that we did not get the tablet split error in the first 'GetChanges' call
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &new_checkpoint));
+
+  // Keep calling 'GetChange' until we get an error for the tablet split, this will only happen
+  // after both the child tablets are in running state.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
+        if (result.ok() && !result->has_error()) {
+          change_resp = *result;
+          return false;
+        }
+
+        LOG(INFO) << "Encountered error on calling 'GetChanges' on initial parent tablet";
+        return true;
+      },
+      MonoDelta::FromSeconds(90), "GetChanges did not report error for tablet split"));
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesAfterTabletSplitWithMasterShutdown)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
