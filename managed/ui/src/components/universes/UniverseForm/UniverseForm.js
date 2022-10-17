@@ -858,9 +858,8 @@ class UniverseForm extends Component {
     }
 
     const clusterInfo =
-      this.state.currentView === 'Primary'
-        ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters)
-        : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
+      isDefinedNotNull(universe?.currentUniverse?.data?.universeDetails?.clusters) &&
+      this.getCurrentCluster();
     const validateVolumeSizeUnchanged =
       type === 'Edit' &&
       this.state.currentView === 'Primary' &&
