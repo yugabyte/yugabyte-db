@@ -305,15 +305,12 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   constexpr auto kNumRows = kDefaultNumRows;
   const MonoDelta kCleanupTimeout = 15s * kTimeMultiplier;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   // Keep tablets without compaction after split.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
 
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = true;
-  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-  ASSERT_EQ(tablet_peers.size(), 2);
+  auto tablet_peers =
+      ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(cluster_.get(), table_->id(), 2));
   const auto first_child_tablet = tablet_peers[0]->shared_tablet();
   ASSERT_OK(first_child_tablet->Flush(tablet::FlushMode::kSync));
   // Force compact on leader, so we can split first_child_tablet.
@@ -322,7 +319,6 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   // first_child_tablet to make sure manual compaction won't block tablet shutdown.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   ASSERT_OK(SplitTablet(ASSERT_RESULT(catalog_manager()), *first_child_tablet));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(
       /* expected_non_split_tablets = */ 3, /* expected_split_tablets = */ 1));
 

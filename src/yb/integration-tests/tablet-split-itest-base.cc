@@ -591,6 +591,8 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
     size_t num_rows,
     bool parent_tablet_protected_from_deletion) {
   auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_code));
+  RETURN_NOT_OK(this->cluster_->WaitForLoadBalancerToStabilize(
+      RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
 
   // If the parent tablet will not be deleted, then we will expect another tablet at the end.
   const auto expected_split_tablets =
@@ -648,30 +650,38 @@ Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tabl
       rpc::RpcController controller;
       controller.set_timeout(kRpcTimeout);
       tserver::WriteResponsePB resp;
-      RETURN_NOT_OK(ts_service_proxy->Write(req, &resp, &controller));
+      while (true) {
+        RETURN_NOT_OK(ts_service_proxy->Write(req, &resp, &controller));
 
-      SCHECK(resp.has_error(), InternalError, "Expected error on write to split tablet");
-      LOG(INFO) << "Error: " << AsString(resp.error());
-      switch (resp.error().code()) {
-        case tserver::TabletServerErrorPB::TABLET_SPLIT:
-          SCHECK_EQ(
-              resp.error().status().code(),
-              AppStatusPB::ILLEGAL_STATE,
-              InternalError,
-              "tserver::TabletServerErrorPB::TABLET_SPLIT error should have "
-              "AppStatusPB::ILLEGAL_STATE on write to split tablet");
-          tablet_split_insert_error_count++;
-          break;
-        case tserver::TabletServerErrorPB::NOT_THE_LEADER:
-          not_the_leader_insert_error_count++;
-          break;
-        case tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: FALLTHROUGH_INTENDED;
-        case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
-          // In the case that the source tablet was just hidden instead of deleted.
-          tablet_split_insert_error_count++;
-          break;
-        default:
-          return STATUS_FORMAT(InternalError, "Unexpected error: $0", resp.error());
+        SCHECK(resp.has_error(), InternalError, "Expected error on write to split tablet");
+        LOG(INFO) << "Error: " << AsString(resp.error());
+        switch (resp.error().code()) {
+          case tserver::TabletServerErrorPB::TABLET_SPLIT:
+            SCHECK_EQ(
+                resp.error().status().code(),
+                AppStatusPB::ILLEGAL_STATE,
+                InternalError,
+                "tserver::TabletServerErrorPB::TABLET_SPLIT error should have "
+                "AppStatusPB::ILLEGAL_STATE on write to split tablet");
+            tablet_split_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::NOT_THE_LEADER:
+            not_the_leader_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
+            // In the case that the source tablet was just hidden instead of deleted.
+            tablet_split_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE:
+            // If the leader was newly elected (e.g. because of load balancing caused by the tablet
+            // split), retry after a small delay until we get one of the above errors.
+            SleepFor(MonoDelta::FromMilliseconds(100));
+            controller.Reset();
+            continue;
+          default:
+            return STATUS_FORMAT(InternalError, "Unexpected error: $0", resp.error());
+        }
+        break;
       }
     }
   }
