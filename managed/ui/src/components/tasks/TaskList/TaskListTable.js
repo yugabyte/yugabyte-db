@@ -37,10 +37,10 @@ export default class TaskListTable extends Component {
     }
 
     function typeFormatter(cell, row) {
-      return (
-        <span>
-          {row.typeName} {row.target}
-        </span>
+      return row.correlationId ? (
+        <Link to={`/logs/?queryRegex=${row.correlationId}`}>{row.typeName} {row.target}</Link>
+      ) : (
+        `${row.typeName} ${row.target}`
       );
     }
 
