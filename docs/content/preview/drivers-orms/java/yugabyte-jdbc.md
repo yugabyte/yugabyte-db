@@ -3,6 +3,11 @@ title: Connect an application
 linkTitle: Connect an app
 description: JDBC driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /develop/client-drivers/java/
+  - /preview/develop/client-drivers/java/
+  - /preview/develop/build-apps/java/
+  - /preview/quick-start/build-apps/java/
 menu:
   preview:
     identifier: yugabyte-jdbc-driver
@@ -144,6 +149,8 @@ touch ./src/main/java/com/yugabyte/QuickStartApp.java
 Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
 
 ```java
+package com.yugabyte;
+
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
