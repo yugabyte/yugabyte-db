@@ -4,9 +4,9 @@ main {
       box-shadow: 0 0 0 1px #e9eef2;
       border-radius: 6px;
       padding: 0;
-      width: auto;
       display: table;
       margin: 1em 0;
+      width: 100%;
 
       &.no-alter-colors {
         display: block;

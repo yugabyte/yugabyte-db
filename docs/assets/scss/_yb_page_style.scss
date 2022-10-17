@@ -23,13 +23,14 @@ body.yb-page-style {
       padding: 12px;
       width: 97%;
       display: flex;
-      flex-flow: column;
+      flex-flow: wrap;
+
     }
 
     .text-link {
       margin-top: auto;
       margin-bottom: 10px;
-      margin-right: auto;
+      margin-right: 10px ;
       display: flex;
       align-items: center;
       font-weight: 600;
@@ -215,6 +216,12 @@ body.yb-page-style {
       background: #f2f6ff;
       border: 1px solid #cbdbff !important;
       border-radius: 8px;
+
+       .body,
+       .detail-copy{
+        font-weight: 600;
+         line-height: 24px;
+      }
     }
 
     .image {
@@ -232,15 +239,15 @@ body.yb-page-style {
 
   a {
     .heading {
-      color: #2b59c3;
+      //color: #2b59c3;
     }
 
     > .box.border {
       &:hover {
-        background-color: var(--theme-color);
+        //background-color: var(--theme-color);
 
         * {
-          color: #fff !important;
+          //color: #fff !important;
         }
       }
     }
@@ -283,7 +290,7 @@ body.yb-page-style {
 
   .heading {
     font-weight: 600;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 24px;
     display: flex;
     align-items: center;

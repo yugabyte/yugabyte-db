@@ -118,7 +118,7 @@ body_class: yb-page-style
   <div class="row">
     <h2 class="col-12">More resources</h2>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Manage your account</div>
           <ul>
@@ -130,7 +130,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">More Information</div>
           <ul>
@@ -142,7 +142,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Support</div>
           <ul>
@@ -158,18 +158,18 @@ body_class: yb-page-style
 <div class="three-box-row">
   <div class="row">
     <h2 class="col-12">Continue learning</h2>
-    <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+    <div class="col-12 col-md-6 col-lg-4"> 
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Build Applications</div>
-          <div class="tag-line">FROM EXAMPLES</div>
+          <div class="tag-line">FROM EXAMPLES</div> 
           <div class="detail-copy">Start coding in your favorite programming language using these examples.</div>
           <a class="text-link" href="../develop/build-apps/" title="Get Started">Get Started</a>
         </div>
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Yugabyte University</div>
           <div class="tag-line">FREE COURSES AND WORKSHOPS</div>
@@ -182,7 +182,7 @@ body_class: yb-page-style
       </div>
     </div>
     <div class="col-12 col-md-6 col-lg-4">
-      <div class="box border two-side">
+      <div class="box border two-side-">
         <div class="other-content">
           <div class="heading">Yugabyte Channel</div>
           <div class="tag-line">GETTING STARTED SERIES</div>

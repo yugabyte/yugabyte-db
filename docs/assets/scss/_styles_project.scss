@@ -235,18 +235,31 @@ body.td-homepage {
         background: #f2f6ff;
         border: 1px solid #cbdbff;
         border-radius: 8px;
+
+        .body {
+          font-weight: 600;
+          //line-height: 24px;
+        }
       }
 
       .head {
         position: relative;
         z-index: 2;
         display: flex;
-        align-items: center;
         margin-bottom: 10px;
+        flex-flow: column;
+        min-height: 40px;
+        justify-content: center;
+        align-items: flex-start;
+        padding-left: 40px;
 
         .icon {
           width: 40px;
           height: 40px;
+          object-fit: contain;
+          position: absolute;
+          top: 0;
+          left: 0;
 
           i {
             font-size: 40px;
@@ -262,16 +275,16 @@ body.td-homepage {
         .articles {
           color: #c0c3d3;
           font-weight: 400;
-          margin-left: 78px;
+          margin-left: 16px;
           font-size: 13px;
           line-height: 18px;
         }
 
         .title {
           margin: 0;
-          margin-left: 20px;
+          margin-left: 16px;
           font-weight: 600;
-          font-size: 14px;
+          font-size: 16px;
           line-height: 24px;
           color: #0b1117;
           text-overflow: ellipsis;
