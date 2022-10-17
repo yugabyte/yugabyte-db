@@ -306,8 +306,8 @@ POST    /customers/:cUUID/xcluster_configs                                     c
 GET     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.get(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 PUT     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.edit(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 POST    /customers/:cUUID/xcluster_configs/sync                                com.yugabyte.yw.controllers.XClusterConfigController.sync(cUUID: java.util.UUID, targetUniverseUUID: java.util.UUID ?= null)
-POST    /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.restart(cUUID: java.util.UUID, xccUUID: java.util.UUID)
-DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID)
+POST    /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.restart(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false)
+DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false)
 POST     /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap            com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    com.yugabyte.yw.controllers.XClusterConfigController.needBootstrapTable(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 

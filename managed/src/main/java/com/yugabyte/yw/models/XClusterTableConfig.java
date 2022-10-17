@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbEnumValue;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.Serializable;
 import java.util.Date;
@@ -80,12 +81,40 @@ public class XClusterTableConfig extends Model {
   // table is an index table.
   public boolean indexTable;
 
+  @ApiModelProperty(
+      value = "Status",
+      allowableValues = "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed")
+  public Status status;
+
+  public enum Status {
+    Validated("Validated"),
+    Running("Running"),
+    Updating("Updating"),
+    Warning("Warning"),
+    Error("Error"),
+    Bootstrapping("Bootstrapping"),
+    Failed("Failed");
+
+    private final String status;
+
+    Status(String status) {
+      this.status = status;
+    }
+
+    @Override
+    @DbEnumValue
+    public String toString() {
+      return this.status;
+    }
+  }
+
   public XClusterTableConfig(XClusterConfig config, String tableId) {
     this.config = config;
     this.tableId = tableId;
-    replicationSetupDone = false;
-    needBootstrap = false;
-    indexTable = false;
+    this.replicationSetupDone = false;
+    this.needBootstrap = false;
+    this.indexTable = false;
+    this.status = Status.Validated;
   }
 
   public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
