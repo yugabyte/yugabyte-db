@@ -81,6 +81,8 @@ int main() {
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;

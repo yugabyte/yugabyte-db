@@ -241,23 +241,24 @@ public class MetricConfigDefinition {
     query.append(metric);
 
     // If we have additional filters, we add them
+    Map<String, String> allFilters = new HashMap<>(filters);
     if (!context.getAdditionalFilters().isEmpty()) {
-      filters.putAll(context.getAdditionalFilters());
+      allFilters.putAll(context.getAdditionalFilters());
       // The kubelet volume metrics only has the persistentvolumeclain field
       // as well as namespace. Adding any other field will cause the query to fail.
       if (metric.startsWith("kubelet_volume")) {
-        filters.remove("pod_name");
-        filters.remove("container_name");
+        allFilters.remove("pod_name");
+        allFilters.remove("container_name");
       }
       // For all other metrics, it is safe to remove the filter if
       // it exists.
       else {
-        filters.remove("persistentvolumeclaim");
+        allFilters.remove("persistentvolumeclaim");
       }
     }
 
-    if (!filters.isEmpty()) {
-      query.append(filtersToString(filters));
+    if (!allFilters.isEmpty()) {
+      query.append(filtersToString(allFilters));
     }
 
     // Range is applicable only when we have functions

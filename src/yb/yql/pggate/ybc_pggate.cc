@@ -52,6 +52,8 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+using std::string;
+
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
@@ -72,6 +74,10 @@ DEFINE_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
+
+DEFINE_bool(ysql_disable_server_file_access, false,
+            "If true, disables read, write, and execute of local server files. "
+            "File access can be re-enabled if set to false.");
 
 namespace yb {
 namespace pggate {
@@ -824,6 +830,11 @@ YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  pgapi->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
@@ -1280,6 +1291,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
@@ -1347,6 +1359,11 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
     }
   }
   return YBCStatusOK();
+}
+
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
 //------------------------------------------------------------------------------------------------

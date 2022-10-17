@@ -53,6 +53,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(TEST_record_segments_violate_max_time_policy);
 DECLARE_bool(TEST_record_segments_violate_min_space_policy);
 DECLARE_bool(enable_load_balancing);
@@ -1878,10 +1880,13 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   auto tablet_peer = ASSERT_RESULT(
       cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
-  // Before any cdc request, the min index should be max value.
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-            std::numeric_limits<int64_t>::max());
+  // The log and metadata min index are initialized to max value, but the periodic loop within
+  // 'CDCServiceImpl::UpdatePeersAndMetrics' will periodically update the min index. This will
+  // eventually update the min index to 0.
+  ASSERT_OK(WaitFor([&](){
+    return tablet_peer->log()->cdc_min_replicated_index() == 0 &&
+           tablet_peer->tablet_metadata()->cdc_min_replicated_index() == 0;
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for the min index."));
 
   for (int i = 0; i < kNStreams; i++) {
     // Get CDC changes.
@@ -1942,11 +1947,13 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   auto tablet_peer = ASSERT_RESULT(
       cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
 
-  // Before any cdc request, the min index should be max value.
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-            std::numeric_limits<int64_t>::max());
-
+  // The log and metadata min index are initialized to max value, but the periodic loop within
+  // 'CDCServiceImpl::UpdatePeersAndMetrics' will periodically update the min index. This will
+  // eventually update the min index to 0.
+  ASSERT_OK(WaitFor([&](){
+    return tablet_peer->log()->cdc_min_replicated_index() == 0 &&
+           tablet_peer->tablet_metadata()->cdc_min_replicated_index() == 0;
+  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for the min index."));
 
   for (int i = 0; i < kNStreams; i++) {
     // Get CDC changes.

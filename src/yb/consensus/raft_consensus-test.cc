@@ -63,6 +63,7 @@ METRIC_DECLARE_entity(tablet);
 
 using std::shared_ptr;
 using std::string;
+using std::vector;
 
 namespace yb {
 namespace consensus {

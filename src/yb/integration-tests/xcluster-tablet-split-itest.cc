@@ -43,6 +43,9 @@
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+using std::min;
+
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
@@ -344,22 +347,6 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
 
     SwitchToConsumer();
 
-    // Since delete_universe_replication is async, wait until consumers are empty before shutdown.
-    // TODO: remove this once #12068 is fixed.
-    ASSERT_OK(WaitFor([&]() {
-      for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
-        auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
-        tserver::enterprise::CDCConsumer* cdc_consumer;
-        if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
-          auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
-          if (!tablets_running.empty()) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }, 10s * kTimeMultiplier, "Wait for CDCConsumers to shutdown."));
-
     cluster_->Shutdown();
 
     SwitchToProducer();
@@ -563,9 +550,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
   // Wait until the rows are all replicated on the consumer.
   ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
-  // Split the tablet on the producer. Note that parent tablet will only be HIDDEN and not deleted.
-  ASSERT_OK(SplitTabletAndValidate(
-      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+  // Split the tablet on the producer.
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
 
   // Write another set of rows, and make sure the consumer picks up on the changes.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));

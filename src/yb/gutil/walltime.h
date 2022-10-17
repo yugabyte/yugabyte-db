@@ -50,7 +50,6 @@
 
 #include "yb/gutil/integral_types.h"
 
-using std::string;
 
 typedef double WallTime;
 
@@ -61,7 +60,7 @@ void StringAppendStrftime(std::string* dst,
                           time_t when,
                           bool local);
 
-void StringAppendStrftime(string* dst,
+void StringAppendStrftime(std::string* dst,
                           const char* format,
                           const struct tm* tm);
 

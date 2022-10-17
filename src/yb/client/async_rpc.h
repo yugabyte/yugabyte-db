@@ -89,7 +89,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   virtual ~AsyncRpc();
 
   void SendRpc() override;
-  string ToString() const override;
+  std::string ToString() const override;
 
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }

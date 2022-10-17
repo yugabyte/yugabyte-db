@@ -52,7 +52,17 @@ enum class AggregationMetricLevel {
   kStream
 };
 
-struct MetricJsonOptions {
+struct MetricOptions {
+  // Determine whether system reset histogram or not
+  // Default: false
+  bool reset_histograms = true;
+
+  // Include the metrics at a level and above.
+  // Default: debug
+  MetricLevel level = MetricLevel::kDebug;
+};
+
+struct MetricJsonOptions : public MetricOptions {
   // Include the raw histogram values and counts in the JSON output.
   // This allows consumers to do cross-server aggregation or window
   // data over time.
@@ -63,10 +73,11 @@ struct MetricJsonOptions {
   // unit, etc).
   // Default: false
   bool include_schema_info = false;
+};
 
-  // Include the metrics at a level and above.
-  // Default: debug
-  MetricLevel level = MetricLevel::kDebug;
+struct MetricPrometheusOptions : public MetricOptions {
+  // Number of tables to include metrics for.
+  uint32_t max_tables_metrics_breakdowns;
 };
 
 struct MetricEntityOptions {
@@ -78,15 +89,6 @@ struct MetricEntityOptions {
 };
 
 using MeticEntitiesOptions = std::map<AggregationMetricLevel, MetricEntityOptions>;
-
-struct MetricPrometheusOptions {
-  // Include the metrics at a level and above.
-  // Default: debug
-  MetricLevel level = MetricLevel::kDebug;
-
-  // Number of tables to include metrics for.
-  uint32_t max_tables_metrics_breakdowns;
-};
 
 class MetricEntityPrototype {
  public:

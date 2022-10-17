@@ -44,18 +44,6 @@
 #include <algorithm>
 #include <functional>
 
-using std::copy;
-using std::max;
-using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
-using std::binary_function;
-using std::less;
-using std::back_insert_iterator;
-using std::iterator_traits;
-using std::make_pair;
-using std::pair;
 
 namespace util {
 namespace gtl {
@@ -422,7 +410,6 @@ bool gtl_is_binary_heap(RandomAccessIterator begin,
 // standard library ever uses anything other than a binary heap.
 #if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus > 199711L \
   || defined(LIBCXX) || _MSC_VER >= 1600 /* Visual Studio 2010 */
-using std::is_heap;
 #elif defined __GNUC__
 /* using __gnu_cxx::is_heap; */
 #elif defined _MSC_VER

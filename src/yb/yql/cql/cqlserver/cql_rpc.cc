@@ -30,6 +30,8 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
+using std::string;
+
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::ql::CQLMessage;

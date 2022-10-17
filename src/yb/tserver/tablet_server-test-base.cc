@@ -46,6 +46,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;
 
 DEFINE_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");

@@ -71,6 +71,28 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
+using yb::consensus::GetConsensusRole;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::ConsensusStatePB;
+using yb::consensus::RaftPeerPB;
+using yb::consensus::OperationStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
+using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
+using yb::tablet::Tablet;
+using yb::tablet::TabletDataState;
+using yb::tablet::TabletPeer;
+using yb::tablet::TabletStatusPB;
+using yb::tablet::Operation;
+
+using std::endl;
+using std::shared_ptr;
+using std::vector;
+using std::string;
+using strings::Substitute;
+
+using namespace std::placeholders;  // NOLINT(build/namespaces)
+
 namespace {
 
 // A struct representing some information about a tablet peer.
@@ -144,26 +166,6 @@ struct less<TableIdentifier> {
 
 namespace yb {
 namespace tserver {
-
-using yb::consensus::GetConsensusRole;
-using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
-using yb::consensus::ConsensusStatePB;
-using yb::consensus::RaftPeerPB;
-using yb::consensus::OperationStatusPB;
-using yb::tablet::MaintenanceManagerStatusPB;
-using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
-using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
-using yb::tablet::Tablet;
-using yb::tablet::TabletDataState;
-using yb::tablet::TabletPeer;
-using yb::tablet::TabletStatusPB;
-using yb::tablet::Operation;
-using std::endl;
-using std::shared_ptr;
-using std::vector;
-using strings::Substitute;
-
-using namespace std::placeholders;  // NOLINT(build/namespaces)
 
 namespace {
 

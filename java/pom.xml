@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.28-SNAPSHOT</version>
+  <version>0.8.31-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>YugaByte</name>
@@ -103,7 +103,7 @@
     <junit.version>4.12</junit.version>
 
     <log4j.version>1.2.17</log4j.version>
-    <mockito-all.version>1.9.0</mockito-all.version>
+    <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>
     <netty-all.version>4.1.80.Final</netty-all.version>
     <protobuf.version>3.18.0</protobuf.version>
@@ -354,7 +354,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.28-SNAPSHOT</version>
+        <version>0.8.31-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -518,15 +518,14 @@
       -->
       <dependency>
         <groupId>org.mockito</groupId>
-        <artifactId>mockito-all</artifactId>
-        <version>${mockito-all.version}</version>
+        <artifactId>mockito-inline</artifactId>
+        <version>${mockito-inline.version}</version>
       </dependency>
-
       <!-- Test jars of child modules -->
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.28-SNAPSHOT</version>
+        <version>0.8.31-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

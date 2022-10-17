@@ -101,6 +101,7 @@ using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
+using std::vector;
 
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
@@ -205,6 +206,7 @@ Status TabletPeer::InitTabletPeer(
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
+    std::unique_ptr<ConsensusMetadata> consensus_meta,
     consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
@@ -282,9 +284,10 @@ Status TabletPeer::InitTabletPeer(
 
     TRACE("Creating consensus instance");
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
-                                          meta_->fs_manager()->uuid(), &cmeta));
+    if (!consensus_meta) {
+      RETURN_NOT_OK(ConsensusMetadata::Load(meta_->fs_manager(), tablet_id_,
+                                            meta_->fs_manager()->uuid(), &consensus_meta));
+    }
 
     if (retryable_requests) {
       retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
@@ -292,7 +295,7 @@ Status TabletPeer::InitTabletPeer(
 
     consensus_ = RaftConsensus::Create(
         options,
-        std::move(cmeta),
+        std::move(consensus_meta),
         local_peer_pb_,
         table_metric_entity,
         tablet_metric_entity,
@@ -1041,6 +1044,10 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
+}
+
+int64_t TabletPeer::get_cdc_min_replicated_index() {
+  return meta_->cdc_min_replicated_index();
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {

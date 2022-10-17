@@ -34,6 +34,7 @@ using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::map;
+using std::vector;
 
 namespace {
 

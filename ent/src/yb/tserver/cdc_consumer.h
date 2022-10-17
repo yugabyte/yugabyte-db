@@ -132,9 +132,12 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
+  // Loop through pollers and check if they should still be polling, if not, shut them down.
+  void TriggerDeletionOfOldPollers();
+
   bool ShouldContinuePolling(
       const cdc::ProducerTabletInfo producer_tablet_info,
-      const cdc::ConsumerTabletInfo consumer_tablet_info) EXCLUDES(should_run_mutex_);
+      const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 

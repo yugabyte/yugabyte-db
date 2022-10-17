@@ -238,9 +238,9 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
 
-  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
 
-  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 
   Status WaitForTabletsExcept(
       size_t num_tablets, size_t tserver_idx, const TabletId& exclude_tablet);
@@ -255,7 +255,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   Status WaitTServerToBeQuietOnTablet(
       itest::TServerDetails* ts_desc, const TabletId& tablet_id);
 
-  Status SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key);
+  Status SplitTabletCrashMaster(bool change_split_boundary, std::string* split_partition_key);
 
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 

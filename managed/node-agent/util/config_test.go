@@ -11,4 +11,10 @@ func TestConfig(t *testing.T) {
 	if want != got {
 		t.Errorf("Expected %s but got %s", want, got)
 	}
+	config.Update("test1.test2", "value2")
+	config.Remove("test1.test2")
+	want, got = "", config.String("test1.test2")
+	if want != got {
+		t.Errorf("Expected %s but got %s", want, got)
+	}
 }

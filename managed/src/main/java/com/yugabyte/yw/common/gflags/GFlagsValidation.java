@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -105,13 +104,14 @@ public class GFlagsValidation {
     return data.flags;
   }
 
-  public void fetchGFlagsFromDBPackage(
-      String dbTarPackagePath, String dbVersion, List<String> requiredGFlagFileList) {
-    String releasesPath =
-        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
+  public void fetchGFlagFilesFromTarGZipInputStream(
+      InputStream inputStream,
+      String dbVersion,
+      List<String> requiredGFlagFileList,
+      String releasesPath)
+      throws IOException {
     try (TarArchiveInputStream tarInput =
-        new TarArchiveInputStream(
-            new GzipCompressorInputStream(new FileInputStream(dbTarPackagePath)))) {
+        new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
       while ((currentEntry = tarInput.getNextTarEntry()) != null) {
         // Ignore all non-flag xml files.
@@ -140,17 +140,19 @@ public class GFlagsValidation {
           IOUtils.copy(in, out);
           try (OutputStream outputStream = new FileOutputStream(gFlagOutputFile)) {
             out.writeTo(outputStream);
-          } catch (Exception e) {
+          } catch (IOException e) {
             LOG.error(
                 "Caught an error while adding {} for DB version{}: {}",
                 gFlagFileName,
                 dbVersion,
                 e);
+            throw e;
           }
         }
       }
-    } catch (Exception e) {
-      LOG.error("Caught an error while adding gflags metadata for version: {}", dbVersion, e);
+    } catch (IOException e) {
+      LOG.error("Caught an error while adding gFlags metadata for version: {}", dbVersion, e);
+      throw e;
     }
   }
 

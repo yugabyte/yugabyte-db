@@ -22,6 +22,9 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::vector;
+
 DEFINE_int32(metrics_retirement_age_ms, 120 * 1000,
              "The minimum number of milliseconds a metric will be kept for after it is "
              "no longer active. (Advanced option)");

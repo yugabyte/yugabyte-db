@@ -132,8 +132,8 @@ DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.
 
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
-DEFINE_AUTO_string(regular_tablets_data_block_key_value_encoding,
-    kExternal, "shared_prefix", "three_shared_parts",
+DEFINE_RUNTIME_AUTO_string(regular_tablets_data_block_key_value_encoding, kExternal,
+    "shared_prefix", "three_shared_parts",
     "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
     "shared_prefix, three_shared_parts");
 

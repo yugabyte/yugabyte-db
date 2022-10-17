@@ -34,6 +34,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 
+using std::string;
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // Special Env used to delay background operations

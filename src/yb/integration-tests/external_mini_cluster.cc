@@ -108,6 +108,10 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
+using std::vector;
+using std::min;
+using std::map;
+using std::ostream;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -167,9 +171,7 @@ DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 
-DEFINE_string(external_daemon_exe_suffix, "",
-              "Suffix to append to external daemon executable names, such as yb-master and "
-              "yb-tserver.");
+DECLARE_string(dynamically_linked_exe_suffix);
 
 namespace yb {
 
@@ -228,11 +230,11 @@ std::vector<std::string> FsDataDirs(const std::string& data_dir,
 }
 
 std::string GetMasterBinaryName() {
-  return kMasterBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
+  return kMasterBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
 std::string GetTServerBinaryName() {
-  return kTabletServerBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
+  return kTabletServerBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
 }  // anonymous namespace

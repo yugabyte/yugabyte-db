@@ -61,6 +61,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 
+using std::string;
+
 namespace yb {
 namespace client {
 

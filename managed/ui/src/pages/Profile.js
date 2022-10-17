@@ -2,9 +2,9 @@
 
 import React, { Component } from 'react';
 import { Link } from 'react-router';
-
+import { YBBanner, YBBannerVariant } from '../components/common/descriptors';
 import { CustomerProfileContainer } from '../components/profile';
-import { YBBanner } from '../components/common/descriptors/YBBanner';
+
 import './Profile.scss';
 
 const BannerContent = () => (
@@ -21,7 +21,11 @@ class Profile extends Component {
   render() {
     return (
       <>
-        <YBBanner variant="WARNING" className="p-page-banner">
+        <YBBanner
+          className="p-page-banner"
+          variant={YBBannerVariant.WARNING}
+          showBannerIcon={false}
+        >
           <BannerContent />
         </YBBanner>
         <div className="dashboard-container">

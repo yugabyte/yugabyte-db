@@ -28,6 +28,8 @@
 #include "yb/util/file_system_mem.h"
 #include "yb/util/status.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 typedef yb::InMemoryFileState InMemoryFileState;

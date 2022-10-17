@@ -1206,52 +1206,36 @@ public class PlacementInfoUtil {
   static Collection<PlacementIndexes> generatePlacementIndexes(
       Collection<NodeDetails> currentNodes, final int numNodes, Cluster cluster) {
     Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(currentNodes);
-    Map<UUID, Integer> currentToBeAdded = new HashMap<>();
-    int toBeAdded = 0;
-    for (NodeDetails currentNode : currentNodes) {
-      if (currentNode.state == NodeState.ToBeAdded) {
-        currentToBeAdded.merge(currentNode.azUuid, 1, Integer::sum);
-        toBeAdded++;
-      }
-    }
+    AvailableNodeTracker availableNodeTracker =
+        new AvailableNodeTracker(cluster.userIntent, currentNodes);
     Collection<PlacementIndexes> placements = new ArrayList<>();
 
     // Ordered map of PlacementIndexes for all zones.
     LinkedHashMap<UUID, PlacementIndexes> zoneToPlacementIndexes =
         zonesToPlacementIndexes(cluster.placementInfo, Action.ADD);
-    Map<UUID, Integer> availableNodesPerZone = new HashMap<>();
 
     if (!azUuidToNumNodes.isEmpty()) {
-      // Init available nodes for all zones with ToBeAdded nodes
-      // (since these nodes are not marked as "in use" in db we should subtract that count)
-      currentToBeAdded.forEach(
-          (zUUID, count) ->
-              availableNodesPerZone.put(
-                  zUUID, getAvailableNodesByZone(zUUID, cluster.userIntent) - count));
       // Taking from preferred zones first.
       Collection<UUID> preferredZoneUUIDs =
           sortKeysByValuesAndOriginalOrder(azUuidToNumNodes, zoneToPlacementIndexes.keySet());
       placements.addAll(
           generatePlacementIndexes(
-              preferredZoneUUIDs,
-              numNodes,
-              cluster.userIntent,
-              availableNodesPerZone,
-              zoneToPlacementIndexes));
+              preferredZoneUUIDs, numNodes, availableNodeTracker, zoneToPlacementIndexes));
     }
     // Getting from all available zones
     if (placements.size() < numNodes) {
       placements.addAll(
           generatePlacementIndexes(
-              // Zone uuids sorted in order of appearrence in PlacementInfo.
+              // Zone uuids sorted in order of appearance in PlacementInfo.
               zoneToPlacementIndexes.keySet(),
               numNodes - placements.size(),
-              cluster.userIntent,
-              availableNodesPerZone,
+              availableNodeTracker,
               zoneToPlacementIndexes));
     }
     LOG.info("Generated placement indexes {} for {} nodes.", placements, numNodes);
     if (placements.size() < numNodes) {
+      int toBeAdded =
+          (int) currentNodes.stream().filter(node -> node.state == NodeState.ToBeAdded).count();
       throw new IllegalStateException(
           "Couldn't find enough nodes: needed "
               + (numNodes + toBeAdded)
@@ -1263,22 +1247,18 @@ public class PlacementInfoUtil {
 
   /**
    * Method tries to generate placement indexes using round-robin algorythm. No exception is thrown
-   * if there are not enough nodes. Indexes are generated according to zoneUUIDs order. Map
-   * availableNodesPerZone is used to track counters of available nodes per zone. If counter for
-   * particular zone is not yet initialized - we initialize it inside this method.
+   * if there are not enough nodes. Indexes are generated according to zoneUUIDs order.
    *
    * @param zoneUUIDs Collection of zone UUIDs to use.
    * @param numNodes Number of PlacementIndexes to generate.
-   * @param userIntent UserIntent describing the cluster.
-   * @param availableNodesPerZone Stateful counters of available nodes per zone.
+   * @param availableNodeTracker Stateful in-memory counters of available nodes per zone.
    * @param zoneToPlacementIndexes Pre-calculated PlacementIndexes for each zone.
    * @return Ordered collection of PlacementIndexes
    */
   private static Collection<PlacementIndexes> generatePlacementIndexes(
       Collection<UUID> zoneUUIDs,
       final int numNodes,
-      UserIntent userIntent,
-      Map<UUID, Integer> availableNodesPerZone,
+      AvailableNodeTracker availableNodeTracker,
       Map<UUID, PlacementIndexes> zoneToPlacementIndexes) {
     List<PlacementIndexes> result = new ArrayList<>();
 
@@ -1286,16 +1266,14 @@ public class PlacementInfoUtil {
     Iterator<UUID> zoneUUIDIterator = zoneUUIDsCopy.iterator();
     while (result.size() < numNodes && zoneUUIDIterator.hasNext()) {
       UUID zoneUUID = zoneUUIDIterator.next();
-      Integer currentAvailable =
-          availableNodesPerZone.computeIfAbsent(
-              zoneUUID, zUUID -> getAvailableNodesByZone(zUUID, userIntent));
+      Integer currentAvailable = availableNodeTracker.getAvailableForZone(zoneUUID);
       if (currentAvailable > 0) {
-        availableNodesPerZone.put(zoneUUID, --currentAvailable);
+        availableNodeTracker.acquire(zoneUUID);
         PlacementIndexes pi = zoneToPlacementIndexes.get(zoneUUID).copy();
         LOG.info("Adding {}/{}/{} @ {}.", pi.azIdx, pi.regionIdx, pi.cloudIdx, result.size());
         result.add(pi);
       }
-      if (currentAvailable == 0) {
+      if (currentAvailable <= 1) { // Last available was taken or no available at all.
         zoneUUIDIterator.remove();
       }
       if (!zoneUUIDIterator.hasNext()) {
@@ -2056,6 +2034,71 @@ public class PlacementInfoUtil {
   }
 
   /**
+   * Statefull in-memory node counter. Cloud providers have no limits in nodes (so available =
+   * Integer.MAX_VALUE) Nodes with ToBeAdded state are also counted as occupied.
+   */
+  public static class AvailableNodeTracker {
+    private final UserIntent userIntent;
+    private final Collection<NodeDetails> currentNodes;
+    private final Map<Pair<String, UUID>, Integer> dbCounts = new HashMap<>();
+    private final Map<Pair<String, UUID>, Integer> temporaryCounts = new HashMap<>();
+
+    public AvailableNodeTracker(UserIntent userIntent, Collection<NodeDetails> currentNodes) {
+      this.userIntent = userIntent;
+      this.currentNodes = currentNodes;
+      if (isOnprem()) {
+        for (NodeDetails node : currentNodes) {
+          if (node.state == NodeState.ToBeAdded) {
+            addToTemporaryCounts(node.cloudInfo.instance_type, node.azUuid, 1);
+          } else if (node.state == NodeState.ToBeRemoved) {
+            addToTemporaryCounts(node.cloudInfo.instance_type, node.azUuid, -1);
+          }
+        }
+      }
+    }
+
+    public int getAvailableForZone(UUID zoneId) {
+      return getAvailableForZone(zoneId, ServerType.TSERVER);
+    }
+
+    public int getAvailableForZone(UUID zoneId, ServerType serverType) {
+      if (!isOnprem()) {
+        return Integer.MAX_VALUE;
+      }
+      String instanceType = userIntent.getInstanceTypeForProcessType(serverType);
+      Pair<String, UUID> key = new Pair(instanceType, zoneId);
+      Integer dbCount =
+          dbCounts.computeIfAbsent(key, k -> NodeInstance.listByZone(zoneId, instanceType).size());
+      return dbCount - temporaryCounts.getOrDefault(key, 0);
+    }
+
+    public void acquire(UUID zoneId) {
+      acquire(zoneId, ServerType.TSERVER);
+    }
+
+    public void acquire(UUID zoneId, ServerType serverType) {
+      if (!isOnprem()) {
+        return;
+      }
+      int available = getAvailableForZone(zoneId, serverType);
+      String instanceType = userIntent.getInstanceTypeForProcessType(serverType);
+      if (available <= 0) {
+        throw new IllegalStateException(
+            "No available instances of type " + instanceType + " in zone " + zoneId);
+      }
+      addToTemporaryCounts(instanceType, zoneId, 1);
+    }
+
+    private void addToTemporaryCounts(String instanceType, UUID zoneId, int delta) {
+      temporaryCounts.merge(new Pair(instanceType, zoneId), delta, Integer::sum);
+    }
+
+    private boolean isOnprem() {
+      return userIntent.providerType == CloudType.onprem;
+    }
+  }
+
+  /**
    * Select masters according to given replication factor, regions and zones.<br>
    * Step 1. Each region should have at least one master (replicationFactor >= number of regions).
    * Placing one master into the biggest zone of each region.<br>
@@ -2081,10 +2124,18 @@ public class PlacementInfoUtil {
     final int replicationFactor = userIntent.replicationFactor;
     final boolean dedicatedNodes = userIntent.dedicatedNodes;
     LOG.info(
-        "selectMasters for nodes {}, rf={}, drc={}", nodes, replicationFactor, defaultRegionCode);
+        "selectMasters for nodes {}, rf={}, drc={} ded={}",
+        nodes,
+        replicationFactor,
+        defaultRegionCode,
+        dedicatedNodes);
 
+    Map<RegionWithAz, Integer> tserversByZone = new HashMap<>();
+    Map<RegionWithAz, Integer> mastersByZone = new HashMap<>();
     // Mapping nodes to pairs <region, zone>.
     Map<RegionWithAz, List<NodeDetails>> zoneToNodes = new HashMap<>();
+    Map<RegionWithAz, Integer> availableForMastersNodes = new HashMap<>();
+    AvailableNodeTracker availableNodeTracker = new AvailableNodeTracker(userIntent, nodes);
     AtomicInteger numCandidates = new AtomicInteger(0);
     nodes
         .stream()
@@ -2093,12 +2144,43 @@ public class PlacementInfoUtil {
             node -> {
               RegionWithAz zone = new RegionWithAz(node.cloudInfo.region, node.cloudInfo.az);
               zoneToNodes.computeIfAbsent(zone, z -> new ArrayList<>()).add(node);
+              if (node.isTserver) {
+                tserversByZone.merge(zone, 1, Integer::sum);
+              }
+              if (node.isMaster && node.masterState != NodeDetails.MasterState.ToStop) {
+                mastersByZone.merge(zone, 1, Integer::sum);
+              }
               if ((defaultRegionCode == null) || node.cloudInfo.region.equals(defaultRegionCode)) {
-                numCandidates.incrementAndGet();
+                if (dedicatedNodes && userIntent.providerType == CloudType.onprem) {
+                  // First time meeting this zone.
+                  if (!availableForMastersNodes.containsKey(zone)) {
+                    // No need more than rf.
+                    int available =
+                        Math.min(
+                            replicationFactor,
+                            availableNodeTracker.getAvailableForZone(
+                                node.azUuid, ServerType.MASTER));
+                    availableForMastersNodes.put(zone, available);
+                    numCandidates.addAndGet(available);
+                  }
+                  // We should treat current master nodes as available for master.
+                  // Otherwise these masters could be stopped and moved to another zone.
+                  if (node.isMaster) {
+                    availableForMastersNodes.merge(zone, 1, Integer::sum);
+                    numCandidates.incrementAndGet();
+                  }
+                } else if (node.isTserver) {
+                  availableForMastersNodes.merge(zone, 1, Integer::sum);
+                  numCandidates.incrementAndGet();
+                }
               }
             });
+    new ArrayList<>(availableForMastersNodes.entrySet())
+        .stream()
+        .filter(e -> e.getValue() == 0)
+        .forEach(e -> availableForMastersNodes.remove(e.getKey()));
 
-    if (!dedicatedNodes && replicationFactor > numCandidates.get()) {
+    if (replicationFactor > numCandidates.get()) {
       if (defaultRegionCode == null) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -2115,6 +2197,23 @@ public class PlacementInfoUtil {
       }
     }
 
+    if (dedicatedNodes
+        && zoneToNodes.keySet().size() <= replicationFactor
+        && defaultRegionCode == null) { // Non geo-partitioning
+      int minZonesToSpread = Math.min(replicationFactor, zoneToNodes.keySet().size());
+      if (availableForMastersNodes.keySet().size() < minZonesToSpread) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Could not create %d masters in %d zones, only %d zones with masters"
+                    + " available. Nodes info: %s",
+                replicationFactor,
+                minZonesToSpread,
+                availableForMastersNodes.keySet().size(),
+                nodes));
+      }
+    }
+
     // All pairs region-az.
     List<RegionWithAz> zones = new ArrayList<>(zoneToNodes.keySet());
     // Sorting zones - larger zones are going at first. If two zones have the
@@ -2123,14 +2222,8 @@ public class PlacementInfoUtil {
     // which already has the master. If masters counts are the same, then simply
     // sorting zones by name.
     zones.sort(
-        Comparator.comparing((RegionWithAz z) -> zoneToNodes.get(z).size())
-            .thenComparing(
-                (RegionWithAz z) ->
-                    zoneToNodes
-                        .get(z)
-                        .stream()
-                        .filter(n -> n.isMaster && n.masterState != NodeDetails.MasterState.ToStop)
-                        .count())
+        Comparator.comparing((RegionWithAz z) -> tserversByZone.getOrDefault(z, 0))
+            .thenComparing((RegionWithAz z) -> mastersByZone.getOrDefault(z, 0))
             .reversed()
             .thenComparing(RegionWithAz::getZone));
 
@@ -2139,17 +2232,9 @@ public class PlacementInfoUtil {
             replicationFactor,
             zones
                 .stream()
-                .filter(
-                    rz -> (defaultRegionCode == null) || rz.getRegion().equals(defaultRegionCode))
+                .filter(availableForMastersNodes::containsKey)
                 .collect(Collectors.toList()),
-            zoneToNodes
-                .entrySet()
-                .stream()
-                .filter(
-                    entry ->
-                        (defaultRegionCode == null)
-                            || entry.getKey().getRegion().equals(defaultRegionCode))
-                .collect(Collectors.toMap(Entry::getKey, Entry::getValue)),
+            availableForMastersNodes,
             numCandidates.get());
 
     SelectMastersResult result = new SelectMastersResult();
@@ -2192,14 +2277,14 @@ public class PlacementInfoUtil {
    *
    * @param mastersToAllocate How many masters to allocate;
    * @param zones List of <region, zones> pairs sorted by nodes count;
-   * @param zoneToNodes Map of <region, zones> pairs to a list of nodes in the zone;
+   * @param availableNodes Map of counts of available nodes (to start master) per zone;
    * @param numCandidates Overall count of nodes across all the zones.
    * @return Map of AZs and how many masters to allocate per each zone.
    */
   private static Map<RegionWithAz, Integer> getIdealMasterAlloc(
       int mastersToAllocate,
       List<RegionWithAz> zones,
-      Map<RegionWithAz, List<NodeDetails>> zoneToNodes,
+      Map<RegionWithAz, Integer> availableNodes,
       int numCandidates) {
 
     // Map with allocations per region+az.
@@ -2239,7 +2324,7 @@ public class PlacementInfoUtil {
       double mastersPerNode = (double) mastersLeft / (numCandidates - mastersAssigned);
       for (RegionWithAz zone : zones) {
         if (mastersLeft == 0) break;
-        int freeNodesInAZ = zoneToNodes.get(zone).size() - allocatedMastersRgAz.get(zone);
+        int freeNodesInAZ = availableNodes.get(zone) - allocatedMastersRgAz.get(zone);
         if (freeNodesInAZ > 0) {
           int toAllocate = (int) Math.round(freeNodesInAZ * mastersPerNode);
           mastersLeft -= toAllocate;
@@ -2250,7 +2335,7 @@ public class PlacementInfoUtil {
       // One master could left because of the rounding error.
       if (mastersLeft != 0) {
         for (RegionWithAz zone : zones) {
-          if (zoneToNodes.get(zone).size() > allocatedMastersRgAz.get(zone)) {
+          if (availableNodes.get(zone) > allocatedMastersRgAz.get(zone)) {
             allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
             break;
           }
@@ -2322,8 +2407,9 @@ public class PlacementInfoUtil {
     if (allocatedMasters + selection.addedMasters.size() != replicationFactor) {
       throw new RuntimeException(
           String.format(
-              "Wrong masters allocation detected. Expected masters %d, found %d. Nodes are %s",
-              replicationFactor, allocatedMasters, nodes));
+              "Wrong masters allocation detected. Expected masters %d, found %d + added %d."
+                  + " Nodes are %s",
+              replicationFactor, allocatedMasters, selection.addedMasters.size(), nodes));
     }
   }
 

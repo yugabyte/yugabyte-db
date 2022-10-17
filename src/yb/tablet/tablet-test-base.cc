@@ -13,6 +13,9 @@
 
 #include "yb/tablet/tablet-test-base.h"
 
+using std::string;
+using std::vector;
+
 namespace yb {
 namespace tablet {
 

@@ -31,6 +31,8 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tostring.h"
 
+using std::vector;
+
 namespace rocksdb {
 
 class ThreadLocalTest : public RocksDBTest {

@@ -43,8 +43,11 @@ interface Form_Values {
 const initialValues: Form_Values = {
   api_type: { value: BACKUP_API_TYPES.YSQL, label: TABLE_TYPE_MAP[BACKUP_API_TYPES.YSQL] },
   database: null,
-  retention_interval: 1
+  retention_interval: 7
 };
+
+const TOAST_AUTO_CLOSE_INTERVAL = 3000; //ms
+const REFETCH_CONFIGS_INTERVAL = 5000; //ms
 
 export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalProps> = ({
   universeUUID,
@@ -61,29 +64,40 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
     }
   );
 
-  const createPITR = useMutation((values: any) => createPITRConfig(universeUUID, values), {
-    onSuccess: (_, variables) => {
-      toast.success(`Point-in-time recovery enabled successfully for ${variables.keyspaceName}`);
-      queryClient.invalidateQueries(['scheduled_sanpshots']);
-      onHide();
-    },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'An Error occurred');
-      onHide();
+  const createPITR = useMutation(
+    (values: any) =>
+      createPITRConfig(universeUUID, values.tableType, values.keyspaceName, values.payload),
+    {
+      onSuccess: (_, variables) => {
+        toast.success(`Point-in-time recovery enabled successfully for ${variables.keyspaceName}`, {
+          autoClose: TOAST_AUTO_CLOSE_INTERVAL
+        });
+        //refetch after 5 secs
+        setTimeout(() => {
+          queryClient.invalidateQueries(['scheduled_sanpshots']);
+        }, REFETCH_CONFIGS_INTERVAL);
+        onHide();
+      },
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.error ?? 'An Error occurred', {
+          autoClose: TOAST_AUTO_CLOSE_INTERVAL
+        });
+        onHide();
+      }
     }
-  });
+  );
 
   const handleSubmit = async (
     values: any,
     { setSubmitting }: { setSubmitting: any; setFieldError: any }
   ) => {
     setSubmitting(false);
+    const tableType = values.api_type.label;
+    const keyspaceName = values.database.value;
     const payload = {
-      tableType: values.api_type.value,
-      keyspaceName: values.database.value,
       retentionPeriodInSeconds: Number(values.retention_interval) * 24 * 60 * 60
     };
-    createPITR.mutateAsync(payload);
+    createPITR.mutateAsync({ tableType, keyspaceName, payload });
   };
 
   const validationSchema = Yup.object().shape({
@@ -166,7 +180,7 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
                         onChange: (val: number) => setFieldValue('retention_interval', val),
                         value: values['retention_interval']
                       }}
-                      minVal={1}
+                      minVal={2}
                     />
                   </Col>
                   <Col lg={3}>Day(s)</Col>

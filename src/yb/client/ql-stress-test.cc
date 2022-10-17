@@ -66,6 +66,8 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using std::string;
+
 DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);

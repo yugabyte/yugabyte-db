@@ -31,6 +31,8 @@
 
 #include "yb/util/random_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 class DBTestDynamicLevel : public DBTestBase {
  public:

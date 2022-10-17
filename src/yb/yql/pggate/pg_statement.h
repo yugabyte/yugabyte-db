@@ -95,7 +95,7 @@ class PgStatement : public PgMemctx::Registrable {
 
   // Execution status.
   Status status_;
-  string errmsg_;
+  std::string errmsg_;
 
   std::shared_ptr<Arena> arena_;
 };

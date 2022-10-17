@@ -104,6 +104,10 @@ using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBTableName;
 using std::shared_ptr;
+using std::string;
+using std::vector;
+using std::pair;
+using std::set;
 using yb::itest::TServerDetails;
 using yb::itest::MustBeCommitted;
 

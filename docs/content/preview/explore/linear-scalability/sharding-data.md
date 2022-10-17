@@ -348,7 +348,7 @@ Here, the key has been written to one of the tablets. In this example, the table
     ```sh
     $ ./bin/yugabyted start \
                       --base_dir=/tmp/ybd5 \
-                      --listen=127.0.0.5 \
+                      --listen=127.0.0.6 \
                       --join=127.0.0.1 \
                       --tserver_flags "memstore_size_mb=1"
     ```
