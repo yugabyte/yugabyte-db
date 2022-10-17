@@ -109,6 +109,7 @@ namespace yb {
 
 using std::endl;
 using std::map;
+using std::vector;
 using std::shared_ptr;
 using std::stringstream;
 using std::string;
@@ -149,43 +150,64 @@ uint64_t GetInVoluntaryContextSwitches() {
 
 class ThreadCategoryTracker {
  public:
-  ThreadCategoryTracker(const string& name, const scoped_refptr<MetricEntity> &metrics) :
-      name_(name), metrics_(metrics) {}
+  explicit ThreadCategoryTracker(const string& name) : name_(std::move(name)) {}
 
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
-
-  scoped_refptr<AtomicGauge<uint64>> FindOrCreateGauge(const string& category);
+  void RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity);
+  void RegisterGaugeForAllMetricEntities(const string& category);
 
  private:
+  uint64 GetCategory(const string& category);
   string name_;
-  scoped_refptr<MetricEntity> metrics_;
-  map<string, scoped_refptr<AtomicGauge<uint64>>> gauges_;
+  Mutex lock_;
+  map<string, std::unique_ptr<GaugePrototype<uint64>>> gauge_protos_;
+  map<string, uint64_t> metrics_;
+  vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
 
+uint64 ThreadCategoryTracker::GetCategory(const string& category) {
+  MutexLock l(lock_);
+  return metrics_[category];
+}
+
+void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
+  MutexLock l(lock_);
+  for (const auto& [category, gauge_proto] : gauge_protos_) {
+    gauge_proto->InstantiateFunctionGauge(metric_entity,
+      Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+  }
+  metric_entities_.push_back(metric_entity);
+}
+
 void ThreadCategoryTracker::IncrementCategory(const string& category) {
-  auto gauge = FindOrCreateGauge(category);
-  gauge->Increment();
+  MutexLock l(lock_);
+  RegisterGaugeForAllMetricEntities(category);
+  metrics_[category]++;
 }
 
 void ThreadCategoryTracker::DecrementCategory(const string& category) {
-  auto gauge = FindOrCreateGauge(category);
-  gauge->Decrement();
+  MutexLock l(lock_);
+  RegisterGaugeForAllMetricEntities(category);
+  metrics_[category]--;
 }
 
-scoped_refptr<AtomicGauge<uint64>> ThreadCategoryTracker::FindOrCreateGauge(
-    const string& category) {
-  if (gauges_.find(category) == gauges_.end()) {
+void ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
+  if (gauge_protos_.find(category) == gauge_protos_.end()) {
     string id = name_ + "_" + category;
     EscapeMetricNameForPrometheus(&id);
     const string description = id + " metric in ThreadCategoryTracker";
-    std::unique_ptr<GaugePrototype<uint64>> gauge = std::make_unique<OwningGaugePrototype<uint64>>(
-        "server", id, description, yb::MetricUnit::kThreads, description,
-        yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-    gauges_[category] =
-        metrics_->FindOrCreateGauge(std::move(gauge), static_cast<uint64>(0) /* initial_value */);
+    std::unique_ptr<GaugePrototype<uint64>> gauge_proto =
+      std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
+      yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
+
+    for (auto& metric_entity : metric_entities_) {
+      gauge_proto->InstantiateFunctionGauge(metric_entity,
+        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    }
+    gauge_protos_[category] = std::move(gauge_proto);
+    metrics_[category] = static_cast<uint64>(0);
   }
-  return gauges_[category];
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
@@ -199,6 +221,8 @@ class ThreadMgr {
     cds::Initialize();
     cds::gc::dhp::GarbageCollector::construct();
     cds::threading::Manager::attachThread();
+    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started");
+    running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 
   ~ThreadMgr() {
@@ -295,8 +319,8 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
                                        WebCallbackRegistry* web) {
   MutexLock l(lock_);
   metrics_enabled_ = true;
-  started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", metrics);
-  running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running", metrics);
+  started_category_tracker_->RegisterMetricEntity(metrics);
+  running_category_tracker_->RegisterMetricEntity(metrics);
 
   // Use function gauges here so that we can register a unique copy of these metrics in
   // multiple tservers, even though the ThreadMgr is itself a singleton.
