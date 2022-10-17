@@ -1116,13 +1116,11 @@ Status GetChangesForCDCSDK(
             const TableId& table_id = tablet_peer->tablet()->metadata()->table_id();
 
             if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, msg, client))) {
-              SetCheckpoint(
-                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-              checkpoint_updated = true;
+              // We could verify the tablet split succeeded. This is possible when the child tablets
+              // of a split are not running yet.
               LOG(INFO) << "Found SPLIT_OP record with index: " << msg->id()
                         << ", but did not find any children tablets for the tablet: " << tablet_id
-                        << ". This is possible when we have just started calling 'GetChanges' on a "
-                           "child tablet.";
+                        << ". This is possible when the child tablets are not up and running yet.";
             } else {
               if (checkpoint_updated) {
                 // If we have records which are yet to be streamed which we discovered in the same
