@@ -131,6 +131,9 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_index_permissions(index_permissions_);
   pb->set_backfill_error_message(backfill_error_message_);
   pb->set_use_mangled_column_name(use_mangled_column_name_);
+  if (where_predicate_spec_) {
+    pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
+  }
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
