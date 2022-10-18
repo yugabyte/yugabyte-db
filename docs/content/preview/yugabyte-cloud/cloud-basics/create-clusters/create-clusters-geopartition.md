@@ -16,7 +16,19 @@ Use [partition-by-region](../../create-clusters-topology/#partition-by-region) c
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
 
-You place data in regions of the cluster using tablespaces. Tables that don't belong to any tablespace are stored in the primary region. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+## Tablespaces
+
+You place data in regions of the cluster using tablespaces. Tables that don't belong to any tablespace are stored in the primary region.
+
+YugabyteDB Managed automatically creates tablespaces in the regions of your cluster named `region_name_ts`. For example, if you add the us-central1 region, the tablespace is named `us_central1_ts`.
+
+To view your cluster tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
+```
+
+For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Features
 
