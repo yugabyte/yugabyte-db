@@ -353,7 +353,7 @@ bool TableInfo::has_pgschema_name() const {
   return LockForRead()->schema().has_pgschema_name();
 }
 
-const string& TableInfo::pgschema_name() const {
+const string TableInfo::pgschema_name() const {
   return LockForRead()->schema().pgschema_name();
 }
 
@@ -1009,7 +1009,7 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 
 NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
 
-const NamespaceName& NamespaceInfo::name() const {
+const NamespaceName NamespaceInfo::name() const {
   return LockForRead()->pb.name();
 }
 
@@ -1035,11 +1035,11 @@ string NamespaceInfo::ToString() const {
 
 UDTypeInfo::UDTypeInfo(UDTypeId udtype_id) : udtype_id_(std::move(udtype_id)) { }
 
-const UDTypeName& UDTypeInfo::name() const {
+const UDTypeName UDTypeInfo::name() const {
   return LockForRead()->pb.name();
 }
 
-const NamespaceName& UDTypeInfo::namespace_id() const {
+const NamespaceId UDTypeInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
@@ -1047,7 +1047,7 @@ int UDTypeInfo::field_names_size() const {
   return LockForRead()->pb.field_names_size();
 }
 
-const string& UDTypeInfo::field_names(int index) const {
+const string UDTypeInfo::field_names(int index) const {
   return LockForRead()->pb.field_names(index);
 }
 
@@ -1055,7 +1055,7 @@ int UDTypeInfo::field_types_size() const {
   return LockForRead()->pb.field_types_size();
 }
 
-const QLTypePB& UDTypeInfo::field_types(int index) const {
+const QLTypePB UDTypeInfo::field_types(int index) const {
   return LockForRead()->pb.field_types(index);
 }
 

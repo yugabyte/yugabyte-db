@@ -550,9 +550,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
   // Wait until the rows are all replicated on the consumer.
   ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
-  // Split the tablet on the producer. Note that parent tablet will only be HIDDEN and not deleted.
-  ASSERT_OK(SplitTabletAndValidate(
-      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+  // Split the tablet on the producer.
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
 
   // Write another set of rows, and make sure the consumer picks up on the changes.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));

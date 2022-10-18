@@ -98,47 +98,49 @@ TAG_FLAG(ysql_hba_conf, sensitive_info);
 // computed at runtime so that they show up as an undefined value instead of an incorrect value. If
 // 0 is a valid value for the parameter, then use an empty string. These are enforced by the
 // PgWrapperFlagsTest.VerifyGFlagDefaults test.
-#define DEFINE_pg_flag(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_, type)(ysql_##name, default_value, description); \
-  TAG_FLAG(ysql_##name, pg)
+#define DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
+  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg);
 
-DEFINE_pg_flag(string, timezone, "",
-               "Overrides the default ysql timezone for displaying and interpreting timestamps. If "
-               "no value is provided, Postgres will determine one based on the environment");
-TAG_FLAG(ysql_timezone, runtime);
-DEFINE_pg_flag(string, datestyle, "ISO, MDY",
-               "The ysql display format for date and time values");
-TAG_FLAG(ysql_datestyle, runtime);
-DEFINE_pg_flag(int32, max_connections, 0,
-               "Overrides the maximum number of concurrent ysql connections. If set to 0, "
-               "Postgres will dynamically determine a platform-specific value");
-DEFINE_pg_flag(string, default_transaction_isolation, "read committed",
-               "The ysql transaction isolation level");
-TAG_FLAG(ysql_default_transaction_isolation, runtime);
-DEFINE_pg_flag(string, log_statement, "none",
-               "Sets which types of ysql statements should be logged");
-TAG_FLAG(ysql_log_statement, runtime);
-DEFINE_pg_flag(string, log_min_messages, "warning",
-               "Sets the lowest ysql message level to log");
-TAG_FLAG(ysql_log_min_messages, runtime);
-DEFINE_pg_flag(int32, log_min_duration_statement, -1,
-               "Sets the duration of each completed ysql statement to be logged if the statement"
-               " ran for at least the specified number of milliseconds. Zero prints all queries. "
-               "-1 turns this feature off.");
-TAG_FLAG(ysql_log_min_duration_statement, runtime);
-DEFINE_pg_flag(bool, yb_enable_expression_pushdown, false,
-               "Push supported expressions from ysql down to DocDB for evaluation.");
-TAG_FLAG(ysql_yb_enable_expression_pushdown, runtime);
-DEFINE_pg_flag(int32, yb_index_state_flags_update_delay, 1000,
-               "Delay in milliseconds between stages of online index build. "
-               "Set high to give online transactions more time to complete.");
-TAG_FLAG(ysql_yb_index_state_flags_update_delay, runtime);
+#define DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
+  TAG_FLAG(BOOST_PP_CAT(ysql_, name), pg)
 
-DEFINE_pg_flag(
-    string, yb_xcluster_consistency_level, "database",
+DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
+    "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
+    "is provided, Postgres will determine one based on the environment");
+
+DEFINE_RUNTIME_PG_FLAG(string, datestyle,
+    "ISO, MDY", "The ysql display format for date and time values");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, max_connections, 0,
+    "Overrides the maximum number of concurrent ysql connections. If set to 0, Postgres will "
+    "dynamically determine a platform-specific value");
+
+DEFINE_RUNTIME_PG_FLAG(string, default_transaction_isolation,
+    "read committed", "The ysql transaction isolation level");
+
+DEFINE_RUNTIME_PG_FLAG(string, log_statement,
+    "none", "Sets which types of ysql statements should be logged");
+
+DEFINE_RUNTIME_PG_FLAG(string, log_min_messages,
+    "warning", "Sets the lowest ysql message level to log");
+
+DEFINE_RUNTIME_PG_FLAG(int32, log_min_duration_statement, -1,
+    "Sets the duration of each completed ysql statement to be logged if the statement ran for at "
+    "least the specified number of milliseconds. Zero prints all queries. -1 turns this feature "
+    "off.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_expression_pushdown, false,
+    "Push supported expressions from ysql down to DocDB for evaluation.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
+    "Delay in milliseconds between stages of online index build. Set high to give online "
+    "transactions more time to complete.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
-TAG_FLAG(ysql_yb_xcluster_consistency_level, runtime);
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -150,9 +152,7 @@ static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::st
   return true;
 }
 
-static const bool FLAGS_ysql_yb_xcluster_consistency_level_dummy __attribute__((unused)) =
-    google::RegisterFlagValidator(
-        &FLAGS_ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+REGISTER_VALIDATOR(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
 
 using gflags::CommandLineFlagInfo;
 using std::string;

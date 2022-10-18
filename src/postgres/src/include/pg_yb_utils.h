@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/guc.h"
@@ -524,6 +525,8 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
+extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
+												uint64_t *wait_time);
 
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
@@ -673,5 +676,15 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
+/*
+ * Update read RPC statistics for EXPLAIN ANALYZE.
+ */
+void YbUpdateReadRpcStats(YBCPgStatement handle,
+						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads);
 
+/*
+ * If the tserver gflag --ysql_disable_server_file_access is set to
+ * true, then prevent any server file writes/reads/execution.
+ */
+extern void YBCheckServerAccessIsAllowed();
 #endif /* PG_YB_UTILS_H */

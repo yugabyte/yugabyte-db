@@ -480,6 +480,11 @@ void PgSession::DropBufferedOperations() {
   buffer_.Clear();
 }
 
+void PgSession::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  buffer_.GetAndResetRpcStats(count, wait_time);
+}
+
 PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }

@@ -45,10 +45,9 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_d
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-Status CheckHybridTimeSizeAndValueType(const Slice& key, size_t* ht_byte_size_dest) {
-  RETURN_NOT_OK(
-      DocHybridTime::CheckAndGetEncodedSize(key, ht_byte_size_dest));
-  const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;
+Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key) {
+  auto ht_byte_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(key));
+  const size_t hybrid_time_value_type_offset = key.size() - ht_byte_size - 1;
   const auto key_entry_type = DecodeKeyEntryType(key[hybrid_time_value_type_offset]);
   if (key_entry_type != KeyEntryType::kHybridTime) {
     return STATUS_FORMAT(
@@ -59,7 +58,7 @@ Status CheckHybridTimeSizeAndValueType(const Slice& key, size_t* ht_byte_size_de
         key.WithoutPrefix(hybrid_time_value_type_offset).ToDebugString());
   }
 
-  return Status::OK();
+  return ht_byte_size;
 }
 
 template <char END_OF_STRING>
