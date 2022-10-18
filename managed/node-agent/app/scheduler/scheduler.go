@@ -96,11 +96,9 @@ func (s *Scheduler) Schedule(
 				err := s.executeTask(ctx, taskID)
 				if err != nil {
 					util.FileLogger().Errorf("Exiting scheduled task %s", taskID)
-					return
 				}
 			}
 		}
-
 	}()
 	return taskID
 }

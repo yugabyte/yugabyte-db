@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -45,21 +46,24 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private Config mockAppConfig;
   @Mock private ConfigHelper mockConfigHelper;
   @Mock private PlatformScheduler mockPlatformScheduler;
+  @Mock private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
 
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
+    nodeAgentHandler =
+        new NodeAgentHandler(
+            mockAppConfig, mockConfigHelper, mockPlatformScheduler, nodeAgentClient);
     nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
     // sign using the private key
-    PublicKey publicKey = nodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
-    PrivateKey privateKey = nodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
+    PublicKey publicKey = NodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
+    PrivateKey privateKey = NodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
 
     try {
       Signature sig = Signature.getInstance("SHA256withRSA");
