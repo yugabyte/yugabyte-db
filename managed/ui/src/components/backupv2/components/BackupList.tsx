@@ -645,13 +645,15 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         visible={showDeleteModal}
         onHide={() => setShowDeleteModal(false)}
       />
-      <BackupRestoreModal
-        backup_details={restoreDetails}
-        visible={showRestoreModal}
-        onHide={() => {
-          setShowRestoreModal(false);
-        }}
-      />
+      {restoreDetails && (
+        <BackupRestoreModal
+          backup_details={restoreDetails}
+          visible={showRestoreModal}
+          onHide={() => {
+            setShowRestoreModal(false);
+          }}
+        />
+      )}
       <BackupCancelModal
         visible={cancelBackupDetails !== null}
         onHide={() => setCancelBackupDetails(null)}
