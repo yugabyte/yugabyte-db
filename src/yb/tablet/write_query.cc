@@ -198,7 +198,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = operation->tablet()->metrics();
     if (metrics) {
       auto op_duration_usec = MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
+      metrics->ql_write_latency->Increment(op_duration_usec);
     }
   }
 
