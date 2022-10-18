@@ -17,10 +17,6 @@ type: docs
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-```sh
-bundle install
-```
-
 This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through ActiveRecord ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
@@ -32,11 +28,25 @@ The source for the above application can be found in the [repository](https://gi
 ## Build and run the application
 
 ```sh
-$ cd ./ruby/ror
+$ cd ./orm-examples/ruby/ror/
 ```
 
 ```sh
 $ ./bin/bundle install
+```
+
+Before executing the below command your YugabyteDB cluster should be running, for reference refer to [Quick Start](https://docs.yugabyte.com/preview/quick-start/)
+
+```sh
+$ bin/rails db:create
+```
+
+```sh
+$ rails db:migrate
+```
+
+```sh
+$ rails server
 ```
 
 ## Send requests to the application
@@ -96,8 +106,13 @@ Type "help" for help.
 yugabyte=#
 ```
 
+Use the same database that is mentioned in `config/database.yml`.
 ```plpgsql
-yugabyte=# SELECT count(*) FROM users;
+yugabyte=# \c database_name
+```
+
+```plpgsql
+database_name=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -108,7 +123,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM products;
+database_name=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -119,7 +134,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM orders;
+database_name=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -189,26 +204,14 @@ $ curl http://localhost:8080/orders
     {
       "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 25,
       "products": []
     },
     {
       "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 15,
       "products": []
     }
