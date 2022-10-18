@@ -791,7 +791,7 @@ Default: An empty string, which is equivalent to allowing all protocols except "
 
 You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
 
-You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tsl12 as follows:
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, set the flag to tls12 as follows:
 
 ```sh
 --ssl_protocols = tls12
