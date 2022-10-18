@@ -158,11 +158,11 @@ func TestHandlePostNodeInstance(t *testing.T) {
 
 func getTestPreflightCheckVal() map[string]model.PreflightCheckVal {
 	data := make(map[string]model.PreflightCheckVal)
-	data["port_available:1"] = model.PreflightCheckVal{Value: "false", Error: "none"}
-	data["port_available:2"] = model.PreflightCheckVal{Value: "true", Error: "none"}
-	data["port_available:3"] = model.PreflightCheckVal{Value: "none", Error: "test error"}
-	data["home_dir_space"] = model.PreflightCheckVal{Value: "100", Error: "none"}
-	data["mount_point:/opt"] = model.PreflightCheckVal{Value: "true", Error: "none"}
-	data["mount_point:/tmp"] = model.PreflightCheckVal{Value: "true", Error: "none"}
+	data["port_available:1"] = model.PreflightCheckVal{Value: "false"}
+	data["port_available:2"] = model.PreflightCheckVal{Value: "true"}
+	data["port_available:3"] = model.PreflightCheckVal{Value: "none"}
+	data["home_dir_space"] = model.PreflightCheckVal{Value: "100"}
+	data["mount_point:/opt"] = model.PreflightCheckVal{Value: "true"}
+	data["mount_point:/tmp"] = model.PreflightCheckVal{Value: "true"}
 	return data
 }
