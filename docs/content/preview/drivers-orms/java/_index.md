@@ -66,6 +66,15 @@ To develop Java driver applications for YugabyteDB, you need the following:
         </properties>
         ```
 
+       If you're using Java 11, it should be:
+
+       ```xml
+        <properties>
+          <maven.compiler.source>11</maven.compiler.source>
+          <maven.compiler.target>11</maven.compiler.target>
+        </properties>
+        ```
+
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).

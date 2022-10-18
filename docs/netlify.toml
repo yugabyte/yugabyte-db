@@ -405,6 +405,10 @@
    to = "/preview/drivers-orms/java/yugabyte-jdbc/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/java/ysql-jdbc/"
+   to = "/preview/drivers-orms/java/postgres-jdbc/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
    to = "/preview/drivers-orms/ruby/activerecord/"
 
