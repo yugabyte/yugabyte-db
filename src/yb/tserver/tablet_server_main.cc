@@ -66,6 +66,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
