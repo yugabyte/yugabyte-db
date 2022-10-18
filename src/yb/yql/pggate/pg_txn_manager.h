@@ -127,8 +127,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   HybridTime in_txn_limit_;
 
-  std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
-
   PgCallbacks pg_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
