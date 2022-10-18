@@ -105,21 +105,32 @@ std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng) {
 }
 
 namespace {
+
 thread_local std::unique_ptr<std::mt19937_64> thread_local_random_ptr;
-}
+thread_local bool random_initializing = false;
+
+} // namespace
 
 std::mt19937_64& ThreadLocalRandom() {
   auto* result = thread_local_random_ptr.get();
   if (result) {
     return *result;
   }
+
+  random_initializing = true;
   thread_local_random_ptr.reset(result = new std::mt19937_64);
+  random_initializing = false;
+
   Seed(result);
   return *result;
 }
 
 bool RandomUniformBool(std::mt19937_64* rng) {
   return RandomUniformInt(0, 1, rng) != 0;
+}
+
+bool IsRandomInitializingInThisThread() {
+  return random_initializing;
 }
 
 } // namespace yb
