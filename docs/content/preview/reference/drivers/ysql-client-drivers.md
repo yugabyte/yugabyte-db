@@ -136,7 +136,7 @@ The YugabyteDB JDBC driver is a distributed JDBC driver for YSQL built on the Po
 
 For information on the YugabyteDB JDBC driver and its load balancing features, see [YugabyteDB JDBC Driver](../../../reference/drivers/java/yugabyte-jdbc-reference/).
 
-For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Build a Java application](../../../develop/build-apps/java/ysql-yb-jdbc/).
+For building a sample Java application with the YugabyteDB JDBC driver, see [Connect an application](../../../drivers-orms/java/yugabyte-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
