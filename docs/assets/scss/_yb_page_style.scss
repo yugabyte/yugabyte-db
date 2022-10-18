@@ -24,13 +24,12 @@ body.yb-page-style {
       width: 97%;
       display: flex;
       flex-flow: wrap;
-
     }
 
     .text-link {
       margin-top: auto;
       margin-bottom: 10px;
-      margin-right: 10px ;
+      margin-right: 10px;
       display: flex;
       align-items: center;
       font-weight: 600;
@@ -217,10 +216,11 @@ body.yb-page-style {
       border: 1px solid #cbdbff !important;
       border-radius: 8px;
 
-       .body,
-       .detail-copy{
+      .body,
+      .detail-copy {
         font-weight: 600;
-         line-height: 24px;
+        //line-height: 24px;
+        letter-spacing: -0.1px;
       }
     }
 
@@ -233,22 +233,6 @@ body.yb-page-style {
         object-fit: cover;
         height: 100%;
         object-position: center;
-      }
-    }
-  }
-
-  a {
-    .heading {
-      //color: #2b59c3;
-    }
-
-    > .box.border {
-      &:hover {
-        //background-color: var(--theme-color);
-
-        * {
-          //color: #fff !important;
-        }
       }
     }
   }
@@ -306,7 +290,7 @@ body.yb-page-style {
     margin-bottom: 5px;
   }
 
-  .detail-copy {
+  nav-tabs-yb .detail-copy {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;

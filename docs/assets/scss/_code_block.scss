@@ -47,12 +47,7 @@ main {
 
       > code {
         position: relative;
-        //z-index: -1;
       }
-    }
-
-    *:not(.tabs-name) > li:not(.nav-item) > a:hover > code {
-      //text-decoration: underline;
     }
 
     > pre,
@@ -182,13 +177,20 @@ main {
           content: "";
           display: inline-block;
           background: #f7fafc;
-          height: 24px;
+          height: 37px;
           position: absolute;
           right: 1px;
           width: 40px;
-          top: 11px;
+          top: 6px;
           z-index: 0;
           border-radius: 5px;
+        }
+
+        &:has(code > span:only-child) {
+          &::after {
+            top: 11px;
+            height: 24px;
+          }
         }
       }
     }
