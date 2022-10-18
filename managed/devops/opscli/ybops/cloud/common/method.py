@@ -280,7 +280,9 @@ class AbstractInstancesMethod(AbstractMethod):
     # Find the open ssh port and update the dictionary.
     def update_open_ssh_port(self, args):
         ssh_port_updated = False
-        ssh_ports = [self.extra_vars["ssh_port"], args.custom_ssh_port]
+        ssh_ports = [self.extra_vars["ssh_port"]]
+        if int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
+            ssh_ports.append(int(args.custom_ssh_port))
         ssh_port = self.cloud.wait_for_ssh_ports(
             self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
         if self.extra_vars["ssh_port"] != ssh_port:
