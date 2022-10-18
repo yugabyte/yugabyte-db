@@ -249,7 +249,15 @@ class CDCServiceImpl : public CDCServiceIf {
                                  rpc::RpcContext* context,
                                  const std::shared_ptr<tablet::TabletPeer>& peer);
 
+  void UpdateTabletPeersWithMaxCheckpoint(
+      const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
+      std::unordered_set<TabletId>* failed_tablet_ids);
+
   void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
+
+  Status UpdateTabletPeerWithCheckpoint(
+      const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
+      bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
@@ -275,8 +283,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                         const client::YBSessionPtr& session);
 
   Status UpdatePeersCdcMinReplicatedIndex(
-      const TabletId& tablet_id,
-      const TabletCDCCheckpointInfo& cdc_checkpoint_min);
+      const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
+      bool ignore_failures = true);
 
   // Used as a callback function for parallelizing async cdc rpc calls.
   // Given a finished tasks counter, and the number of total rpc calls
@@ -318,7 +326,9 @@ class CDCServiceImpl : public CDCServiceIf {
       std::vector<std::pair<TabletId, OpId>>* result);
 
   // This method deletes entries from the cdc_state table that are contained in the set.
-  Status DeleteCDCStateTableMetadata(const TabletIdStreamIdSet& cdc_state_entries_to_delete);
+  Status DeleteCDCStateTableMetadata(
+      const TabletIdStreamIdSet& cdc_state_entries_to_delete,
+      const std::unordered_set<TabletId>& failed_tablet_ids);
 
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
@@ -344,6 +354,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const CreateCDCStreamRequestPB* req,
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
+
+  void FilterOutTabletsToBeDeletedByAllStreams(
+      TabletIdCDCCheckpointMap* tablet_checkpoint_map,
+      std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",

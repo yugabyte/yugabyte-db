@@ -1588,7 +1588,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 }
 
 Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
-    const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min) {
+    const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
+    bool ignore_failures) {
   std::vector<client::internal::RemoteTabletServer *> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
 
@@ -1611,8 +1612,7 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
     auto result = proxy->UpdateCdcReplicatedIndex(update_index_req, &update_index_resp, &rpc);
-    // If UpdateCdcReplicatedIndex failed for one of the tablet peers, don't stop to update
-    // the minimum checkpoint to other FOLLOWERs.
+
     if (!result.ok() || update_index_resp.has_error()) {
       std::stringstream msg;
       msg << "Failed to update cdc replicated index for tablet: " << tablet_id
@@ -1620,7 +1620,21 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
       if (update_index_resp.has_error()) {
         msg << ":" << StatusFromPB(update_index_resp.error().status());
       }
-      LOG(WARNING) << msg.str();
+
+      // If UpdateCdcReplicatedIndex failed for one of the tablet peers, don't stop to update
+      // the minimum checkpoint to other FOLLOWERs, if ignore_failures is set to 'true'.
+      if (ignore_failures) {
+        LOG(WARNING) << msg.str();
+      } else {
+        LOG(ERROR) << msg.str();
+
+        return result.ok() ? STATUS_FORMAT(
+                                 InternalError,
+                                 "Encountered error: $0 while executing RPC: "
+                                 "UpdateCdcReplicatedIndex on Tserver: $1",
+                                 update_index_resp.error(), server->ToString())
+                           : result;
+      }
     }
   }
   return Status::OK();
@@ -1860,6 +1874,19 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
     return UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_op_id);
   }
 
+  void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
+      TabletIdCDCCheckpointMap* tablet_checkpoint_map,
+      std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint) {
+    for (auto iter = tablet_checkpoint_map->begin(); iter != tablet_checkpoint_map->end();) {
+      if (iter->second.cdc_sdk_op_id == OpId::Max()) {
+        tablet_ids_with_max_checkpoint->insert(iter->first);
+        iter = tablet_checkpoint_map->erase(iter);
+      } else {
+        ++iter;
+      }
+    }
+  }
+
   Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
     TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
@@ -2006,66 +2033,96 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
     return tablet_min_checkpoint_map;
   }
 
+  void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
+      const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
+      std::unordered_set<TabletId>* failed_tablet_ids) {
+    auto enable_update_local_peer_min_index =
+        GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
+
+    TabletCDCCheckpointInfo tablet_info;
+    tablet_info.cdc_sdk_op_id = OpId::Max();
+    tablet_info.cdc_op_id = OpId::Max();
+    tablet_info.cdc_sdk_latest_active_time = 0;
+
+    for (const auto& tablet_id : tablet_ids_with_max_checkpoint) {
+      auto s = UpdateTabletPeerWithCheckpoint(
+          tablet_id, &tablet_info, enable_update_local_peer_min_index, false);
+
+      if (!s.ok()) {
+        failed_tablet_ids->insert(tablet_id);
+        VLOG(1) << "Could not successfully update checkpoint as 'OpId::Max' for tablet: "
+                << tablet_id << ", on all tablet peers";
+      }
+    }
+  }
+
   void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
       TabletIdCDCCheckpointMap* tablet_min_checkpoint_map) {
     auto enable_update_local_peer_min_index =
         GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
 
     for (auto& [tablet_id, tablet_info] : *tablet_min_checkpoint_map) {
-      std::shared_ptr<tablet::TabletPeer> tablet_peer;
-
-      Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
-      if (s.IsNotFound()) {
-        VLOG(2) << "Did not find tablet peer for tablet " << tablet_id;
-        continue;
-      } else if (!enable_update_local_peer_min_index && !IsTabletPeerLeader(tablet_peer)) {
-        VLOG(2) << "Tablet peer " << tablet_peer->permanent_uuid()
-                << " is not the leader for tablet " << tablet_id;
-        continue;
-      } else if (!s.ok()) {
-        LOG(WARNING) << "Error getting tablet_peer for tablet " << tablet_id << ": " << s;
-        continue;
-      }
-
-      auto min_index = tablet_info.cdc_op_id.index;
-      auto current_term = tablet_info.cdc_op_id.term;
-      s = tablet_peer->set_cdc_min_replicated_index(min_index);
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to set cdc min index for tablet peer "
-                     << tablet_peer->permanent_uuid() << " and tablet " << tablet_peer->tablet_id()
-                     << ": " << s;
-        continue;
-      }
-
-      auto result = tablet_peer->GetCDCSDKIntentRetainTime(tablet_info.cdc_sdk_latest_active_time);
-      if (!result.ok()) {
-        LOG(WARNING) << "Unable to get the intent retain time for tablet peer "
-                     << tablet_peer->permanent_uuid() << " and tablet " << tablet_peer->tablet_id()
-                     << ": " << s;
-        continue;
-      }
-      tablet_info.cdc_sdk_op_id_expiration = *result;
-
-      if (!enable_update_local_peer_min_index) {
-        VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index
-                << " term " << current_term
-                << " cdc_sdk_op_id: " << tablet_info.cdc_sdk_op_id.ToString()
-                << " expiration: " << tablet_info.cdc_sdk_op_id_expiration.ToMilliseconds();
-        WARN_NOT_OK(
-            UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_info),
-            "UpdatePeersCdcMinReplicatedIndex failed");
-      } else {
-        s = tablet_peer->SetCDCSDKRetainOpIdAndTime(
-            tablet_info.cdc_sdk_op_id, tablet_info.cdc_sdk_op_id_expiration);
-        if (!s.ok()) {
-          LOG(WARNING) << "Unable to set CDCSDK min checkpoint for tablet peer "
-                       << tablet_peer->permanent_uuid() << " and tablet "
-                       << tablet_peer->tablet_id() << ": " << s;
-        }
-      }
+      auto s = UpdateTabletPeerWithCheckpoint(
+          tablet_id, &tablet_info, enable_update_local_peer_min_index);
     }
   }
 
+  Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
+      const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
+      bool enable_update_local_peer_min_index, bool ignore_rpc_failures) {
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
+    if (s.IsNotFound()) {
+      VLOG(2) << "Did not find tablet peer for tablet " << tablet_id;
+      return STATUS_FORMAT(NotFound, "Tablet peer not found on current TServer");
+    } else if (!enable_update_local_peer_min_index && !IsTabletPeerLeader(tablet_peer)) {
+      VLOG(2) << "Tablet peer " << tablet_peer->permanent_uuid() << " is not the leader for tablet "
+            << tablet_id;
+      return STATUS_FORMAT(InternalError, "Current TServer does not host leader");
+    }
+    RETURN_NOT_OK(s);
+
+    auto min_index = tablet_info->cdc_op_id.index;
+    auto current_term = tablet_info->cdc_op_id.term;
+    s = tablet_peer->set_cdc_min_replicated_index(min_index);
+    WARN_NOT_OK(
+        tablet_peer->set_cdc_min_replicated_index(min_index),
+        "Unable to set cdc min index for tablet peer " + tablet_peer->permanent_uuid() +
+            " and tablet: " + tablet_peer->tablet_id());
+    RETURN_NOT_OK(s);
+
+    auto result = tablet_peer->GetCDCSDKIntentRetainTime(tablet_info->cdc_sdk_latest_active_time);
+    if (!result.ok()) {
+      LOG(WARNING) << "Unable to get the intent retain time for tablet peer "
+                 << tablet_peer->permanent_uuid() << " and tablet " << tablet_peer->tablet_id()
+                 << ": " << s;
+      return result.status();
+    }
+    tablet_info->cdc_sdk_op_id_expiration = *result;
+
+    if (!enable_update_local_peer_min_index) {
+      VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index
+              << " term " << current_term
+              << " cdc_sdk_op_id: " << tablet_info->cdc_sdk_op_id.ToString()
+              << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds();
+      s = UpdatePeersCdcMinReplicatedIndex(tablet_id, *tablet_info, ignore_rpc_failures);
+      WARN_NOT_OK(s, "UpdatePeersCdcMinReplicatedIndex failed");
+      if (!ignore_rpc_failures && !s.ok()) {
+        return s;
+      }
+    } else {
+      s = tablet_peer->SetCDCSDKRetainOpIdAndTime(
+          tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration);
+      if (!s.ok()) {
+        LOG(WARNING) << "Unable to set CDCSDK min checkpoint for tablet peer "
+                     << tablet_peer->permanent_uuid() << " and tablet " << tablet_peer->tablet_id()
+                     << ": " << s;
+        return s;
+      }
+    }
+
+    return Status::OK();
+  }
 
   Status CDCServiceImpl::GetTabletIdsToPoll(
       const CDCStreamId stream_id,
@@ -2244,9 +2301,8 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
       // If its not been 60s since the last peer update, continue.
       if (!FLAGS_enable_log_retention_by_op_idx ||
           (time_since_update_peers != MonoTime::kUninitialized &&
-           MonoTime::Now() - time_since_update_peers <
-               MonoDelta::FromSeconds(
-                   GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
+          MonoTime::Now() - time_since_update_peers <
+              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
         continue;
       }
       time_since_update_peers = MonoTime::Now();
@@ -2265,20 +2321,32 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
       TabletIdCDCCheckpointMap& tablet_checkpoint_map = *result;
       VLOG(3) << "List of tablets with checkpoint info read from cdc_state table: "
               << tablet_checkpoint_map.size();
+
+      // Collect and remove entries for the tablet_ids for which we will set the checkpoint as
+      // 'OpId::Max' from 'tablet_checkpoint_map', into 'tablet_ids_with_max_checkpoint'.
+      std::unordered_set<TabletId> tablet_ids_with_max_checkpoint;
+      FilterOutTabletsToBeDeletedByAllStreams(
+          &tablet_checkpoint_map, &tablet_ids_with_max_checkpoint);
+
       UpdateTabletPeersWithMinReplicatedIndex(&tablet_checkpoint_map);
+
       {
         YB_LOG_EVERY_N_SECS(INFO, 300)
             << "Done reading all the indices for all tablets and updating peers";
       }
-      Status s = DeleteCDCStateTableMetadata(cdc_state_entries_to_delete);
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to cleanup CDC State table metadata " << s;
-      }
+
+      std::unordered_set<TabletId> failed_tablet_ids;
+      UpdateTabletPeersWithMaxCheckpoint(tablet_ids_with_max_checkpoint, &failed_tablet_ids);
+
+      WARN_NOT_OK(
+          DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
+          "Unable to cleanup CDC State table metadata");
     } while (sleep_while_not_stopped());
   }
 
   Status CDCServiceImpl::DeleteCDCStateTableMetadata(
-      const TabletIdStreamIdSet& cdc_state_entries_to_delete) {
+      const TabletIdStreamIdSet& cdc_state_entries_to_delete,
+      const std::unordered_set<TabletId>& failed_tablet_ids) {
     std::shared_ptr<yb::client::TableHandle> cdc_state_table_result =
         VERIFY_RESULT(GetCdcStateTable());
     auto session = client()->NewSession();
@@ -2290,6 +2358,12 @@ Result<std::shared_ptr<client::TableHandle>> CDCServiceImpl::GetCdcStateTable() 
 
     // Iterating over set and deleting entries from the cdc_state table.
     for (const auto& [tablet_id, stream_id] : cdc_state_entries_to_delete) {
+      if (failed_tablet_ids.contains(tablet_id)) {
+        VLOG(2) << "We cannot delete the entry for the tablet: " << tablet_id
+                << ", from cdc_state table yet. Since we encounterted failures while "
+                   "propogating the checkpoint of OpId::Max to all the tablet peers";
+        continue;
+      }
       std::shared_ptr<tablet::TabletPeer> tablet_peer;
       Status s = tablet_manager_->GetTabletPeer(tablet_id, &tablet_peer);
       if (!s.ok()) {
