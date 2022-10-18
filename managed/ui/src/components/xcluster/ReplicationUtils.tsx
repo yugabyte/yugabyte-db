@@ -182,7 +182,7 @@ export const CurrentTableReplicationLag = ({
 
   const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
   const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-  const trace = metric.data.find((trace) => (trace.name = traceAlias));
+  const trace = metric.data.find((trace) => trace.name === traceAlias);
   const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
   const formattedLag = formatLagMetric(latestLag);
   const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
@@ -238,7 +238,6 @@ export const parseFloatIfDefined = (input: string | number | undefined) => {
   }
   return parseFloat(input);
 };
-
 
 export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
   return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
