@@ -61,11 +61,11 @@ public class XClusterConfigCreateFormData {
 
     @Required
     @ApiModelProperty(value = "Parameters used to do Backup/restore", required = true)
-    public BackupRequestParams backupRequestParams;
+    public BootstarpBackupParams backupRequestParams;
 
-    @ApiModel(description = "Backup request parameters for bootstrapping")
+    @ApiModel(description = "Backup parameters for bootstrapping")
     @ToString
-    public static class BackupRequestParams {
+    public static class BootstarpBackupParams {
       @Constraints.Required
       @ApiModelProperty(value = "Storage configuration UUID", required = true)
       public UUID storageConfigUUID;

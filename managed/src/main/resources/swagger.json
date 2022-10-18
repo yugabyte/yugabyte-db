@@ -1411,20 +1411,227 @@
       "type" : "object"
     },
     "BackupRequestParams" : {
-      "description" : "Backup request parameters for bootstrapping",
+      "description" : "Backup table parameters",
       "properties" : {
+        "alterLoadBalancer" : {
+          "description" : "Alter load balancer state",
+          "type" : "boolean"
+        },
+        "backupType" : {
+          "description" : "Backup type",
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
+        "baseBackupUUID" : {
+          "description" : "UUID of the parent backup",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
+        "cronExpression" : {
+          "description" : "Cron expression for a recurring backup",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "disableChecksum" : {
+          "description" : "Disable checksum",
+          "type" : "boolean"
+        },
+        "disableMultipart" : {
+          "description" : "Disable multipart upload",
+          "type" : "boolean"
+        },
+        "disableParallelism" : {
+          "description" : "Don't add -m flag during gsutil upload dir command",
+          "type" : "boolean"
+        },
+        "enableVerboseLogs" : {
+          "description" : "Is verbose logging enabled",
+          "type" : "boolean"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Expected universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "expiryTimeUnit" : {
+          "description" : "Time unit for backup expiry time",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "firstTry" : {
+          "description" : "Whether this task has been tried before",
+          "type" : "boolean"
+        },
+        "frequencyTimeUnit" : {
+          "description" : "Time unit for user input schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
+        "ignoreErrors" : {
+          "description" : "Should table backup errors be ignored",
+          "type" : "boolean"
+        },
+        "incrementalBackupFrequency" : {
+          "description" : "Frequency of incremental backups",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "incrementalBackupFrequencyTimeUnit" : {
+          "description" : "Time unit for user input incremental backup schedule frequency",
+          "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
+          "type" : "string"
+        },
+        "installYbc" : {
+          "type" : "boolean"
+        },
+        "keyspaceTableList" : {
+          "description" : "Backup info",
+          "items" : {
+            "$ref" : "#/definitions/KeyspaceTable"
+          },
+          "type" : "array"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
         "parallelism" : {
           "description" : "Number of concurrent commands to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
         },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID of a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "scheduleName" : {
+          "description" : "Schedule Name",
+          "type" : "string"
+        },
+        "scheduleUUID" : {
+          "description" : "Schedule UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "schedulingFrequency" : {
+          "description" : "Frequency to run the backup, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "sleepAfterMasterRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sleepAfterTServerRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sourceXClusterConfigs" : {
+          "description" : "The source universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "sse" : {
+          "description" : "Is SSE",
+          "type" : "boolean"
+        },
         "storageConfigUUID" : {
           "description" : "Storage configuration UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "targetXClusterConfigs" : {
+          "description" : "The target universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "timeBeforeDelete" : {
+          "description" : "Time before deleting the backup from storage, in milliseconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "universeUUID" : {
+          "description" : "Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcInstalled" : {
+          "type" : "boolean"
+        },
+        "ybcSoftwareVersion" : {
+          "type" : "string"
         }
       },
-      "required" : [ "storageConfigUUID" ],
+      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -1821,11 +2028,28 @@
       "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID" ],
       "type" : "object"
     },
+    "BootstarpBackupParams" : {
+      "description" : "Backup parameters for bootstrapping",
+      "properties" : {
+        "parallelism" : {
+          "description" : "Number of concurrent commands to run on nodes over SSH",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "storageConfigUUID" ],
+      "type" : "object"
+    },
     "BootstrapParams" : {
       "description" : "Bootstrap parameters",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BackupRequestParams",
+          "$ref" : "#/definitions/BootstarpBackupParams",
           "description" : "Parameters used to do Backup/restore"
         },
         "tables" : {
@@ -5982,6 +6206,17 @@
       "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
+    "RestartBootstrapParams" : {
+      "description" : "Bootstrap parameters for restarting",
+      "properties" : {
+        "backupRequestParams" : {
+          "$ref" : "#/definitions/BootstarpBackupParams",
+          "description" : "Parameters used to do Backup/restore"
+        }
+      },
+      "required" : [ "backupRequestParams" ],
+      "type" : "object"
+    },
     "RestartTaskParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -9788,7 +10023,7 @@
       "description" : "xcluster restart form",
       "properties" : {
         "bootstrapParams" : {
-          "$ref" : "#/definitions/BootstrapParams",
+          "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
         },
         "dryRun" : {
