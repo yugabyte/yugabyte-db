@@ -692,7 +692,6 @@ class NodeChecker():
             socket_fds = socket_fds_output.split()
             if ("Error" not in socket_fds_output) and len(socket_fds):
                 host = os.path.dirname(socket_fds[0])
-                port_args = ""
             else:
                 errors = ["Could not find local socket"]
                 return e.fill_and_return_entry(errors, True)
