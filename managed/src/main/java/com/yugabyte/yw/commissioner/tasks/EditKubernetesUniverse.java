@@ -286,8 +286,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (!tserversToRemove.isEmpty()) {
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
-    // If tservers have been added, we wait for the load to balance.
-    if (!tserversToAdd.isEmpty()) {
+
+    if (!tserversToAdd.isEmpty()
+        && runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      // If tservers have been added, we wait for the load to balance.
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 

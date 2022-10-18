@@ -15,6 +15,7 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using namespace std::literals;
+using std::string;
 
 namespace yb {
 namespace pgwrapper {
