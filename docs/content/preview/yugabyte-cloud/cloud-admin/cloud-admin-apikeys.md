@@ -56,11 +56,4 @@ The key is only displayed one time; it is not available in YugabyteDB Managed af
 
 ## Revoke an API key
 
-To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking  **Revoke API Key** in the **API Key Details** sheet.
-
-## Keys and user permissions
-
-API keys are linked to the user that created them:
-
-- Keys created by users who are deleted are automatically revoked.
-- If the role of a user who created a key is changed to a [Developer](../manage-access/#user-roles), the key will only have Developer access to API functions (that is, no APIs that require Admin-level access).
+To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking **Revoke API Key** in the **API Key Details** sheet.
