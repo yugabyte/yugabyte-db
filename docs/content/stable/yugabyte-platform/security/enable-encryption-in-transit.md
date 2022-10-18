@@ -70,7 +70,7 @@ You can also modify TLS settings for an existing universe, as follows:
 
       - To modify encryption in-transit settings, leave the **Encryption in Transit for this Universe** field enabled and make the necessary changes to other fields.<br>
 
-        If you are changing certificates, you need to be aware that this requires restart of the Master and T-Server processes and can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled). If you select the **Create new certificate** option when changing certificates, the corresponding certificates will be rotated, that is, replaced with new certificates.
+        If you are changing certificates, you need to be aware that this requires restart of the YB-Master and YB-TServer processes and can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled). If you select the **Create new certificate** option when changing certificates, the corresponding certificates will be rotated, that is, replaced with new certificates.
 
 ## Self-signed self-provided certificates
 
@@ -186,7 +186,7 @@ You rotate the existing custom certificates and replace them with new database n
 - Complete the **TLS Configuration** dialog shown in the following illustration:
   - Select the new certificate which you created in Step 3.
 
-  - Modifying certificates requires restart of Master and T-Server processes, which can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled).
+  - Modifying certificates requires restart of YB-Master and T-Server processes, which can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled).
 
   - Click **OK**.<br>
 
@@ -375,7 +375,7 @@ Using TLS, you can connect to the YSQL and YCQL endpoints.
 
 If you created your universe with the Client-to-Node TLS option enabled, then you must download client certificates to your client computer to establish connection to your database, as follows:
 
-- Navigate to the **Certificates** page and then to your universe’s certificate.
+- Navigate to the **Certificates** page and then to your universe's certificate.
 
 - Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.<br><br>
 
@@ -472,19 +472,19 @@ When configuring and using certificates, SSL issues may occasionally arise. You 
 
 As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 or later versions.
 
-You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for T-Server:
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for YB-TServer:
 
 ```shell
 ssl_protocols = tls12
 ```
 
-To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for T-Server, as follows:
+To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for YB-TServer, as follows:
 
 ```shell
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version ( `ssl_min_protocol_version` ) for PostgreSQL by setting the following T-Server gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer gflag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
