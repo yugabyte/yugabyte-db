@@ -50,31 +50,49 @@
   }
 }
 
-.validationErrorContainer {
+.validationContainer {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
 
-  margin-top: 20px;
-  padding: 12px;
+  .validation {
+    display: flex;
 
-  background-color: #fee6e0;
-  border: 1px solid colors.$YB_ERROR_ICON_COLOR;
-  border-radius: 4px;
+    margin-top: 20px;
+    padding: 12px;
 
-  i {
-    color: colors.$YB_ERROR_ICON_COLOR;
-  }
+    border-radius: 4px;
 
-  .errorMessage {
-    margin-left: 10px;
+    &.error {
+      background-color: colors.$YB_VALIDATION_ERROR_BACKGROUND;
+      border: 1px solid colors.$YB_VALIDATION_ERROR_BORDER;
 
-    h5 {
-      font-size: 13px;
-      font-weight: 700;
-      font-family: inherit;
+      i {
+        color: colors.$YB_ERROR_ICON_COLOR;
+      }
     }
 
-    p:last-child {
-      margin-bottom: 0;
+    &.warning {
+      background-color: colors.$YB_VALIDATION_WARNING_BACKGROUND;
+      border: 1px solid colors.$YB_VALIDATION_WARNING_BORDER;
+
+      i {
+        color: colors.$YB_WARNING_ICON_COLOR;
+      }
+    }
+
+    .message {
+      margin-left: 10px;
+
+      h5 {
+        font-size: 13px;
+        font-weight: 700;
+        font-family: inherit;
+      }
+
+      p:last-child {
+        margin-bottom: 0;
+      }
     }
   }
 }
