@@ -76,8 +76,6 @@ Once the active instance has been configured, you can configure one or more stan
 
 1. Enter the instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. 
 
-    An HTTPS connection requires a peer certificate which you can add using the **Peer Certificates** field. For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
-
 1. Paste the shared authentication key from the active instance into the **Shared Authentication Key** field.
 
 1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443, and then click **Continue** on the **Add Standby Instance** dialog.
