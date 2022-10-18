@@ -522,6 +522,11 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                         args.private_key_file, ssh2_enabled=args.ssh2_enabled):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
                                                self.extra_vars, host_info)
+        else:
+            raise YBOpsRuntimeError("Could not ssh into node {}:{} using username {}"
+                                    .format(self.extra_vars["ssh_host"],
+                                            self.extra_vars["ssh_port"],
+                                            self.extra_vars["ssh_user"]))
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
