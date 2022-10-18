@@ -727,7 +727,6 @@ class NodeChecker():
 
         if self.enable_ysql_auth:
             host = '__local_ysql_socket__'
-            port_args = ""
 
         ysqlsh_cmd = "{} {} -h {} {} -U yugabyte".format(
             'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
