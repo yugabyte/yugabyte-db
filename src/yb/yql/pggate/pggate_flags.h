@@ -37,6 +37,7 @@ DECLARE_bool(ysql_suppress_unsupported_error);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
+DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_int32(ysql_max_write_restart_attempts);
