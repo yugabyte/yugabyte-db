@@ -2028,11 +2028,28 @@
       "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID" ],
       "type" : "object"
     },
+    "BootstarpBackupParams" : {
+      "description" : "Backup parameters for bootstrapping",
+      "properties" : {
+        "parallelism" : {
+          "description" : "Number of concurrent commands to run on nodes over SSH",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage configuration UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "storageConfigUUID" ],
+      "type" : "object"
+    },
     "BootstrapParams" : {
       "description" : "Bootstrap parameters",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BackupRequestParams",
+          "$ref" : "#/definitions/BootstarpBackupParams",
           "description" : "Parameters used to do Backup/restore"
         },
         "tables" : {
@@ -6189,6 +6206,17 @@
       "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
+    "RestartBootstrapParams" : {
+      "description" : "Bootstrap parameters for restarting",
+      "properties" : {
+        "backupRequestParams" : {
+          "$ref" : "#/definitions/BootstarpBackupParams",
+          "description" : "Parameters used to do Backup/restore"
+        }
+      },
+      "required" : [ "backupRequestParams" ],
+      "type" : "object"
+    },
     "RestartTaskParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -9835,6 +9863,10 @@
           "$ref" : "#/definitions/BootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
         },
+        "dryRun" : {
+          "description" : "Run the pre-checks without actually running the subtasks",
+          "type" : "boolean"
+        },
         "name" : {
           "description" : "Name",
           "example" : "Repl-config1",
@@ -9869,6 +9901,10 @@
         "bootstrapParams" : {
           "$ref" : "#/definitions/BootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
+        },
+        "dryRun" : {
+          "description" : "Run the pre-checks without actually running the subtasks",
+          "type" : "boolean"
         },
         "name" : {
           "description" : "Name",
@@ -9987,8 +10023,12 @@
       "description" : "xcluster restart form",
       "properties" : {
         "bootstrapParams" : {
-          "$ref" : "#/definitions/BootstrapParams",
+          "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Parameters needed for the bootstrap flow including backup/restore"
+        },
+        "dryRun" : {
+          "description" : "Run the pre-checks without actually running the subtasks",
+          "type" : "boolean"
         },
         "tables" : {
           "description" : "Source Universe table IDs; if not specified, the whole config will restart",
@@ -10039,6 +10079,11 @@
           "description" : "Time of the last try to restore data to the target universe",
           "example" : "2022-04-26 15:37:32.610000",
           "format" : "date-time",
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "Status",
+          "enum" : [ "Validated", "Running", "Updating", "Warning", "Error", "Bootstrapping", "Failed" ],
           "type" : "string"
         },
         "streamId" : {
@@ -18071,6 +18116,12 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "isForceDelete",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
@@ -18131,6 +18182,12 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "isForceDelete",
+          "required" : false,
+          "type" : "boolean"
         }, {
           "description" : "XCluster Replication Restart Form Data",
           "in" : "body",

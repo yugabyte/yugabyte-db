@@ -2969,14 +2969,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createDeleteXClusterConfigSubtasks(
-      XClusterConfig xClusterConfig, boolean keepEntry) {
+      XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
     // Delete the replication CDC streams on the target universe.
-    createDeleteReplicationTask(xClusterConfig, true /* ignoreErrors */)
+    createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // Delete bootstrap IDs created by bootstrap universe subtask.
     // forceDelete is true to prevent errors until the user can choose if they want forceDelete.
-    createDeleteBootstrapIdsTask(xClusterConfig, true /* forceDelete */)
+    createDeleteBootstrapIdsTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // If target universe is destroyed, ignore creating this subtask.
@@ -2990,7 +2990,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 sourceRootCertDirPath,
-                xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+                forceDelete
+                    || xClusterConfig.status
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     }
@@ -3005,8 +3007,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
-    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */);
+  protected void createDeleteXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig, boolean forceDelete) {
+    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */, forceDelete);
   }
 
   /**

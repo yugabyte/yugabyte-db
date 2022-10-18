@@ -21,7 +21,7 @@ export const DeleteConfigModal = ({
   visible
 }: DeleteConfigModalProps) => {
   const deleteConfig = useMutation((xClusterConfigUUID: string) => {
-    return deleteXclusterConfig(xClusterConfigUUID).then(() => {
+    return deleteXclusterConfig(xClusterConfigUUID, true).then(() => {
       browserHistory.push(`/universes/${currentUniverseUUID}/replication`);
     });
   });

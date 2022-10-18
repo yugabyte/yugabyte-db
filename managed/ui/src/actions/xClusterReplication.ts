@@ -79,9 +79,10 @@ export function editXClusterTables(replication: XClusterConfig) {
   });
 }
 
-export function deleteXclusterConfig(uuid: string) {
+export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   const customerId = localStorage.getItem('customerId');
-  return axios.delete(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`);
+  return axios.delete(
+    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`);
 }
 
 export function queryLagMetricsForUniverse(

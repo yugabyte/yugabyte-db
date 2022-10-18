@@ -9,20 +9,31 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.common.Condition;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -36,8 +47,10 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
+import play.api.Play;
 
 @Slf4j
 @Entity
@@ -174,7 +187,14 @@ public class XClusterConfig extends Model {
   public CommonTypes.TableType setTableType(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
     if (!this.tableType.equals(TableType.UNKNOWN)) {
-      log.warn("tableType for {} is already set; skip setting it", this);
+      log.info("tableType for {} is already set; skip setting it", this);
+      return getTableTypeAsCommonType();
+    }
+    if (tableInfoList.isEmpty()) {
+      log.warn(
+          "tableType for {} is unknown and cannot be deducted from tableInfoList because "
+              + "it is empty",
+          this);
       return getTableTypeAsCommonType();
     }
     CommonTypes.TableType typeAsCommonType = tableInfoList.get(0).getTableType();
@@ -289,7 +309,8 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+  public void addTablesIfNotExist(
+      Set<String> tableIds, Set<String> tableIdsNeedBootstrap, boolean areIndexTables) {
     if (tableIds.isEmpty()) {
       return;
     }
@@ -307,6 +328,13 @@ public class XClusterConfig extends Model {
               .collect(Collectors.toSet());
     }
     addTables(nonExistingTableIds, nonExistingTableIdsNeedBootstrap);
+    if (areIndexTables) {
+      this.setIndexTableForTables(tableIds, true /* indexTable */);
+    }
+  }
+
+  public void addTablesIfNotExist(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
+    addTablesIfNotExist(tableIds, tableIdsNeedBootstrap, false /* areIndexTables */);
   }
 
   @Transactional
@@ -446,6 +474,28 @@ public class XClusterConfig extends Model {
     update();
   }
 
+  @Transactional
+  public void setStatusForTables(Collection<String> tableIds, XClusterTableConfig.Status status) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    this.tables
+        .stream()
+        .filter(tableConfig -> tableIds.contains(tableConfig.tableId))
+        .forEach(tableConfig -> tableConfig.status = status);
+    update();
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsInStatus(
+      Collection<String> tableIds, XClusterTableConfig.Status status) {
+    ensureTableIdsExist(new HashSet<>(tableIds));
+    return this.tables
+        .stream()
+        .filter(
+            tableConfig -> tableIds.contains(tableConfig.tableId) && tableConfig.status == status)
+        .map(tableConfig -> tableConfig.tableId)
+        .collect(Collectors.toSet());
+  }
+
   public String getReplicationGroupName() {
     return replicationGroupName;
   }
@@ -498,7 +548,6 @@ public class XClusterConfig extends Model {
     this.status = XClusterConfigStatusType.Initialized;
     this.paused = false;
     this.tables.forEach(tableConfig -> tableConfig.restoreTime = null);
-    this.tableType = TableType.UNKNOWN;
     this.update();
   }
 
@@ -541,6 +590,20 @@ public class XClusterConfig extends Model {
       xClusterConfig.setTables(createFormData.tables, createFormData.bootstrapParams.tables);
     } else {
       xClusterConfig.setTables(createFormData.tables);
+    }
+    return xClusterConfig;
+  }
+
+  @Transactional
+  public static XClusterConfig create(
+      XClusterConfigCreateFormData createFormData,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      Set<String> indexTableIdSet) {
+    XClusterConfig xClusterConfig = create(createFormData);
+    xClusterConfig.setTableType(requestedTableInfoList);
+    xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
+    if (createFormData.bootstrapParams != null) {
+      xClusterConfig.setNeedBootstrapForTables(indexTableIdSet, true /* needBootstrap */);
     }
     return xClusterConfig;
   }
