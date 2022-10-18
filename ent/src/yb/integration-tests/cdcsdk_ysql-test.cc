@@ -911,18 +911,25 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id = OpId::Min(), bool initial_checkpoint = true, const int tablet_idx = 0) {
-    RpcController set_checkpoint_rpc;
-    SetCDCCheckpointRequestPB set_checkpoint_req;
-    SetCDCCheckpointResponsePB set_checkpoint_resp;
-    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    set_checkpoint_rpc.set_deadline(deadline);
-    PrepareSetCheckpointRequest(
-        &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint);
-    Status st =
-        cdc_proxy_->SetCDCCheckpoint(set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+    int max_retries = 3;
+    Status st;
+    for (int retry = 0; retry < max_retries; ++retry) {
+      RpcController set_checkpoint_rpc;
+      SetCDCCheckpointRequestPB set_checkpoint_req;
+      SetCDCCheckpointResponsePB set_checkpoint_resp;
+      auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+      set_checkpoint_rpc.set_deadline(deadline);
+      PrepareSetCheckpointRequest(
+          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint);
+      st = cdc_proxy_->SetCDCCheckpoint(
+          set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
 
-    RETURN_NOT_OK(st);
-    return set_checkpoint_resp;
+      if (st.ok()) {
+        return set_checkpoint_resp;
+      }
+    }
+
+    return st;
   }
 
   Result<std::vector<OpId>> GetCDCCheckpoint(
