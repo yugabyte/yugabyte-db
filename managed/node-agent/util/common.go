@@ -169,7 +169,7 @@ func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instance_type s
 }
 
 // Returns the platform endpoint for posting the node instances.
-// and adding node instane to the platform.
+// and adding node instance to the platform.
 func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes", cuuid, azid)
 }
