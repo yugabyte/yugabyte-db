@@ -60,7 +60,7 @@ You can configure the active instance as follows:
 
 Your active instance is now configured.
 
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and using the **Peer Certificates** field, as per the following illustration:
+Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and clicking **Add a peer certificate**, as per the following illustration:
 
 ![High availability instance](/images/yp/high-availability/ha-configured.png)<br>
 
@@ -84,7 +84,7 @@ Once the active instance has been configured, you can configure one or more stan
 
 Your standby instances are now configured.
 
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and using the **Peer Certificates** field, as per the following illustration:
+Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and and clicking **Add a peer certificate**, as per the following illustration:
 
 ![High availability instance](/images/yp/high-availability/ha-configured-standby.png)<br>
 
