@@ -44,8 +44,6 @@ You can configure the active instance as follows:
 
 1. Enter the instance’s IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
-    An HTTPS connection requires a peer certificate which you can add using the **Peer Certificates** field. For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
-
 1. Click **Generate Key** and copy the shared key.
 
 1. Select your desired replication frequency, in minutes.
@@ -61,6 +59,12 @@ You can configure the active instance as follows:
 
 
 Your active instance is now configured.
+
+Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and using the **Peer Certificates** field, as per the following illustration:
+
+![High availability instance](/images/yp/high-availability/ha-configured.png)<br>
+
+For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 ## Configure standby instances
 
@@ -81,6 +85,12 @@ Once the active instance has been configured, you can configure one or more stan
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the high-availability cluster should now appear in the list of instances.
 
 Your standby instances are now configured.
+
+Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and using the **Peer Certificates** field, as per the following illustration:
+
+![High availability instance](/images/yp/high-availability/ha-configured-standby.png)<br>
+
+For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 ## Promote a standby instance to active
 
