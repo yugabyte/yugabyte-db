@@ -51,6 +51,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -98,6 +99,11 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
+DEFINE_int32(max_external_transaction_retry_delay_ms, 5000,
+             "The max amount of delay for sending a new apply external transaction "
+             "request.");
+TAG_FLAG(max_external_transaction_retry_delay_ms, runtime);
+
 DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
@@ -117,14 +123,21 @@ std::chrono::microseconds GetTransactionTimeout() {
 
 namespace {
 
+constexpr uint32_t kInitialExternalTransactionRetryDelayMs = 100;
+
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
-  const AbortedSubTransactionSetPB& aborted;
+  AbortedSubTransactionSetPB aborted;
   HybridTime commit_time;
   bool sealed;
   bool is_external;
-
+  // Only for external/xcluster transactions. How long to wait before retrying a failed apply
+  // transaction.
+  CoarseBackoffWaiter backoff_waiter = CoarseBackoffWaiter(
+    CoarseTimePoint::max(),
+    GetAtomicFlag(&FLAGS_max_external_transaction_retry_delay_ms) * 1ms,
+    kInitialExternalTransactionRetryDelayMs * 1ms);
   std::string ToString() const {
     return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3 is_external $4}",
                   tablet, transaction, commit_time, sealed, is_external);
@@ -476,7 +489,7 @@ class TransactionState {
                 .transaction = id_,
                 .aborted = aborted_,
                 .commit_time = commit_time_,
-                .sealed = status_ == TransactionStatus::SEALED ,
+                .sealed = status_ == TransactionStatus::SEALED,
                 .is_external = is_external_ });
           }
         }
@@ -1439,7 +1452,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     if (action.is_external) {
       req.set_is_external(true);
       state.set_external_commit_ht(action.commit_time.ToUint64());
-    } else {
     }
     *state.mutable_aborted() = action.aborted;
 
@@ -1460,10 +1472,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               return;
             }
             if (action.is_external && status.IsTryAgain()) {
+              auto new_action = action;
+              new_action.backoff_waiter.Wait();
               // We are trying to apply an external transaction on a tablet that is not caught up
               // to commit_ht, keep retrying until it succeeds.
               SendUpdateTransactionRequest(
-                  action, context_.clock().Now(), TransactionRpcDeadline());
+                  new_action, context_.clock().Now(), TransactionRpcDeadline());
               return;
             }
             LOG_WITH_PREFIX(WARNING)
