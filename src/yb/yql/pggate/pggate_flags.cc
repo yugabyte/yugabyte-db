@@ -94,6 +94,9 @@ DEFINE_bool(ysql_beta_feature_tablegroup, true,
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 
+DEFINE_bool(
+    ysql_colocate_database_by_default, false, "Enable colocation by default on each database.");
+
 DEFINE_bool(ysql_beta_feature_tablespace_alteration, false,
             "Whether to enable the incomplete 'tablespace_alteration' beta feature");
 
