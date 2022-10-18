@@ -13,12 +13,6 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-yb-jdbc/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YB - JDBC
-    </a>
-  </li>
-  <li >
     <a href="../ysql-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
