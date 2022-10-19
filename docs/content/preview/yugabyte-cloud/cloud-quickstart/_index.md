@@ -7,24 +7,13 @@ description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
 body_class: yb-page-style
-rightNav:
-  hideH4: true
+menu:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
+    weight: 2
+    params:
+      hideLink: true
 ---
-
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
@@ -38,32 +27,7 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
-<div class="row cloud-laptop">
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
-        </div>
-        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
-        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
-        </div>
-        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
-        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Following sections are duplicated in cloud-quickstart -->
+<!-- Following sections are duplicated in quick-start-yugabytdb-managed -->
 
 If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
 
@@ -159,4 +123,4 @@ Refer to [Before you begin](/preview/develop/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "managed-quick-start-include.md" >}}
+{{< readfile "../../quick-start-yugabytedb-managed/managed-quick-start-include.md" >}}
