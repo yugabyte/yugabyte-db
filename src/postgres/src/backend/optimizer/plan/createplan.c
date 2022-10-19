@@ -2770,6 +2770,19 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);
 
 			/*
+			 * If the expression does not contain any Vars it can be evaluated
+			 * by the Result node. Constant and constant-like expressions
+			 * go to the Result node's target list.
+			 */
+			List *vars = pull_vars_of_level((Node *) tle->expr, 0);
+			if (vars == NIL)
+				continue;
+			list_free(vars);
+
+			/*
+			 * Expression with vars needs current row to be evaluated, check
+			 * if it can be pushed down to the DocDB.
+			 *
 			 * We can not push down an expression for a column with not null
 			 * constraint, since constraint checks happen before DocDB request
 			 * is sent, and actual value is needed to evaluate the constraint.
@@ -2785,7 +2798,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * need to store the result itself with no collation-encoding.
 			 *
 			 * Naturally, expression can not be pushed down if there are
-			 * elements not supported by DocDB.
+			 * elements not supported by DocDB, or expression pushdown is
+			 * disabled.
 			 *
 			 * However, if not pushable expression does not refer any target
 			 * table column, the Result node can evaluate it, and the statement
@@ -2795,16 +2809,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{
-				/*
-				 * If the expression is not pushable, it is still may be added
-				 * to a Result node for evaluation if it contains no Vars.
-				 */
-				List *vars = pull_vars_of_level((Node *) tle->expr, 0);
-				if (vars == NIL)
-					continue;
-
-				/* Otherwise we have to keep the scan */
-				list_free(vars);
 				RelationClose(relation);
 				return false;
 			}
@@ -4676,7 +4680,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 	root->yb_curbatchedrelids = bms_union(root->yb_curbatchedrelids,
 										  batched_relids);
-	
+
 	bool is_batched = is_nestloop_batched(best_path);
 
 	inner_plan = create_plan_recurse(root, best_path->innerjoinpath, 0);
@@ -4724,7 +4728,7 @@ create_nestloop_plan(PlannerInfo *root,
 
 	Relids batched_outerrellids = bms_intersect(outerrelids,
 												batched_relids);
-	
+
 	Relids inner_relids = best_path->innerjoinpath->parent->relids;
 
 	/*
@@ -5283,7 +5287,7 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	{
 		YbBatchedExpr	*bexpr = (YbBatchedExpr *) node;
 		List *batched_elems = NIL;
-		/* 
+		/*
 		 * Populate batched_elems with each batched instance of
 		 * bexpr->orig_expr's contents.
 		 */

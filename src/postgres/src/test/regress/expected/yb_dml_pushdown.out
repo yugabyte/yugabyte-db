@@ -2390,7 +2390,7 @@ SELECT * FROM single_row_default_col ORDER BY k;
 -- Setting b to null should not be allowed.
 UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
 ERROR:  null value in column "b" violates not-null constraint
-DETAIL:  Failing row contains (3, null, null, 0).
+DETAIL:  Failing row contains (3, null, null, 5).
 SELECT * FROM single_row_default_col ORDER BY k;
  k | a | b  | c
 ---+---+----+---
@@ -2450,7 +2450,7 @@ SELECT * FROM single_row_default_col ORDER BY k;
 -- Setting b to null should not be allowed.
 UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
 ERROR:  null value in column "b" violates not-null constraint
-DETAIL:  Failing row contains (3, null, null, 0).
+DETAIL:  Failing row contains (3, null, null, 5).
 SELECT * FROM single_row_default_col ORDER BY k;
  k | a | b  | c
 ---+---+----+---
