@@ -128,8 +128,8 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
 
-- Memory use exceeds 75% on average for at least 10 minutes (Warning).
-- Memory use exceeds 90% on average for at least 10 minutes (Severe).
+- Memory use exceeds 75% for 10 minutes (Warning).
+- Memory use exceeds 90% for 10 minutes (Severe).
 
 If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
 
