@@ -636,10 +636,12 @@ export default class ClusterFields extends Component {
         }
         return acc;
       }, 0);
-      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
+      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit and editing on prem read replica
       if (
         this.props.type === 'Edit' ||
-        (nextProps.type === 'Async' && !this.state.isReadOnlyExists)
+        (nextProps.type === 'Async' &&
+          (!this.state.isReadOnlyExists ||
+            (this.state.isReadOnlyExists && currentProvider.code === 'onprem')))
       ) {
         const cluster = getClusterByType(
           currentUniverse.data.universeDetails.clusters,
@@ -669,13 +671,14 @@ export default class ClusterFields extends Component {
           type === 'Edit'
             ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
             : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        const isEdit = isDefinedNotNull(currentCluster);
         if (!currentCluster)
           //init primary cluster as current cluster (creation of first read replica) -
           currentCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
 
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
-        if (type === 'Async') this.providerChanged(currentProviderUuid);
+        if (type === 'Async' && !isEdit) this.providerChanged(currentProviderUuid);
       } else {
         const firstProviderUuid = cloud.providers.data[0]?.uuid;
         updateFormField(`${clusterType}.provider`, firstProviderUuid);
