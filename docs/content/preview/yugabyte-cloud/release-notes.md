@@ -10,6 +10,12 @@ type: docs
 
 ## Releases
 
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or number of YSQL connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
 ### September 28, 2022
 
 **Database**
@@ -194,6 +200,8 @@ This release includes the following features:
 
 ## Cloud provider regions
 
+### GCP
+
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
@@ -224,6 +232,8 @@ The following **GCP regions** are available:
 - Los Angeles (us-west2)
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
+
+### AWS
 
 The following **AWS regions** are available:
 
@@ -257,8 +267,8 @@ The following **AWS regions** are available:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 
-### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
+### Known issues in Cloud Shell
 
-- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
 - If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
