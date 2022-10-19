@@ -251,6 +251,8 @@ export default class AZSelectorTable extends Component {
             cluster.userIntent.numNodes = totalNodesInConfig;
           }
         });
+        if (currentProvider.code === 'onprem')
+          newTaskParams.currentClusterType = clusterType.toUpperCase();
       }
       if (isEmptyObject(currentUniverse.data)) {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
@@ -683,17 +685,17 @@ export default class AZSelectorTable extends Component {
             azList.length <
               (enableGeoPartitioning ? currentCluster.userIntent.numNodes : replicationFactor) &&
             azList.length < azListForSelectedRegions.length && (
-            <Row>
-              <Col xs={4}>
-                <YBButton
-                  btnText="Add Zone"
-                  btnIcon="fa fa-plus"
-                  btnClass={'btn btn-orange universe-form-add-az-btn'}
-                  onClick={addNewAZField}
-                />
-              </Col>
-            </Row>
-          )}
+              <Row>
+                <Col xs={4}>
+                  <YBButton
+                    btnText="Add Zone"
+                    btnIcon="fa fa-plus"
+                    btnClass={'btn btn-orange universe-form-add-az-btn'}
+                    onClick={addNewAZField}
+                  />
+                </Col>
+              </Row>
+            )}
         </div>
       );
     }

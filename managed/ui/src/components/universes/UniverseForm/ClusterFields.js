@@ -610,10 +610,12 @@ export default class ClusterFields extends Component {
         }
         return acc;
       }, 0);
-      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
+      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit and editing on prem read replica
       if (
         this.props.type === 'Edit' ||
-        (nextProps.type === 'Async' && !this.state.isReadOnlyExists)
+        (nextProps.type === 'Async' &&
+          (!this.state.isReadOnlyExists ||
+            (this.state.isReadOnlyExists && currentProvider.code === 'onprem')))
       ) {
         const cluster = getClusterByType(
           currentUniverse.data.universeDetails.clusters,
@@ -1745,13 +1747,13 @@ export default class ClusterFields extends Component {
                 />
               </span>
               {this.state.gcpInstanceWithEphemeralStorage &&
-               (featureFlags.test['pausedUniverse'] ||
-                featureFlags.released['pausedUniverse']) && (
+                (featureFlags.test['pausedUniverse'] ||
+                  featureFlags.released['pausedUniverse']) && (
                   <span className="gcp-ephemeral-storage-warning">
                     ! Selected instance type is with ephemeral storage, If you will pause this
                     universe your data will get lost.
                   </span>
-              )}
+                )}
             </>
           );
         } else if (isInAzu) {
