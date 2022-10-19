@@ -87,7 +87,7 @@ bool CheckSchemaVersion(
     return true;
   }
 
-  DVLOG(1) << " On " << table_info->table_name
+  VLOG(1) << " On " << table_info->table_name
            << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
            << table_info->schema_version << " vs req's : " << schema_version
            << " is req compatible with prev version: "
@@ -310,7 +310,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   RETURN_NOT_OK(InitExecute(ExecuteMode::kCql));
 
   auto& metadata = *tablet().metadata();
-  DVLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
+  VLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
 
   if (!CqlCheckSchemaVersion()) {
     return false;
@@ -694,12 +694,15 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
         ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
         ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
       // If this is an insert into a unique index and it fails to apply, report duplicate value err.
-      ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
+      // has_applied is only true if we have evaluated the requests if_expr and is only false if
+      // that if_expr ws not satisfied or if the remote index was unique and had a duplicate value
+      // to the one we're trying to insert here.
+      VLOG(1) << "Could not apply operation to remote index " << AsString(ql_write_op->request())
+               << " due to " << AsString(ql_write_op->response());
       ql_write_op->response()->set_error_message(
           Format("Duplicate value disallowed by unique index $0",
           tablet().metadata()->table_name()));
-      DVLOG(1) << "Could not apply the given operation " << AsString(ql_write_op->request())
-               << " due to " << AsString(ql_write_op->response());
+      ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
     } else if (ql_write_op->rowblock() != nullptr) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
@@ -821,7 +824,8 @@ void WriteQuery::UpdateQLIndexesFlushed(
     auto* index_response = index_op->mutable_response();
 
     if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
-      DVLOG(1) << "Got status " << index_response->status() << " for " << AsString(index_op);
+      VLOG(1) << "Got response " << index_response->ShortDebugString()
+              << " for " << AsString(index_op);
       response->set_status(index_response->status());
       response->set_error_message(std::move(*index_response->mutable_error_message()));
     }
