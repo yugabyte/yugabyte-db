@@ -577,10 +577,12 @@ export default class ClusterFields extends Component {
         }
         return acc;
       }, 0);
-      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
+      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit and editing on prem read replica
       if (
         this.props.type === 'Edit' ||
-        (nextProps.type === 'Async' && !this.state.isReadOnlyExists)
+        (nextProps.type === 'Async' &&
+          (!this.state.isReadOnlyExists ||
+            (this.state.isReadOnlyExists && currentProvider.code === 'onprem')))
       ) {
         const cluster = getClusterByType(
           currentUniverse.data.universeDetails.clusters,
