@@ -624,6 +624,12 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='pendt
 -- test for colocated table
 create database colocated_db with colocated = true;
 \c colocated_db;
+select pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 create table mycolocatedtable (c1 INT PRIMARY KEY, c2 TEXT, c3 INT);
 insert into mycolocatedtable (c1, c2, c3) values (6, '9', 8);
 create index mycolocatedtable_index1 on mycolocatedtable (c2);
@@ -664,4 +670,50 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'myc
 -------------------------+----------
  mycolocatedtable_index1 |        1
  mycolocatedtable_index2 |        1
+(2 rows)
+
+-- test for tablegroup
+create database test_db;
+\c test_db;
+create tablegroup test_tg;
+create table test_t (c1 INT PRIMARY KEY, c2 TEXT, c3 INT) tablegroup test_tg;
+insert into test_t (c1, c2, c3) values (6, '9', 8);
+create index test_index1 on test_t (c2);
+create index test_index2 on test_t (c3);
+select * from test_t where c2='9';
+ c1 | c2 | c3 
+----+----+----
+  6 | 9  |  8
+(1 row)
+
+select pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'test_index.' order by (indexrelname);
+ indexrelname | idx_scan 
+--------------+----------
+ test_index1  |        1
+ test_index2  |        0
+(2 rows)
+
+select * from test_t where c3=8;
+ c1 | c2 | c3 
+----+----+----
+  6 | 9  |  8
+(1 row)
+
+select pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'test_index.' order by (indexrelname);
+ indexrelname | idx_scan 
+--------------+----------
+ test_index1  |        1
+ test_index2  |        1
 (2 rows)

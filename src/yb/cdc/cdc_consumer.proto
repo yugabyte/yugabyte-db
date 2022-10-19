@@ -70,10 +70,16 @@ message ProducerEntryPB {
   bool disable_stream = 4; // [default = false] implicit in proto3
 }
 
+enum XClusterRole {
+  ACTIVE = 0;
+  STANDBY = 1;
+}
+
 message ConsumerRegistryPB {
   // Map from producer universe uuid to metadata for that producer.
   map<string, ProducerEntryPB> producer_map = 1;
   // Enable the replication of the txn status table for ordered and atomic multi shard transaction
   // support.
   bool enable_replicate_transaction_status_table = 2;
+  XClusterRole role = 3;
 }

@@ -39,7 +39,8 @@ public class DeleteBackupYbTest extends FakeDBApplication {
   @Parameters({"InProgress", "DeleteInProgress", "QueuedForDeletion"})
   @TestCaseName("testFailureWithInValidStateWhenState:{0}")
   public void testFailureWithInValidState(BackupState state) {
-    backup.transitionState(state);
+    backup.state = state;
+    backup.save();
     DeleteBackupYb.Params params = new DeleteBackupYb.Params();
     params.backupUUID = backup.backupUUID;
     params.customerUUID = defaultCustomer.uuid;

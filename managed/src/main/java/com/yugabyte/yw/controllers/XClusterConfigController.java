@@ -50,14 +50,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
-import play.api.Play;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -891,10 +889,11 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   private void validateBackupRequestParamsForBootstrapping(
-      XClusterConfigCreateFormData.BootstrapParams.BackupRequestParams backupRequestParams,
+      XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams bootstarpBackupParams,
       UUID customerUUID) {
     CustomerConfig customerConfig =
-        customerConfigService.getOrBadRequest(customerUUID, backupRequestParams.storageConfigUUID);
+        customerConfigService.getOrBadRequest(
+            customerUUID, bootstarpBackupParams.storageConfigUUID);
     if (!customerConfig.getState().equals(CustomerConfig.ConfigState.Active)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
