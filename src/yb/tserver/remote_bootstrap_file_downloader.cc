@@ -180,6 +180,7 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   Stopwatch sync_timer;
   Stopwatch file_download_timer;
   file_download_timer.start();
+  size_t iterations = 0;
 
   bool done = false;
   while (!done) {
@@ -202,6 +203,7 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     }, [&resp]() { return resp.ByteSize(); });
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
     DCHECK_LE(resp.chunk().data().size(), max_length);
+    iterations++;
 
     // Sanity-check for corruption.
     verify_data_timer.resume();
@@ -243,12 +245,15 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   LOG_WITH_PREFIX(INFO) << std::fixed << std::setprecision(3)
     << "Downloaded file: " << data_id.file_name()
     << "; Stats: Total time: " << file_download_timer.elapsed().wall_millis() << " ms"
+    << ", iterations: " << iterations
     << ", Transmission rate: " << rate_limiter->GetRate()
     << ", RateLimiter total time slept: " << rate_limiter->total_time_slept().ToMilliseconds()
     << " ms, Total bytes: " << total_bytes
-    << ", CRC/verify rate " << (verify_data_timer.elapsed().wall_millis() / total_bytes)
-    << " bytes/msec, Append rate " << (append_data_timer.elapsed().wall_millis() / total_bytes)
-    << " bytes/msec, File sync time " << sync_timer.elapsed().wall_millis() << "ms";
+    << ", CRC/verify rate: " << (total_bytes / verify_data_timer.elapsed().wall_millis())
+    << " bytes/msec (total_ms: " << verify_data_timer.elapsed().wall_millis()
+    << "), Append rate " << (total_bytes / append_data_timer.elapsed().wall_millis())
+    << " bytes/msec (total_ms: " << append_data_timer.elapsed().wall_millis()
+    << "), File sync time " << sync_timer.elapsed().wall_millis() << "ms";
 
   return Status::OK();
 }
