@@ -593,8 +593,9 @@ Status PgApiImpl::ConnectDatabase(const char *database_name) {
   return pg_session_->ConnectDatabase(database_name);
 }
 
-Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated) {
-  return pg_session_->IsDatabaseColocated(database_oid, colocated);
+Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
+                                      bool *legacy_colocated_database) {
+  return pg_session_->IsDatabaseColocated(database_oid, colocated, legacy_colocated_database);
 }
 
 Status PgApiImpl::NewCreateDatabase(const char *database_name,

@@ -296,7 +296,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         break;
       case YsqlColocationConfig::kDBColocated:
         RETURN_NOT_OK(conn.ExecuteFormat(
-            "CREATE DATABASE $0 WITH COLOCATED=TRUE", client::kTableName.namespace_name()));
+            "CREATE DATABASE $0 WITH COLOCATION=TRUE", client::kTableName.namespace_name()));
         break;
       case YsqlColocationConfig::kTablegroup:
         RETURN_NOT_OK(conn.ExecuteFormat(
@@ -976,7 +976,7 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
     std::string colocated_option =
         GetParam() == YsqlColocationConfig::kTablegroup ? "TABLEGROUP " + kTablegroupName : "";
     std::string not_colocated_prefix = "not_colocated";
-    std::string not_colocated_option = "WITH (COLOCATED = FALSE)";
+    std::string not_colocated_option = "WITH (COLOCATION = FALSE)";
 
     ExecuteOnTables(not_colocated_prefix, not_colocated_option, colocated_prefixes,
         colocated_option, ExecBeforeRestoreTS);

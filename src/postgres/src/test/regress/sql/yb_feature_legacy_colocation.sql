@@ -1,5 +1,7 @@
 --
--- Colocation
+-- Colocation regress test for legacy colocated databases
+-- The regress test is the same as yb_feature_colocation except it doesn't cover new colocation
+-- behaviors
 --
 
 -- CREATE TABLE on non-colocated database
@@ -242,41 +244,4 @@ CREATE TABLE tbl_no_colocation (k INT, v INT) WITH (colocation = false);
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
-
--- Test Colocation GA special characteristics different from legacy colocated database
-CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
-
--- Lazily create the default implicit tablegroup
-SELECT * FROM pg_yb_tablegroup;
-CREATE TABLE tbl (k INT, v INT);
-SELECT * FROM pg_yb_tablegroup;
-
--- Check for dependency between colocated table and default tablegroup
-SELECT * FROM pg_depend, pg_yb_tablegroup WHERE classid = 'pg_class'::regclass
-AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
-AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
-DROP TABLEGROUP "default";
-
--- The default tablegroup cannot be dropped
-DROP TABLEGROUP "default" CASCADE;
-DROP TABLE tbl;
-DROP TABLEGROUP "default";
-
--- Cannot set privileges of an implicit tablegroup
-CREATE ROLE test_role;
-GRANT CREATE ON TABLEGROUP "default" TO test_role;
-REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
-
--- Any user can create tables/indexes in an implicit tablegroup
-SET SESSION AUTHORIZATION test_role;
-CREATE TABLE test_role_table (k INT PRIMARY KEY, v TEXT);
-SELECT * FROM pg_tables WHERE tablename = 'test_role_table';
-CREATE UNIQUE INDEX unique_idx ON test_role_table(v);
-SELECT rolname FROM pg_roles JOIN pg_class
-ON pg_roles.oid = pg_class.relowner WHERE pg_class.relname = 'unique_idx';
-RESET SESSION AUTHORIZATION;
-
--- Drop database
-\c yugabyte
-DROP DATABASE colocation_test;

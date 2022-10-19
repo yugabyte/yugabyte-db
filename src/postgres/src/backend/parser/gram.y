@@ -663,7 +663,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
-	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLUMN COLUMNS COMMENT COMMENTS COMMIT
+	CLUSTER COALESCE COLLATE COLLATION COLOCATED COLOCATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
 	CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
 	CROSS CSV CUBE CURRENT_P
@@ -4745,6 +4745,7 @@ CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions O
 					n->owner = $4;
 					n->options = $5;
 					n->tablespacename = $6;
+					n->implicit = false;
 					$$ = (Node *) n;
 				}
 		;
@@ -10991,8 +10992,14 @@ createdb_opt_name:
 			| TEMPLATE						{ $$ = pstrdup($1); }
 			| COLOCATED
 				{
+					ereport(WARNING,
+    						(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+							 errmsg("'colocated' syntax will be deprecated in a future release"),
+							 errhint("Use 'colocation' instead of 'colocated'."),
+							 parser_errposition(@1)));
 					$$ = pstrdup($1);
 				}
+			| COLOCATION				    { $$ = pstrdup($1); }
 		;
 
 /*
@@ -15972,6 +15979,7 @@ unreserved_keyword:
 			| CLOSE
 			| CLUSTER
 			| COLOCATED
+			| COLOCATION
 			| COLUMNS
 			| COMMENT
 			| COMMENTS
