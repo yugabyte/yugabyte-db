@@ -383,8 +383,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      // If only tservers are added, wait for load to balance across all tservers.
-      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+        // If only tservers are added, wait for load to balance across all tservers.
+        createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
     }
 
     if (cluster.clusterType == ClusterType.PRIMARY

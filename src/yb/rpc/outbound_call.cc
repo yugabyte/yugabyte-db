@@ -64,6 +64,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");

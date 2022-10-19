@@ -111,6 +111,7 @@ ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
+ADD_YB_TEST(pg_cache_refresh-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
@@ -122,7 +123,7 @@ set(gen_initial_sys_catalog_snapshot_cmd
     "${BUILD_SUPPORT_DIR}/gen_initial_sys_catalog_snapshot_wrapper")
 if(NOT "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
   list(APPEND gen_initial_sys_catalog_snapshot_cmd
-       "--external_daemon_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+       "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
 endif()
 
 if ("${YB_BUILD_TYPE}" STREQUAL "tsan")

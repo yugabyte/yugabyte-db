@@ -8,11 +8,11 @@ import { getAlertConfigurations } from '../../../actions/universe';
 import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBErrorIndicator } from '../../common/indicators';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
   DEFAULT_METRIC_TIME_RANGE_OPTION,
-  MetricNames,
+  MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   REPLICATION_LAG_ALERT_NAME,
   TABLE_LAG_GRAPH_EMPTY_METRIC,
@@ -70,9 +70,8 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const tableMetricsQuery = useQuery(
-    ['xClusterMetric', replicationUUID, nodePrefix, tableUUID, selectedTimeRangeOption],
+    ['xClusterMetric', nodePrefix, tableUUID, selectedTimeRangeOption],
     () => {
-      console.log('useQuery', selectedTimeRangeOption);
       if (selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM) {
         return queryLagMetricsForTable(
           tableUUID,
@@ -102,7 +101,7 @@ export const TableLagGraph: FC<Props> = ({
     targetUuid: universeUUID
   };
 
-  const alertConfigQuery = useQuery(['getConfiguredThreshold', { configurationFilter }], () =>
+  const alertConfigQuery = useQuery(['alert', 'configurations', configurationFilter], () =>
     getAlertConfigurations(configurationFilter)
   );
   const maxAcceptableLag = alertConfigQuery.data?.[0]?.thresholds?.SEVERE.threshold;
@@ -166,7 +165,7 @@ export const TableLagGraph: FC<Props> = ({
     );
   });
 
-  const graphMetric = _.cloneDeep(tableMetricsQuery.data?.data ?? TABLE_LAG_GRAPH_EMPTY_METRIC);
+  const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? TABLE_LAG_GRAPH_EMPTY_METRIC);
   setTracesToPlot(graphMetric);
 
   return (
@@ -196,10 +195,10 @@ export const TableLagGraph: FC<Props> = ({
         </Dropdown>
       </div>
 
-      <MetricsPanel
+      <MetricsPanelOld
         className={styles.graphContainer}
         currentUser={currentUser}
-        metricKey={`${MetricNames.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
+        metricKey={`${MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
         metric={_.cloneDeep(graphMetric.tserver_async_replication_lag_micros)}
         width={GRAPH_WIDTH}
         height={GRAPH_HEIGHT}

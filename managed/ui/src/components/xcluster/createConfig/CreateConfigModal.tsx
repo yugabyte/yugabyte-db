@@ -15,13 +15,14 @@ import {
 import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { adaptTableUUID } from '../ReplicationUtils';
+import { adaptTableUUID, parseFloatIfDefined } from '../ReplicationUtils';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTablesStep } from './SelectTablesStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { api } from '../../../redesign/helpers/api';
 import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { assertUnreachableCase } from '../../../utils/ErrorUtils';
 
 import { TableType, Universe } from '../../../redesign/helpers/dtos';
 import { XClusterTableType, YBTable } from '../XClusterTypes';
@@ -54,22 +55,12 @@ interface ConfigureReplicationModalProps {
 
 const MODAL_TITLE = 'Configure Replication';
 
-export const FormStep = {
-  SELECT_TARGET_UNIVERSE: {
-    submitLabel: 'Next: Select Tables'
-  } as const,
-  SELECT_TABLES: {
-    submitLabel: 'Validate Connectivity and Schema'
-  } as const,
-  ENABLE_REPLICATION: {
-    submitLabel: 'Enable Replication'
-  } as const,
-  CONFIGURE_BOOTSTRAP: {
-    submitLabel: 'Bootstrap and Enable Replication'
-  } as const
-} as const;
-
-export type FormStep = typeof FormStep[keyof typeof FormStep];
+export enum FormStep {
+  SELECT_TARGET_UNIVERSE = 'selectTargetUniverse',
+  SELECT_TABLES = 'selectTables',
+  ENABLE_REPLICATION = 'enableReplication',
+  CONFIGURE_BOOTSTRAP = 'configureBootstrap'
+}
 
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const DEFAULT_TABLE_TYPE = TableType.PGSQL_TABLE_TYPE;
@@ -179,36 +170,40 @@ export const CreateConfigModal = ({
     values: CreateXClusterConfigFormValues,
     actions: FormikActions<CreateXClusterConfigFormValues>
   ) => {
-    if (
-      currentStep === FormStep.ENABLE_REPLICATION ||
-      currentStep === FormStep.CONFIGURE_BOOTSTRAP
-    ) {
-      if (values.tableUUIDs.length === 0) {
-        toast.error('Configuration must have at least one table');
+    switch (currentStep) {
+      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.ENABLE_REPLICATION:
+        xClusterConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
+        return;
+      case FormStep.SELECT_TARGET_UNIVERSE:
+        setCurrentStep(FormStep.SELECT_TABLES);
+        actions.setSubmitting(false);
+
+        return;
+      case FormStep.SELECT_TABLES:
+        if (bootstrapRequiredTableUUIDs.length > 0) {
+          setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
+        } else {
+          setCurrentStep(FormStep.ENABLE_REPLICATION);
+        }
         actions.setSubmitting(false);
         return;
-      }
-      xClusterConfigMutation.mutate(values);
-    } else if (currentStep === FormStep.SELECT_TARGET_UNIVERSE) {
-      setCurrentStep(FormStep.SELECT_TABLES);
-    } else if (currentStep === FormStep.SELECT_TABLES) {
-      if (bootstrapRequiredTableUUIDs.length > 0) {
-        setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
-      } else {
-        setCurrentStep(FormStep.ENABLE_REPLICATION);
-      }
+      default:
+        assertUnreachableCase(currentStep);
     }
-    actions.setSubmitting(false);
   };
 
-  const handleBackNavigation = () => {
+  const handleBackNavigation = (currentStep: Exclude<FormStep, typeof FIRST_FORM_STEP>) => {
     switch (currentStep) {
       case FormStep.SELECT_TABLES:
         setCurrentStep(FormStep.SELECT_TARGET_UNIVERSE);
-        break;
+        return;
       case FormStep.ENABLE_REPLICATION:
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentStep(FormStep.SELECT_TABLES);
+        return;
+      default:
+        assertUnreachableCase(currentStep);
     }
   };
 
@@ -221,7 +216,7 @@ export const CreateConfigModal = ({
         onHide={() => {
           closeModal();
         }}
-        submitLabel={currentStep.submitLabel}
+        submitLabel={getFormSubmitLabel(currentStep)}
       >
         <YBLoading />
       </YBModal>
@@ -261,7 +256,7 @@ export const CreateConfigModal = ({
       validateOnBlur={currentStep !== FormStep.SELECT_TABLES}
       onFormSubmit={handleFormSubmit}
       initialValues={INITIAL_VALUES}
-      submitLabel={currentStep.submitLabel}
+      submitLabel={getFormSubmitLabel(currentStep)}
       onHide={() => {
         closeModal();
       }}
@@ -269,7 +264,11 @@ export const CreateConfigModal = ({
         currentStep === FIRST_FORM_STEP ? (
           <YBButton btnClass="btn" btnText={'Cancel'} onClick={closeModal} />
         ) : (
-          <YBButton btnClass="btn" btnText={'Back'} onClick={handleBackNavigation} />
+          <YBButton
+            btnClass="btn"
+            btnText={'Back'}
+            onClick={() => handleBackNavigation(currentStep)}
+          />
         )
       }
       render={(formikProps: FormikProps<CreateXClusterConfigFormValues>) => {
@@ -326,12 +325,9 @@ export const CreateConfigModal = ({
                 }}
               />
             );
+          default:
+            return assertUnreachableCase(currentStep);
         }
-
-        // Needed to resolve "not all code paths return a value" error.
-        // This return should not be reach as we are covering all possible values
-        // of FormStep in the switch.
-        return <YBErrorIndicator />;
       }}
     />
   );
@@ -339,7 +335,7 @@ export const CreateConfigModal = ({
 
 const validateForm = async (
   values: CreateXClusterConfigFormValues,
-  formStep: FormStep,
+  currentStep: FormStep,
   currentUniverse: Universe,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void
 ) => {
@@ -347,7 +343,7 @@ const validateForm = async (
   // returning them in custom async validation:
   // https://github.com/jaredpalmer/formik/issues/1392#issuecomment-606301031
 
-  switch (formStep) {
+  switch (currentStep) {
     case FormStep.SELECT_TARGET_UNIVERSE: {
       const errors: Partial<CreateXClusterConfigFormErrors> = {};
 
@@ -419,7 +415,7 @@ const validateForm = async (
         const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
           (trace) => trace.name === 'free'
         );
-        const freeDiskSpace = freeSpaceTrace?.y[freeSpaceTrace.y.length - 1];
+        const freeDiskSpace = parseFloatIfDefined(freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]);
 
         if (freeDiskSpace !== undefined && freeDiskSpace < MIN_FREE_DISK_SPACE_GB) {
           errors.tableUUIDs = {
@@ -442,13 +438,29 @@ const validateForm = async (
         errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
       } else if (
         shouldValidateParallelThread &&
-        values.parallelThreads > PARALLEL_THREADS_RANGE.MIN
+        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
       ) {
         errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
       }
 
       throw errors;
     }
+    default:
+      return {};
   }
-  return {};
+};
+
+const getFormSubmitLabel = (formStep: FormStep) => {
+  switch (formStep) {
+    case FormStep.SELECT_TARGET_UNIVERSE:
+      return 'Next: Select Tables';
+    case FormStep.SELECT_TABLES:
+      return 'Validate Connectivity and Schema';
+    case FormStep.ENABLE_REPLICATION:
+      return 'Enable Replication';
+    case FormStep.CONFIGURE_BOOTSTRAP:
+      return 'Bootstrap and Enable Replication';
+    default:
+      return assertUnreachableCase(formStep);
+  }
 };

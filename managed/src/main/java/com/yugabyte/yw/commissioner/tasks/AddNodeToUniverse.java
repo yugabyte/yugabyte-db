@@ -233,8 +233,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Wait for the master leader to hear from all tservers.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for load to balance.
-      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+        // Wait for load to balance.
+        createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      }
 
       if (addMaster) {
         // Update all tserver conf files with new master information.

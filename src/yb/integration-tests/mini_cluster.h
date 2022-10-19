@@ -369,6 +369,10 @@ Status WaitAllReplicasSynchronizedWithLeader(
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
 
+// Activate compaction time logging on existing cluster tablet server.
+// Multiple calls will result in duplicate logging.
+void ActivateCompactionTimeLogging(MiniCluster* cluster);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

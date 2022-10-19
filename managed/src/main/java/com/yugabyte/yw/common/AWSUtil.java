@@ -2,19 +2,18 @@
 
 package com.yugabyte.yw.common;
 
-import com.amazonaws.SdkClientException;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.InstanceProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.services.ec2.model.AmazonEC2Exception;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient;
-import com.amazonaws.services.identitymanagement.model.AmazonIdentityManagementException;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
 import com.amazonaws.services.identitymanagement.model.Role;
 import com.amazonaws.services.s3.AmazonS3;
@@ -23,8 +22,11 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
-import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.amazonaws.services.s3.model.GetBucketLocationRequest;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
@@ -33,14 +35,12 @@ import com.amazonaws.services.securitytoken.model.AssumeRoleResult;
 import com.amazonaws.services.securitytoken.model.Credentials;
 import com.amazonaws.util.EC2MetadataUtils;
 import com.amazonaws.util.EC2MetadataUtils.IAMSecurityCredential;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import java.io.InputStream;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
-import java.time.ZoneId;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -53,8 +53,6 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
-
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 @Singleton
 @Slf4j
@@ -347,6 +345,21 @@ public class AWSUtil implements CloudUtil {
         throw e;
       }
     }
+  }
+
+  @Override
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
+      throws Exception {
+    AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+    String[] splitLocation = getSplitLocationValue(cloudPath);
+    String bucketName = splitLocation[0];
+    String objectPrefix = splitLocation[1];
+    S3Object object = s3Client.getObject(bucketName, objectPrefix);
+    if (object == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
+    }
+    return object.getObjectContent();
   }
 
   public void retrieveAndDeleteObjects(

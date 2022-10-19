@@ -246,9 +246,12 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  Status RollbackToSubTransaction(SubTransactionId id) {
+  Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgRollbackToSubTransactionRequestPB req;
     req.set_session_id(session_id_);
+    if (options) {
+      options->Swap(req.mutable_options());
+    }
     req.set_sub_transaction_id(id);
 
     tserver::PgRollbackToSubTransactionResponsePB resp;
@@ -518,6 +521,16 @@ class PgClient::Impl {
     return resp.is_pitr_active();
   }
 
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo() {
+    tserver::PgGetTserverCatalogVersionInfoRequestPB req;
+    tserver::PgGetTserverCatalogVersionInfoResponsePB resp;
+    RETURN_NOT_OK(proxy_->GetTserverCatalogVersionInfo(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -648,8 +661,9 @@ Status PgClient::SetActiveSubTransaction(
   return impl_->SetActiveSubTransaction(id, options);
 }
 
-Status PgClient::RollbackToSubTransaction(SubTransactionId id) {
-  return impl_->RollbackToSubTransaction(id);
+Status PgClient::RollbackToSubTransaction(
+    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
+  return impl_->RollbackToSubTransaction(id, options);
 }
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
@@ -704,6 +718,10 @@ void PgClient::PerformAsync(
 
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo() {
+  return impl_->GetTserverCatalogVersionInfo();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

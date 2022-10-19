@@ -42,6 +42,8 @@
 #include "yb/util/locks.h"
 #include "yb/util/thread.h"
 
+using std::string;
+
 namespace yb {
 
 namespace {

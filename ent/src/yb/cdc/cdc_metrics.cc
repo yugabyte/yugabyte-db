@@ -74,6 +74,31 @@ METRIC_DEFINE_gauge_int64(cdc, async_replication_committed_lag_micros,
                           yb::MetricUnit::kMicroseconds,
                           "Lag between last record applied on consumer and producer.",
                           {0, yb::AggregationFunction::kMax} /* optional_args */);
+
+METRIC_DEFINE_gauge_int64(cdcsdk,
+    cdcsdk_sent_lag_micros, "CDCSDK sent Lag",
+    yb::MetricUnit::kMicroseconds,
+    "Lag between last committed record in the producer and the last sent record.",
+    {0, yb::AggregationFunction::kMax} /* optional_args */);
+
+METRIC_DEFINE_counter(
+    cdcsdk, cdcsdk_traffic_sent, "CDCSDK total traffic sent in bytes.", yb::MetricUnit::kBytes,
+    "Total traffic sent in bytes.");
+
+METRIC_DEFINE_counter(
+    cdcsdk, cdcsdk_change_event_count, "Total number of change events sent.",
+    yb::MetricUnit::kUnits, "Total number of change events sent.");
+
+METRIC_DEFINE_gauge_uint64(
+    cdcsdk, cdcsdk_expiry_time_ms, "CDCSDK stream expiry time.",
+    yb::MetricUnit::kMilliseconds, "CDCSDK stream expiry time in milliseconds.",
+    {0, yb::AggregationFunction::kMax} /* optional_args */);
+
+METRIC_DEFINE_gauge_uint64(
+    cdcsdk, cdcsdk_last_sent_physicaltime, "CDCSDK Last Read Physical TIme.",
+    yb::MetricUnit::kMicroseconds,
+    "Physical Time of the Last Read Operation from a CDCSDK GetChanges request");
+
 METRIC_DEFINE_gauge_bool(cdc,
                          is_bootstrap_required,
                          "Is Bootstrap Required",
@@ -120,6 +145,14 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(last_getchanges_time),
       GINIT(time_since_last_getchanges),
       GINIT(last_caughtup_physicaltime),
+      entity_(entity) {}
+
+CDCSDKTabletMetrics::CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& entity)
+    : GINIT(cdcsdk_sent_lag_micros),
+      MINIT(cdcsdk_traffic_sent),
+      MINIT(cdcsdk_change_event_count),
+      GINIT(cdcsdk_expiry_time_ms),
+      GINIT(cdcsdk_last_sent_physicaltime),
       entity_(entity) {}
 
 CDCServerMetrics::CDCServerMetrics(const scoped_refptr<MetricEntity>& entity)

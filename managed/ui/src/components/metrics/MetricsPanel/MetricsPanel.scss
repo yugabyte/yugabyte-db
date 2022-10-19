@@ -13,11 +13,64 @@
   background-color: $YB_GRAY;
   margin: 5px 7.5px;
   position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   .prometheus-link {
     position: absolute;
     top: 15px;
     right: 15px;
+    margin-left: 17px;
+    margin-top: 5px;
+  }
+
+  .outlier-buttons-container {
+    position: absolute;
+    top: 20px;
+    right: 50px;
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+
+    .btn-default.active {
+      color: #2B59C3;
+      background: rgba(43, 89, 195, 0.1);
+    }
+
+    .outlier-chart-penultimate-button,
+    .outlier-chart-first-button,
+    .outlier-chart-last-button,
+    .outlier-chart-buttons {
+      border: 1px solid #E5E5E9;
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 16px;
+    }
+
+    .outlier-chart-penultimate-button,
+    .outlier-chart-buttons {
+      border-radius: 0;
+    }
+
+    .outlier-chart-first-button {
+      border-radius: 8px 0 0 8px;
+    }
+
+    .outlier-chart-last-button {
+      border-radius: 0 8px 8px 0;
+    }
+
+    .outlier-dropdown {
+      border-radius: 0 8px 8px 0;
+    }
+
+    .btn {
+      height: 26px;
+      padding: 4px 12px;
+    }
   }
 }
 
@@ -46,11 +99,13 @@
       margin: 10px 0;
     }
   }
+
   .cpu-usage-panel {
     .graph-body {
       margin-top: 15px !important;
       margin-bottom: 5px !important;
     }
+
     .yb-resource-count {
       text-align: center;
     }
@@ -88,15 +143,15 @@
       top: 50%;
       transform: translateY(-50%);
     }
+
     .whiskers-plot {
       position: absolute;
       border-right: 1px solid $YB_BRAND_ORANGE;
       border-left: 1px solid $YB_BRAND_ORANGE;
       background: linear-gradient(180deg,
-        rgba(0,0,0,0) calc(50% - 1px),
-        $YB_BRAND_ORANGE calc(50%),
-        rgba(0,0,0,0) calc(50% + 1px)
-      );
+          rgba(0, 0, 0, 0) calc(50% - 1px),
+          $YB_BRAND_ORANGE calc(50%),
+          rgba(0, 0, 0, 0) calc(50% + 1px));
       height: 8px;
       width: 200px;
       top: 50%;

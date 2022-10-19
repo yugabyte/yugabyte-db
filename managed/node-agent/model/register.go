@@ -37,6 +37,7 @@ type CommonInfo struct {
 	IP      string `json:"ip"`
 	State   string `json:"state"`
 	Version string `json:"version"`
+	Port    int    `json:"port"`
 }
 
 type NodeAgentConfig struct {

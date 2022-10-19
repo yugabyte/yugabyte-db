@@ -61,6 +61,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -150,11 +152,13 @@ class TransactionParticipant::Impl
       return false;
     }
 
-    poller_.Shutdown();
-
     if (start_latch_.count()) {
       start_latch_.CountDown();
     }
+
+    shutdown_latch_.Wait();
+
+    poller_.Shutdown();
 
     LOG_WITH_PREFIX(INFO) << "Shutdown";
     return true;
@@ -238,7 +242,7 @@ class TransactionParticipant::Impl
     });
   }
 
-  std::pair<size_t, size_t> TEST_CountIntents() {
+  Result<std::pair<size_t, size_t>> TEST_CountIntents() {
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard<std::mutex> lock(mutex_);
@@ -246,6 +250,15 @@ class TransactionParticipant::Impl
     }
 
     std::pair<size_t, size_t> result(0, 0);
+    // There is possibility that a shutdown race could happen during this iterating
+    // operation in RocksDB. To prevent the race, we should increase the pending_op_counter_
+    // before the operation, then shutdown will be delayed if it detects there is still
+    // operation hasn't finished yet. In another case, if RocksDB has already been shutted down,
+    // the operation will have NOT_OK status.
+    ScopedRWOperation operation(pending_op_counter_);
+    if (!operation.ok()) {
+      return STATUS(NotFound, "RocksDB has been shut down.");
+    }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
                                              key_bounds_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -1108,6 +1121,11 @@ class TransactionParticipant::Impl
   }
 
   void LoadFinished(const ApplyStatesMap& pending_applies) override {
+    // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
+    // sure that at the end of Load, we unblock shutdown.
+    auto se = ScopeExit([&] {
+      shutdown_latch_.CountDown();
+    });
     start_latch_.Wait();
     std::vector<ScopedRWOperation> operations;
     operations.reserve(pending_applies.size());
@@ -1692,6 +1710,7 @@ class TransactionParticipant::Impl
   TransactionLoader loader_;
   std::atomic<bool> closing_{false};
   CountDownLatch start_latch_{1};
+  CountDownLatch shutdown_latch_{1};
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
@@ -1754,7 +1773,7 @@ boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
   return impl_->LocalTxnData(id);
 }
 
-std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
+Result<std::pair<size_t, size_t>> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
 

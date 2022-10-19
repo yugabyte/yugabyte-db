@@ -69,6 +69,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 DEFINE_int64(max_time_in_queue_ms, 6000,

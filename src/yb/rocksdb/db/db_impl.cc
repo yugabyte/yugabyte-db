@@ -120,6 +120,9 @@
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/compare_util.h"
 
+using std::unique_ptr;
+using std::shared_ptr;
+
 using namespace std::literals;
 
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");

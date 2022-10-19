@@ -44,9 +44,10 @@ namespace docdb {
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
     DatumMessagePB* cdc_datum_message) {
   return yb::docdb::SetValueFromQLBinary(
-      ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message);
+      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
 }
 
 DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}

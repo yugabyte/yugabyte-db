@@ -23,6 +23,8 @@
 
 #include "yb/util/result.h"
 
+using std::string;
+
 namespace yb {
 namespace tserver {
 

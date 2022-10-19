@@ -38,6 +38,8 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
 
+using std::string;
+
 DECLARE_bool(TEST_running_test);
 
 namespace yb {

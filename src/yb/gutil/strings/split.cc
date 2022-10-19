@@ -26,6 +26,11 @@ using std::back_insert_iterator;
 using std::iterator_traits;
 #include <limits>
 using std::numeric_limits;
+using std::string;
+using std::vector;
+using std::map;
+using std::set;
+using std::pair;
 
 #include "yb/gutil/integral_types.h"
 #include <glog/logging.h>

@@ -245,7 +245,7 @@ Status SetDateResult(PTypePtr source, RTypePtr target) {
 }
 
 template<typename RTypePtr, typename StrToNum, typename SetTarget>
-Status StringToNumeric(const string& str_val, RTypePtr target, StrToNum strToNum,
+Status StringToNumeric(const std::string& str_val, RTypePtr target, StrToNum strToNum,
                                SetTarget setTarget) {
   auto result = strToNum(str_val);
   RETURN_NOT_OK(result);
@@ -633,7 +633,7 @@ Status ConvertStringToBlob(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string target_val = source->string_value();
+    std::string target_val = source->string_value();
     target->set_binary_value(target_val);
   }
   return Status::OK();
@@ -826,7 +826,7 @@ Status ConvertBlobToBool(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeBool) {
       return STATUS(QLError, "The blob string is not a valid string for a boolean type.");
     }
@@ -840,7 +840,7 @@ Status ConvertBlobToInt8(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeTinyInt) {
       return STATUS(QLError, "The blob string is not valid for tinyint type.");
     }
@@ -854,7 +854,7 @@ Status ConvertBlobToInt16(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeSmallInt) {
       return STATUS(QLError, "The blob string is not valid for smallint type.");
     }
@@ -871,7 +871,7 @@ Status ConvertBlobToInt32(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeInt) {
       return STATUS(QLError, "The blob string is not valid for int type.");
     }
@@ -888,7 +888,7 @@ Status ConvertBlobToInt64(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
       return STATUS(QLError, "The blob string is not valid for bigint type.");
     }
@@ -910,7 +910,7 @@ Status ConvertBlobToFloat(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeInt) {
       return STATUS(QLError, "The blob string is not valid for float type.");
     }
@@ -927,7 +927,7 @@ Status ConvertBlobToDouble(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
       return STATUS(QLError, "The blob string is not valid for double type.");
     }
@@ -959,7 +959,7 @@ Status ConvertBlobToTimestamp(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeBigInt) {
       return STATUS(QLError, "The blob string is not a valid Timestamp.");
     }
@@ -980,7 +980,7 @@ Status ConvertBlobToUuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }
@@ -994,7 +994,7 @@ Status ConvertBlobToTimeuuid(PTypePtr source, RTypePtr target) {
   if (IsNull(*source)) {
     SetNull(&*target);
   } else {
-    string blob = source->binary_value();
+    std::string blob = source->binary_value();
     if (blob.size() != kSizeUuid) {
       return STATUS(QLError, "The blob string is not valid for UUID type.");
     }

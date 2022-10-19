@@ -97,6 +97,7 @@ using std::shared_ptr;
 using std::string;
 using std::unordered_set;
 using std::vector;
+using std::ostream;
 using strings::Substitute;
 using strings::Utf8SafeCEscape;
 

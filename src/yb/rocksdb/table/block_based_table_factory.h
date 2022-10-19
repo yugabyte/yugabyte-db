@@ -36,7 +36,6 @@ namespace rocksdb {
 
 struct EnvOptions;
 
-using std::unique_ptr;
 class BlockBasedTableBuilder;
 
 class BlockBasedTableFactory : public TableFactory {
@@ -49,16 +48,16 @@ class BlockBasedTableFactory : public TableFactory {
   const char* Name() const override { return "BlockBasedTable"; }
 
   Status NewTableReader(const TableReaderOptions& table_reader_options,
-                        unique_ptr<RandomAccessFileReader>&& file,
+                        std::unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader) const override;
+                        std::unique_ptr<TableReader>* table_reader) const override;
 
   // This is a variant of virtual member function NewTableReader function with
   // added capability to control pre-fetching of blocks on BlockBasedTable::Open
   Status NewTableReader(const TableReaderOptions& table_reader_options,
-                        unique_ptr<RandomAccessFileReader>&& file,
+                        std::unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader,
+                        std::unique_ptr<TableReader>* table_reader,
                         DataIndexLoadMode prefetch_data_index,
                         PrefetchFilter prefetch_filter) const;
 

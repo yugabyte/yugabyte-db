@@ -51,6 +51,8 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using std::string;
+
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 
 namespace yb {
@@ -535,42 +537,84 @@ Status PgClientSession::RollbackToSubTransaction(
     const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+  DCHECK_GE(req.sub_transaction_id(), 0);
+
   /*
    * Currently we do not support a transaction block that has both DDL and DML statements (we
    * support it syntactically but not semantically). Thus, when a DDL is encountered in a
    * transaction block, a separate transaction is created for the DDL statement, which is
    * committed at the end of that statement. This is why there are 2 session objects here, one
    * corresponds to the DML transaction, and the other to a possible separate transaction object
-   * created for the DDL. However, subtransaction-id increases across both sessions. Also,
-   * it is not possible to rollback to a savepoint created for the DML transaction from the DDL
-   * statement, i.e. the following sequence of events is not possible:
+   * created for the DDL. However, subtransaction-id increases across both sessions in YSQL.
+   *
+   * Rolling back to a savepoint from either the DDL or DML txn will only revert any writes/ lock
+   * acquisitions done as part of that txn. Consider the below example, the "Rollback to
+   * Savepoint 1" will only revert things done in the DDL's context and not the commands that follow
+   * Savepoint 1 in the DML's context.
+   *
    * -- Start DML
    * ---- Commands...
    * ---- Savepoint 1
+   * ---- Commands...
    * ---- Start DDL
-   * ------ Commands
+   * ------ Commands...
    * ------ Savepoint 2
-   * ------ Commands
-   * ------ Rollback to Savepoint 1 -- Not possible, can only rollback to Savepoint 1.
-   * ---- DDL committed at this point
-   * ---- Rollback to Savepoint 2 -- Again not possible, the DDL is already committed.
-   * The above is not possible because we do not allow multiple statements in a single DDL txn.
-   * Because of the above properties, when we need to rollback to a savepoint, the subtransaction-id
-   * can only have been part of one session.
+   * ------ Commands...
+   * ------ Rollback to Savepoint 1
    */
-  for (auto& session : sessions_) {
-    auto transaction = session.transaction;
-    if (transaction
-        && transaction->HasSubTransaction(req.sub_transaction_id())) {
-      return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
-                                                   context->GetClientDeadline());
-    }
+  auto kind = PgClientSessionKind::kPlain;
+
+  if (req.has_options() && req.options().ddl_mode())
+    kind = PgClientSessionKind::kDdl;
+
+  auto transaction = Transaction(kind);
+
+  if (!transaction) {
+    LOG_WITH_PREFIX_AND_FUNC(WARNING)
+      << "RollbackToSubTransaction " << req.sub_transaction_id()
+      << " when no distributed transaction of kind"
+      << (kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl")
+      << " is running. This can happen if no distributed transaction has been started yet"
+      << " e.g., BEGIN; SAVEPOINT a; ROLLBACK TO a;";
+    return Status::OK();
   }
-  return STATUS(IllegalState,
-                Format("Rollback sub transaction $0, when no transaction is running",
-                       req.sub_transaction_id()));
+
+  // Before rolling back to req.sub_transaction_id(), set the active sub transaction id to be the
+  // same as that in the request. This is necessary because of the following reasoning:
+  //
+  // ROLLBACK TO SAVEPOINT leads to many calls to YBCRollbackToSubTransaction(), not just 1:
+  // Assume the current sub-txns are from 1 to 10 and then a ROLLBACK TO X is performed where
+  // X corresponds to sub-txn 5. In this case, 6 calls are made to
+  // YBCRollbackToSubTransaction() with sub-txn ids: 5, 10, 9, 8, 7, 6, 5. The first call is
+  // made in RollbackToSavepoint() but the latter 5 are redundant and called from the
+  // AbortSubTransaction() handling for each sub-txn.
+  //
+  // Now consider the following scenario:
+  //   1. In READ COMMITTED isolation, a new internal sub transaction is created at the start of
+  //      each statement (even a ROLLBACK TO). So, a ROLLBACK TO X like above, will first create a
+  //      new internal sub-txn 11.
+  //   2. YBCRollbackToSubTransaction() will be called 7 times on sub-txn ids:
+  //        5, 11, 10, 9, 8, 7, 6
+  //
+  //  So, it is neccessary to first bump the active-sub txn id to 11 and then perform the rollback.
+  //  Otherwise, an error will be thrown that the sub-txn doesn't exist when
+  //  YBCRollbackToSubTransaction() is called for sub-txn id 11.
+
+  if (req.has_options()) {
+    DCHECK_GE(req.options().active_sub_transaction_id(), 0);
+    transaction->SetActiveSubTransaction(req.options().active_sub_transaction_id());
+  }
+
+  RSTATUS_DCHECK(transaction->HasSubTransaction(req.sub_transaction_id()), InvalidArgument,
+                 Format("Transaction of kind $0 doesn't have sub transaction $1",
+                        kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
+                        req.sub_transaction_id()));
+
+  return transaction->RollbackToSubTransaction(req.sub_transaction_id(),
+                                               context->GetClientDeadline());
 }
 
+// The below RPC is DEPRECATED.
 Status PgClientSession::SetActiveSubTransaction(
     const PgSetActiveSubTransactionRequestPB& req, PgSetActiveSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
@@ -592,6 +636,7 @@ Status PgClientSession::SetActiveSubTransaction(
          Format("Set active sub transaction $0, when no transaction is running",
                 req.sub_transaction_id()));
 
+  DCHECK_GE(req.sub_transaction_id(), 0);
   transaction->SetActiveSubTransaction(req.sub_transaction_id());
   return Status::OK();
 }
@@ -783,6 +828,11 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
   }
 
   session->SetDeadline(deadline);
+
+  if (transaction) {
+    DCHECK_GE(options.active_sub_transaction_id(), 0);
+    transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+  }
 
   return std::make_pair(session, used_read_time);
 }

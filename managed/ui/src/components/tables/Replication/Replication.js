@@ -9,7 +9,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBPanelItem } from '../../panels';
 import { YBLoading } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
-import { MetricsPanel } from '../../metrics';
+import { MetricsPanelOld } from '../../metrics';
 import { ReplicationAlertModalBtn } from './ReplicationAlertModalBtn';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
@@ -297,7 +297,7 @@ export default class Replication extends Component {
 
               {showMetrics && metrics[GRAPH_TYPE] && (
                 <div className={`graph-container ${!hideHeader ? 'old-view' : ''}`}>
-                  <MetricsPanel
+                  <MetricsPanelOld
                     currentUser={currentUser}
                     metricKey={METRIC_NAME}
                     metric={JSON.parse(JSON.stringify(aggregatedMetrics))}

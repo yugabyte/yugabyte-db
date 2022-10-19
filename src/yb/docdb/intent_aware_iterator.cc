@@ -170,7 +170,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     // because the caller is skipping all intents written before or at the same time as
     // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
     // equal to DocHybridTime::kMin.
-    if (result.intent_value.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+    if (result.intent_value.starts_with(ValueEntryTypeAsChar::kRowLock)) {
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
       if (txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id)) {
@@ -854,11 +854,9 @@ IntentAwareIterator::FindMatchingIntentRecordDocHybridTime(const Slice& key_with
   return DocHybridTime::kInvalid;
 }
 
-Result<DocHybridTime>
-IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
+Result<DocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     const Slice& key_without_ht) {
-  size_t other_encoded_ht_size = 0;
-  RETURN_NOT_OK(CheckHybridTimeSizeAndValueType(iter_.key(), &other_encoded_ht_size));
+  size_t other_encoded_ht_size = VERIFY_RESULT(CheckHybridTimeSizeAndValueType(iter_.key()));
   Slice iter_key_without_ht = iter_.key();
   iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
   if (key_without_ht == iter_key_without_ht) {
@@ -1037,15 +1035,14 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
       }
       continue;
     }
-    size_t doc_ht_size = 0;
-    auto decode_status = DocHybridTime::CheckAndGetEncodedSize(encoded_doc_ht, &doc_ht_size);
-    if (!decode_status.ok()) {
-      LOG(ERROR) << "Decode doc ht from key failed: " << decode_status
+    auto doc_ht_size = DocHybridTime::GetEncodedSize(encoded_doc_ht);
+    if (!doc_ht_size.ok()) {
+      LOG(ERROR) << "Decode doc ht from key failed: " << doc_ht_size.status()
                  << ", key: " << iter_.key().ToDebugHexString();
-      status_ = std::move(decode_status);
+      status_ = doc_ht_size.status();
       return;
     }
-    encoded_doc_ht.remove_prefix(encoded_doc_ht.size() - doc_ht_size);
+    encoded_doc_ht.remove_prefix(encoded_doc_ht.size() - *doc_ht_size);
     auto value = iter_.value();
     auto value_type = DecodeKeyEntryType(value);
     VLOG(4) << "Checking for skip, type " << value_type << ", encoded_doc_ht: "
@@ -1158,8 +1155,7 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
     // to upperbound with 0xff.
     Slice subdoc_key = iter_.key();
-    size_t doc_ht_size = 0;
-    RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(subdoc_key, &doc_ht_size));
+    size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(subdoc_key));
     subdoc_key.remove_suffix(1 + doc_ht_size);
     intent_upperbound_keybytes_.AppendRawBytes(subdoc_key);
     VLOG(4) << "SetIntentUpperbound = "

@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
@@ -162,6 +163,20 @@ public class BackupsController extends AuthenticatedController {
     BackupPagedApiResponse backups = Backup.pagedList(query);
 
     return PlatformResults.withData(backups);
+  }
+
+  @ApiOperation(
+      value = "List Incremental backups",
+      response = CommonBackupInfo.class,
+      responseContainer = "List",
+      nickname = "listIncrementalBackups")
+  public Result listIncrementalBackups(UUID customerUUID, UUID baseBackupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Backup.getOrBadRequest(customerUUID, baseBackupUUID);
+    List<CommonBackupInfo> incrementalBackupChain =
+        backupUtil.getIncrementalBackupList(baseBackupUUID, customerUUID);
+
+    return PlatformResults.withData(incrementalBackupChain);
   }
 
   @ApiOperation(
@@ -658,7 +673,7 @@ public class BackupsController extends AuthenticatedController {
                   : String.format("univ-%s", backup.universeUUID.toString());
           CustomerTask.create(
               customer,
-              backup.backupUUID,
+              backup.universeUUID,
               taskUUID,
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,

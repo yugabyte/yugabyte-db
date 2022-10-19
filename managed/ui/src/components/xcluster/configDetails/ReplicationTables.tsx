@@ -13,7 +13,7 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, GetCurrentLagForTable } from '../ReplicationUtils';
+import { formatBytes, CurrentTableReplicationLag } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -45,7 +45,7 @@ export function ReplicationTables({ replication }: props) {
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
-    ['xcluster', replication.sourceUniverseUUID, 'tables'],
+    ['universe', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
@@ -139,11 +139,10 @@ export function ReplicationTables({ replication }: props) {
           <TableHeaderColumn
             dataFormat={(_cell, row) => (
               <span className="lag-text">
-                <GetCurrentLagForTable
-                  replicationUUID={replication.uuid}
+                <CurrentTableReplicationLag
                   tableUUID={row.tableUUID}
                   nodePrefix={universeInfo?.universeDetails.nodePrefix}
-                  enabled={isActiveTab}
+                  queryEnabled={isActiveTab}
                   sourceUniverseUUID={replication.sourceUniverseUUID}
                 />
               </span>

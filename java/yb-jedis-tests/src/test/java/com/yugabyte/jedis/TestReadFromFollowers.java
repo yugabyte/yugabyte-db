@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import org.junit.Ignore;
 
 import org.apache.commons.text.RandomStringGenerator;
 import org.junit.Test;
@@ -57,6 +58,7 @@ import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.YBJedis;
 import redis.clients.util.JedisClusterCRC16;
 
+@Ignore("Redis is not supported anymore")
 @RunWith(value=YBParameterizedTestRunner.class)
 public class TestReadFromFollowers extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestReadFromFollowers.class);

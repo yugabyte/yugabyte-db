@@ -75,6 +75,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);
@@ -113,6 +115,7 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
@@ -671,9 +674,7 @@ TEST_P(TwoDCTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 
@@ -1332,7 +1333,8 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
     cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-      cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
+      std::static_pointer_cast<cdc::CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+          {"", stream_id, tablet_id}));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -1806,19 +1808,8 @@ TEST_P(TwoDCTest, BiDirectionalWrites) {
   ASSERT_OK(VerifyNumRecords(tables[0]->name(), producer_client(), 10));
 
   // Write conflicting records on both clusters (1 clusters adds key, another deletes key).
-  std::vector<std::thread> threads;
-  for (int i = 0; i < 2; ++i) {
-    auto client = i == 0 ? producer_client() : consumer_client();
-    int index = i;
-    bool is_delete = i == 0;
-    threads.emplace_back([this, client, index, tables, is_delete] {
-      WriteWorkload(10, 20, client, tables[index]->name(), is_delete);
-    });
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  WriteWorkload(0, 5, consumer_client(), tables[1]->name());
+  WriteWorkload(5, 10, producer_client(), tables[0]->name(), true /* is_delete */);
 
   // Ensure that same records exist on both universes.
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
@@ -2529,6 +2520,10 @@ TEST_P(TwoDCTestToggleBatching, TestInsertDeleteWorkloadWithRestart) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, replication_factor));
 
+  // This test depends on the write op metrics from the tservers. If the load balancer changes the
+  // leader of a consumer tablet, it may re-write replication records and break the test.
+  FLAGS_enable_load_balancing = false;
+
   WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name());
   for (size_t i = 0; i < num_runs; i++) {
     WriteWorkload(0, num_ops_per_workload, producer_client(), tables[0]->name(), true);
@@ -2901,7 +2896,8 @@ TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {
   std::shared_ptr<cdc::CDCTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
+        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
+            cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id}));
         if (!metrics) {
           return false;
         }

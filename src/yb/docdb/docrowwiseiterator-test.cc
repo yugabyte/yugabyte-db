@@ -34,6 +34,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 DECLARE_bool(TEST_docdb_sort_weak_intents);
 DECLARE_bool(disable_hybrid_scan);
 

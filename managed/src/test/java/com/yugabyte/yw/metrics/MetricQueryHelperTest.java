@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
+import com.yugabyte.yw.models.MetricConfigDefinition;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -60,13 +61,14 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
-  MetricConfig validMetric;
+  MetricConfigDefinition validMetric;
 
   @Before
   public void setUp() {
     JsonNode configJson = Json.parse("{\"metric\": \"my_valid_metric\", \"function\": \"sum\"}");
-    validMetric = MetricConfig.create("valid_metric", configJson);
-    validMetric.save();
+    MetricConfig metricConfig = MetricConfig.create("valid_metric", configJson);
+    metricConfig.save();
+    validMetric = metricConfig.getConfig();
     ExecutorService executor = Executors.newFixedThreadPool(1);
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
@@ -316,8 +318,9 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     params.put("end", "1481147648");
 
     JsonNode configJson = Json.parse("{\"metric\": \"my_valid_metric2\", \"function\": \"avg\"}");
-    MetricConfig validMetric2 = MetricConfig.create("valid_metric2", configJson);
-    validMetric2.save();
+    MetricConfig metricConfig = MetricConfig.create("valid_metric2", configJson);
+    metricConfig.save();
+    MetricConfigDefinition validMetric2 = metricConfig.getConfig();
 
     JsonNode responseJson =
         Json.parse(

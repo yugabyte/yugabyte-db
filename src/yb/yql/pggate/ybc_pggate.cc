@@ -52,6 +52,8 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+using std::string;
+
 DEFINE_int32(ysql_client_read_write_timeout_ms, -1, "Timeout for YSQL's yb-client read/write "
              "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
 DEFINE_int32(pggate_num_connections_to_server, 1,
@@ -72,6 +74,10 @@ DEFINE_bool(ysql_enable_reindex, false,
             "Enable REINDEX INDEX statement.");
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
+
+DEFINE_bool(ysql_disable_server_file_access, false,
+            "If true, disables read, write, and execute of local server files. "
+            "File access can be re-enabled if set to false.");
 
 namespace yb {
 namespace pggate {
@@ -509,6 +515,12 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
 }
 
+YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
+                                        uint32_t db_oid,
+                                        uint64_t db_catalog_cache_version) {
+  return ToYBCStatus(pgapi->SetDBCatalogCacheVersion(handle, db_oid, db_catalog_cache_version));
+}
+
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
   return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
 }
@@ -816,6 +828,11 @@ void YBCPgResetOperationsBuffering() {
 
 YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
+}
+
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  pgapi->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
@@ -1227,6 +1244,45 @@ YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
 
+YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version) {
+  return ExtractValueFromResult(pgapi->GetSharedDBCatalogVersion(db_oid_shm_index),
+                                                                 catalog_version);
+}
+
+YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info) {
+  const auto result = pgapi->GetTserverCatalogVersionInfo();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto& info = result.get();
+  VLOG(2) << "info: " << info.ShortDebugString();
+  DCHECK_EQ(info.db_oid_size(), info.shm_index_size());
+  YbTserverCatalogInfo info_data = static_cast<YbTserverCatalogInfo>(
+      YBCPAlloc(sizeof(YbTserverCatalogInfoData)));
+  const uint32_t num_databases = info.db_oid_size();
+  info_data->num_databases = num_databases;
+  if (info.db_oid_size() == 0) {
+    info_data->versions = nullptr;
+  } else {
+    info_data->versions = static_cast<YbTserverCatalogVersion*>(
+        YBCPAlloc(sizeof(YbTserverCatalogVersion) * num_databases));
+    for (uint i = 0; i < num_databases; i++) {
+      info_data->versions[i].db_oid = info.db_oid(i);
+      info_data->versions[i].current_version = info.current_version(i);
+      info_data->versions[i].shm_index = info.shm_index(i);
+    }
+  }
+  *tserver_catalog_info = info_data;
+#ifndef NDEBUG
+  // The db oids should be in ascending order.
+  for (uint i = 1; i < num_databases; i++) {
+    CHECK_LT(info_data->versions[i - 1].db_oid, info_data->versions[i].db_oid);
+  }
+#endif
+  return YBCStatusOK();
+}
+
 YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
   return ExtractValueFromResult(pgapi->GetSharedAuthKey(), auth_key);
 }
@@ -1235,6 +1291,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
@@ -1302,6 +1359,11 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
     }
   }
   return YBCStatusOK();
+}
+
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
 //------------------------------------------------------------------------------------------------

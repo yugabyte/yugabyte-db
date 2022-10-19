@@ -13,7 +13,9 @@ import './LagGraph.scss';
 const ALERT_NAME = 'Replication Lag';
 
 const METRIC_NAME = 'tserver_async_replication_lag_micros';
-// TODO: Rename. Confusing to call this LagGraph when we have another "lag graph".
+
+// TODO: Decide whether we need this component.
+// JIRA: https://yugabyte.atlassian.net/browse/PLAT-5708
 interface LagGraphProps {
   replicationUUID: string;
   sourceUniverseUUID: string;
@@ -55,16 +57,16 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
   );
 
   if (
-    !metrics?.data.tserver_async_replication_lag_micros ||
-    !Array.isArray(metrics.data.tserver_async_replication_lag_micros.data)
+    !metrics?.tserver_async_replication_lag_micros ||
+    !Array.isArray(metrics.tserver_async_replication_lag_micros.data)
   ) {
     return null;
   }
 
-  const metricAliases = metrics.data[METRIC_NAME].layout.yaxis.alias;
+  const metricAliases = metrics[METRIC_NAME].layout.yaxis.alias;
   const committedLagName = metricAliases['async_replication_committed_lag_micros'];
 
-  const replicationNodeMetrics = metrics.data[METRIC_NAME].data.filter(
+  const replicationNodeMetrics = metrics[METRIC_NAME].data.filter(
     (x: any) => x.name === committedLagName
   );
 

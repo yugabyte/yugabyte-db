@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodesInCluster;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
@@ -13,6 +14,7 @@ import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperation
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -37,6 +39,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.PlacementIndexes;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -50,6 +53,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -73,6 +77,9 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -1850,56 +1857,210 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   })
   // @formatter:on
   public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
-    String customerCode = String.valueOf(customerIdx.nextInt(99999));
-    Customer customer =
-        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
-    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+    String defaultRegion = getDefaultRegionCode(zones);
+    List<NodeDetails> nodes = configureNodesByDescriptor(aws, zones, null);
 
-    String[] zoneDescr = zones.split(";");
-    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
-    int index = 0;
-    Map<String, Integer> expected = new HashMap<>();
-    Set<String> createdRegions = new HashSet<>();
-    Region defaultRegion = null;
-
-    for (String descriptor : zoneDescr) {
-      String[] parts = descriptor.split("-");
-      String region = parts[0];
-      // Default region should exist.
-      if (region.endsWith("d")) {
-        if (!createdRegions.contains(region)) {
-          defaultRegion = Region.create(provider, region, region, "yb-image-1");
-          createdRegions.add(region);
-        }
-      }
-      String zone = parts[1];
-      int count = Integer.parseInt(parts[2]);
-      int mastersCount = Integer.parseInt(parts[3]);
-      expected.put(region + "-" + zone, Integer.parseInt(parts[4]));
-      for (int i = 0; i < count; i++) {
-        nodes.add(
-            ApiUtils.getDummyNodeDetails(
-                index++,
-                NodeDetails.NodeState.ToBeAdded,
-                mastersCount-- > 0,
-                true,
-                "onprem",
-                region,
-                zone,
-                null));
-      }
-    }
+    Map<String, Integer> expected = parseExpected(zones);
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     SelectMastersResult selection =
-        PlacementInfoUtil.selectMasters(
-            null, nodes, defaultRegion == null ? null : defaultRegion.code, true, userIntent);
-    PlacementInfoUtil.verifyMastersSelection(nodes, rf);
+        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    verifyMasters(selection, nodes, rf, removedCount, expected);
+  }
+
+  private Map<String, Integer> parseExpected(String zones) {
+    String[] zoneDescr = zones.split(";");
+    Map<String, Integer> expected = new HashMap<>();
+    for (String descriptor : zoneDescr) {
+      String[] parts = descriptor.split("-");
+      String region = parts[0];
+      String zone = parts[1];
+      expected.put(region + "-" + zone, Integer.parseInt(parts[parts.length - 1]));
+    }
+    return expected;
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    // The parameter format is:
+    //   region - zone - nodes in zone - existing masters in zone - expected count of masters
+
+    // rf >= count of zones
+    // --------------------
+    // rf=3, 3 zones, 1-1-1 -> masters 1-1-1
+    "Case 1, 3, r1-az1-1-0-1;r1-az2-1-0-1;r1-az3-1-0-1, 0",
+    // rf=3, 3 zones, 3-3-3 -> masters 1-1-1
+    "Case 2, 3, r1-az1-3-0-1;r1-az2-3-0-1;r1-az3-3-0-1, 0",
+    // rf=5, 3 zones, 1-3-1 -> masters 1-3-1
+    "Case 3, 5, r1-az1-1-0-1;r1-az2-3-0-3;r1-az3-1-0-1, 0",
+    // rf=5, 3 zones, 14-14-7 -> masters 2-2-1
+    "Case 4, 5, r1-az1-14-0-2;r1-az2-14-0-2;r1-az3-7-0-1, 0",
+    // rf=5, 3 zones, 14-7-14 -> masters 2-1-2
+    "Case 5, 5, r1-az1-14-0-2;r1-az2-7-0-1;r1-az3-14-0-2, 0",
+    // rf=5, 3 zones, 7-14-14 -> masters 1-2-2
+    "Case 6, 5, r1-az1-7-0-1;r1-az2-14-0-2;r1-az3-14-0-2, 0",
+    // rf=7, 3 zones, 14-7-7 -> masters 3-2-2
+    "Case 7, 7, r1-az1-14-0-3;r1-az2-7-1-2;r1-az3-7-1-2, 0",
+    // rf=7, 3 zones, 7-14-7 -> masters 2-3-2
+    "Case 8, 7, r1-az1-7-1-2;r1-az2-14-0-3;r1-az3-7-1-2, 0",
+    // rf=7, 3 zones, 7-7-14 -> masters 3-2-2
+    "Case 9, 7, r1-az1-7-1-2;r1-az2-7-1-2;r1-az3-14-0-3, 0",
+
+    // rf < count of zones
+    // -------------------
+    // rf=3, 4 zones in 2 regions, r1:3-2-3, r2:3 -> 1-0-1, 1
+    "Case 10, 3, r1-az1-3-0-1;r1-az2-2-0-0;r1-az3-3-0-1;r2-az4-3-0-1, 0",
+    // rf=5, 4 zones in 2 regions, r1:4-2-3, r2:3 -> 2-1-1, 1
+    "Case 11, 5, r1-az1-4-0-2;r1-az2-2-0-1;r1-az3-3-0-1;r2-az4-3-0-1, 0",
+    // rf=5, 6 zones in 2 regions, r1:5-4-3, r2:2-2-1 -> 1-1-1, 1-1-0
+    "Case 12, 5, r1-az1-5-0-1;r1-az2-4-0-1;r1-az3-3-0-1;r2-az4-2-0-1;r2-az5-2-0-1;r2-az6-1-0-0, 0",
+    // rf=5, 6 zones in 3 regions, r1:5-4, r2:3-2, r3:1-1 -> 1-1, 1-1, 1-0
+    "Case 13, 5, r1-az1-5-0-1;r1-az2-4-0-1;r2-az3-3-0-1;r2-az4-2-0-1;r3-az5-1-0-1;r3-az6-1-0-0, 0",
+
+    // Checking that zones with already existing master are preferred in case of the same nodes
+    // count.
+    // rf=3, 6 zones in 2 regions, r1:3-1-1, r2:3-1-1 -> 1-0-0, 1-0-1
+    "Case 14, 3, r1-az1-3-0-1;r1-az2-1-0-0;r1-az3-1-0-0;r2-az4-3-0-1;r2-az5-1-0-0;r2-az6-1-1-1, 0",
+    "Case 15, 5, r1-az1-4-1-2;r1-az2-3-3-1;r1-az3-4-1-2, 2",
+
+    // Checking proportional masters seeding.
+    "Case 16, 6, r1-az1-15-1-3;r1-az2-10-2-2;r1-az3-5-3-1, 2",
+    "Case 17, 6, r1-az1-15-1-1;r1-az2-30-2-2;r1-az3-45-3-3, 0",
+
+    // Checking default region logic. Region with name ended as 'd' is treated in this test
+    // as default region. As example, 'r1d' - is a default region, 'r1' - isn't.
+    // Use the same region name for all AZs in this region. If you have r1d-az1,
+    // you need to use r1d-az2 and r1d-az3 as well.
+    // Case when RF < nodes count in the default region, only one zone in this region.
+    "Case 18, 3, r1d-az1-3-0-3;r2-az1-5-0-0, 0",
+    // Case when RF < nodes count in the default region, three zones in this region.
+    "Case 19, 5, r1d-az1-3-0-2;r1d-az2-3-0-2;r1d-az3-3-0-1;r2-az1-5-0-0, 0",
+    // The same as previous + check that larger zones get more masters.
+    "Case 20, 5, r1d-az1-2-0-1;r1d-az2-2-0-1;r1d-az3-4-0-3;r2-az1-5-0-0, 0",
+
+    // Some additional tests for raised problems.
+    "Case 21, 1, r1-az1-1-1-0;r1-az2-3-0-1, 1",
+  })
+  // @formatter:on
+  public void testSelectMastersForDedicatedAws(
+      String name, int rf, String zones, int removedCount) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
+    userIntent.dedicatedNodes = true;
+    String defaultRegion = getDefaultRegionCode(zones);
+    List<NodeDetails> nodes = configureNodesByDescriptor(aws, zones, null);
+    makeDedicated(nodes, userIntent);
+    SelectMastersResult selection =
+        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    verifyMasters(
+        selection, nodes, userIntent.replicationFactor, removedCount, parseExpected(zones));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    // The parameter format is:
+    // region - zone - nodes - existing masters - free master nodes - expected count of masters
+    // Case 1a. No changes.
+    "Case 1a, 3, r1-az1-1-1-0-1;r1-az2-1-1-0-1;r1-az3-1-1-0-1, 0",
+    // Case 2a. Starting masters.
+    "Case 2a, 3, r1-az1-1-0-1-1;r1-az2-1-0-1-1;r1-az3-1-0-1-1, 0",
+    // Case 3a. GP. Not enough free nodes in az2 -> starting in other zone.
+    "Case 3a, 3, r1-az1-1-1-1-2;r1-az2-2-0-0-0;r1-az3-1-0-2-1;r1-az4-1-0-0-0, 0",
+    // Case 4a. Moving master to other zone.
+    "Case 4a, 3, r1-az1-2-2-0-1;r1-az2-2-0-1-1;r1-az3-1-0-2-1, 1",
+    // Case 5a. Master without tserver.
+    "Case 5a, 3, r1-az1-2-0-1-1;r1-az2-0-1-0-1;r1-az3-1-0-1-1, 0",
+  })
+  // @formatter:on
+  public void testSelectMastersForDedicatedOnprem(
+      String name, int rf, String zones, int removedCount) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
+    userIntent.dedicatedNodes = true;
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.masterInstanceType = "m4.medium";
+    userIntent.providerType = onprem;
+
+    String defaultRegion = getDefaultRegionCode(zones);
+    List<NodeDetails> nodes =
+        configureNodesByDescriptor(
+            onprem,
+            zones,
+            (descr) -> new Pair<>(userIntent.masterInstanceType, Integer.parseInt(descr[4])));
+    makeDedicated(nodes, userIntent);
+    SelectMastersResult selection =
+        PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+    verifyMasters(
+        selection, nodes, userIntent.replicationFactor, removedCount, parseExpected(zones));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    // The parameter format is:
+    // region - zone - nodes - existing masters - free master nodes
+    // Failed Case 6a. Not enough nodes.
+    "Failed Case 1a, 3, r1-az1-1-0-1;r1-az2-1-0-0;r1-az3-1-1-0, 0",
+    // Failed Case 7a. Cannot place masters in every zone.
+    "Failed Case 2a, 3, r1-az1-1-1-5;r1-az2-1-0-0;r1-az3-1-1-0, 1",
+  })
+  // @formatter:on
+  public void testSelectMastersForDedicatedOnpremFailed(
+      String name, int rf, String zones, int errorIndex) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.replicationFactor = rf;
+    userIntent.dedicatedNodes = true;
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.masterInstanceType = "m4.medium";
+    userIntent.providerType = onprem;
+
+    String defaultRegion = getDefaultRegionCode(zones);
+    List<NodeDetails> nodes =
+        configureNodesByDescriptor(
+            onprem,
+            zones,
+            (descr) -> new Pair<>(userIntent.masterInstanceType, Integer.parseInt(descr[4])));
+    makeDedicated(nodes, userIntent);
+    String errorMessage =
+        assertThrows(
+                RuntimeException.class,
+                () -> {
+                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
+                })
+            .getMessage();
+    String errors[] =
+        new String[] {
+          "Could not pick 3 masters, only 2 nodes available",
+          "Could not create 3 masters in 3 zones, only 2 zones with masters available"
+        };
+    String expectedMessage = errors[errorIndex];
+    assertTrue(
+        errorMessage + " doesn't start with " + expectedMessage,
+        errorMessage.startsWith(expectedMessage));
+  }
+
+  private void verifyMasters(
+      SelectMastersResult selection,
+      List<NodeDetails> nodes,
+      int rf,
+      int removedCount,
+      Map<String, Integer> expected) {
+    PlacementInfoUtil.verifyMastersSelection(nodes, rf, selection);
+
+    Set<NodeDetails> allNodes = new HashSet<>(nodes);
+    // For the case of dedicated nodes, addedMasters are not added to the list automatically.
+    selection.addedMasters.forEach(allNodes::add);
 
     List<NodeDetails> masters =
-        nodes
+        allNodes
             .stream()
-            .filter(node -> node.isActive() && node.isMaster)
+            .filter(
+                node ->
+                    node.state != ToBeRemoved
+                        && node.isMaster
+                        && node.masterState != NodeDetails.MasterState.ToStop)
             .collect(Collectors.toList());
     assertEquals(rf, masters.size());
     assertEquals(removedCount, selection.removedMasters.size());
@@ -1944,58 +2105,117 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   // @formatter:on
   public void testSelectMasters_ExceptionThrown(
       String name, int rf, String zones, int expectedMessageIndex) {
-    String customerCode = String.valueOf(customerIdx.nextInt(99999));
-    Customer customer =
-        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
-    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
-
-    String[] zoneDescr = zones.split(";");
-    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
-    int index = 0;
-    Set<String> createdRegions = new HashSet<>();
-    Region defaultRegion = null;
-
-    for (String descriptor : zoneDescr) {
-      String[] parts = descriptor.split("-");
-      String region = parts[0];
-      // Default region should exist.
-      if (region.endsWith("d")) {
-        if (!createdRegions.contains(region)) {
-          defaultRegion = Region.create(provider, region, region, "yb-image-1");
-          createdRegions.add(region);
-        }
-      }
-      String zone = parts[1];
-      int count = Integer.parseInt(parts[2]);
-      int mastersCount = Integer.parseInt(parts[3]);
-      for (int i = 0; i < count; i++) {
-        nodes.add(
-            ApiUtils.getDummyNodeDetails(
-                index++,
-                NodeDetails.NodeState.ToBeAdded,
-                mastersCount-- > 0,
-                true,
-                "onprem",
-                region,
-                zone,
-                null));
-      }
-    }
-
-    String defaultRegionCode = defaultRegion == null ? null : defaultRegion.code;
+    String defaultRegion = getDefaultRegionCode(zones);
+    List<NodeDetails> nodes = configureNodesByDescriptor(aws, zones, null);
     UserIntent userIntent = new UserIntent();
     userIntent.replicationFactor = rf;
     String errorMessage =
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegionCode, true, userIntent);
+                  PlacementInfoUtil.selectMasters(null, nodes, defaultRegion, true, userIntent);
                 })
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
     assertTrue(
         errorMessage + " doesn't start with " + expectedMessage,
         errorMessage.startsWith(expectedMessage));
+  }
+
+  private String getDefaultRegionCode(String zonesDescriptor) {
+    return Arrays.stream(zonesDescriptor.split(";"))
+        .map(z -> z.split("-")[0])
+        .filter(regCode -> regCode.endsWith("d"))
+        .findFirst()
+        .orElse(null);
+  }
+
+  private void makeDedicated(List<NodeDetails> nodes, UserIntent userIntent) {
+    AtomicInteger cnt = new AtomicInteger(nodes.size());
+    new ArrayList<>(nodes)
+        .forEach(
+            node -> {
+              if (node.isMaster && node.isTserver) {
+                node.isMaster = false;
+                NodeDetails newMaster =
+                    PlacementInfoUtil.createDedicatedMasterNode(node, userIntent);
+                newMaster.nodeName = "host-n" + cnt.getAndIncrement();
+                newMaster.cloudInfo.private_ip = "10.0.0." + cnt.get();
+                newMaster.cloudInfo.instance_type = userIntent.masterInstanceType;
+                newMaster.state = Live;
+                newMaster.masterState = null;
+                nodes.add(newMaster);
+              }
+              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.state = Live;
+            });
+    PlacementInfoUtil.dedicateNodes(nodes);
+  }
+
+  private List<NodeDetails> configureNodesByDescriptor(
+      CloudType cloudType,
+      String zondesDescriptor,
+      @Nullable Function<String[], Pair<String, Integer>> dbInstancesProvider) {
+    boolean createZones = dbInstancesProvider != null;
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer customer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider provider = ModelFactory.newProvider(customer, cloudType);
+
+    String[] zoneDescr = zondesDescriptor.split(";");
+    List<NodeDetails> nodes = new ArrayList<>();
+    int index = 0;
+    Map<String, Region> regionsMap = new HashMap<>();
+    Map<String, AvailabilityZone> zoneMap = new HashMap<>();
+
+    for (String descriptor : zoneDescr) {
+      String[] parts = descriptor.split("-");
+      String region = parts[0];
+      Region currentRegion = null;
+      // Default region should exist.
+      if (createZones || (region.endsWith("d") && !regionsMap.containsKey(region))) {
+        currentRegion =
+            regionsMap.computeIfAbsent(
+                region, (r) -> Region.create(provider, region, region, "yb-image-1"));
+      }
+      String zone = parts[1];
+      AvailabilityZone currentZone = null;
+      if (createZones) {
+        Region currentRegionVal = currentRegion;
+        currentZone =
+            zoneMap.computeIfAbsent(
+                zone, z -> AvailabilityZone.createOrThrow(currentRegionVal, zone, zone, null));
+      }
+      int tserverCount = Integer.parseInt(parts[2]);
+      int mastersCount = Integer.parseInt(parts[3]);
+      for (int i = 0; i < Math.max(tserverCount, mastersCount); i++) {
+        NodeDetails nodeDetails =
+            ApiUtils.getDummyNodeDetails(
+                index++,
+                NodeDetails.NodeState.ToBeAdded,
+                mastersCount-- > 0,
+                true,
+                cloudType.toString(),
+                region,
+                zone,
+                null);
+        if (i + 1 > tserverCount) {
+          nodeDetails.isTserver = false;
+        }
+        if (currentZone != null) {
+          nodeDetails.azUuid = currentZone.uuid;
+        }
+        nodes.add(nodeDetails);
+      }
+      if (dbInstancesProvider != null) {
+        Pair<String, Integer> instanceTypeAndCount = dbInstancesProvider.apply(parts);
+        if (instanceTypeAndCount.getSecond() > 0) {
+          addNodes(currentZone, instanceTypeAndCount.getSecond(), instanceTypeAndCount.getFirst());
+        }
+      }
+    }
+
+    return nodes;
   }
 
   @Test
@@ -2643,6 +2863,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     addNodes(AvailabilityZone.getByCode(provider, "r1z4"), 1, ApiUtils.UTIL_INST_TYPE);
 
     UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.providerType = CloudType.valueOf(provider.code);
     Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
     cluster.placementInfo = placementInfo;
@@ -2654,7 +2875,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     indexes = PlacementInfoUtil.generatePlacementIndexes(Collections.emptySet(), 4, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r1z1", "r1z3", "r1z4", "r1z3");
-
     // Not enough nodes
     assertThrows(
         RuntimeException.class,
@@ -2688,6 +2908,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                   NodeDetails details = new NodeDetails();
                   details.azUuid = uuid;
                   details.state = Live;
+                  details.cloudInfo = new CloudSpecificInfo();
+                  details.cloudInfo.instance_type = ApiUtils.UTIL_INST_TYPE;
                   return details;
                 })
             .collect(Collectors.toList());
@@ -2703,11 +2925,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         () -> {
           PlacementInfoUtil.generatePlacementIndexes(existentNodes, 8, cluster);
         });
-
     // Consider case for CREATE - nodes are in ToBeAdded state and are not marked as used in db.
     existentNodes.forEach(node -> node.state = ToBeAdded);
     indexes = PlacementInfoUtil.generatePlacementIndexes(existentNodes, 3, cluster);
-    assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z1", "r1z4");
+    assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z1", "r1z4"); // HERE
 
     indexes = PlacementInfoUtil.generatePlacementIndexes(existentNodes, 4, cluster);
     assertPlacementIndexes(placementInfo, indexes, "r2z3", "r1z1", "r1z4", "r2z2");
@@ -3113,5 +3334,97 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             });
     assertEquals(3, addedMasters.get()); // 3 new masters to start.
     assertEquals(1, addedTservers.get()); // 1 new tserver to start.
+  }
+
+  @Test
+  public void testAvailableNodeTracker() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, onprem);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region, "z2", "z2", "subnet-2");
+    AvailabilityZone z3 = AvailabilityZone.createOrThrow(region, "z3", "z3", "subnet-3");
+
+    String masterInstanceType = "m4.medium";
+    addNodes(z1, 1, ApiUtils.UTIL_INST_TYPE);
+    addNodes(z2, 3, ApiUtils.UTIL_INST_TYPE);
+    addNodes(z3, 4, masterInstanceType);
+
+    List<NodeDetails> currentNodes =
+        Arrays.asList(z1, z2, z2)
+            .stream()
+            .map(
+                zone -> {
+                  NodeDetails details = new NodeDetails();
+                  details.azUuid = zone.uuid;
+                  details.state = ToBeAdded;
+                  details.cloudInfo = new CloudSpecificInfo();
+                  details.cloudInfo.instance_type = ApiUtils.UTIL_INST_TYPE;
+                  return details;
+                })
+            .collect(Collectors.toList());
+    currentNodes.get(2).state = Live;
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.masterInstanceType = masterInstanceType;
+
+    // Checking cloud provider - have infinite number nodes.
+    userIntent.providerType = CloudType.aws;
+    PlacementInfoUtil.AvailableNodeTracker awsNodeTracker =
+        new PlacementInfoUtil.AvailableNodeTracker(userIntent, currentNodes);
+    assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z1.uuid));
+    assertEquals(
+        Integer.MAX_VALUE,
+        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+    assertEquals(
+        Integer.MAX_VALUE,
+        awsNodeTracker.getAvailableForZone(z1.uuid, UniverseDefinitionTaskBase.ServerType.TSERVER));
+    assertEquals(Integer.MAX_VALUE, awsNodeTracker.getAvailableForZone(z3.uuid));
+    awsNodeTracker.acquire(z1.uuid);
+    awsNodeTracker.acquire(z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER);
+    awsNodeTracker.acquire(z3.uuid);
+
+    // Checking onprem.
+    userIntent.providerType = CloudType.onprem;
+    PlacementInfoUtil.AvailableNodeTracker onpremNodeTracker =
+        new PlacementInfoUtil.AvailableNodeTracker(userIntent, currentNodes);
+    assertEquals(0, onpremNodeTracker.getAvailableForZone(z1.uuid));
+    assertEquals(
+        0,
+        onpremNodeTracker.getAvailableForZone(
+            z1.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+    assertEquals(2, onpremNodeTracker.getAvailableForZone(z2.uuid));
+    assertEquals(
+        0,
+        onpremNodeTracker.getAvailableForZone(
+            z2.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+    assertEquals(0, onpremNodeTracker.getAvailableForZone(z3.uuid));
+    assertEquals(
+        4,
+        onpremNodeTracker.getAvailableForZone(
+            z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
+    assertThrows(
+        RuntimeException.class,
+        () -> {
+          onpremNodeTracker.acquire(z1.uuid);
+        });
+    onpremNodeTracker.acquire(z2.uuid);
+    assertEquals(1, onpremNodeTracker.getAvailableForZone(z2.uuid));
+    onpremNodeTracker.acquire(z2.uuid);
+    assertEquals(0, onpremNodeTracker.getAvailableForZone(z2.uuid));
+    assertThrows(
+        RuntimeException.class,
+        () -> {
+          onpremNodeTracker.acquire(z2.uuid);
+        });
+
+    onpremNodeTracker.acquire(z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER);
+    assertEquals(
+        3,
+        onpremNodeTracker.getAvailableForZone(
+            z3.uuid, UniverseDefinitionTaskBase.ServerType.MASTER));
   }
 }

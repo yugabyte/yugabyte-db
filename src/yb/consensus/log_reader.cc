@@ -52,6 +52,8 @@
 #include "yb/util/result.h"
 #include "yb/util/std_util.h"
 
+using std::string;
+
 DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 

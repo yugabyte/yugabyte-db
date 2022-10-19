@@ -48,6 +48,8 @@ DEFINE_int32(alloc_size, 4, "number of bytes in each allocation");
 namespace yb {
 
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 namespace {
 

@@ -54,6 +54,7 @@ set(TABLET_SRCS
   transaction_participant.cc
   transaction_status_resolver.cc
   operations/operation.cc
+  operations/change_auto_flags_config_operation.cc
   operations/change_metadata_operation.cc
   operations/history_cutoff_operation.cc
   operations/operation_driver.cc

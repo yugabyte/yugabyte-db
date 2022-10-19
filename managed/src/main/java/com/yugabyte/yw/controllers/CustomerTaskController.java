@@ -162,25 +162,16 @@ public class CustomerTaskController extends AuthenticatedController {
     for (CustomerTask task : customerTaskList) {
       Optional<ObjectNode> optTaskProgress =
           commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()));
-      // If the task progress API returns error, we will log it and not add that task
-      // to the task list for UI rendering.
+
       optTaskProgress.ifPresent(
           taskProgress -> {
-            if (taskProgress.has("error")) {
-              LOG.error(
-                  "Error fetching task progress for {}. Error: {}",
-                  task.getTaskUUID(),
-                  taskProgress.get("error"));
-            } else {
-              CustomerTaskFormData taskData =
-                  buildCustomerTaskFromData(
-                      task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
-              if (taskData != null) {
-                List<CustomerTaskFormData> taskList =
-                    taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-                taskList.add(taskData);
-                taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
-              }
+            CustomerTaskFormData taskData =
+                buildCustomerTaskFromData(task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
+            if (taskData != null) {
+              List<CustomerTaskFormData> taskList =
+                  taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
+              taskList.add(taskData);
+              taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
             }
           });
     }

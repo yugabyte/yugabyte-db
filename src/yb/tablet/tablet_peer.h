@@ -162,6 +162,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
+      std::unique_ptr<consensus::ConsensusMetadata> consensus_meta,
       consensus::MultiRaftManager* multi_raft_manager);
 
   // Starts the TabletPeer, making it available for Write()s. If this
@@ -380,6 +381,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
 
   Status reset_cdc_min_replicated_index_if_stale();
+
+  int64_t get_cdc_min_replicated_index();
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 

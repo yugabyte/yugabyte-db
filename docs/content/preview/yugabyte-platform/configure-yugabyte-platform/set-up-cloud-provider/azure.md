@@ -92,7 +92,7 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
 - **SSH User** represents the user name for the **SSH Port**.
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
-- **Client Secret** represents the secret of an application registered in your Azure Active Directory.
+- **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [How to define a private DNS zone](#how-to-define-a-private-dns-zone).
 - **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
   - Select an existing Virtual Private Cloud (VPC).

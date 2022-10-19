@@ -66,6 +66,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/mvcc.h"
+#include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
@@ -147,6 +148,8 @@ namespace tablet {
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 using log::Log;
 using log::LogEntryPB;
@@ -959,6 +962,9 @@ class TabletBootstrap {
       case consensus::SPLIT_OP:
         return PlaySplitOpRequest(replicate);
 
+      case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+        return PlayChangeAutoFlagsConfigRequest(replicate);
+
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
         return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
@@ -1017,12 +1023,27 @@ class TabletBootstrap {
     // - tablet bootstrap of new after-split tablet replaying split operation.
   }
 
+  Status PlayChangeAutoFlagsConfigRequest(ReplicateMsg* replicate_msg) {
+    if (!tablet_->is_sys_catalog()) {
+      // This should never happen. We use WAL to propagate AutoFlags config only to other masters.
+      // For tablet servers we use heartbeats.
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL)
+          << "AutoFlags config request ignored on non-sys_catalog tablet";
+      return Status::OK();
+    }
+
+    ChangeAutoFlagsConfigOperation operation(
+        tablet_.get(), replicate_msg->mutable_auto_flags_config());
+
+    return operation.Apply();
+  }
+
   void HandleRetryableRequest(
       const ReplicateMsg& replicate, RestartSafeCoarseTimePoint entry_time) {
     if (!replicate.has_write())
       return;
 
-    if (data_.retryable_requests) {
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
       data_.retryable_requests->Bootstrap(replicate, entry_time);
     }
 
@@ -1151,8 +1172,9 @@ class TabletBootstrap {
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    const RestartSafeCoarseDuration min_seconds_to_retain_logs =
-        std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    const RestartSafeCoarseDuration min_seconds_to_retain_logs = data_.bootstrap_retryable_requests
+        ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+        : 0s;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {

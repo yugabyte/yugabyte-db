@@ -34,6 +34,8 @@
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
+using std::string;
+
 using namespace std::literals;
 using namespace std::placeholders;
 using namespace yb::size_literals;

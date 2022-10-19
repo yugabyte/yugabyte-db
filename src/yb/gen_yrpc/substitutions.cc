@@ -28,6 +28,8 @@
 #include "yb/util/format.h"
 #include "yb/util/string_case.h"
 
+using std::string;
+
 namespace yb {
 namespace gen_yrpc {
 

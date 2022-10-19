@@ -150,6 +150,8 @@ class PgApiImpl {
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetSharedCatalogVersion();
+  Result<uint64_t> GetSharedDBCatalogVersion(int db_oid_shm_index);
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
   Result<uint64_t> GetSharedAuthKey();
 
   // Setup the table to store sequences data.
@@ -317,6 +319,10 @@ class PgApiImpl {
 
   Status SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
 
+  Status SetDBCatalogCacheVersion(PgStatement *handle,
+                                  uint32_t db_oid,
+                                  uint64_t catalog_cache_version);
+
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   //------------------------------------------------------------------------------------------------
@@ -444,6 +450,7 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
+  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -591,6 +598,10 @@ class PgApiImpl {
   void StartSysTablePrefetching();
   void StopSysTablePrefetching();
   void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
+                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.

@@ -55,6 +55,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);
@@ -70,6 +72,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -1827,7 +1830,9 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     for (const auto& peer : peers) {
       auto tp = peer->tablet()->transaction_participant();
       if (tp) {
-        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+        const auto count_intents_result = tp->TEST_CountIntents();
+        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
       }
     }
 
@@ -2874,6 +2879,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
 
   FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());

@@ -49,6 +49,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 #ifndef ROCKSDB_LITE

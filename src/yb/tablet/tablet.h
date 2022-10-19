@@ -399,7 +399,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
       const Schema& projection,
       const ReadHybridTime& time,
-      const string& next_key);
+      const std::string& next_key);
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
   Status Flush(FlushMode mode,
@@ -439,7 +439,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Verbosely dump this entire tablet to the logs. This is only
   // really useful when debugging unit tests failures where the tablet
   // has a very small number of rows.
-  Status DebugDump(vector<std::string>* lines = nullptr);
+  Status DebugDump(std::vector<std::string>* lines = nullptr);
 
   const yb::SchemaPtr schema() const;
 
@@ -749,6 +749,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
+  // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
+  // critical failures.
+  Status ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config);
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -760,7 +764,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
   Status OpenKeyValueTablet();
-  virtual Status CreateTabletDirectories(const string& db_dir, FsManager* fs);
+  virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
   std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
 
@@ -814,7 +818,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<bool> HasScanReachedMaxPartitionKey(
       const PgsqlReadRequestPB& pgsql_read_request,
-      const string& partition_key,
+      const std::string& partition_key,
       size_t row_count) const;
 
   // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
@@ -1011,6 +1015,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   SnapshotCoordinator* snapshot_coordinator_ = nullptr;
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
+
+  AutoFlagsManager* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

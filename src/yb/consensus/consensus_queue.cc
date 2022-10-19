@@ -163,6 +163,8 @@ namespace consensus {
 
 using log::Log;
 using std::unique_ptr;
+using std::string;
+using std::max;
 using rpc::Messenger;
 using strings::Substitute;
 

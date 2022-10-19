@@ -16,7 +16,11 @@ type: indexpage
 showRightNav: true
 ---
 
-The [Yugabyte Structured Query Language (YSQL) API](../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can use the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) to read and write data into YugabyteDB databases. YSQL-compatible PostgreSQL drivers are listed in the compatibility matrix below.
+The [Yugabyte Structured Query Language (YSQL) API](../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can use the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) to read and write data into YugabyteDB databases.
+
+The [Yugabyte Cloud Query Language (YCQL) API](../api/ycql/) is a semi-relational SQL API with roots in the [Cassandra Query Language (CQL)](https://cassandra.apache.org/doc/latest/cassandra/cql/index.html).
+
+YSQL- and YCQL-compatible drivers are listed in the compatibility matrix below.
 
 ## Smart drivers
 
@@ -35,7 +39,7 @@ The following libraries are officially supported by YugabyteDB.
 ### Java
 
 | Driver/ORM | Support Level | Example apps |
-| :-------------------------- | :------------ | :----------- |
+| :--------- | :------------ | :----------- |
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD Example](java/yugabyte-jdbc/) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD Example](java/postgres-jdbc/) |
 | [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD Example](java/ycql) |
@@ -59,6 +63,19 @@ The following libraries are officially supported by YugabyteDB.
 | [GORM](go/gorm/) | Full | [CRUD Example](go/gorm/) |
 | [PG](go/pg/) | Full | [CRUD Example](go/pg/) |
 
+### C
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [libpq C Driver](c/ysql/) | Full | [CRUD Example](c/ysql/) |
+
+### C++
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [libpqxx C++ Driver](cpp/ysql/) | Full | [CRUD Example](cpp/ysql/) |
+| [YugabyteDB C++ Driver for YCQL](cpp/ycql/) | Full | [CRUD Example](cpp/ycql/) |
+
 ### Node.js
 
 | Driver/ORM | Support Level | Example apps |
@@ -79,7 +96,7 @@ The following libraries are officially supported by YugabyteDB.
 ### Python
 
 | Driver/ORM | Support Level | Example apps |
-| :------------------------- | :------------ | :----------- |
+| :--------- | :------------ | :----------- |
 | [YugabyteDB Psycopg2 Smart Driver](python/yugabyte-psycopg2/) [Recommended] | Full | [CRUD Example](python/yugabyte-psycopg2/) |
 | [PostgreSQL Psycopg2 Driver](python/postgres-psycopg2/) | Full | [CRUD Example](python/postgres-psycopg2/) |
 | aiopg | Full | [Hello World](../develop/build-apps/python/ysql-aiopg/) |
@@ -90,4 +107,25 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
-| [Diesel](rust/diesel/) | Full | [Diesel](rust/diesel/) |
+| [Diesel](rust/diesel/) | Full | [CRUD example](rust/diesel/) |
+
+### Ruby
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [Pg Gem Driver](ruby/ysql-pg/) | Full | [CRUD example](ruby/ysql-pg/) |
+| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
+| [YugabyteDB Ruby Driver for YCQL](ruby/ycql/) | Full | [CRUD example](ruby/ycql/) |
+| [ActiveRecord ORM](ruby/activerecord/) | Full | [CRUD example](ruby/activerecord/) |
+
+### PHP
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [php-pgsql Driver](php/ysql/) | Full | [CRUD example](php/ysql/) |
+
+### Scala
+
+| Driver/ORM | Support Level | Example apps |
+| :--------- | :------------ | :----------- |
+| [YugabyteDB Java Driver for YCQL](scala/ycql/) | Full | [CRUD example](scala/ycql/) |

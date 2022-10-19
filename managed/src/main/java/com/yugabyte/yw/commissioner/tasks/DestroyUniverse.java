@@ -265,7 +265,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       }
 
       // Create the subtasks to delete all the xCluster configs.
-      xClusterConfigs.forEach(this::createDeleteXClusterConfigSubtasks);
+      xClusterConfigs.forEach(
+          xClusterConfig ->
+              createDeleteXClusterConfigSubtasks(xClusterConfig, params().isForceDelete));
       log.debug("Subtasks created to delete these xCluster configs: {}", xClusterConfigs);
     } catch (Exception e) {
       log.error(
