@@ -12,19 +12,22 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.MatcherAssert.*;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
@@ -44,6 +47,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
@@ -57,6 +61,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
@@ -118,11 +124,12 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
     assertEquals(OK, result.status());
     ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
-    assertEquals(json.get(0).get("uuid").textValue(), customer.uuid.toString());
+    JsonNode node = json.get(0);
+    assertEquals(node.get("uuid").textValue(), customer.uuid.toString());
+    assertNull(node.get("universeUuids"));
   }
 
   // check that invalid creds is failing to do that
-
   @Test
   public void testCustomerGETWithValidUUID() {
     String authToken = user.createAuthToken();
@@ -153,7 +160,9 @@ public class CustomerControllerTest extends FakeDBApplication {
   public void testCustomerGETWithBadUUID() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Result result = route(fakeRequest("GET", baseRoute + "null").cookie(validCookie));
+    final String method = "GET";
+    final String uri = baseRoute + "null";
+    Result result = route(fakeRequest(method, uri).cookie(validCookie));
     assertEquals(BAD_REQUEST, result.status());
 
     JsonNode ybpError = Json.parse(contentAsString(result));
@@ -206,7 +215,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
-    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.LOW, callhomeLevel);
     JsonNode json = Json.parse(contentAsString(result));
@@ -290,7 +299,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     AlertingData alertingData = new AlertingData();
     alertingData.activeAlertNotificationIntervalMs = 5000;
-    CustomerConfig.createAlertConfig(customer.getUuid(), Json.toJson(alertingData));
+    CustomerConfig.createAlertConfig(customer.getUuid(), Json.toJson(alertingData)).save();
 
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
@@ -390,7 +399,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     Result result =
         route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
     assertEquals(OK, result.status());
-    CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
+    CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
     assertAuditEntry(1, customer.uuid);
@@ -553,8 +562,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         route(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
@@ -587,8 +597,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -620,8 +631,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -630,6 +642,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     assertValue(filters, "namespace", "demo");
+    assertNull(filters.get("pod_name"));
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
     assertAuditEntry(1, customer.uuid);
@@ -642,8 +655,22 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("container_metrics")));
     params.put("start", "1479281737000");
     params.put("nodePrefix", "demo");
-    params.put("nodeName", "demo-n1");
+    ArrayNode nodeNames = Json.newArray();
+    nodeNames.add("demo-n1");
+    params.put("nodeNames", nodeNames);
     Universe u1 = createUniverse("demo", customer.getCustomerId());
+    u1 =
+        Universe.saveDetails(
+            u1.universeUUID,
+            univ -> {
+              UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+              NodeDetails node = ApiUtils.getDummyNodeDetails(0, NodeState.Live);
+              node.nodeName = "demo-n1";
+              node.cloudInfo.private_ip =
+                  "yb-pod-name-az.yb-pod-service.demo-namespace.svc.cluster.local";
+              details.nodeDetailsSet.add(node);
+              univ.setUniverseDetails(details);
+            });
     Provider provider =
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -654,8 +681,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     response.put("foo", "bar");
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
             "POST", baseRoute + customer.uuid + "/metrics", authToken, params);
@@ -663,8 +691,8 @@ public class CustomerControllerTest extends FakeDBApplication {
         .query(metricKeys.capture(), queryParams.capture(), anyMap(), anyBoolean());
     assertThat(queryParams.getValue(), is(notNullValue()));
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
-    assertValue(filters, "namespace", "demo");
-    assertValue(filters, "pod_name", "demo-n1");
+    assertValue(filters, "namespace", "demo-namespace");
+    assertValue(filters, "pod_name", "yb-pod-name-az");
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("{\"foo\":\"bar\"}")));
     assertAuditEntry(1, customer.uuid);
@@ -682,8 +710,9 @@ public class CustomerControllerTest extends FakeDBApplication {
     ObjectNode response =
         Json.newObject().put("success", false).put("error", "something went wrong");
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
         routeWithYWErrHandler(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
@@ -703,9 +732,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -736,14 +762,12 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -773,14 +797,12 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -811,9 +833,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     // Create an xCluster config.
     XClusterConfigCreateFormData xClusterConfigCreateFormData = new XClusterConfigCreateFormData();
@@ -828,8 +847,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -869,19 +889,21 @@ public class CustomerControllerTest extends FakeDBApplication {
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
 
-    ObjectNode expectedResponse = Json.newObject();
-    expectedResponse.put("success", false);
-    expectedResponse.put("error", "Weird Data provided");
+    final String userVisibleMessage = "Weird Data provided";
 
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Weird Data provided"));
+    final String method = "POST";
+    final String uri = baseRoute + customer.uuid + "/metrics";
+    YBPError expectedYBPError = new YBPError("Weird Data provided");
+
+    doThrow(new PlatformServiceException(BAD_REQUEST, userVisibleMessage))
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
     Result result =
-        routeWithYWErrHandler(
-            fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
-                .cookie(validCookie)
-                .bodyJson(params));
+        routeWithYWErrHandler(fakeRequest(method, uri).cookie(validCookie).bodyJson(params));
     assertEquals(BAD_REQUEST, result.status());
-    assertThat(Json.parse(contentAsString(result)), allOf(notNullValue(), is(expectedResponse)));
+    assertThat(
+        Json.parse(contentAsString(result)),
+        allOf(notNullValue(), is(Json.toJson(expectedYBPError))));
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -894,9 +916,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-a"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-b"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -933,14 +952,12 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -968,19 +985,20 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap(), anyBoolean()))
-        .thenReturn(response);
+    doReturn(response)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
     params.put("start", "1479281737");
     params.put("nodePrefix", "host-1");
-    params.put("nodeName", "host-n1");
+    ArrayNode nodeNames = Json.newArray();
+    nodeNames.add("host-n1");
+    params.put("nodeNames", nodeNames);
     ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
     ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
     FakeApiHelper.doRequestWithAuthTokenAndBody(

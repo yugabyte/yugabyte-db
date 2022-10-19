@@ -50,7 +50,8 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-          PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY);
+          PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
+          PlatformMetrics.UNIVERSE_REPLICATION_FACTOR);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
