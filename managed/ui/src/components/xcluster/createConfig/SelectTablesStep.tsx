@@ -427,9 +427,9 @@ export const SelectTablesStep = ({
               row={row}
               selectedTableUUIDs={values.tableUUIDs}
               minPageSize={TABLE_MIN_PAGE_SIZE}
+              tableType={tableType}
               handleTableSelect={handleTableSelect}
               handleAllTableSelect={handleAllTableSelect}
-              hideCheckboxes={tableType === TableType.PGSQL_TABLE_TYPE}
             />
           )}
           expandColumnOptions={{
