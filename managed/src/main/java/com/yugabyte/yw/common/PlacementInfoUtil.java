@@ -890,7 +890,8 @@ public class PlacementInfoUtil {
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
     }
 
-    if (!existingIntent.universeName.equals(userIntent.universeName)) {
+    if (oldCluster.clusterType == PRIMARY
+        && !existingIntent.universeName.equals(userIntent.universeName)) {
       LOG.error(
           "universeName cannot be changed from {} to {}",
           existingIntent.universeName,
