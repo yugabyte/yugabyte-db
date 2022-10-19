@@ -238,11 +238,6 @@ typedef struct YbPgMemTracker
 	 */
 	Size pg_cur_mem_bytes;
 	/*
-	 * The maximum memory since this backend connection is established including
-	 * PG and pggate
-	 */
-	Size backend_max_mem_bytes;
-	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
 	 */
