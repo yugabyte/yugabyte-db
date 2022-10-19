@@ -3619,8 +3619,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBoot
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   FLAGS_enable_update_local_peer_min_index = false;
-  FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
 
   const uint32_t num_tablets = 3;
   vector<TabletId> table_id(2);
@@ -3628,6 +3626,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
   vector<const char*> listTablesName{"test_table_01", "test_table_02"};
   vector<std::string> tablePrefix{"_01", "_02"};
   const int total_stream_count = 2;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(2);
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -3640,15 +3639,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
     auto table = ASSERT_RESULT(CreateTable(
         &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true,
         tablePrefix[idx]));
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
-    ASSERT_EQ(tablets.size(), num_tablets);
+    ASSERT_OK(
+        test_client()->GetTablets(table, 0, &tablets[idx], /* partition_list_version =*/nullptr));
+    ASSERT_EQ(tablets[idx].size(), num_tablets);
 
     table_id[idx] = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, listTablesName[idx]));
     stream_id[idx] = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     for (uint32_t jdx = 0; jdx < num_tablets; jdx++) {
-      auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablets, OpId::Min(), true, jdx));
+      auto resp =
+          ASSERT_RESULT(SetCDCCheckpoint(stream_id[idx], tablets[idx], OpId::Min(), true, jdx));
       ASSERT_FALSE(resp.has_error());
     }
 
@@ -3660,11 +3660,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumWithMultipleTablets)) {
     int total_count = 0;
     for (uint32_t kdx = 0; kdx < num_tablets; kdx++) {
       GetChangesResponsePB change_resp =
-          ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets, nullptr, kdx));
-      uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-      for (uint32_t i = 0; i < record_size; ++i) {
-        if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
-          const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+          ASSERT_RESULT(GetChangesFromCDC(stream_id[idx], tablets[idx], nullptr, kdx));
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        if (record.row_message().op() == RowMessage::INSERT) {
           total_count += 1;
         }
       }
