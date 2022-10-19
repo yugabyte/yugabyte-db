@@ -6109,7 +6109,7 @@ Status CatalogManager::ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req
     return STATUS(InvalidArgument, "New role must be different than existing role",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-  if (new_role == cdc::STANDBY) {
+  if (new_role == cdc::XClusterRole::STANDBY) {
     if (!consumer_registry->enable_replicate_transaction_status_table()) {
       return STATUS(InvalidArgument, "This universe replication does not support xCluster roles. "
                                      "Recreate all existing streams with "
@@ -6125,6 +6125,9 @@ Status CatalogManager::ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req
         sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
         "updating cluster config in sys-catalog"));
   l.Commit();
+
+  CreateXClusterSafeTimeTableAndStartService();
+
   LOG(INFO) << "Successfully completed ChangeXClusterRole request from "
           << RequestorString(rpc);
   return Status::OK();
