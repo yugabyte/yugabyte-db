@@ -1153,6 +1153,9 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
     rpc::RpcController rpc;
     rpc.set_deadline(deadline);
     SetCDCCheckpointResponsePB resp;
+    VLOG(2) << "Current tablet_peer: " << tablet_peer->permanent_uuid()
+            << "is not a LEADER for tablet_id: " << req.tablet_id()
+            << " so handovering to the actual LEADER.";
     RETURN_NOT_OK_SET_CODE(
         cdc_proxy->SetCDCCheckpoint(req, &resp, &rpc), CDCError(CDCErrorPB::INTERNAL_ERROR));
     return resp;
@@ -1160,6 +1163,8 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
 
   // Case-3 The connected tserver is the tablet LEADER but not yet ready.
   if (!IsLeaderAndReady(tablet_peer)) {
+    VLOG(2) << "Current LEADER is not ready to serve tablet_id: "
+              << req.tablet_id();
     return STATUS(
         LeaderNotReadyToServe, "Not ready to serve", CDCError(CDCErrorPB::LEADER_NOT_READY));
   }
@@ -2013,7 +2018,8 @@ Status CDCServiceImpl::SetInitialCheckPoint(
     const OpId& checkpoint, const string& tablet_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer) {
   VLOG(1) << "Setting the checkpoint is " << checkpoint.ToString()
-          << " and the latest entry OpID is " << tablet_peer->log()->GetLatestEntryOpId();
+          << " and the latest entry OpID is " << tablet_peer->log()->GetLatestEntryOpId()
+          << " for tablet_id: " << tablet_id;
   auto result = PopulateTabletCheckPointInfo(tablet_id);
   RETURN_NOT_OK_SET_CODE(result, CDCError(CDCErrorPB::INTERNAL_ERROR));
   TabletIdCDCCheckpointMap& tablet_min_checkpoint_map = *result;
