@@ -316,10 +316,11 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YbIsDatabaseColocated(Oid dbid)
+YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database)
 {
 	bool colocated;
-	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated));
+	HandleYBStatus(YBCPgIsDatabaseColocated(dbid, &colocated,
+											legacy_colocated_database));
 	return colocated;
 }
 

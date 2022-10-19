@@ -5347,6 +5347,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
   // Get the consumer tablegroup ID. Since this call is expensive (one needs to reverse lookup
   // the tablegroup ID from table ID), we only do this call once and do validation afterward.
   TablegroupId consumer_tablegroup_id;
+  // Starting Colocation GA, colocated databases create implicit underlying tablegroups.
+  bool colocated_database;
   {
     SharedLock lock(mutex_);
     const auto* tablegroup = tablegroup_manager_->FindByTable(*validated_consumer_tables.begin());
@@ -5359,6 +5361,17 @@ void CatalogManager::GetTablegroupSchemaCallback(
       return;
     }
     consumer_tablegroup_id = tablegroup->id();
+
+    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+    if (ns == nullptr) {
+      std::string message =
+          Format("Could not find namespace by namespace id $0",
+                 tablegroup->database_id());
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+    colocated_database = ns->colocated();
   }
 
   // tables_in_consumer_tablegroup are the tables listed within the consumer_tablegroup_id.
@@ -5412,11 +5425,21 @@ void CatalogManager::GetTablegroupSchemaCallback(
                << producer_tablegroup_id << ": " << status;
   }
 
+  TableId producer_parent_table_id;
+  TableId consumer_parent_table_id;
+  if (colocated_database) {
+    producer_parent_table_id = GetColocationParentTableId(producer_tablegroup_id);
+    consumer_parent_table_id = GetColocationParentTableId(consumer_tablegroup_id);
+  } else {
+    producer_parent_table_id = GetTablegroupParentTableId(producer_tablegroup_id);
+    consumer_parent_table_id = GetTablegroupParentTableId(consumer_tablegroup_id);
+  }
+
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
       table_bootstrap_ids,
-      GetTablegroupParentTableId(producer_tablegroup_id),
-      GetTablegroupParentTableId(consumer_tablegroup_id));
+      producer_parent_table_id,
+      consumer_parent_table_id);
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;

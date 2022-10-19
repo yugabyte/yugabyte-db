@@ -185,6 +185,7 @@ class SysCatalogTable {
 
   Status ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t database_oid,
+    bool is_colocated_database,
     TableToTablespaceIdMap *table_tablespace_map);
 
   // Read relnamespace OID from the pg_class catalog table.

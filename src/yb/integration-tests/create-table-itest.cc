@@ -33,6 +33,8 @@
 #include "yb/integration-tests/create-table-itest-base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 using std::vector;
@@ -50,7 +52,19 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
-class CreateTableITest : public CreateTableITestBase {};
+using pgwrapper::GetInt32;
+
+class CreateTableITest : public CreateTableITestBase {
+ public:
+  Result<pgwrapper::PGConn> ConnectToDB(
+      const std::string& dbname, bool simple_query_protocol = false) {
+    return pgwrapper::PGConnBuilder({
+      .host = cluster_->pgsql_hostport(0).host(),
+      .port = cluster_->pgsql_hostport(0).port(),
+      .dbname = dbname
+    }).Connect(simple_query_protocol);
+  }
+};
 
 // TODO(bogdan): disabled until ENG-2687
 TEST_F(CreateTableITest, DISABLED_TestCreateRedisTable) {
@@ -300,7 +314,7 @@ TEST_F(CreateTableITest, TestNoAllocBlacklist) {
   ASSERT_EQ(inspect_->ListTabletsOnTS(1).size(), 0);
 }
 
-TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
+TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   const int kNumReplicas = 3;
   string parent_table_id;
   string tablet_id;
@@ -335,6 +349,72 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
           return tablets.size() == 1;
         },
         MonoDelta::FromSeconds(30), "Create colocated tablet"));
+    tablet_id = tablets[0].tablet_id();
+  }
+
+  string rocksdb_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-1", "yb-data", "tserver", "data", "rocksdb",
+      "table-" + parent_table_id, "tablet-" + tablet_id);
+  string wal_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-1", "yb-data", "tserver", "wals", "table-" + parent_table_id,
+      "tablet-" + tablet_id);
+  std::function<Result<bool>()> dirs_exist = [&] {
+    return Env::Default()->FileExists(rocksdb_dir) && Env::Default()->FileExists(wal_dir);
+  };
+
+  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(30), "Create data and wal directories"));
+
+  // Stop a tablet server and create a new tablet server. This will trigger a remote bootstrap on
+  // the new tablet server.
+  cluster_->tablet_server(2)->Shutdown();
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
+
+  // Remote bootstrap should create the correct tablet directory for the new tablet server.
+  rocksdb_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-4", "yb-data", "tserver", "data", "rocksdb",
+      "table-" + parent_table_id, "tablet-" + tablet_id);
+  wal_dir = JoinPathSegments(
+      cluster_->data_root(), "ts-4", "yb-data", "tserver", "wals", "table-" + parent_table_id,
+      "tablet-" + tablet_id);
+  ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
+}
+
+TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
+  const int kNumReplicas = 3;
+  const string kNamespaceName = "colocation_test";
+  string parent_table_id;
+  string tablet_id;
+  vector<string> ts_flags;
+  vector<string> master_flags;
+
+  ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
+  master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* num_masters */,
+                                true /* enable_ysql */));
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kNamespaceName));
+  conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE tbl (k int PRIMARY KEY, v int)"));
+  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_database WHERE datname = '$0'",
+                                            kNamespaceName));
+  uint32 db_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
+  res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
+  uint32 tablegroup_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
+  TablegroupId tablegroup_id = GetPgsqlTablegroupId(db_oid, tablegroup_oid);
+  parent_table_id = master::GetColocationParentTableId(tablegroup_id);
+
+  auto exists = ASSERT_RESULT(client_->TablegroupExists(kNamespaceName, tablegroup_id));
+  ASSERT_TRUE(exists);
+
+  {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(WaitFor(
+        [&]() -> bool {
+          EXPECT_OK(client_->GetTabletsFromTableId(parent_table_id, 0, &tablets));
+          return tablets.size() == 1;
+        },
+        MonoDelta::FromSeconds(30), "Create colocated database implicit tablegroup tablet"));
     tablet_id = tablets[0].tablet_id();
   }
 

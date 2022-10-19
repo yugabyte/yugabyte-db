@@ -1087,6 +1087,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
 Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t database_oid,
+    bool is_colocated_database,
     TableToTablespaceIdMap *table_tablespace_map) {
   TRACE_EVENT0("master", "ReadTablespaceInfoFromPgYbTablegroup");
 
@@ -1132,7 +1133,9 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
     const uint32_t tablespace_oid = tablespace_oid_col->uint32_value();
 
     const TablegroupId tablegroup_id = GetPgsqlTablegroupId(database_oid, tablegroup_oid);
-    const TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
+    const TableId parent_table_id = is_colocated_database ?
+                                      GetColocationParentTableId(tablegroup_id) :
+                                      GetTablegroupParentTableId(tablegroup_id);
     boost::optional<TablespaceId> tablespace_id = boost::none;
 
     // If no valid tablespace found, then this tablegroup has no placement info

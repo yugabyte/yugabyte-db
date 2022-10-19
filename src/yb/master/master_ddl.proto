@@ -535,6 +535,8 @@ message GetNamespaceInfoResponsePB {
 
   optional NamespaceIdentifierPB namespace = 2;
   optional bool colocated = 3;
+  // This denotes if a colocated database is a legacy colocated database.
+  optional bool legacy_colocated_database = 4;
 }
 
 // ============================================================================

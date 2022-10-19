@@ -251,18 +251,19 @@ class TwoDCYsqlTest : public TwoDCTestBase
    * TODO (#11597): Given one is not able to get tablegroup ID by name, currently this works by
    * getting the first available tablegroup appearing in the namespace.
    */
-  Result<TablegroupId> GetTablegroup(Cluster* cluster, const std::string& namespace_name) {
+  Result<TableId> GetTablegroupParentTable(Cluster* cluster, const std::string& namespace_name) {
     // Lookup the namespace id from the namespace name.
     std::string namespace_id;
+    // Whether the database named namespace_name is a colocated database.
+    bool colocated_database;
+    master::MasterDdlProxy master_proxy(
+        &cluster->client_->proxy_cache(),
+        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     {
       master::ListNamespacesRequestPB req;
       master::ListNamespacesResponsePB resp;
-      master::MasterDdlProxy master_proxy(
-          &cluster->client_->proxy_cache(),
-          VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-
-      rpc::RpcController rpc;
-      rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
       RETURN_NOT_OK(master_proxy.ListNamespaces(req, &resp, &rpc));
       if (resp.has_error()) {
@@ -284,17 +285,25 @@ class TwoDCYsqlTest : public TwoDCTestBase
       }
     }
 
+    {
+      master::GetNamespaceInfoRequestPB req;
+      master::GetNamespaceInfoResponsePB resp;
+
+      req.mutable_namespace_()->set_id(namespace_id);
+
+      rpc.Reset();
+      RETURN_NOT_OK(master_proxy.GetNamespaceInfo(req, &resp, &rpc));
+      if (resp.has_error()) {
+        return STATUS(IllegalState, "Failed to get namespace info");
+      }
+      colocated_database = resp.colocated();
+    }
+
     master::ListTablegroupsRequestPB req;
     master::ListTablegroupsResponsePB resp;
-    master::MasterDdlProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
 
     req.set_namespace_id(namespace_id);
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
+    rpc.Reset();
     RETURN_NOT_OK(master_proxy.ListTablegroups(req, &resp, &rpc));
     if (resp.has_error()) {
       return STATUS(IllegalState, "Failed listing tablegroups");
@@ -306,6 +315,8 @@ class TwoDCYsqlTest : public TwoDCTestBase
                     Format("Unable to find tablegroup in namespace $0", namespace_name));
     }
 
+    if (colocated_database)
+      return master::GetColocationParentTableId(resp.tablegroups()[0].id());
     return master::GetTablegroupParentTableId(resp.tablegroups()[0].id());
   }
 
@@ -1431,8 +1442,9 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   }
 
   // 2. Setup replication for the tablegroup.
-  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
-  LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_id;
+  auto tablegroup_parent_table_id = ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_,
+                                                                           kNamespaceName));
+  LOG(INFO) << "Tablegroup id to replicate: " << tablegroup_parent_table_id;
 
   rpc::RpcController rpc;
   master::SetupUniverseReplicationRequestPB setup_universe_req;
@@ -1442,7 +1454,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplication) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
-  setup_universe_req.add_producer_table_ids(tablegroup_id);
+  setup_universe_req.add_producer_table_ids(tablegroup_parent_table_id);
 
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -1588,7 +1600,8 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
                           &tables, tablegroup_name, false /* colocated */));
   }
 
-  auto tablegroup_id = ASSERT_RESULT(GetTablegroup(&producer_cluster_, kNamespaceName));
+  auto tablegroup_parent_table_id = ASSERT_RESULT(GetTablegroupParentTable(&producer_cluster_,
+                                                                           kNamespaceName));
 
   // Try to set up replication.
   rpc::RpcController rpc;
@@ -1599,7 +1612,7 @@ TEST_P(TwoDCYsqlTest, TablegroupReplicationMismatch) {
   auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
   setup_universe_req.mutable_producer_table_ids()->Reserve(1);
-  setup_universe_req.add_producer_table_ids(tablegroup_id);
+  setup_universe_req.add_producer_table_ids(tablegroup_parent_table_id);
 
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(

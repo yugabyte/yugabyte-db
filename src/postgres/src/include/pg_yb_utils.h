@@ -184,7 +184,12 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YbIsDatabaseColocated(Oid dbid);
+/*
+ * Return whether a database with oid dbid is a colocated database.
+ * legacy_colocated_database is one output parameter. Its value indicates
+ * whether database with oid dbid is a legacy colocated database.
+ */
+extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
  * Check if a relation has row triggers that may reference the old row.

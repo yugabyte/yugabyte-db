@@ -790,7 +790,7 @@ DROP INDEX test_method_h1_idx3;
 -- Test should not issue NOTICE
 CREATE INDEX ON test_method (r1 ASC NULLS FIRST, r2 ASC NULLS LAST);
 CREATE INDEX ON test_method (r1 DESC NULLS FIRST, r2 DESC NULLS LAST);
-CREATE DATABASE colocation_test colocated = true;
+CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
 CREATE TABLE test_method (r1 int, r2 int, v1 int, v2 int,
   PRIMARY KEY (r1, r2));
@@ -805,9 +805,10 @@ CREATE INDEX ON test_method (r1 NULLS LAST);
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "test_method_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
-    "test_method_r1_idx" lsm (r1 ASC NULLS FIRST)
-    "test_method_r1_idx1" lsm (r1 ASC)
+    "test_method_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC), colocation: true
+    "test_method_r1_idx" lsm (r1 ASC NULLS FIRST), colocation: true
+    "test_method_r1_idx1" lsm (r1 ASC), colocation: true
+Colocation: true
 
 \c yugabyte
 DROP DATABASE colocation_test;

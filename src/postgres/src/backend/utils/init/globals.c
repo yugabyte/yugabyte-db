@@ -87,6 +87,13 @@ Oid			MyDatabaseTableSpace = InvalidOid;
 
 bool		MyDatabaseColocated = false;
 
+/*
+ * Before we fully deprecate legacy colocated databases, we need this extra
+ * variable to tell whether a colocated database is a legacy colocated
+ * database or a colocated database based on new Colocation GA implementation.
+ */
+bool        MyColocatedDatabaseLegacy = true;
+
 bool		YbTablegroupCatalogExists = false;
 
 /*
