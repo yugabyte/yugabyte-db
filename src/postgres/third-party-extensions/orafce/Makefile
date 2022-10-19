@@ -12,6 +12,8 @@ REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggre
 
 REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
 
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lyb_pggate
+
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)

@@ -2798,3 +2798,12 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
 	tbl_reads->count += tbl_read_count;
 	tbl_reads->wait_time += tbl_read_wait;
 }
+
+void YBCheckServerAccessIsAllowed() {
+	if (*YBCGetGFlags()->ysql_disable_server_file_access)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("server file access disabled"),
+				 errdetail("tserver flag ysql_disable_server_file_access is "
+						   "set to true")));
+}
