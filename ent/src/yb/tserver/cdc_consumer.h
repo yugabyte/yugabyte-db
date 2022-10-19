@@ -27,6 +27,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/tablet/tablet_types.pb.h"
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
@@ -201,13 +202,14 @@ class CDCConsumer {
   std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
+  std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
 
   std::atomic<uint32_t> TEST_num_successful_write_rpcs {0};
 
   std::mutex safe_time_update_mutex_;
   MonoTime last_safe_time_published_at_ GUARDED_BY(safe_time_update_mutex_);
 
-  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_);
+  bool xcluster_safe_time_table_ready_ GUARDED_BY(safe_time_update_mutex_) = false;
   std::unique_ptr<client::TableHandle> safe_time_table_ GUARDED_BY(safe_time_update_mutex_);
 
   client::TransactionManager* transaction_manager_;
