@@ -3715,6 +3715,21 @@
     "MetricQueryParams" : {
       "description" : "Metrics request data",
       "properties" : {
+        "availabilityZones" : {
+          "description" : "Availability zone code",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "clusterUuids" : {
+          "description" : "Cluster UUIDs",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "end" : {
           "description" : "End time",
           "format" : "int64",
@@ -3738,42 +3753,83 @@
           },
           "type" : "array"
         },
-        "nodeName" : {
-          "description" : "Node name",
-          "type" : "string"
+        "nodeNames" : {
+          "description" : "Node names",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
         },
         "nodePrefix" : {
           "description" : "Node prefix",
           "type" : "string"
         },
+        "regionCodes" : {
+          "description" : "Region code",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "start" : {
           "description" : "Start time",
           "format" : "int64",
           "type" : "integer"
+        },
+        "tableId" : {
+          "description" : "Table id",
+          "type" : "string"
+        },
+        "tableName" : {
+          "description" : "Table name",
+          "type" : "string"
+        },
+        "xclusterConfigUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         }
       },
-      "required" : [ "start" ],
+      "required" : [ "start", "xclusterConfigUuid" ],
       "type" : "object"
     },
     "MetricSettings" : {
       "description" : "Settings, selected for particular metric",
       "properties" : {
-        "aggregation" : {
-          "description" : "Way of metrics aggregation over time and across nodes",
-          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
-          "type" : "string"
-        },
         "metric" : {
           "description" : "Metric name",
           "type" : "string"
         },
-        "splitTopNodes" : {
-          "description" : "Query result for 'top' nodes separately. 0 means aggregate over all nodes",
+        "nodeAggregation" : {
+          "description" : "Way of metrics aggregation across nodes",
+          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
+          "type" : "string"
+        },
+        "returnAggregatedValue" : {
+          "description" : "Defines if we return 'mean' line with node lines in case we split nodes",
+          "type" : "boolean"
+        },
+        "splitCount" : {
+          "description" : "Defines how many node lines we return in case we split by nodes/tables/etc.",
           "format" : "int32",
           "type" : "integer"
+        },
+        "splitMode" : {
+          "description" : "Controls if we split nodes, tables, etc. into own lines OR aggregate  and how we select lines in case of split query",
+          "enum" : [ "NONE", "TOP", "BOTTOM" ],
+          "type" : "string"
+        },
+        "splitType" : {
+          "description" : "Defines set of labels, which we use for a split query",
+          "enum" : [ "NONE", "NODE", "TABLE", "NAMESPACE" ],
+          "type" : "string"
+        },
+        "timeAggregation" : {
+          "description" : "Way of metrics aggregation over time",
+          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG" ],
+          "type" : "string"
         }
       },
-      "required" : [ "aggregation", "metric", "splitTopNodes" ],
+      "required" : [ "metric" ],
       "type" : "object"
     },
     "MultiTableBackupRequestParams" : {

@@ -9,11 +9,16 @@ import static com.yugabyte.yw.common.ModelFactory.testCustomer;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.MatcherAssert.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -170,7 +175,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private void setupMockMetricQueryHelperResponse() {
     // Note: This is completely fake, unlike the real metric response
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
-    when(mockMetricQueryHelper.query(any(), any(), any())).thenReturn(fakeMetricResponse);
+    doReturn(fakeMetricResponse)
+        .when(mockMetricQueryHelper)
+        .query(anyList(), anyMap(), anyMap(), anyBoolean());
   }
 
   private void validateGetXClusterResponse(
@@ -521,8 +528,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     xClusterConfig.setTables(exampleTablesAndStreamIDs);
 
     String fakeErrMsg = "failed to fetch metric data";
-    when(mockMetricQueryHelper.query(any(), any(), any()))
-        .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg));
+    doThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, fakeErrMsg))
+        .when(mockMetricQueryHelper)
+        .query(any(), any(), any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.uuid;
 
