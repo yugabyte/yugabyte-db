@@ -47,7 +47,6 @@ DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_int32(cdc_max_apply_batch_num_records);
-DECLARE_bool(xcluster_consistent_reads);
 DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_int32(transaction_table_num_tablets);
 
@@ -70,7 +69,6 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
-    FLAGS_xcluster_consistent_reads = true;
     FLAGS_enable_load_balancing = false;
     FLAGS_enable_replicate_transaction_status_table = true;
 
@@ -131,6 +129,8 @@ class XClusterSafeTimeTest : public TwoDCTestBase {
     ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
     ASSERT_EQ(resp.entry().tables_size(), 1);
     ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+
+    ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
     // Initial wait is higher as it may need to wait for the create the table to complete.
     const client::YBTableName safe_time_table_name(
@@ -238,7 +238,16 @@ TEST_F(XClusterSafeTimeTest, ComputeSafeTime) {
   auto ht_4 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
   ASSERT_OK(WaitForSafeTime(ht_4));
 
-  // 6.  Make sure safe time is cleaned up when we delete replication.
+  // 6. Make sure safe time is cleaned up when we switch to ACTIVE role.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(WaitForNotFoundSafeTime());
+
+  // 7.  Make sure safe time is reset when we switch back to STANDBY role.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  auto ht_5 = ASSERT_RESULT(producer_tablet_peer_->LeaderSafeTime());
+  ASSERT_OK(WaitForSafeTime(ht_5));
+
+  // 8.  Make sure safe time is cleaned up when we delete replication.
   ASSERT_OK(DeleteUniverseReplication());
   ASSERT_OK(VerifyUniverseReplicationDeleted(
       consumer_cluster(), consumer_client(), kUniverseId, FLAGS_cdc_read_rpc_timeout_ms * 2));
@@ -277,7 +286,6 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     // Skip in TSAN as InitDB times out.
     YB_SKIP_TEST_IN_TSAN();
 
-    FLAGS_xcluster_consistent_reads = true;
     // Disable LB as we dont want tablets moving during the test.
     FLAGS_enable_load_balancing = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
@@ -362,6 +370,8 @@ class XClusterSafeTimeYsqlTest : public TwoDCTestBase {
     ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
     ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
     ASSERT_EQ(resp.entry().tables_size(), 2);
+
+    ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
 
     master::ListCDCStreamsResponsePB stream_resp;
     ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));
