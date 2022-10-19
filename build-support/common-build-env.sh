@@ -2418,16 +2418,19 @@ lint_java_code() {
 }
 
 run_with_retries() {
-  if [[ $# -lt 2 ]]; then
+  if [[ $# -lt 3 ]]; then
     fatal "run_with_retries requires at least three arguments: max_attempts, delay_sec, and " \
-          "the command to run (at least one additional argument)."
+          "the command to run."
   fi
   declare -i -r max_attempts=$1
   declare -r delay_sec=$2
   shift 2
 
-  declare -i attempt_index=1
-  while [[ $attempt_index -le $max_attempts ]]; do
+  declare wait_time=0
+  declare -i attempt_index=0
+  while [[ $attempt_index -lt $max_attempts ]]; do
+    (( attempt_index+=1 ))
+    wait_time="$(bc -l <<<"$delay_sec * $attempt_index")"
     set +e
     "$@"
     declare exit_code=$?
@@ -2436,9 +2439,8 @@ run_with_retries() {
       return
     fi
     log "Warning: command failed with exit code $exit_code at attempt $attempt_index: $*." \
-        "Waiting for $delay_sec sec, will then re-try for up to $max_attempts attempts."
-    (( attempt_index+=1 ))
-    sleep "$delay_sec"
+      "Waiting for $wait_time sec, $(($max_attempts - $attempt_index)) tries left."
+    sleep "$wait_time"
   done
   fatal "Failed to execute command after $max_attempts attempts: $*"
 }
