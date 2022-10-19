@@ -281,7 +281,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = decoded_value.transaction_id;
-        bool lock_only = decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock);
+        bool lock_only = decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock);
 
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           auto p = conflicts_.emplace(transaction_id,
