@@ -152,7 +152,9 @@ If connections are opened but never closed, your application will eventually exc
 
 You may need to implement some form of connection pooling.
 
-If the number of connections is continuously higher than 80%, your workload may also exceed the capacity of your cluster. To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
+
+To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 ### Billing alerts
 
