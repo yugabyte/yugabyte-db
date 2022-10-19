@@ -10,6 +10,12 @@ type: docs
 
 ## Releases
 
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
 ### September 28, 2022
 
 **Database**
