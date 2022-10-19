@@ -1458,7 +1458,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     RETURN_NOT_OK(expr_executor->EvalCondition(
       index->where_predicate_spec()->where_expr().condition(), new_row,
       &new_row_satisfies_idx_pred));
-    VLOG(1) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
+    VLOG(2) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
     if (index_pred_new_row) {
       *index_pred_new_row = new_row_satisfies_idx_pred;
     }
