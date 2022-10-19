@@ -1318,12 +1318,17 @@ class PgMiniTestTxnHelperSerializable
     : public PgMiniTestTxnHelper<IsolationLevel::SERIALIZABLE_ISOLATION> {
  protected:
   // Check two SERIALIZABLE txns has no conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2, 3)"));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(StartTxn(&conn));
     ASSERT_OK(conn.Execute("UPDATE t SET v1 = 20 WHERE k = 1"));
@@ -1353,9 +1358,14 @@ class PgMiniTestTxnHelperSnapshot
     : public PgMiniTestTxnHelper<IsolationLevel::SNAPSHOT_ISOLATION> {
  protected:
   // Check two SNAPSHOT txns has a conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2)"));
@@ -1433,15 +1443,27 @@ TEST_F_EX(PgMiniTest,
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializable),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
           PgMiniTestTxnHelperSerializable) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
           PgMiniTestTxnHelperSnapshot) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          PgMiniTestTxnHelperSerializable) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          PgMiniTestTxnHelperSnapshot) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
