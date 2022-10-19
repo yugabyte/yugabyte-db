@@ -128,16 +128,16 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
 
-- Memory use exceeds 75% for 10 minutes (Warning).
-- Memory use exceeds 90% for 10 minutes (Severe).
+- Memory use exceeds 75% (Warning).
+- Memory use exceeds 90% (Severe).
 
 If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
 
 Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
 
-High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
-
 If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster by adding nodes to lower the average per-node workload. Adding vCPUs also provides additional memory. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+High memory use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 #### Fix YSQL connection alerts
 
