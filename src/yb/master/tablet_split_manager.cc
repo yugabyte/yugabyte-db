@@ -71,9 +71,9 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
-DEFINE_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
-                 "When set, it enables automatic tablet splitting for tables that are part of an "
-                 "xCluster replication setup");
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
 
 DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "

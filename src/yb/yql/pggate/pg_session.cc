@@ -223,9 +223,9 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
     const auto txn_priority_requirement =
-      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED ||
-      RowMarkNeedsHigherPriority(row_mark_type)
-          ? kHigherPriorityRange : kLowerPriorityRange;
+      pg_session_.GetIsolationLevel() == PgIsolationLevel::READ_COMMITTED
+        ? kHighestPriority :
+          (RowMarkNeedsHigherPriority(row_mark_type) ? kHigherPriorityRange : kLowerPriorityRange);
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
     return pg_session_.pg_txn_manager_->CalculateIsolation(
@@ -480,6 +480,11 @@ void PgSession::DropBufferedOperations() {
   buffer_.Clear();
 }
 
+void PgSession::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  buffer_.GetAndResetRpcStats(count, wait_time);
+}
+
 PgIsolationLevel PgSession::GetIsolationLevel() {
   return pg_txn_manager_->GetPgIsolationLevel();
 }
@@ -716,20 +721,11 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
+  VLOG(4) << "SetActiveSubTransactionId " << id;
   RETURN_NOT_OK(FlushBufferedOperations());
-  tserver::PgPerformOptionsPB* options_ptr = nullptr;
-  tserver::PgPerformOptionsPB options;
-  if (pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL) {
-    auto txn_priority_requirement = kLowerPriorityRange;
-    if (pg_txn_manager_->GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
-      txn_priority_requirement = kHighestPriority;
-    }
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-        false /* read_only_op */, txn_priority_requirement));
-    options_ptr = &options;
-    pg_txn_manager_->SetupPerformOptions(&options);
-  }
-  return pg_client_.SetActiveSubTransaction(id, options_ptr);
+  pg_txn_manager_->SetActiveSubTransactionId(id);
+
+  return Status::OK();
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
@@ -740,7 +736,9 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_client_.RollbackToSubTransaction(id);
+  tserver::PgPerformOptionsPB options;
+  pg_txn_manager_->SetupPerformOptions(&options);
+  return pg_client_.RollbackToSubTransaction(id, &options);
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {

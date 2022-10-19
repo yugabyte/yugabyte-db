@@ -75,6 +75,10 @@ DEFINE_bool(ysql_enable_reindex, false,
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
+DEFINE_bool(ysql_disable_server_file_access, false,
+            "If true, disables read, write, and execute of local server files. "
+            "File access can be re-enabled if set to false.");
+
 namespace yb {
 namespace pggate {
 
@@ -826,6 +830,11 @@ YBCStatus YBCPgFlushBufferedOperations() {
   return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
+void YBCPgGetAndResetOperationFlushRpcStats(uint64_t* count,
+                                            uint64_t* wait_time) {
+  pgapi->GetAndResetOperationFlushRpcStats(count, wait_time);
+}
+
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
@@ -1282,6 +1291,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
@@ -1349,6 +1359,11 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) 
     }
   }
   return YBCStatusOK();
+}
+
+void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t* read_wait,
+                                uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
 //------------------------------------------------------------------------------------------------

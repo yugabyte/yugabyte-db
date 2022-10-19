@@ -914,13 +914,8 @@ class ExternalTabletServer : public ExternalDaemon {
   Status BuildServerStateFromInfoPath() override;
 
  private:
-<<<<<<< HEAD
-  string GetCQLServerInfoPath();
-  std::string master_addrs_;
-=======
   std::string GetCQLServerInfoPath();
-  const std::string master_addrs_;
->>>>>>> d220ee0d89e63420bfa0ea5279ced2c6e2c65e3d
+  std::string master_addrs_;
   const std::string bind_host_;
   const uint16_t rpc_port_;
   const uint16_t http_port_;

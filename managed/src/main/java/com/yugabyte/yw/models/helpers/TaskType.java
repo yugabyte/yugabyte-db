@@ -85,8 +85,6 @@ public enum TaskType {
 
   TlsToggle("upgrade.TlsToggle"),
 
-  NodeCertReloadTask("subtasks.NodeCertReloadTask"),
-
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   SystemdUpgrade("upgrade.SystemdUpgrade"),
@@ -391,6 +389,8 @@ public enum TaskType {
   MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
 
   RebootServer("subtasks.RebootServer"),
+
+  HardRebootServer("subtasks.HardRebootServer"),
 
   RunHooks("subtasks.RunHooks"),
 

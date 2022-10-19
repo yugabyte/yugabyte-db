@@ -44,9 +44,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.*;
@@ -1697,6 +1699,43 @@ public class YBClient implements AutoCloseable {
     Deferred<IsBootstrapRequiredResponse> d =
         asyncClient.isBootstrapRequired(tableIdsStreamIdMap);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It makes parallel calls to {@link AsyncYBClient#isBootstrapRequired(java.util.Map)} method with
+   * batches of 8 tables.
+   *
+   * @see YBClient#isBootstrapRequired(java.util.Map)
+   */
+  public List<IsBootstrapRequiredResponse> isBootstrapRequiredParallel(
+      Map<String, String> tableIdStreamIdMap) throws Exception {
+    // Partition the tableIdStreamIdMap.
+    List<Map<String, String>> tableIdStreamIdMapList = new ArrayList<>();
+    int partitionSize = 8;
+    Iterator<Entry<String, String>> iter = tableIdStreamIdMap.entrySet().iterator();
+    while (iter.hasNext()) {
+      Map<String, String> partition = new HashMap<>();
+      tableIdStreamIdMapList.add(partition);
+
+      while (partition.size() < partitionSize && iter.hasNext()) {
+        Entry<String, String> entry = iter.next();
+        partition.put(entry.getKey(), entry.getValue());
+      }
+    }
+
+    // Make the requests asynchronously.
+    List<Deferred<IsBootstrapRequiredResponse>> ds = new ArrayList<>();
+    for (Map<String, String> tableIdStreamId : tableIdStreamIdMapList) {
+      ds.add(asyncClient.isBootstrapRequired(tableIdStreamId));
+    }
+
+    // Wait for all the request to join.
+    List<IsBootstrapRequiredResponse> isBootstrapRequiredList = new ArrayList<>();
+    for (Deferred<IsBootstrapRequiredResponse> d : ds) {
+      isBootstrapRequiredList.add(d.join(getDefaultAdminOperationTimeoutMs()));
+    }
+
+    return isBootstrapRequiredList;
   }
 
   /**

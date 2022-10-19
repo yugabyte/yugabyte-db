@@ -847,7 +847,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 VERIFY_RESULT(DecodeIntentValue(intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+            if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
               continue;
             }
 

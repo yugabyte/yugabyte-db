@@ -17,7 +17,17 @@
 
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { getKMSConfigs, IBackup, ITable, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
+import {
+  getKMSConfigs,
+  IBackup,
+  ITable,
+  IUniverse,
+  Keyspace_Table,
+  restoreEntireBackup,
+  fetchIncrementalBackup,
+  Backup_States,
+  ICommonBackupInfo
+} from '..';
 import { YBModalForm } from '../../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
@@ -50,7 +60,7 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
-  backup_details: IBackup | null;
+  backup_details: IBackup;
   onHide: Function;
   visible: boolean;
 }
@@ -87,6 +97,13 @@ const isYBCEnabledInUniverse = (universeList: IUniverse[], currentUniverseUUID: 
 export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHide, visible }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isFetchingTables, setIsFetchingTables] = useState(false);
+  const { data: incrementalBackups, isLoading: isIncBackupLoading, isError } = useQuery(
+    ['incremental_backups', backup_details.commonBackupInfo.baseBackupUUID],
+    () => fetchIncrementalBackup(backup_details.commonBackupInfo.baseBackupUUID),
+    {
+      enabled: backup_details?.hasIncrementalBackups
+    }
+  );
 
   const [overrideSubmitLabel, setOverrideSubmitLabel] = useState(TEXT_RESTORE);
 
@@ -107,6 +124,13 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     ({ backup_details, values }: { backup_details: IBackup; values: Record<string, any> }) => {
       if (isYBCEnabledInUniverse(universeList!, values['targetUniverseUUID'].value)) {
         values = omit(values, 'parallelThreads');
+      }
+      if (backup_details?.hasIncrementalBackups && incrementalBackups && !isError) {
+        //Backend is already sending reponse in sorted order
+        const recentBackup = incrementalBackups.data.filter(
+          (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
+        )[0];
+        return restoreEntireBackup({ ...backup_details, commonBackupInfo: recentBackup }, values);
       }
       return restoreEntireBackup(backup_details, values);
     },
@@ -140,7 +164,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     }
   ];
 
-  if (isUniverseListLoading) {
+  if (isUniverseListLoading && isIncBackupLoading) {
     return <YBLoading />;
   }
 

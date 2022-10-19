@@ -46,16 +46,12 @@ public class CheckMemory extends UniverseTaskBase {
       Universe universe = getUniverse();
       for (String nodeIp : params().nodeIpList) {
         List<String> command = new ArrayList<>();
-        command.add("cat");
-        command.add("/proc/meminfo");
-        command.add("|");
         command.add("grep");
         command.add("-i");
         command.add(params().memoryType);
+        command.add("/proc/meminfo");
         command.add("|");
         command.add("awk");
-        command.add("-F");
-        command.add(" ");
         command.add("{print $2}");
         NodeDetails node = universe.getNodeByPrivateIP(nodeIp);
         ShellProcessContext context =

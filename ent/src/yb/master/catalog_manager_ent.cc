@@ -3818,14 +3818,19 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           LOG(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
+        bool has_pk = true;
         for (const auto& col : schema.columns()) {
           if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
             // ybrowid column is added for tables that don't have user-specified primary key.
             RemoveTableFromCDCSDKUnprocessedSet(table_id, stream_info);
             VLOG(1) << "Table: " << table_id
                     << ", will not be added to CDCSDK stream, since it does not have a primary key";
-            continue;
+            has_pk = false;
+            break;
           }
+        }
+        if (!has_pk) {
+          continue;
         }
 
         if (std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id) ==
@@ -5799,8 +5804,13 @@ Status CatalogManager::InitCDCConsumer(
   auto cluster_config = ClusterConfig();
   auto l = cluster_config->LockForWrite();
   auto* consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
-  consumer_registry->set_enable_replicate_transaction_status_table(
+  if (consumer_registry->producer_map().empty()) {
+    // There are no active streams, so use --enable_replicate_transaction_status_table to determine
+    // whether replication of the transaction status table is enabled.
+    consumer_registry->set_enable_replicate_transaction_status_table(
        GetAtomicFlag(&FLAGS_enable_replicate_transaction_status_table));
+  }
+
   auto* producer_map = consumer_registry->mutable_producer_map();
   auto it = producer_map->find(producer_universe_uuid);
   if (it != producer_map->end()) {
@@ -6080,6 +6090,43 @@ Status CatalogManager::DeleteUniverseReplicationUnlocked(
       xcluster_consumer_tables_to_stream_map_.erase(table.second);
     }
   }
+  return Status::OK();
+}
+
+Status CatalogManager::ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req,
+                                          ChangeXClusterRoleResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing ChangeXClusterRole request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  auto new_role = req->role();
+  // Get the current role from the cluster config
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+  auto consumer_registry = l.mutable_data()->pb.mutable_consumer_registry();
+  auto current_role = consumer_registry->role();
+  if (current_role == new_role) {
+    return STATUS(InvalidArgument, "New role must be different than existing role",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+  if (new_role == cdc::STANDBY) {
+    if (!consumer_registry->enable_replicate_transaction_status_table()) {
+      return STATUS(InvalidArgument, "This universe replication does not support xCluster roles. "
+                                     "Recreate all existing streams with "
+                                     "--enable_replicate_transaction_status_table=true to enable "
+                                     " STANDBY mode",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+  }
+  consumer_registry->set_role(new_role);
+  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+  // Commit the change to the consumer registry.
+  RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+        "updating cluster config in sys-catalog"));
+  l.Commit();
+  LOG(INFO) << "Successfully completed ChangeXClusterRole request from "
+          << RequestorString(rpc);
   return Status::OK();
 }
 

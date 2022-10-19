@@ -35,7 +35,7 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
   public String getName() {
     return String.format(
         "%s(xClusterConfig=%s,pause=%b)",
-        super.getName(), taskParams().xClusterConfig, taskParams().pause);
+        super.getName(), taskParams().getXClusterConfig(), taskParams().pause);
   }
 
   @Override

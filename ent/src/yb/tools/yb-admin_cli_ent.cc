@@ -833,6 +833,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "change_xcluster_role", "(STANDBY|ACTIVE)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        auto xcluster_role = args[0];
+        if (xcluster_role == "STANDBY") {
+          return client->ChangeXClusterRole(cdc::XClusterRole::STANDBY);
+        }
+        if (xcluster_role == "ACTIVE") {
+          return client->ChangeXClusterRole(cdc::XClusterRole::ACTIVE);
+        }
+        return STATUS(InvalidArgument,
+                      Format("Expected one of STANDBY OR ACTIVE, found $0", args[0]));
+      });
+
+
+  Register(
       "set_universe_replication_enabled", " <producer_universe_uuid> (0|1)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 2) {

@@ -24,7 +24,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -204,7 +203,11 @@ public class CreateBackup extends UniverseTaskBase {
         || universe.getUniverseDetails().backupInProgress
         || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
-        schedule.updateBacklogStatus(true);
+        if (baseBackupUUID == null) {
+          // Update backlog status only for full backup as we don't store expected task time
+          // for incremental backups and check its requirement in every 2 minutes.
+          schedule.updateBacklogStatus(true);
+        }
         log.debug("Schedule {} backlog status is set to true", schedule.scheduleUUID);
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
