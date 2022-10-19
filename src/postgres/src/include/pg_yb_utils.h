@@ -641,4 +641,9 @@ void YbRegisterSysTableForPrefetching(int sys_table_id);
  */
 bool YBCIsRegionLocal(Relation rel);
 
+/*
+ * If the tserver gflag --ysql_disable_server_file_access is set to
+ * true, then prevent any server file writes/reads/execution.
+ */
+extern void YBCheckServerAccessIsAllowed();
 #endif /* PG_YB_UTILS_H */

@@ -64,6 +64,10 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_bool(ysql_disable_server_file_access, false,
+            "If true, disables read, write, and execute of local server files. "
+            "File access can be re-enabled if set to false.");
+
 namespace yb {
 namespace pggate {
 
@@ -1127,6 +1131,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_disable_server_file_access         = &FLAGS_ysql_disable_server_file_access,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,

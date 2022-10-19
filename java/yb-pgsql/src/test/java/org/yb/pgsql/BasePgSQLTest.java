@@ -18,6 +18,7 @@ import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -58,6 +59,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.yb.util.MiscUtil.ThrowingRunnable;
+import org.yb.util.YBBackupUtil;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -2252,5 +2255,50 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     public void setLoadBalance(boolean lb) {
       loadBalance = lb;
     }
+  }
+
+  protected static void withRoles(Statement statement, RoleSet roles,
+                                  ThrowingRunnable runnable) throws Exception {
+    for (String role : roles.roleSet) {
+      withRole(statement, role, runnable);
+    }
+  }
+
+  protected static void withRole(Statement statement, String role,
+                                 ThrowingRunnable runnable) throws Exception {
+    String sessionUser = getSessionUser(statement);
+    try {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", role));
+      runnable.run();
+    } finally {
+      statement.execute(String.format("SET SESSION AUTHORIZATION %s", sessionUser));
+    }
+  }
+
+  protected static class RoleSet {
+    private HashSet<String> roleSet;
+
+    RoleSet(String... roles) {
+      this.roleSet = new HashSet<String>();
+      this.roleSet.addAll(Lists.newArrayList(roles));
+    }
+
+    RoleSet excluding(String... roles) {
+      RoleSet newSet = new RoleSet(roles);
+      newSet.roleSet.removeAll(Lists.newArrayList(roles));
+      return newSet;
+    }
+  }
+
+  protected static String getSessionUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT SESSION_USER");
+    resultSet.next();
+    return resultSet.getString(1);
+  }
+
+  protected static String getCurrentUser(Statement statement) throws Exception {
+    ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
+    resultSet.next();
+    return resultSet.getString(1);
   }
 }
