@@ -401,6 +401,10 @@
 # Build an application redirects to Drivers and ORMs
 
 [[redirects]]
+   from = "/preview/develop/build-apps/java/ysql-yb-jdbc/"
+   to = "/preview/drivers-orms/java/yugabyte-jdbc/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
    to = "/preview/drivers-orms/ruby/activerecord/"
 

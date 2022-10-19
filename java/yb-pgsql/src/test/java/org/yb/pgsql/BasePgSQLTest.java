@@ -95,7 +95,7 @@ import com.yugabyte.util.PSQLException;
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
-  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  /** Corresponds to the first OID used for YB system catalog objects. */
   protected final long FIRST_YB_OID = 8000;
 
   /** Matches Postgres' FirstBootstrapObjectId */

@@ -129,6 +129,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
   Status SetUniverseReplicationEnabled(const std::string& producer_id,
                                                bool is_enabled);
 

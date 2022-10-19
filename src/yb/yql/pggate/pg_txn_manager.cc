@@ -329,6 +329,10 @@ Status PgTxnManager::RestartReadPoint() {
   return Status::OK();
 }
 
+void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
+  active_sub_transaction_id_ = id;
+}
+
 Status PgTxnManager::CommitTransaction() {
   return FinishTransaction(Commit::kTrue);
 }
@@ -369,6 +373,7 @@ void PgTxnManager::ResetTxnAndSession() {
   priority_ = 0;
   in_txn_limit_ = HybridTime();
   ++txn_serial_no_;
+  active_sub_transaction_id_ = 0;
 
   enable_follower_reads_ = false;
   read_only_ = false;
@@ -409,10 +414,13 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
   if (!ddl_mode_ && !txn_in_progress_) {
     ++txn_serial_no_;
+    active_sub_transaction_id_ = 0;
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(ddl_mode_);
   options->set_txn_serial_no(txn_serial_no_);
+  options->set_active_sub_transaction_id(active_sub_transaction_id_);
+
   if (txn_in_progress_ && in_txn_limit_) {
     options->set_in_txn_limit_ht(in_txn_limit_.ToUint64());
   }
