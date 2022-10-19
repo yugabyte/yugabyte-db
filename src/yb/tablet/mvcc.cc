@@ -45,6 +45,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"
 
+using std::ostream;
+
 using namespace std::literals;
 
 DEFINE_test_flag(int64, mvcc_op_trace_num_items, 32,

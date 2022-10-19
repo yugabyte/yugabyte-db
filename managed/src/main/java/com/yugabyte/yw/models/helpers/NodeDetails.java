@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.apiAdditionalAllowedActions;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -136,10 +138,20 @@ public class NodeDetails {
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
     Terminated(DELETE),
-    // Set when the node is being rebooted
-    Rebooting();
+    // Set when the node is being rebooted.
+    Rebooting(),
+    // Set when the node is being stopped + started.
+    HardRebooting();
 
     private final NodeActionType[] allowedActions;
+    // Additional allowed actions that are not exposed to NodeDetails, which means it is not exposed
+    // to the UI.
+    public static final EnumMap<NodeState, Set<NodeActionType>> apiAdditionalAllowedActions =
+        new EnumMap<>(NodeState.class);
+
+    static {
+      apiAdditionalAllowedActions.put(Live, ImmutableSet.of(NodeActionType.HARD_REBOOT));
+    }
 
     NodeState(NodeActionType... allowedActions) {
       this.allowedActions = allowedActions;
@@ -299,13 +311,17 @@ public class NodeDetails {
 
   @JsonIgnore
   public boolean isActionAllowedOnState(NodeActionType actionType) {
-    return state == null ? false : state.allowedActions().contains(actionType);
+    return state != null && state.allowedActions().contains(actionType);
   }
 
   /** Validates if the action is allowed on the state for the node. */
   @JsonIgnore
   public void validateActionOnState(NodeActionType actionType) {
     if (!isActionAllowedOnState(actionType)) {
+      if (apiAdditionalAllowedActions.containsKey(this.state)
+          && apiAdditionalAllowedActions.get(this.state).contains(actionType)) {
+        return;
+      }
       String msg =
           String.format(
               "Node %s is in %s state, but not in one of %s, so action %s is not allowed.",
@@ -332,7 +348,8 @@ public class NodeDetails {
         || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
         || state == NodeState.Terminated
-        || state == NodeState.Rebooting);
+        || state == NodeState.Rebooting
+        || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore

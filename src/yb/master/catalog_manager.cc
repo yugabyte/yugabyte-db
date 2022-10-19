@@ -544,6 +544,10 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::set;
+using std::min;
+using std::map;
+using std::pair;
 
 using namespace std::placeholders;
 
@@ -4043,6 +4047,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             << ns->ToString() << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
 
+  // Add the new table's entry to the in-memory structure cdc_stream_map_.
+  // This will be used by the background task to determine if the table needs to associated to an
+  // active CDCSDK stream. We do not consider the dummy parent table created for tablegroups.
+  if (!colocated || joining_colocation_group) {
+    WARN_NOT_OK(
+        AddNewTableToCDCDKStreamsMetadata(table->id(), ns->id()),
+        "Could not add table: " + table->id() + ", details to required CDCSDK streams");
+  }
+
   if (FLAGS_master_enable_metrics_snapshotter &&
       !(req.table_type() == TableType::YQL_TABLE_TYPE &&
         namespace_id == kSystemNamespaceId &&
@@ -5128,7 +5141,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, table_oid);
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
@@ -7752,8 +7765,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Verify that the namespace does not already exist.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr && db_type != YQL_DATABASE_PGSQL) {
-      // PGSQL databases have name uniqueness handled at a different layer, so ignore overlaps.
+    if (ns == nullptr) {
+      // For PGSQL databases having name uniqueness handled at a different layer, we still need to
+      // verify it to avoid the race condition caused by multiple CreateNamespace requests with the
+      // same db name running in parallel.
       ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     }
     if (ns != nullptr) {
@@ -9075,6 +9090,11 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTable(const TableId& table) {
 }
 
 Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
+  return Status::OK();
+}
+
+Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
+    const TableId& table_id, const NamespaceId& ns_id) {
   return Status::OK();
 }
 

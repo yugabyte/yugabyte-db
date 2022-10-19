@@ -47,6 +47,7 @@ using std::ostringstream;
 using std::unique_ptr;
 using std::tuple;
 using std::get;
+using std::map;
 
 using rapidjson::Value;
 using strings::Substitute;
@@ -1467,6 +1468,115 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPasses, CppCassandraDrive
                    .ok());
 }
 
+class CppCassandraDriverTestRestart : public CppCassandraDriverTest {
+  std::vector<std::string> ExtraTServerFlags() override {
+    return {"--cql_prepare_child_threshold_ms=5000"};
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexPartial, CppCassandraDriverTestRestart) {
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Creating index";
+  auto s = session_.ExecuteQuery(
+      "create unique index test_table_index_by_v on test_table (v) where k > 0;");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+  IndexPermissions perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  const size_t kNumTServers = cluster_->num_tablet_servers();
+  cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);
+  ASSERT_OK(cluster_->Restart());
+  const auto kMaxWaitTime = 5s;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTServers, kMaxWaitTime));
+  for (size_t i = 0; i < kNumTServers; i++) {
+    ASSERT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(i), kMaxWaitTime));
+  }
+  session_ = CHECK_RESULT(driver_->CreateSession());
+
+  LOG(INFO) << "Inserting three rows";
+  ASSERT_OK(session_.ExecuteQuery("insert into test.test_table (k, v) values (1, 'one');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test.test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test.test_table (k, v) values (3, 'three');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test.test_table (k, v) values (-1, 'one');"));
+
+  LOG(INFO) << "Inserting more rows -- collisions will be detected.";
+  Status status = session_.ExecuteQuery("insert into test.test_table (k, v) values (13, 'three');");
+  ASSERT_TRUE(status.message().ToBuffer().find("Duplicate value") != std::string::npos);
+  ASSERT_OK(session_.ExecuteQuery("insert into test.test_table (k, v) values (-3, 'three');"));
+}
+
+TEST_F_EX(
+    CppCassandraDriverTest, TestCreateUniqueIndexPartialWithRestart,
+    CppCassandraDriverTestRestart) {
+  ASSERT_OK(session_.ExecuteQuery("use test;"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "CREATE TABLE test.multindex ("
+      "i int, s1 text, s2 text, s3 text, s4 text, s5 text, s6 text, s7 text, s8 text,"
+      "PRIMARY KEY ((i, s1), s2, s3, s4)) WITH CLUSTERING ORDER BY (s2 ASC, s3 ASC, s4 ASC)"
+      "AND default_time_to_live = 0"
+      "AND tablets = 1"
+      "AND transactions = {'enabled': 'true'};"));
+  ASSERT_OK(
+      session_.ExecuteQuery("CREATE UNIQUE INDEX uidx1 ON test.multindex ((i, s4), s2, s3) INCLUDE "
+                            "(s1, s5, s6) WHERE s2 != '' and s3 != '' and i=1   with tablets=1;"));
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "multindex");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "uidx1");
+  IndexPermissions perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '1', '1','1','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (2, '1', '1','1','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (2, '2', '1','1','1','1','1');"));
+  // error expected
+  Status status = session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '2', '1','1','1','1','1');");
+  ASSERT_TRUE(status.message().ToBuffer().find("Duplicate value") != std::string::npos);
+
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '2', '','1','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '2', '','','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '4', '','','1','1','1');"));
+
+  const size_t kNumTServers = cluster_->num_tablet_servers();
+  cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);
+  ASSERT_OK(cluster_->Restart());
+  const auto kMaxWaitTime = 5s;
+  ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTServers, kMaxWaitTime));
+  for (size_t i = 0; i < kNumTServers; i++) {
+    ASSERT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(i), kMaxWaitTime));
+  }
+  session_ = CHECK_RESULT(driver_->CreateSession());
+
+  // after restart
+  ASSERT_OK(session_.ExecuteQuery("use test;"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '45', '','','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '5', '','','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '6', '','','1','1','1');"));
+
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (2, '6', '','','1','1','1');"));
+  ASSERT_OK(session_.ExecuteQuery(
+      "insert into multindex (i, s1, s2, s3, s4, s5, s6) values (1, '1', '','','1','1','1');"));
+}
+
 TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent, CppCassandraDriverTestIndexSlow) {
   TestTable<cass_int32_t, cass_int32_t> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"},
@@ -2511,7 +2621,6 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
   ASSERT_OK(session_.ExecuteQuery("create index index_by_value on test.key_value (value)"));
 
   std::vector<CassandraFuture> futures;
-  int num_failures = 0;
   auto prepared = ASSERT_RESULT(table.PrepareInsert(&session_, 10s));
   for (int loop = 1; loop <= kLoops; ++loop) {
     for (int key = 0; key != kKeys; ++key) {
@@ -2527,7 +2636,6 @@ TEST_F_EX(CppCassandraDriverTest, ConcurrentIndexUpdate, CppCassandraDriverTestI
       auto status = it->Wait();
       if (!status.ok()) {
         LOG(WARNING) << "Failure: " << status;
-        num_failures++;
       }
       ++it;
     }

@@ -29,6 +29,8 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 
+using std::min;
+
 using namespace std::chrono_literals;
 
 DEFINE_int32(xcluster_safe_time_table_num_tablets, 1,

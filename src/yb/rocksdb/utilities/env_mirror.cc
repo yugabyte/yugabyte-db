@@ -29,6 +29,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // An implementaiton of Env that mirrors all work over two backend

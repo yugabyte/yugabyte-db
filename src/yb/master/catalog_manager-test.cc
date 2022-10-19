@@ -39,6 +39,8 @@ namespace master {
 
 using std::shared_ptr;
 using std::make_shared;
+using std::string;
+using std::vector;
 using strings::Substitute;
 
 class TestLoadBalancerCommunity : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {

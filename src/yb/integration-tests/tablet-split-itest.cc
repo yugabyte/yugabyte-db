@@ -91,6 +91,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+using std::vector;
+
 using namespace std::literals;  // NOLINT
 using namespace yb::client::kv_table_test; // NOLINT
 
@@ -302,15 +305,12 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   constexpr auto kNumRows = kDefaultNumRows;
   const MonoDelta kCleanupTimeout = 15s * kTimeMultiplier;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   // Keep tablets without compaction after split.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_post_split_compaction) = true;
 
   ASSERT_OK(CreateSingleTabletAndSplit(kNumRows));
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = true;
-  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-  ASSERT_EQ(tablet_peers.size(), 2);
+  auto tablet_peers =
+      ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(cluster_.get(), table_->id(), 2));
   const auto first_child_tablet = tablet_peers[0]->shared_tablet();
   ASSERT_OK(first_child_tablet->Flush(tablet::FlushMode::kSync));
   // Force compact on leader, so we can split first_child_tablet.
@@ -319,7 +319,6 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   // first_child_tablet to make sure manual compaction won't block tablet shutdown.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   ASSERT_OK(SplitTablet(ASSERT_RESULT(catalog_manager()), *first_child_tablet));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_do_not_start_election_test_only) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(
       /* expected_non_split_tablets = */ 3, /* expected_split_tablets = */ 1));
 
@@ -961,10 +960,22 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     // Wait for the write transaction to move from intents db to regular db on each peer before
     // trying to flush.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-      RETURN_NOT_OK(WaitFor([&]() {
-        return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
-      }, 30s, "Did not apply write transactions from intents db in time."));
       if (peer->tablet_id() == tablet_id) {
+        RETURN_NOT_OK(WaitFor([&]() {
+          // This tablet might has been shut down or in the process of shutting down.
+          // Thus, we need to check whether shared_tablet is nullptr or not
+          // TEST_CountIntent return non ok status also means shutdown has started.
+          const auto shared_tablet = peer->shared_tablet();
+          if (!shared_tablet) {
+            return true;
+          }
+          auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+          return !result.ok() || result->first == 0;
+        }, 30s, "Did not apply write transactions from intents db in time."));
+
+        if (peer->IsShutdownStarted()) {
+          return STATUS(NotFound, "The tablet has been shut down.");
+        }
         RETURN_NOT_OK(peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
       }
     }
@@ -990,7 +1001,12 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
       }
       // Flush all replicas of this shard to ensure that even if the leader changed we will be in a
       // state where yb-master should initiate a split.
-      RETURN_NOT_OK(FlushAllTabletReplicas(tablet_id, table_->id()));
+      auto status = FlushAllTabletReplicas(tablet_id, table_->id());
+      if (status.IsNotFound()) {
+        // The parent tablet has been shut down, which means tablet split is triggered.
+        break;
+      }
+      RETURN_NOT_OK(status);
       for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
         if (peer->tablet_id() == tablet_id) {
           current_size = peer->shared_tablet()->GetCurrentVersionSstFilesSize();
@@ -2679,6 +2695,16 @@ TEST_F_EX(
   ASSERT_OK(cluster_->WaitForTSToCrash(server_to_bootstrap));
 
   ASSERT_OK(WriteRows());
+
+  // With enable_leader_failure_detection=false when creating child tablets on leader and
+  // other_follower, Only child tablet peer on server_to_bootstrap can detect leader failure.
+  // If hinted leader is not disabled, it's possible that:
+  // 1) child tablet leader is elected on other_follower
+  // 2) other_follower crash
+  // 3) server_to_bootstrap detects leader failure, but its log is behind old leader's log,
+  //    so we can't elect a leader for child tablet.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->GetLeaderMaster(), "use_create_table_leader_hint", "false"));
 
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     auto* ts = cluster_->tablet_server(i);

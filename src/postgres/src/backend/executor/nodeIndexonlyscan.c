@@ -775,3 +775,14 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
 }
+
+void
+YbExecUpdateInstrumentIndexOnlyScan(IndexOnlyScanState *node,
+									Instrumentation *instr)
+{
+	YbScanDesc ybscan = (YbScanDesc)node->ioss_ScanDesc->opaque;
+	Assert(PointerIsValid(ybscan));
+	if (ybscan->handle)
+		YbUpdateReadRpcStats(ybscan->handle,
+							 &instr->yb_read_rpcs, &instr->yb_tbl_read_rpcs);
+}

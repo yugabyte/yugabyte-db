@@ -64,6 +64,7 @@ using std::string;
 using std::unique_ptr;
 using std::shared_ptr;
 using std::make_shared;
+using std::vector;
 
 using yb::util::TrimStr;
 using yb::util::ApplyEagerLineContinuation;

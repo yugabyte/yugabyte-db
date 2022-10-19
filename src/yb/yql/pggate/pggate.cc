@@ -77,6 +77,9 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
+using std::make_shared;
+using std::string;
+using std::vector;
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
@@ -300,8 +303,6 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 }
 
 } // namespace
-
-using std::make_shared;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -1644,6 +1645,18 @@ PgApiImpl::GetTserverCatalogVersionInfo() {
 
 Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
   return pg_session_->GetSharedAuthKey();
+}
+
+void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
+                                        uint64_t* reads, uint64_t* read_wait,
+                                        uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  down_cast<PgDmlRead*>(handle)->GetAndResetReadRpcStats(reads, read_wait,
+                                                         tbl_reads, tbl_read_wait);
+}
+
+void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 // Transaction Control -----------------------------------------------------------------------------

@@ -14,21 +14,20 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 
@@ -58,17 +57,14 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
 
-        Set<String> tableIds = xClusterConfig.getTables();
-        Map<String, List<String>> mainTableIndexTablesMap =
-            getMainTableIndexTablesMap(sourceUniverse, tableIds);
-        addIndexTables(tableIds, mainTableIndexTablesMap);
-
-        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-            getRequestedTableInfoList(tableIds, sourceUniverse, targetUniverse);
-        xClusterConfig.setTableType(requestedTableInfoList);
+        xClusterConfig.setStatusForTables(
+            getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
 
         addSubtasksToCreateXClusterConfig(
-            sourceUniverse, targetUniverse, requestedTableInfoList, mainTableIndexTablesMap);
+            sourceUniverse,
+            targetUniverse,
+            taskParams().getTableInfoList(),
+            taskParams().getMainTableIndexTablesMap());
 
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -87,6 +83,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+      // Set tables in updating status to failed.
+      Set<String> tablesInUpdatingStatus =
+          xClusterConfig.getTableIdsInStatus(
+              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+      xClusterConfig.setStatusForTables(tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
@@ -136,7 +137,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     addSubtasksForTablesNeedBootstrap(
         sourceUniverse,
         targetUniverse,
-        taskParams().createFormData.bootstrapParams,
+        taskParams().getBootstrapParams(),
         requestedNamespaceNameTablesInfoMapNeedBootstrap,
         !tableIdsNotNeedBootstrap.isEmpty());
   }
@@ -261,8 +262,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                     tableIdsInNamespace, true /* needBootstrap */);
               }
               // If a main table or an index table of a main table needs bootstrapping, it must be
-              // done
-              // for the main table and all of its index tables due to backup/restore restrictions.
+              // done for the main table and all of its index tables due to backup/restore
+              // restrictions.
               mainTableIndexTablesMap.forEach(
                   (mainTableId, indexTableIds) -> {
                     if (tableIdsNeedBootstrap.contains(mainTableId)
@@ -287,193 +288,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .collect(Collectors.toList()));
   }
 
-  /**
-   * It returns the list of table info from a universe for a set of table ids. Moreover, it ensures
-   * that all requested tables exist on the source and target universes, and they have the same
-   * type. Also, if the table type is YSQL and bootstrap is required, it ensures all the tables in a
-   * keyspace are selected because per-table backup/restore is not supported for YSQL.
-   *
-   * @param requestedTableIds The table ids to get the {@code TableInfo} for
-   * @param sourceUniverse The universe to gather the {@code TableInfo}s from
-   * @param targetUniverse The universe to check that matching tables exist on
-   * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
-   *     info of the tables whose id is specified at {@code requestedTableIds}
-   */
-  protected List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getRequestedTableInfoList(
-      Set<String> requestedTableIds, Universe sourceUniverse, Universe targetUniverse) {
-    // Ensure at least one table exists to verify.
-    if (requestedTableIds.isEmpty()) {
-      throw new IllegalArgumentException("requestedTableIds cannot be empty");
-    }
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        getTableInfoList(sourceUniverse);
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        sourceTableInfoList
-            .stream()
-            .filter(tableInfo -> requestedTableIds.contains(tableInfo.getId().toStringUtf8()))
-            .collect(Collectors.toList());
-
-    // All tables are found on the source universe.
-    if (requestedTableInfoList.size() != requestedTableIds.size()) {
-      Set<String> foundTableIds = getTableIds(requestedTableInfoList);
-      Set<String> missingTableIds =
-          requestedTableIds
-              .stream()
-              .filter(tableId -> !foundTableIds.contains(tableId))
-              .collect(Collectors.toSet());
-      throw new IllegalArgumentException(
-          String.format(
-              "Some of the tables were not found on the source universe (Please note that "
-                  + "it might be an index table): was %d, found %d, missing tables: %s",
-              requestedTableIds.size(), requestedTableInfoList.size(), missingTableIds));
-    }
-
-    CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
-    // All tables have the same type.
-    if (!requestedTableInfoList
-        .stream()
-        .allMatch(tableInfo -> tableInfo.getTableType().equals(tableType))) {
-      throw new IllegalArgumentException(
-          "At least one table has a different type from others. "
-              + "All tables in an xCluster config must have the same type. Please create separate "
-              + "xCluster configs for different table types.");
-    }
-
-    // XCluster replication can be set up only for YCQL and YSQL tables.
-    if (!tableType.equals(CommonTypes.TableType.YQL_TABLE_TYPE)
-        && !tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "XCluster replication can be set up only for YCQL and YSQL tables: "
-                  + "type %s requested",
-              tableType));
-    }
-    log.info("All the requested tables are found and they have a type of {}", tableType);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
-        getTableInfoList(targetUniverse);
-    checkTablesExistOnTargetUniverse(requestedTableInfoList, targetTablesInfoList);
-
-    // If table type is YSQL and bootstrap is requested, all tables in that keyspace are selected.
-    if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
-      groupByNamespaceId(requestedTableInfoList)
-          .forEach(
-              (namespaceId, tablesInfoList) -> {
-                Set<String> selectedTableIdsInNamespace = getTableIds(tablesInfoList);
-                Set<String> tableIdsNeedBootstrap =
-                    getTableIdsNeedBootstrap(selectedTableIdsInNamespace);
-                if (!tableIdsNeedBootstrap.isEmpty()) {
-                  Set<String> tableIdsInNamespace =
-                      sourceTableInfoList
-                          .stream()
-                          .filter(
-                              tableInfo ->
-                                  tableInfo
-                                      .getNamespace()
-                                      .getId()
-                                      .toStringUtf8()
-                                      .equals(namespaceId))
-                          .map(tableInfo -> tableInfo.getId().toStringUtf8())
-                          .collect(Collectors.toSet());
-                  if (tableIdsInNamespace.size() != selectedTableIdsInNamespace.size()) {
-                    throw new IllegalArgumentException(
-                        String.format(
-                            "For YSQL tables, all the tables in a keyspace must be selected: "
-                                + "selected: %s, tables in the keyspace: %s",
-                            selectedTableIdsInNamespace, tableIdsInNamespace));
-                  }
-                }
-              });
-    }
-
-    return requestedTableInfoList;
-  }
-
-  protected Set<String> addIndexTables(
-      Set<String> tableIds, Map<String, List<String>> mainTableIndexTablesMap) {
-    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    Set<String> indexTableIdSet =
-        mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
-    if ((taskParams().createFormData != null && taskParams().createFormData.bootstrapParams == null)
-        || (taskParams().editFormData != null
-            && taskParams().editFormData.bootstrapParams == null)) {
-      xClusterConfig.addTablesIfNotExist(indexTableIdSet);
-    } else {
-      xClusterConfig.addTablesIfNotExist(indexTableIdSet, indexTableIdSet);
-    }
-    xClusterConfig.setIndexTableForTables(indexTableIdSet, true /* indexTable */);
-    tableIds.addAll(indexTableIdSet);
-    return tableIds;
-  }
-
-  protected void checkTablesExistOnTargetUniverse(
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedSourceTablesInfoList,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList) {
-    if (requestedSourceTablesInfoList.isEmpty()) {
-      log.warn("requestedSourceTablesInfoList is empty");
-      return;
-    }
-    Set<String> notFoundNamespaces = new HashSet<>();
-    Set<String> notFoundTables = new HashSet<>();
-    CommonTypes.TableType tableType = requestedSourceTablesInfoList.get(0).getTableType();
-    // Namespace name for one table type is unique.
-    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-        targetNamespaceTablesInfoMap =
-            targetTablesInfoList
-                .stream()
-                .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
-                .collect(Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getName()));
-    requestedSourceTablesInfoList.forEach(
-        sourceTableInfo -> {
-          // Find tables with the same keyspace name.
-          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoListInNamespace =
-              targetNamespaceTablesInfoMap.get(sourceTableInfo.getNamespace().getName());
-          if (targetTableInfoListInNamespace != null) {
-            if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
-              // Check schema name match in case of YSQL.
-              List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoListInSchema =
-                  targetTableInfoListInNamespace
-                      .stream()
-                      .filter(
-                          tableInfo ->
-                              tableInfo.getPgschemaName().equals(sourceTableInfo.getPgschemaName()))
-                      .collect(Collectors.toList());
-              // Check the table with the same name exists on the target universe.
-              if (targetTableInfoListInSchema
-                  .stream()
-                  .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
-                  .noneMatch(tableName -> sourceTableInfo.getName().equals(tableName))) {
-                notFoundTables.add(sourceTableInfo.getName());
-              }
-            } else {
-              // Check the table with the same name exists on the target universe.
-              if (targetTableInfoListInNamespace
-                  .stream()
-                  .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
-                  .noneMatch(tableName -> sourceTableInfo.getName().equals(tableName))) {
-                notFoundTables.add(sourceTableInfo.getName());
-              }
-            }
-          } else {
-            notFoundNamespaces.add(sourceTableInfo.getNamespace().getName());
-          }
-        });
-    if (!notFoundNamespaces.isEmpty() || !notFoundTables.isEmpty()) {
-      throw new IllegalStateException(
-          String.format(
-              "Not found namespaces on the target universe: %s, not found tables on the "
-                  + "target universe: %s",
-              notFoundNamespaces, notFoundTables));
-    }
-  }
-
   static BackupRequestParams getBackupRequestParams(
       Universe sourceUniverse,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap) {
     BackupRequestParams backupRequestParams;
     if (bootstrapParams.backupRequestParams != null) {
-      backupRequestParams = new BackupRequestParams(bootstrapParams.backupRequestParams);
+      backupRequestParams = new BackupRequestParams();
+      backupRequestParams.storageConfigUUID = bootstrapParams.backupRequestParams.storageConfigUUID;
+      backupRequestParams.parallelism = bootstrapParams.backupRequestParams.parallelism;
     } else {
       // In case the user does not pass the backup parameters, use the default values.
       backupRequestParams = new BackupRequestParams();

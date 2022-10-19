@@ -108,6 +108,10 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
+using std::vector;
+using std::min;
+using std::map;
+using std::ostream;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -717,10 +721,15 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   LOG(INFO) << "Master " << master->bound_rpc_hostport().ToString() << ", change type "
             << type << " to " << masters_.size() << " masters.";
 
-  if (type == consensus::ADD_SERVER) {
-    return AddMaster(master);
-  } else if (type == consensus::REMOVE_SERVER) {
-    return RemoveMaster(master);
+  if (type == consensus::ADD_SERVER || type == consensus::REMOVE_SERVER) {
+    if (type == consensus::ADD_SERVER) {
+      RETURN_NOT_OK(AddMaster(master));
+    } else if (type == consensus::REMOVE_SERVER) {
+      RETURN_NOT_OK(RemoveMaster(master));
+    }
+
+    UpdateMasterAddressesOnTserver();
+    return Status::OK();
   }
 
   string err_msg = Format("Should not reach here - change type $0", type);
@@ -1430,6 +1439,17 @@ Status ExternalMiniCluster::AddTabletServer(
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
+}
+
+void ExternalMiniCluster::UpdateMasterAddressesOnTserver() {
+  vector<HostPort> master_hostports;
+  for (size_t i = 0; i < num_masters(); i++) {
+    master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
+  }
+
+  for (size_t i = 0; i < num_tablet_servers(); i++) {
+    DCHECK_NOTNULL(tablet_server(i))->UpdateMasterAddress(master_hostports);
+  }
 }
 
 Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDelta& timeout) {
@@ -2673,6 +2693,10 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   RETURN_NOT_OK(s1);
   RETURN_NOT_OK(s2);
   return Status::OK();
+}
+
+void ExternalTabletServer::UpdateMasterAddress(const std::vector<HostPort>& master_addrs) {
+  master_addrs_ = HostPort::ToCommaSeparatedString(master_addrs);
 }
 
 Status ExternalTabletServer::Restart(

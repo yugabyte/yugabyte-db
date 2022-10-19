@@ -29,6 +29,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 
 DECLARE_bool(log_enable_background_sync);

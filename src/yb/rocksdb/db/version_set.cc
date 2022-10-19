@@ -77,6 +77,8 @@
 
 #include "yb/util/test_kill.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {
@@ -1402,13 +1404,9 @@ void VersionStorageInfo::SetFinalized() {
     assert(MaxBytesForLevel(level) >= max_bytes_prev_level);
     max_bytes_prev_level = MaxBytesForLevel(level);
   }
-  int num_empty_non_l0_level = 0;
   for (int level = 0; level < num_levels(); level++) {
     assert(LevelFiles(level).size() == 0 ||
            LevelFiles(level).size() == LevelFilesBrief(level).num_files);
-    if (level > 0 && NumLevelBytes(level) > 0) {
-      num_empty_non_l0_level++;
-    }
     if (LevelFiles(level).size() > 0) {
       assert(level < num_non_empty_levels());
     }
@@ -3144,7 +3142,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
   UserFrontier* flushed_frontier = nullptr;
-  int count = 0;
+  int count __attribute__((unused)) = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
 

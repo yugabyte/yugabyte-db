@@ -1034,7 +1034,12 @@ YBIsInitDbAlreadyDone()
 /*---------------------------------------------------------------------------*/
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-static int ddl_nesting_level = 0;
+typedef struct DdlTransactionState {
+	int nesting_level;
+	MemoryContext mem_context;
+} DdlTransactionState;
+
+static DdlTransactionState ddl_transaction_state = {0};
 
 static void
 YBResetEnableNonBreakingDDLMode()
@@ -1046,37 +1051,90 @@ YBResetEnableNonBreakingDDLMode()
 	yb_make_next_ddl_statement_nonbreaking = false;
 }
 
+/*
+ * Release all space allocated in the yb_memctx of a context and all of
+ * its descendants, but don't delete the yb_memctx themselves.
+ */
+static YBCStatus
+YbMemCtxReset(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+	for (MemoryContext child = context->firstchild;
+		 child != NULL;
+		 child = child->nextchild)
+	{
+		YBCStatus status = YbMemCtxReset(child);
+		if (status)
+			return status;
+	}
+	return context->yb_memctx ? YBCPgResetMemctx(context->yb_memctx) : NULL;
+}
+
 static void
 YBResetDdlState()
 {
-	ddl_nesting_level = 0;
+	YBCStatus status = NULL;
+	if (ddl_transaction_state.mem_context)
+	{
+		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
+			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
+		/* Reset the yb_memctx of the ddl memory context including its descendants.
+		 * This is to ensure that all the operations in this ddl transaction are
+		 * completed before we abort the ddl transaction. For example, when a ddl
+		 * transaction aborts there may be a PgDocOp in this ddl transaction which
+		 * still has a pending Perform operation to pre-fetch the next batch of
+		 * rows and the Perform's RPC call has not completed yet. Releasing the ddl
+		 * memory context will trigger the call to ~PgDocOp where we'll wait for
+		 * the pending operation to complete. Because all the objects allocated
+		 * during this ddl transaction are released, we assume they are no longer
+		 * needed after the ddl transaction aborts.
+		 */
+		status = YbMemCtxReset(ddl_transaction_state.mem_context);
+	}
+	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
 	YBCPgClearSeparateDdlTxnMode();
+	HandleYBStatus(status);
 }
 
 int
 YBGetDdlNestingLevel()
 {
-	return ddl_nesting_level;
+	return ddl_transaction_state.nesting_level;
 }
 
 void
 YBIncrementDdlNestingLevel()
 {
-	if (ddl_nesting_level == 0)
+	if (ddl_transaction_state.nesting_level == 0)
 	{
+		ddl_transaction_state.mem_context = AllocSetContextCreate(
+			GetCurrentMemoryContext(), "aux ddl memory context",
+			ALLOCSET_DEFAULT_SIZES);
+
+		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
-	ddl_nesting_level++;
+	++ddl_transaction_state.nesting_level;
 }
 
 void
 YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
 						   bool is_breaking_catalog_change)
 {
-	ddl_nesting_level--;
-	if (ddl_nesting_level == 0)
+	--ddl_transaction_state.nesting_level;
+	if (ddl_transaction_state.nesting_level == 0)
 	{
+		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
+			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
+		/*
+		 * We cannot reset the ddl memory context as we do in the abort case
+		 * (see YBResetDdlState) because there are cases where objects
+		 * allocated during the ddl transaction are still needed after this
+		 * ddl transaction commits successfully.
+		 */
+		ddl_transaction_state.mem_context = NULL;
+
 		YBResetEnableNonBreakingDDLMode();
 		const bool increment_done =
 			is_catalog_version_increment &&
@@ -1502,7 +1560,7 @@ static void YBTxnDdlProcessUtility(
 	{
 		if (is_txn_ddl) {
 			/*
-			 * It is possible that ddl_nesting_level has wrong value due to error.
+			 * It is possible that nesting_level has wrong value due to error.
 			 * Ddl transaction state should be reset.
 			 */
 			YBResetDdlState();
@@ -1546,6 +1604,10 @@ void YBResetOperationsBuffering() {
 
 void YBFlushBufferedOperations() {
 	HandleYBStatus(YBCPgFlushBufferedOperations());
+}
+
+void YBGetAndResetOperationFlushRpcStats(uint64_t *count, uint64_t *wait_time) {
+	YBCPgGetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 bool YBReadFromFollowersEnabled() {
@@ -2259,6 +2321,47 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
 }
 
+Datum
+yb_server_region(PG_FUNCTION_ARGS) {
+	const char *current_region = YBGetCurrentRegion();
+
+	if (current_region == NULL)
+	{
+		elog(NOTICE, "No region was set in placement_info setting at node startup.");
+		PG_RETURN_NULL();
+	}
+
+	return CStringGetTextDatum(current_region);
+}
+
+Datum
+yb_server_cloud(PG_FUNCTION_ARGS)
+{
+	const char *current_cloud = YBGetCurrentCloud();
+
+	if (current_cloud == NULL)
+	{
+		elog(NOTICE, "No cloud was set in placement_info setting at node startup.");
+		PG_RETURN_NULL();
+	}
+
+	return CStringGetTextDatum(current_cloud);
+}
+
+Datum
+yb_server_zone(PG_FUNCTION_ARGS)
+{
+	const char *current_zone = YBGetCurrentZone();
+
+	if (current_zone == NULL)
+	{
+		elog(NOTICE, "No zone was set in placement_info setting at node startup.");
+		PG_RETURN_NULL();
+	}
+
+	return CStringGetTextDatum(current_zone);
+}
+
 /*---------------------------------------------------------------------------*/
 /* Deterministic DETAIL order                                                */
 /*---------------------------------------------------------------------------*/
@@ -2782,4 +2885,24 @@ bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource 
 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
   yb_xcluster_consistency_level = *((int*)extra);
+}
+
+void YBCheckServerAccessIsAllowed() {
+	if (*YBCGetGFlags()->ysql_disable_server_file_access)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("server file access disabled"),
+				 errdetail("tserver flag ysql_disable_server_file_access is "
+						   "set to true")));
+}
+
+void YbUpdateReadRpcStats(YBCPgStatement handle,
+						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads) {
+	uint64_t read_count = 0, read_wait = 0, tbl_read_count = 0, tbl_read_wait = 0;
+	YBCGetAndResetReadRpcStats(handle, &read_count, &read_wait,
+							   &tbl_read_count, &tbl_read_wait);
+	reads->count += read_count;
+	reads->wait_time += read_wait;
+	tbl_reads->count += tbl_read_count;
+	tbl_reads->wait_time += tbl_read_wait;
 }

@@ -142,7 +142,7 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // Map[NamespaceId]:xClusterSafeTime
 typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
@@ -221,7 +221,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Create a transaction status table with the given name.
   Status CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
-                                                      const string& table_name,
+                                                      const std::string& table_name,
                                                       const TablespaceId* tablespace_id,
                                                       const ReplicationInfoPB* replication_info);
 
@@ -520,13 +520,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
   virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
+
+  // Add new table metadata to all CDCSDK streams of required namespace.
+  virtual Status AddNewTableToCDCDKStreamsMetadata(
+      const TableId& table_id, const NamespaceId& ns_id) EXCLUDES(mutex_);
 
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
@@ -723,7 +727,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // must be initialized before calling this method.
   PeerRole Role() const;
 
-  Status PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
+  Status PeerStateDump(const std::vector<consensus::RaftPeerPB>& masters_raft,
                                const DumpMasterStateRequestPB* req,
                                DumpMasterStateResponsePB* resp);
 
@@ -787,7 +791,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
   // Return the placement uuid of the primary cluster containing this master.
-  Result<string> placement_uuid() const;
+  Result<std::string> placement_uuid() const;
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
@@ -849,7 +853,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
-      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids)
+      const scoped_refptr<NamespaceInfo>& namespace_info, std::vector<uint32_t>* type_oids)
       REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
@@ -967,8 +971,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
-  Result<vector<BlacklistSet>> GetAffinitizedZoneSet();
+  Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
+  Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
@@ -1111,13 +1115,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      const PartitionSchema& partition_schema,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
-                                     const vector<Partition>& partitions,
+                                     const std::vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
                                      TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
-  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+  Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
@@ -1382,20 +1386,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // following the protocol's default mechanism.
   void SendLeaderStepDownRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid, bool should_remove,
-      const string& new_leader_ts_uuid = "");
+      const std::string& change_config_ts_uuid, bool should_remove,
+      const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
   void SendRemoveServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const std::string& change_config_ts_uuid);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
       const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
-      const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
+      const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,
                                      TabletToTabletServerMap *add_replica_tasks_map,

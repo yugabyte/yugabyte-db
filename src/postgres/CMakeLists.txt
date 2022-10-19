@@ -24,11 +24,16 @@ if(IS_GCC AND "${COMPILER_VERSION}" VERSION_GREATER "8.0")
          " -Wno-stringop-truncation")
 endif()
 
-if("${COMPILER_FAMILY}" STREQUAL "clang" AND
-   "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND
-   NOT APPLE)
-  string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
-         " -Wno-error=unused-but-set-variable")
+if(IS_CLANG)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT APPLE)
+    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+           " -Wno-error=unused-but-set-variable")
+  endif()
+
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
+    string(CONCAT POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS}"
+           " -Wno-error=deprecated-non-prototype")
+  endif()
 endif()
 
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")

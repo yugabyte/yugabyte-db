@@ -30,7 +30,6 @@ import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -214,22 +213,14 @@ public class Scheduler {
   }
 
   private UUID fetchBaseBackupUUIDIfIncrementalBackupRequired(Schedule schedule) {
-    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    long incrementalBackupFrequency = params.incrementalBackupFrequency;
-    ScheduleTask scheduleTask =
-        ScheduleTask.getLastSuccessfulTask(schedule.getScheduleUUID()).orElse(null);
-    if (scheduleTask == null) {
-      return null;
-    }
     Backup backup =
-        Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
-            .stream()
-            .filter(bkp -> bkp.state.equals(BackupState.Completed))
-            .findFirst()
-            .orElse(null);
+        ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
+            schedule.getCustomerUUID(), schedule.getScheduleUUID());
     if (backup == null) {
       return null;
     }
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    long incrementalBackupFrequency = params.incrementalBackupFrequency;
     Date todaysDate = new Date();
     Date expectedTaskExecutionTime =
         new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);

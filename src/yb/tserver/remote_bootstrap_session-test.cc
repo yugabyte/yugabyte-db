@@ -33,6 +33,8 @@
 
 #include "yb/util/backoff_waiter.h"
 
+using std::string;
+
 namespace yb {
 namespace tserver {
 

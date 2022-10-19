@@ -3,6 +3,11 @@ title: Connect an application
 linkTitle: Connect an app
 description: JDBC driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /develop/client-drivers/java/
+  - /preview/develop/client-drivers/java/
+  - /preview/develop/build-apps/java/
+  - /preview/quick-start/build-apps/java/
 menu:
   preview:
     identifier: yugabyte-jdbc-driver
@@ -50,9 +55,9 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/java/ysql-yb-jdbc/).
+The following sections demonstrate how to perform common tasks required for Java application development.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Java application development using the YugabyteDB JDBC smart driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Set up the client dependencies
 
@@ -74,6 +79,8 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
   <version>4.0.3</version>
 </dependency>
 ```
+
+Install the added dependency using `mvn install`.
 
 #### Gradle dependency
 
@@ -132,19 +139,30 @@ If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/manage
 
 ### Step 3: Write your application
 
-Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
+Create a new Java class called `QuickStartApp.java` in the base package directory of your project as follows:
+
+```sh
+touch ./src/main/java/com/yugabyte/QuickStartApp.java
+```
+
+Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
 
 ```java
+package com.yugabyte;
+
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
+
 
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
@@ -175,7 +193,13 @@ public class QuickStartApp {
 }
 ```
 
-When you run the project, `QuickStartApp.java` should output something like the following:
+Run the project `QuickStartApp.java` using the following command:
+
+```sh
+mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.QuickStartApp
+```
+
+You should see output similar to the following:
 
 ```text
 Connected to the YugabyteDB Cluster successfully.
@@ -188,7 +212,9 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Learn more
 
-- Build Java applications using [Hibernate ORM](../hibernate/)
-- [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/#load-balancing)
+- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [Smart Driver Architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- Build Java applications using [Spring Framework](../../../integrations/spring-framework/)
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../hibernate/)

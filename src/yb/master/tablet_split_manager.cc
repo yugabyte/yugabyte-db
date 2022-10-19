@@ -40,6 +40,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 DEFINE_int32(process_split_tablet_candidates_interval_msec, 0,
              "The minimum time between automatic splitting attempts. The actual splitting time "
              "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
@@ -69,9 +71,9 @@ DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
             "Point In Time Restore schedules.");
 TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
 
-DEFINE_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
-                 "When set, it enables automatic tablet splitting for tables that are part of an "
-                 "xCluster replication setup");
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
 
 DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "

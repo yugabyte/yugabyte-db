@@ -32,7 +32,7 @@ DEFINE_bool(disable_auto_flags_management, false,
 TAG_FLAG(disable_auto_flags_management, advanced);
 TAG_FLAG(disable_auto_flags_management, unsafe);
 
-DEFINE_AUTO_bool(
+DEFINE_RUNTIME_AUTO_bool(
     TEST_auto_flags_initialized, kLocalPersisted, false, true,
     "AutoFlag that indicates initialization of AutoFlags. Not meant to be overridden.");
 TAG_FLAG(TEST_auto_flags_initialized, hidden);

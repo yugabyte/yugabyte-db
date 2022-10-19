@@ -61,6 +61,7 @@ using std::make_shared;
 using std::string;
 using std::unordered_map;
 using std::vector;
+using std::max;
 using yb::bfql::TSOpcode;
 
 //--------------------------------------------------------------------------------------------------

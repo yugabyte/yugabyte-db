@@ -35,6 +35,7 @@
 
 using std::numeric_limits;
 using std::vector;
+using std::string;
 
 
 namespace strings {

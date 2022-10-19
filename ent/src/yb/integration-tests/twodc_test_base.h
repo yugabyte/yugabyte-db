@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include "yb/cdc/cdc_consumer.pb.h"
+
 #include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
@@ -154,6 +156,8 @@ class TwoDCTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
 
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
@@ -181,7 +185,7 @@ class TwoDCTestBase : public YBTest {
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();

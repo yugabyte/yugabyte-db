@@ -17,6 +17,8 @@
 
 #include "yb/util/random_util.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 // DB tests related to bloom filter.

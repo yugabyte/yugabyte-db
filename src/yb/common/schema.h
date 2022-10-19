@@ -531,7 +531,7 @@ class Schema {
   // empty schema and then use Reset(...)  so that errors can be
   // caught. If an invalid schema is passed to this constructor, an
   // assertion will be fired!
-  Schema(const vector<ColumnSchema>& cols,
+  Schema(const std::vector<ColumnSchema>& cols,
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
@@ -544,8 +544,8 @@ class Schema {
   // empty schema and then use Reset(...)  so that errors can be
   // caught. If an invalid schema is passed to this constructor, an
   // assertion will be fired!
-  Schema(const vector<ColumnSchema>& cols,
-         const vector<ColumnId>& ids,
+  Schema(const std::vector<ColumnSchema>& cols,
+         const std::vector<ColumnId>& ids,
          size_t key_columns,
          const TableProperties& table_properties = TableProperties(),
          const Uuid& cotable_id = Uuid::Nil(),
@@ -555,7 +555,7 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  Status Reset(const vector<ColumnSchema>& cols, size_t key_columns,
+  Status Reset(const std::vector<ColumnSchema>& cols, size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
                        const ColocationId colocation_id = kColocationIdNotSet,
@@ -564,8 +564,8 @@ class Schema {
   // Reset this Schema object to the given schema.
   // If this fails, the Schema object is left in an inconsistent
   // state and may not be used.
-  Status Reset(const vector<ColumnSchema>& cols,
-                       const vector<ColumnId>& ids,
+  Status Reset(const std::vector<ColumnSchema>& cols,
+                       const std::vector<ColumnId>& ids,
                        size_t key_columns,
                        const TableProperties& table_properties = TableProperties(),
                        const Uuid& cotable_id = Uuid::Nil(),
@@ -848,9 +848,9 @@ class Schema {
   // TODO this should probably be cached since the key projection
   // is not supposed to change, for a single schema.
   Schema CreateKeyProjection() const {
-    vector<ColumnSchema> key_cols(cols_.begin(),
+    std::vector<ColumnSchema> key_cols(cols_.begin(),
                                   cols_.begin() + num_key_columns_);
-    vector<ColumnId> col_ids;
+    std::vector<ColumnId> col_ids;
     if (!col_ids_.empty()) {
       col_ids.assign(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
     }
@@ -1032,7 +1032,7 @@ class Schema {
 
  private:
 
-  void ResetColumnIds(const vector<ColumnId>& ids);
+  void ResetColumnIds(const std::vector<ColumnId>& ids);
 
   // Return a stringified version of the first 'num_columns' columns of the
   // row.
@@ -1054,12 +1054,12 @@ class Schema {
 
   friend class SchemaBuilder;
 
-  vector<ColumnSchema> cols_;
+  std::vector<ColumnSchema> cols_;
   size_t num_key_columns_;
   size_t num_hash_key_columns_;
   ColumnId max_col_id_;
-  vector<ColumnId> col_ids_;
-  vector<size_t> col_offsets_;
+  std::vector<ColumnId> col_ids_;
+  std::vector<size_t> col_offsets_;
 
   // The keys of this map are GStringPiece references to the actual name members of the
   // ColumnSchema objects inside cols_. This avoids an extra copy of those strings,
@@ -1224,9 +1224,9 @@ class SchemaBuilder {
 
  private:
   ColumnId next_id_;
-  vector<ColumnId> col_ids_;
-  vector<ColumnSchema> cols_;
-  std::unordered_set<string> col_names_;
+  std::vector<ColumnId> col_ids_;
+  std::vector<ColumnSchema> cols_;
+  std::unordered_set<std::string> col_names_;
   size_t num_key_columns_;
   TableProperties table_properties_;
   ColocationId colocation_id_ = kColocationIdNotSet;

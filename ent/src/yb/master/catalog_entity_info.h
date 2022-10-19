@@ -67,11 +67,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const CDCStreamId& id() const override { return stream_id_; }
 
-  const google::protobuf::RepeatedPtrField<std::string>& table_id() const;
+  const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
+
+  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
+  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
+  //  this object before accessing this member.
+  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
@@ -211,7 +216,7 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   SysSnapshotEntryPB::State state() const;
 
-  const std::string& state_name() const;
+  const std::string state_name() const;
 
   std::string ToString() const override;
 

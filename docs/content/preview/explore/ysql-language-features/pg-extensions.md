@@ -99,19 +99,19 @@ To find the directories where you install the extension files on your local inst
 First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation as follows:
 
 ```sh
-$ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
+alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
 ```
 
 List existing shared libraries with:
 
 ```sh
-$ ls "$(yb_pg_config --pkglibdir)"
+ls "$(yb_pg_config --pkglibdir)"
 ```
 
 List SQL and control files for already-installed extensions with:
 
 ```sh
-$ ls "$(yb_pg_config --sharedir)"/extension/
+ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
 ### Copy extensions from PostgreSQL
@@ -121,7 +121,7 @@ The easiest way to install an extension is to copy the files from an existing Po
 Ideally, use the same version of the PostgreSQL extension as that used by YugabyteDB. To see the version of PostgreSQL used in your YugabyteDB installation, enter the following `ysqlsh` command:
 
 ```sh
-$ ./bin/ysqlsh --version
+./bin/ysqlsh --version
 ```
 
 ```output
@@ -131,17 +131,17 @@ psql (PostgreSQL) 11.2-YB-2.11.2.0-b0
 If you already have PostgreSQL (use version `11.2` for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:
 
 ```sh
-$ ls "$(pg_config --pkglibdir)" | grep <name>
+ls "$(pg_config --pkglibdir)" | grep <name>
 ```
 
 ```sh
-$ ls "$(pg_config --sharedir)"/extension/ | grep <name>
+ls "$(pg_config --sharedir)"/extension/ | grep <name>
 ```
 
 If you have multiple PostgreSQL versions installed, make sure you're selecting the correct `pg_config`. On an Ubuntu 18.04 environment with multiple PostgreSQL versions installed:
 
 ```sh
-$ pg_config --version
+pg_config --version
 ```
 
 ```output
@@ -149,7 +149,7 @@ PostgreSQL 13.0 (Ubuntu 13.0-1.pgdg18.04+1)
 ```
 
 ```sh
-$ /usr/lib/postgresql/11/bin/pg_config --version
+/usr/lib/postgresql/11/bin/pg_config --version
 ```
 
 ```output
@@ -179,10 +179,10 @@ CREATE SERVER my_server FOREIGN DATA WRAPPER file_fdw;
 Now, you can create foreign tables that access data from files. For example:
 
 ```sql
-CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER myserver OPTIONS (filename 'employees.csv', format 'csv');
+CREATE FOREIGN TABLE employees (id int, employee_name varchar) SERVER my_server OPTIONS (filename 'employees.csv', format 'csv');
 ```
 
-You can execute SELECT statements on the foreign tables to access the data in the corresponding files.
+You can execute `SELECT` statements on the foreign tables to access the data in the corresponding files.
 
 ### fuzzystrmatch example
 
@@ -218,7 +218,7 @@ ERROR:  password is too short
 ```
 
 ```sql
-yugabyte=# create role test_role password 'nonumbersinpassword';
+yugabyte=# create role test_role password 'nonumbers';
 ```
 
 ```output
@@ -226,7 +226,7 @@ ERROR:  password must contain both letters and nonletters
 ```
 
 ```sql
-yugabyte=# create role test_role password '123test_role123';
+yugabyte=# create role test_role password '12test_role12';
 ```
 
 ```output
@@ -413,17 +413,17 @@ CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'host_ip
 Specify the username and password using `CREATE USER MAPPING`:
 
 ```sql
-CREATE USER MAPPING FOR mylocaluser SERVER myserver OPTIONS (user 'remote_user', password 'password');
+CREATE USER MAPPING FOR mylocaluser SERVER my_server OPTIONS (user 'remote_user', password 'password');
 ```
 
-You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`.
+You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`:
 
 ```sql
-CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER myserver OPTIONS (schema_name 'schema', table_name 'table');
+CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER my_server OPTIONS (schema_name 'schema', table_name 'table');
 IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
 ```
 
-You can execute SELECT statements on the foreign tables to access the data in the corresponding remote tables.
+You can execute `SELECT` statements on the foreign tables to access the data in the corresponding remote tables.
 
 ### uuid-ossp example
 
@@ -453,9 +453,9 @@ First, install `postgres-hll` [from source](https://github.com/citusdata/postgre
 After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
+cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
   ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
 ```
 
@@ -499,7 +499,7 @@ There are two ways to install PostGIS on macOS:
 * Or, install with Homebrew:
 
     ```sh
-    $ brew install postgres postgis
+    brew install postgres postgis
     ```
 
 ##### Ubuntu
@@ -523,9 +523,9 @@ sudo yum install postgresql11-server postgis31_11 postgis31_11-client
 Copy the extension files to your YugabyteDB installation as follows:
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension &&
-  cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
+cp -v "$(pg_config --pkglibdir)"/*postgis*.so "$(yb_pg_config --pkglibdir)" &&
+cp -v "$(pg_config --sharedir)"/extension/*postgis*.sql "$(yb_pg_config --sharedir)"/extension &&
+cp -v "$(pg_config --sharedir)"/extension/*postgis*.control "$(yb_pg_config --sharedir)"/extension
 ```
 
 On Linux systems, PostGIS libraries have dependencies that must also be installed. Use the extensions option of the post-install tool, available in YugabyteDB 2.3.2 and later, as follows:
@@ -547,13 +547,13 @@ This may take a couple of minutes.
 1. Get a sample [PostGIS dataset](https://data.edmonton.ca/Geospatial-Boundaries/City-of-Edmonton-Neighbourhood-Boundaries/jfvj-x253):
 
     ```sh
-    $ wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
+    wget -O edmonton.zip "https://data.edmonton.ca/api/geospatial/jfvj-x253?method=export&format=Shapefile" && unzip edmonton.zip
     ```
 
 1. Extract the dataset using the `shp2pgsql` tool. This should come with your PostgreSQL installation — it is not yet packaged with YSQL.
 
     ```sh
-    $ shp2pgsql geo_export_*.shp > edmonton.sql
+    shp2pgsql geo_export_*.shp > edmonton.sql
     ```
 
 1. Edit the generated `edmonton.sql` for YSQL compatibility.
@@ -579,7 +579,7 @@ This may take a couple of minutes.
 1. Load the sample data.
 
     ```sh
-    $ ./bin/ysqlsh -a -f edmonton.sql
+    ./bin/ysqlsh -a -f edmonton.sql
     ```
 
 1. Run some sample queries. Connect using `ysqlsh` and run the following:
@@ -639,8 +639,8 @@ Build `pgsql-postal` [from source](https://github.com/pramsey/pgsql-postal) loca
 Copy the needed files into your YugabyteDB installation:
 
 ```sh
-$ cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
-  cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
+cp -v /usr/local/lib/libpostal.so* "$(yb_pg_config --pkglibdir)" &&
+cp -v postal-1.0.sql postal.control "$(yb_pg_config --sharedir)"/extension
 ```
 
 On Linux systems, run the post-install tool:

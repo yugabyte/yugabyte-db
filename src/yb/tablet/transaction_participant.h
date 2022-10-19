@@ -233,7 +233,7 @@ class TransactionParticipant : public TransactionStatusManager {
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.
-  std::pair<size_t, size_t> TEST_CountIntents() const;
+  Result<std::pair<size_t, size_t>> TEST_CountIntents() const;
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) const;
 

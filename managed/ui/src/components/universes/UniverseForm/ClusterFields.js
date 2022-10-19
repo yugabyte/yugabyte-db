@@ -443,7 +443,7 @@ export default class ClusterFields extends Component {
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
           useSystemd: userIntent.useSystemd,
           mastersInDefaultRegion: universeDetails.mastersInDefaultRegion,
-          dedicatedNodes: userIntent.dedicatedNodes,
+          dedicatedNodes: userIntent.dedicatedNodes
         });
       }
       this.props.getRegionListItems(providerUUID);
@@ -672,10 +672,12 @@ export default class ClusterFields extends Component {
         }
         return acc;
       }, 0);
-      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit
+      // Add Existing nodes in Universe userIntent to available nodes for calculation in case of Edit and editing on prem read replica
       if (
         this.props.type === 'Edit' ||
-        (nextProps.type === 'Async' && !this.state.isReadOnlyExists)
+        (nextProps.type === 'Async' &&
+          (!this.state.isReadOnlyExists ||
+            (this.state.isReadOnlyExists && currentProvider.code === 'onprem')))
       ) {
         const cluster = getClusterByType(
           currentUniverse.data.universeDetails.clusters,
@@ -842,7 +844,7 @@ export default class ClusterFields extends Component {
   }
 
   setDeviceInfo(instanceTypeCode, instanceTypeList) {
-    const { updateFormField, clusterType } = this.props;
+    const { updateFormField, clusterType, formValues } = this.props;
     const instanceTypeSelectedData = instanceTypeList.find(function (item) {
       return item.instanceTypeCode === instanceTypeCode;
     });
@@ -867,8 +869,13 @@ export default class ClusterFields extends Component {
         storageType = null;
       }
 
+      const volumeSize =
+        instanceTypeSelectedData.providerCode === 'kubernetes' &&
+        isDefinedNotNull(formValues[clusterType]?.volumeSize)
+          ? formValues[clusterType].volumeSize
+          : volumeDetail.volumeSizeGB;
       const deviceInfo = {
-        volumeSize: volumeDetail.volumeSizeGB,
+        volumeSize,
         numVolumes: volumesList.length,
         mountPoints: mountPoints,
         storageType: storageType,
@@ -876,7 +883,7 @@ export default class ClusterFields extends Component {
         diskIops: null,
         throughput: null
       };
-      updateFormField(`${clusterType}.volumeSize`, volumeDetail.volumeSizeGB);
+      updateFormField(`${clusterType}.volumeSize`, volumeSize);
       updateFormField(`${clusterType}.numVolumes`, volumesList.length);
       updateFormField(`${clusterType}.diskIops`, volumeDetail.diskIops);
       updateFormField(`${clusterType}.throughput`, volumeDetail.throughput);
@@ -1694,7 +1701,9 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const isAuthEnforced = !(featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth);
+    const isAuthEnforced = !(
+      featureFlags.test.allowOptionalAuth || featureFlags.released.allowOptionalAuth
+    );
     const primaryProviderUUID =
       formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
@@ -1923,8 +1932,9 @@ export default class ClusterFields extends Component {
               onInputChanged={self.volumeSizeChanged}
               readOnly={
                 fixedVolumeInfo ||
-                (!hasInstanceTypeChanged && !smartResizePossible) ||
-                (this.props.type === 'Edit' && this.state.isKubernetesUniverse)
+                (!this.state.isKubernetesUniverse &&
+                  !hasInstanceTypeChanged &&
+                  !smartResizePossible)
               }
             />
           </span>
@@ -2001,16 +2011,16 @@ export default class ClusterFields extends Component {
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
     const disableToggleOnChange = clusterType !== 'primary';
     const showDedicatedNodesToggle =
-        featureFlags.test['enableDedicatedNodes'] ||
-        featureFlags.released['enableDedicatedNodes'];
+      featureFlags.test['enableDedicatedNodes'] || featureFlags.released['enableDedicatedNodes'];
     if (
-        isDefinedNotNull(currentProvider) &&
-        (currentProvider.code === 'aws' ||
-         currentProvider.code === 'gcp' ||
-         currentProvider.code === 'azu' ||
-         currentProvider.code === 'onprem') &&
-         clusterType === 'primary' &&
-         showDedicatedNodesToggle) {
+      isDefinedNotNull(currentProvider) &&
+      (currentProvider.code === 'aws' ||
+        currentProvider.code === 'gcp' ||
+        currentProvider.code === 'azu' ||
+        currentProvider.code === 'onprem') &&
+      clusterType === 'primary' &&
+      showDedicatedNodesToggle
+    ) {
       dedicatedNodes = (
         <Field
           name={`${clusterType}.dedicatedNodes`}
@@ -2042,7 +2052,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
       );
-      enableYSQLAuth = (!isAuthEnforced &&
+      enableYSQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2101,7 +2111,7 @@ export default class ClusterFields extends Component {
           subLabel="Enable the YCQL API endpoint to run cassandra compatible workloads."
         />
       );
-      enableYCQLAuth = (!isAuthEnforced &&
+      enableYCQLAuth = !isAuthEnforced && (
         <Row>
           <Col sm={12} md={12} lg={6}>
             <div className="form-right-aligned-labels">
@@ -2800,9 +2810,7 @@ export default class ClusterFields extends Component {
 
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {dedicatedNodes}
-              </div>
+              <div className="form-right-aligned-labels">{dedicatedNodes}</div>
             </Col>
           </Row>
 
@@ -3139,7 +3147,7 @@ export default class ClusterFields extends Component {
                 </Col>
               </Row>
             )}
-            {this.state.customizePorts && currentProvider.code !== "onPrem" && (
+            {this.state.customizePorts && currentProvider.code !== 'onPrem' && (
               <Row>
                 <Col sm={3}>
                   <div className="form-right-aligned-labels">

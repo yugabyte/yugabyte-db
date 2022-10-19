@@ -10299,9 +10299,6 @@
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
   proargmodes => '{v}', prosrc => 'yb_hash_code' },
 
-# Yugabyte system calls use OIDS starting from YB_MIN_UNUSED_OID in "catalog.h".
-# Run `src/include/catalog/unused_oids` to seek available OID values.
-
 { oid => '8013', descr => 'system call getrusage from the current session',
   proname => 'yb_getrusage', provolatile => 'v',
   prorettype => 'record', proargtypes => '',
@@ -10366,4 +10363,19 @@
   proargmodes => '{i,o}',
   proargnames => '{table_oid,range_split_clause}',
   prosrc => 'yb_get_range_split_clause' },
+
+{ oid => '8042', descr => 'get the region of the currently connected node',
+  proname => 'yb_server_region', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_region' },
+
+{ oid => '8043', descr => 'get the cloud of the currently connected node',
+  proname => 'yb_server_cloud', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_cloud' },
+
+{ oid => '8044', descr => 'get the zone of the currently connected node',
+  proname => 'yb_server_zone', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_zone' },
 ]

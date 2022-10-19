@@ -84,6 +84,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+using std::string;
+
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -103,6 +105,7 @@ DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
+DECLARE_bool(enable_replicate_transaction_status_table);
 
 namespace yb {
 
@@ -455,6 +458,40 @@ TEST_P(TwoDCYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
+TEST_P(TwoDCYsqlTestToggleBatching, ChangeRole) {
+  // 1. Test that an existing universe without replication of txn status table cannot become a
+  // STANDBY.
+  FLAGS_enable_replicate_transaction_status_table = false;
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+  const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+
+  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+
+  // 2. Test that a universe cannot change a role to its same role.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table}));
+
+  ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+
+  ASSERT_NOK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+
+  // 3. Test that a change role to STANDBY mode succeeds.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+
+  // 4. Test that a change of role back to ACTIVE mode succeeds.
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 TEST_P(TwoDCYsqlTest, SetupUniverseReplication) {
@@ -1024,9 +1061,7 @@ TEST_P(TwoDCYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // 2 tables with 8 tablets each.
   ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  int nrows = 0;
   for (const auto& row : client::TableRange(table)) {
-    nrows++;
     string stream_id = row.column(0).string_value();
     tablet_bootstraps[stream_id]++;
 

@@ -21,6 +21,7 @@ namespace yb {
 namespace pggate {
 
 using std::make_shared;
+using std::vector;
 
 //--------------------------------------------------------------------------------------------------
 // PgSample

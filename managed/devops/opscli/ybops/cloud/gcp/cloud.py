@@ -144,10 +144,9 @@ class GcpCloud(AbstractCloud):
         self.get_admin().delete_instance(
             args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
-    def reboot_instance(self, args, ssh_ports):
-        args_as_dict = vars(args)
-        self.stop_instance(args_as_dict)
-        self.start_instance(args_as_dict, ssh_ports)
+    def reboot_instance(self, host_info, ssh_ports):
+        self.admin.reboot_instance(host_info['zone'], host_info['name'])
+        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()

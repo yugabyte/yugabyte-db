@@ -307,6 +307,8 @@ using std::shared_ptr;
 using std::string;
 using std::unordered_set;
 using std::vector;
+using std::min;
+using std::deque;
 using strings::Substitute;
 using tablet::BOOTSTRAPPING;
 using tablet::NOT_STARTED;

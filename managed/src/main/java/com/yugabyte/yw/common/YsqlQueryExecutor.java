@@ -228,6 +228,12 @@ public class YsqlQueryExecutor {
         // not including the odd 2.7.x, 2.9.x releases
         rolesList += ", yb_extension";
       }
+      boolean isYbFdwSupported =
+          universe.getVersions().stream().allMatch(v -> Util.compareYbVersions(v, "2.8.1.0") >= 0);
+      if (isYbFdwSupported) {
+        // yb_fdw is only supported in recent YB versions >= 2.8.1
+        rolesList += ", yb_fdw";
+      }
       query =
           String.format(
               "GRANT %2$s TO \"%1$s\"; "

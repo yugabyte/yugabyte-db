@@ -246,9 +246,12 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  Status RollbackToSubTransaction(SubTransactionId id) {
+  Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options) {
     tserver::PgRollbackToSubTransactionRequestPB req;
     req.set_session_id(session_id_);
+    if (options) {
+      options->Swap(req.mutable_options());
+    }
     req.set_sub_transaction_id(id);
 
     tserver::PgRollbackToSubTransactionResponsePB resp;
@@ -658,8 +661,9 @@ Status PgClient::SetActiveSubTransaction(
   return impl_->SetActiveSubTransaction(id, options);
 }
 
-Status PgClient::RollbackToSubTransaction(SubTransactionId id) {
-  return impl_->RollbackToSubTransaction(id);
+Status PgClient::RollbackToSubTransaction(
+    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
+  return impl_->RollbackToSubTransaction(id, options);
 }
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {

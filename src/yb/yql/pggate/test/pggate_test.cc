@@ -41,6 +41,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_string(pggate_master_addresses);

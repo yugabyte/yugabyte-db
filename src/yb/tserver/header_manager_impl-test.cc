@@ -27,6 +27,8 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 using yb::tserver::GenerateTestUniverseKeyManager;
 
 namespace yb {

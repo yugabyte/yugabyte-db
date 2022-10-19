@@ -25,22 +25,17 @@ export default class StepProgressBar extends Component {
         title: 'Done'
       }
     ];
-    // if the task is failed and all sub task is in unknown state, then show failure.
-    if(taskStatus === 'Failure' && this.isFailedIndex(taskDetailsNormalized) === -1){
-      taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = 'Failure';
-    }
-
-    if (this.isFailedIndex(taskDetailsNormalized) > -1) {
+    if (taskStatus === 'Failure' || taskStatus === 'Aborted') {
       for (let i = 0; i < this.isFailedIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-failed';
       }
-    } else if (this.isRunningIndex(taskDetailsNormalized) > -1) {
+    } else if (taskStatus === 'Running' || taskStatus === 'Abort') {
       for (let i = 0; i < this.isRunningIndex(taskDetailsNormalized); i++) {
         taskDetailsNormalized[i].class = 'to-be-succeed';
       }
-    } else if (taskStatus !== 'Created' && taskStatus !== 'Abort' && taskStatus !=='Running') {
+    } else if (taskStatus === 'Success') {
       taskDetailsNormalized.forEachclass = 'finished';
-      taskDetailsNormalized[taskDetailsNormalized.length - 1].class = 'finished';
+      taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = taskStatus;
     }
     return taskDetailsNormalized;
   };
@@ -52,10 +47,9 @@ export default class StepProgressBar extends Component {
     } = this.props.progressData;
     let taskClassName = '';
     const getTaskClass = function (type) {
-      if (type === 'Initializing' || type === 'Unknown') {
-        return 'pending';
-      } else if (type === 'Success') {
-        return 'finished';
+      if (type === 'Success') {
+        // Returning 'finished' shows green dots for finished ones.
+        return status === 'Success' ? 'finished' : 'pending';
       } else if (type === 'Running') {
         return 'running';
       } else if (type === 'Failure') {
@@ -63,7 +57,7 @@ export default class StepProgressBar extends Component {
       } else if (type === 'Aborted') {
         return 'failed';
       }
-      return null;
+      return 'pending';
     };
     const taskDetailsNormalized = this.normalizeTasks(taskDetails, status);
 

@@ -14,6 +14,8 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-test_base.h"
 
+using std::vector;
+
 namespace yb {
 namespace master {
 namespace enterprise {

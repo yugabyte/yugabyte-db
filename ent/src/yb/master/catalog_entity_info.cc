@@ -29,11 +29,11 @@ namespace master {
 // CDCStreamInfo
 // ================================================================================================
 
-const google::protobuf::RepeatedPtrField<std::string>& CDCStreamInfo::table_id() const {
+const google::protobuf::RepeatedPtrField<std::string> CDCStreamInfo::table_id() const {
   return LockForRead()->pb.table_id();
 }
 
-const NamespaceId& CDCStreamInfo::namespace_id() const {
+const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
@@ -138,7 +138,7 @@ SysSnapshotEntryPB::State SnapshotInfo::state() const {
   return LockForRead()->state();
 }
 
-const std::string& SnapshotInfo::state_name() const {
+const std::string SnapshotInfo::state_name() const {
   return LockForRead()->state_name();
 }
 

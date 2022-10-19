@@ -43,12 +43,20 @@
       }
     }
 
+    .replication-info-banner-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      margin: 30px 0 20px;
+    }
+
     .replication-status {
       background: $YB_WHITE;
       padding: 12px;
       border: 1px solid #dde1e6;
       border-radius: 8px;
-      margin-top: 30px;
+      margin-top: 20px;
       display: flex;
       align-items: center;
     }
