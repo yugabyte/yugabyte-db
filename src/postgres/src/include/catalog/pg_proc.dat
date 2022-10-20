@@ -10357,4 +10357,19 @@
   proname => 'yb_is_database_colocated', provolatile => 's',
   prorettype => 'bool', proargtypes => '',
   prosrc => 'yb_is_database_colocated' },
+
+{ oid => '8042', descr => 'get the region of the currently connected node',
+  proname => 'yb_server_region', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_region' },
+
+{ oid => '8043', descr => 'get the cloud of the currently connected node',
+  proname => 'yb_server_cloud', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_cloud' },
+
+{ oid => '8044', descr => 'get the zone of the currently connected node',
+  proname => 'yb_server_zone', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_zone' },
 ]

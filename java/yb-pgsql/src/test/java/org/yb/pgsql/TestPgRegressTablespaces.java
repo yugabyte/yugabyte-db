@@ -125,4 +125,68 @@ public class TestPgRegressTablespaces extends BasePgSQLTest {
       assertEquals(getRowList(statement2, "SELECT * FROM localpartition").size(), 1);
     }
   }
+
+  @Test
+  public void testYbGeoDistributionHelperFunctions() throws Exception {
+    // Verify that the functions return correct information.
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Statement statement1 = connection1.createStatement()) {
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+    }
+
+    // Test column creation and row insertion with default values set to
+    // yb_server_region(), yb_server_cloud(), yb_server_zone().
+    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement statement2 = connection2.createStatement()) {
+      statement2.execute("CREATE TABLE tb (id INTEGER NOT NULL, " +
+          "location VARCHAR DEFAULT yb_server_region(), " +
+          "cloud VARCHAR DEFAULT yb_server_cloud(), " +
+          "zone VARCHAR DEFAULT yb_server_zone(), " +
+          "amount NUMERIC NOT NULL, " +
+          "PRIMARY KEY (id, location)) " +
+          "PARTITION BY LIST(location);");
+
+      // Create partitioned tables by different values of location.
+      statement2.executeUpdate("CREATE TABLE tb_loc1 PARTITION OF tb FOR VALUES IN ('loc1');");
+      statement2.executeUpdate("CREATE TABLE tb_region1 PARTITION OF tb " +
+                               "FOR VALUES IN ('region1');");
+      statement2.executeUpdate("CREATE TABLE tb_region2 PARTITION OF tb " +
+                               "FOR VALUES IN ('region2');");
+
+      // Insert values into the partitioned tables. This node's region is region2.
+      statement2.executeUpdate("INSERT INTO tb (id, location, amount) VALUES (1,'loc1', 10);");
+      statement2.executeUpdate("INSERT INTO tb (id, location, cloud, zone, amount) " +
+                               "VALUES (2,'region1', 'cloud1', 'zone2', 30);");
+      statement2.executeUpdate("INSERT INTO tb (id, amount) VALUES (3, 20);");
+
+      // Select the number of rows in tb in current region (region2).
+      // Verify that we indeed get 1 row.
+      assertEquals(getRowList(statement2,
+        "SELECT * FROM tb WHERE location=yb_server_region();").size(), 1);
+    }
+
+    // Connect to a different node and verify that the functions' return values get
+    // updated correctly
+    try (Connection connection3 = getConnectionBuilder().withTServer(2).connect();
+         Statement statement3 = connection3.createStatement()) {
+      // Insert values into partitioned table. This node's region is region1.
+      statement3.executeUpdate("INSERT INTO tb (id, amount) VALUES (4, 30);");
+
+      // Select the number of rows in tb_region1, verify that we indeed get 2 rows.
+      assertEquals(getRowList(statement3, "SELECT * FROM tb_region1;").size(), 2);
+
+      // Verify Explain Select query for partition pruning.
+      String query = "EXPLAIN (COSTS OFF) SELECT * FROM tb WHERE location=yb_server_region();";
+      List<Row> rows = getRowList(statement3, query);
+      assertTrue(rows.toString().contains("Seq Scan on tb_region1"));
+
+      query = "EXPLAIN (COSTS OFF) SELECT * FROM tb WHERE id=2 and location=yb_server_region() " +
+              "UNION ALL SELECT * FROM tb WHERE id=2 LIMIT 1;";
+      rows = getRowList(statement3, query);
+      assertTrue(rows.toString().contains("Index Cond: ((id = 2) AND " +
+        "((location)::text = (yb_server_region())::text))"));
+    }
+  }
 }
