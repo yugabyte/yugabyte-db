@@ -1,4 +1,4 @@
-# incubator-age AGType parser and driver support for Golang 
+# age AGType parser and driver support for Golang 
 
 AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extention for PostgreSQL.
 
@@ -13,20 +13,20 @@ AGType parser and driver support for [Apache AGE](https://age.apache.org/), grap
 
 ### Go get  
 ``` 
-go get github.com/apache/incubator-age/drivers/golang
+go get github.com/apache/age/drivers/golang
 ```
 ### gomod
 ``` 
-require  github.com/apache/incubator-age/drivers/golang {version}
+require  github.com/apache/age/drivers/golang {version}
 ```
 
 
-Check [latest version](https://github.com/apache/incubator-age/releases)
+Check [latest version](https://github.com/apache/age/releases)
 
 ### For more information about [Apache AGE](https://age.apache.org/)
-* Apache Incubator Age : https://age.apache.org/
-* Github : https://github.com/apache/incubator-age
-* Document : https://age.incubator.apache.org/docs/
+* Apache Age : https://age.apache.org/
+* Github : https://github.com/apache/age
+* Document : https://age.apache.org/docs/
 
 ### Check AGE loaded on your PostgreSQL
 Connect to your containerized Postgres instance and then run the following commands:
@@ -38,9 +38,9 @@ SET search_path = ag_catalog, "$user", public;
 ```
 
 ### Test
-Check out and rewrite DSN in incubator-age/drivers/golang/age/age_test.go
+Check out and rewrite DSN in age/drivers/golang/age/age_test.go
 ```
-cd incubator-age/drivers/golang/age
+cd age/drivers/golang/age
 go test . -v
 
 ```
