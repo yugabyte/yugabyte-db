@@ -509,6 +509,7 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
       auto res = conn->Execute(insert_query);
       ++val;
       if (!res.ok()) {
+        LOG(INFO) << res.ToUserMessage();
         return true;
       }
       return false;
@@ -2075,17 +2076,18 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
     LOG(INFO) << Format("Create table $0", table_name);
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value INT) $1",
         table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 45)", table_name));
   };
 
   ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
     std::string table_name = prefix + "_table";
     std::string sequence_name = prefix + "_value_seq";
 
-    LOG(INFO) << Format("Create sequence $0", table_name);
+    LOG(INFO) << Format("Create sequence $0", sequence_name);
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE SEQUENCE $0 INCREMENT 5 OWNED BY $1.value", sequence_name, table_name));
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+        "INSERT INTO $0 VALUES (2, nextval('$1'))", table_name, sequence_name));
   };
 
   CheckAfterPITR = [&](std::string prefix, std::string option) {
@@ -2095,9 +2097,14 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceUndoCreateSequence
     std::string insert_query =
         "INSERT INTO " + table_name + " VALUES ($0, nextval('" + sequence_name + "'))";
     LOG(INFO) << "Insert query " << insert_query;
-    ASSERT_OK(WaitForInsertQueryToStopWorking(insert_query, &conn, 1));
+    // After dropping the sequence, we increment the catalog version to let postgres and tservers
+    // refresh their catalog cache. Before the refresh gets done, we can still see the sequence.
+    // So WaitForInsertQueryToStopWorking starts with 3 to avoid potential PRIMARY KEY violation.
+    ASSERT_OK(WaitForInsertQueryToStopWorking(insert_query, &conn, 3));
 
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 45)", table_name));
+    auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+        "SELECT value FROM $0 where key=1", table_name)));
+    ASSERT_EQ(res, 45);
 
     // Ensure that you are able to create sequences post restore.
     LOG(INFO) << Format("Create sequence $0", sequence_name);
@@ -2259,6 +2266,56 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequenceVerifyPartialResto
   };
 
   RunTestWithColocatedParam(schedule_id);
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequencePartialCleanupAfterRestore) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Connection to yugabyte database.
+  auto conn_yugabyte = ASSERT_RESULT(PgConnect());
+
+  std::string table_name = "test_table";
+  std::string sequence_name = "test_value_seq";
+
+  LOG(INFO) << Format("Create table 'demo.$0'", table_name);
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", table_name));
+  LOG(INFO) << Format("Create table 'yugabyte.$0'", table_name);
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", table_name));
+
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+  LOG(INFO) << "Time noted to restore the database back: " << time;
+
+  LOG(INFO) << Format("Create sequence 'demo.$0'", sequence_name);
+  ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0 INCREMENT 5", sequence_name));
+  LOG(INFO) << Format("Create sequence 'yugabyte.$0'", sequence_name);
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE SEQUENCE $0 INCREMENT 5", sequence_name));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
+
+  // Restore client::kTableName.namespace_name to the time that it doesn't have any sequence. Its
+  // sequence data will be cleaned up, while sequences from other namespaces should not be affected.
+  LOG(INFO) << "Perform a Restore to the time noted above";
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  std::string insert_query =
+      "INSERT INTO " + table_name + " VALUES ($0, nextval('" + sequence_name + "'))";
+  LOG(INFO) << "Insert query " << insert_query;
+  ASSERT_OK(WaitForInsertQueryToStopWorking(insert_query, &conn, 2));
+
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "INSERT INTO $0 VALUES (2, nextval('$1'))", table_name, sequence_name));
+  auto res = ASSERT_RESULT(conn_yugabyte.FetchValue<int32_t>(Format(
+      "SELECT value FROM $0 where key=2", table_name)));
+  // Here value should be 6 because the sequence isn't restored and the previous insert has value 1.
+  ASSERT_EQ(res, 6);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0 INCREMENT 5", sequence_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncateDisallowedWithPitr),
