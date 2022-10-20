@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.SwamperHelper.SCRAPE_INTERVAL_SECS_PARAM;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -302,6 +303,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
+    long scrapeInterval = appConfig.getLong(SCRAPE_INTERVAL_SECS_PARAM);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -313,7 +315,8 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    params.put("range", Long.toString(timeDifference));
+    long range = Math.max(scrapeInterval * 2, timeDifference);
+    params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
@@ -321,7 +324,7 @@ public class MetricQueryHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
       }
-      int resolution = Math.round(timeDifference / STEP_SIZE);
+      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {
