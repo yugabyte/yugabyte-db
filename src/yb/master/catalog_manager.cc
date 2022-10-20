@@ -206,82 +206,78 @@
 using namespace std::literals;
 using namespace yb::size_literals;
 
-DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
-             "Timeout used for the Master->TS async rpc calls.");
+// TODO: Cannot be runtime state due to cdc_client...
+DEFINE_NON_RUNTIME_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
+    "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
-             "Timeout used by the master when attempting to create tablet "
-             "replicas during table creation.");
+DEFINE_RUNTIME_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
+    "Timeout used by the master when attempting to create tablet "
+    "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
 DEFINE_test_flag(bool, disable_tablet_deletion, false,
                  "Whether catalog manager should disable tablet deletion.");
 
-DEFINE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
-            "Whether the catalog manager should wait for a newly created tablet to "
-            "elect a leader before considering it successfully created. "
-            "This is disabled in some tests where we explicitly manage leader "
-            "election.");
+// TODO: should this be a test flag?
+DEFINE_RUNTIME_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
+    "Whether the catalog manager should wait for a newly created tablet to "
+    "elect a leader before considering it successfully created. "
+    "This is disabled in some tests where we explicitly manage leader "
+    "election.");
 TAG_FLAG(catalog_manager_wait_for_new_tablets_to_elect_leader, hidden);
 
-DEFINE_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
-             "Number of milliseconds that the master will sleep in DeleteTable.");
+// TODO: should this be a test flag?
+DEFINE_RUNTIME_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
+    "Number of milliseconds that the master will sleep in DeleteTable.");
 TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
-DEFINE_int32(replication_factor, 3,
-             "Default number of replicas for tables that do not have the num_replicas set.");
+DEFINE_RUNTIME_int32(replication_factor, 3,
+    "Default number of replicas for tables that do not have the num_replicas set. "
+    "Note: Changing this at runtime will only affect newly created tables.");
 TAG_FLAG(replication_factor, advanced);
 
-DEFINE_int32(max_create_tablets_per_ts, 50,
+DEFINE_RUNTIME_int32(max_create_tablets_per_ts, 50,
              "The number of tablets per TS that can be requested for a new table.");
 TAG_FLAG(max_create_tablets_per_ts, advanced);
 
-DEFINE_int32(catalog_manager_report_batch_size, 1,
-            "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
+DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
+    "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
 
-DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000 * yb::kTimeMultiplier,  // 30 sec
-             "Amount of time to give a newly-elected leader master to load"
-             " the previous master's metadata and become active. If this time"
-             " is exceeded, the node crashes.");
+// TODO: Is this code even useful?
+DEFINE_RUNTIME_int32(master_failover_catchup_timeout_ms, 30 * 1000 * yb::kTimeMultiplier,  // 30 sec
+    "Amount of time to give a newly-elected leader master to load"
+    " the previous master's metadata and become active. If this time"
+    " is exceeded, the node crashes.");
 TAG_FLAG(master_failover_catchup_timeout_ms, advanced);
 TAG_FLAG(master_failover_catchup_timeout_ms, experimental);
 
-DEFINE_bool(master_tombstone_evicted_tablet_replicas, true,
-            "Whether the Master should tombstone (delete) tablet replicas that "
-            "are no longer part of the latest reported raft config.");
+DEFINE_RUNTIME_bool(master_tombstone_evicted_tablet_replicas, true,
+    "Whether the Master should tombstone (delete) tablet replicas that "
+    "are no longer part of the latest reported raft config.");
 TAG_FLAG(master_tombstone_evicted_tablet_replicas, hidden);
+
 DECLARE_bool(master_ignore_deleted_on_load);
 
 // Temporary.  Can be removed after long-run testing.
-DEFINE_bool(master_ignore_stale_cstate, true,
-            "Whether Master processes the raft config when the version is lower.");
+// TODO: how temporary is this?
+DEFINE_RUNTIME_bool(master_ignore_stale_cstate, true,
+    "Whether Master processes the raft config when the version is lower.");
 TAG_FLAG(master_ignore_stale_cstate, hidden);
 
-DEFINE_bool(catalog_manager_check_ts_count_for_create_table, true,
-            "Whether the master should ensure that there are enough live tablet "
-            "servers to satisfy the provided replication count before allowing "
-            "a table to be created.");
+// TODO: should this be a test flag?
+DEFINE_RUNTIME_bool(catalog_manager_check_ts_count_for_create_table, true,
+    "Whether the master should ensure that there are enough live tablet "
+    "servers to satisfy the provided replication count before allowing "
+    "a table to be created.");
 TAG_FLAG(catalog_manager_check_ts_count_for_create_table, hidden);
 
 DEFINE_test_flag(bool, catalog_manager_check_yql_partitions_exist_for_is_create_table_done, true,
-                 "Whether the master should ensure that all of a table's tablets are "
-                 "in the YQL system.partitions vtable during the IsCreateTableDone check.");
-
-METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
-                           "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
-                           "The number of tablet servers that have responded or done a heartbeat "
-                           "in the time interval defined by the gflag "
-                           "FLAGS_tserver_unresponsive_timeout_ms.");
-
-METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
-                           "Number of dead tservers in the cluster", yb::MetricUnit::kUnits,
-                           "The number of tablet servers that have not responded or done a "
-                           "heartbeat in the time interval defined by the gflag "
-                           "FLAGS_tserver_unresponsive_timeout_ms.");
+    "Whether the master should ensure that all of a table's tablets are "
+    "in the YQL system.partitions vtable during the IsCreateTableDone check.");
 
 DEFINE_test_flag(uint64, inject_latency_during_remote_bootstrap_secs, 0,
                  "Number of seconds to sleep during a remote bootstrap.");
@@ -297,22 +293,24 @@ DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, fal
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
                  "Inside StartElectionIfReady, pause before sending request for hinted election");
 
-DEFINE_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
+// This flag is only used on the first master leader setup, after which we serialize the
+// cluster_uuid to disk. So changing this at runtime is meaningless.
+DEFINE_NON_RUNTIME_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
 
 DECLARE_int32(yb_num_shards_per_tserver);
 
-DEFINE_int32(transaction_table_num_tablets, 0,
-             "Number of tablets to use when creating the transaction status table."
-             "0 to use transaction_table_num_tablets_per_tserver.");
+DEFINE_RUNTIME_int32(transaction_table_num_tablets, 0,
+    "Number of tablets to use when creating the transaction status table."
+    "0 to use transaction_table_num_tablets_per_tserver.");
 
-DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_RUNTIME_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of tablets per tablet server for transaction status table. If the value is "
     "-1, the system automatically determines an appropriate value based on number of CPU cores.");
 
-DEFINE_bool(auto_create_local_transaction_tables, true,
-            "Whether or not to create local transaction status tables automatically on table "
-            "creation with a tablespace with placement specified.");
+DEFINE_RUNTIME_bool(auto_create_local_transaction_tables, true,
+    "Whether or not to create local transaction status tables automatically on table "
+    "creation with a tablespace with placement specified.");
 
 DEFINE_test_flag(bool, name_transaction_tables_with_tablespace_id, false,
                  "This is only used in tests to make associating automatically created transaction "
@@ -324,11 +322,12 @@ DEFINE_test_flag(bool, consider_all_local_transaction_tables_local, false,
                  "of all transaction tables with placements as placement local, regardless of "
                  "their placement.");
 
-DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+DEFINE_RUNTIME_bool(master_enable_metrics_snapshotter, false,
+    "Should metrics snapshotter be enabled");
 
-DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
-             "Number of tablets to use when creating the metrics snapshots table."
-             "0 to use the same default num tablets as for regular tables.");
+DEFINE_RUNTIME_int32(metrics_snapshots_table_num_tablets, 0,
+    "Number of tablets to use when creating the metrics snapshots table."
+    "0 to use the same default num tablets as for regular tables.");
 
 DEFINE_RUNTIME_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
@@ -345,8 +344,8 @@ DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
-DEFINE_bool(
-    hide_pg_catalog_table_creation_logs, false,
+// TODO: should this be a test flag?
+DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
     "This cuts down test logs significantly.");
 TAG_FLAG(hide_pg_catalog_table_creation_logs, hidden);
@@ -374,8 +373,8 @@ DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
                  " transaction status table being created.");
 
-DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver from the consensus "
-                                                "information of a reported tablet.");
+DEFINE_RUNTIME_bool(enable_register_ts_from_raft, true,
+    "Whether to register a tserver from the consensus information of a reported tablet.");
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
@@ -387,29 +386,29 @@ DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
                  "tablet as leader initially on tablet creation.");
 
-DEFINE_double(heartbeat_safe_deadline_ratio, .20,
-              "When the heartbeat deadline has this percentage of time remaining, "
-              "the master should halt tablet report processing so it can respond in time.");
+DEFINE_RUNTIME_double(heartbeat_safe_deadline_ratio, .20,
+    "When the heartbeat deadline has this percentage of time remaining, "
+    "the master should halt tablet report processing so it can respond in time.");
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
 
-DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
-             "Amount of time to wait before refreshing the system.partitions cached vtable. "
-             "If generate_partitions_vtable_on_changes is set, then this background task will "
-             "update the cache using the internal map, but won't do any generating of the vtable.");
+DEFINE_RUNTIME_int32(partitions_vtable_cache_refresh_secs, 0,
+    "Amount of time to wait before refreshing the system.partitions cached vtable. "
+    "If generate_partitions_vtable_on_changes is set, then this background task will "
+    "update the cache using the internal map, but won't do any generating of the vtable.");
 
-DEFINE_int32(txn_table_wait_min_ts_count, 1,
-             "Minimum Number of TS to wait for before creating the transaction status table."
-             " Default value is 1. We wait for atleast --replication_factor if this value"
-             " is smaller than that");
+DEFINE_RUNTIME_int32(txn_table_wait_min_ts_count, 1,
+    "Minimum Number of TS to wait for before creating the transaction status table."
+    " Default value is 1. We wait for atleast --replication_factor if this value"
+    " is smaller than that");
 TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
-DEFINE_bool(master_auto_run_initdb, false,
-            "Automatically run initdb on master leader initialization");
+DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
+    "Automatically run initdb on master leader initialization");
 
 DEFINE_RUNTIME_bool(enable_ysql_tablespaces_for_placement, true,
     "If set, tablespaces will be used for placement of YSQL tables.");
@@ -420,24 +419,24 @@ DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
 
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
 
-DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 8,
-             "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
-             "as defined by tablet_split_low_phase_size_threshold_bytes.");
-DEFINE_int64(tablet_split_high_phase_shard_count_per_node, 24,
-             "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
-             "as defined by tablet_split_high_phase_size_threshold_bytes.");
+DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
+    "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
+    "as defined by tablet_split_low_phase_size_threshold_bytes.");
+DEFINE_RUNTIME_int64(tablet_split_high_phase_shard_count_per_node, 24,
+    "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
+    "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
-DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
-             "The tablet size threshold at which to split tablets in phase 1. "
-             "See tablet_split_low_phase_shard_count_per_node.");
-DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
-             "The tablet size threshold at which to split tablets in phase 2. "
-             "See tablet_split_high_phase_shard_count_per_node.");
-DEFINE_int64(tablet_force_split_threshold_bytes, 100_GB,
-             "The tablet size threshold at which to split tablets regardless of how many tablets "
-             "exist in the table already. This should be configured to prevent runaway whale "
-             "tablets from forming in your cluster even if both automatic splitting phases have "
-             "been finished.");
+DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
+    "The tablet size threshold at which to split tablets in phase 1. "
+    "See tablet_split_low_phase_shard_count_per_node.");
+DEFINE_RUNTIME_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
+    "The tablet size threshold at which to split tablets in phase 2. "
+    "See tablet_split_high_phase_shard_count_per_node.");
+DEFINE_RUNTIME_int64(tablet_force_split_threshold_bytes, 100_GB,
+    "The tablet size threshold at which to split tablets regardless of how many tablets "
+    "exist in the table already. This should be configured to prevent runaway whale "
+    "tablets from forming in your cluster even if both automatic splitting phases have "
+    "been finished.");
 
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
@@ -497,8 +496,7 @@ DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
-DEFINE_RUNTIME_bool(
-    batch_ysql_system_tables_metadata, true,
+DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, true,
     "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
     "create database is performed one by one or batched together");
 
@@ -522,6 +520,18 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
+
+METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
+                           "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
+                           "The number of tablet servers that have responded or done a heartbeat "
+                           "in the time interval defined by the gflag "
+                           "FLAGS_tserver_unresponsive_timeout_ms.");
+
+METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
+                           "Number of dead tservers in the cluster", yb::MetricUnit::kUnits,
+                           "The number of tablet servers that have not responded or done a "
+                           "heartbeat in the time interval defined by the gflag "
+                           "FLAGS_tserver_unresponsive_timeout_ms.");
 
 namespace yb {
 namespace master {
