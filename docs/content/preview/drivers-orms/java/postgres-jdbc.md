@@ -182,7 +182,7 @@ public class QuickStartApp {
 }
 ```
 
-Replace the connection string `yburl` with the following code if you're using SSL:
+If you're using SSL, replace the connection string `yburl` with the following code:
 
 ```java
 String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
