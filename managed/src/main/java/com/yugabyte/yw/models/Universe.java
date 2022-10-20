@@ -215,6 +215,9 @@ public class Universe extends Model {
   // Prefix added to read only node.
   public static final String READONLY = "-readonly";
 
+  // Prefix added to addon node.
+  public static final String ADDON = "-addon";
+
   // Prefix added to node Index of each read replica node.
   public static final String NODEIDX_PREFIX = "-n";
 
