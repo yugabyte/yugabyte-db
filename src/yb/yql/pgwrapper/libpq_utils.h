@@ -139,6 +139,7 @@ class PGConn {
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
+  Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
 
   Status CopyBegin(const std::string& command);
   Result<PGResultPtr> CopyEnd();

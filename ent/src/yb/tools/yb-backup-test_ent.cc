@@ -279,6 +279,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
+  void DoTestYSQLKeyspaceWithHyphenBackupRestore(
+      const string& backup_db, const string& restore_db);
 
   client::TableHandle table_;
   TmpDirProvider tmp_dir_;
@@ -2551,6 +2553,52 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupChecksumsDis
          102 | cab
         (3 rows)
       )#"));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void YBBackupTest::DoTestYSQLKeyspaceWithHyphenBackupRestore(
+    const string& backup_db, const string& restore_db) {
+  if(backup_db != "yugabyte") {
+    ASSERT_NO_FATALS(
+        RunPsqlCommand(Format("CREATE DATABASE \"$0\"", backup_db), "CREATE DATABASE"));
+    SetDbName(backup_db);
+  }
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db), "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db), "restore"}));
+
+  SetDbName(restore_db);
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT k, v FROM mytbl ORDER BY k",
+      R"#(
+          k  |  v
+        -----+-----
+         100 | foo
+        (1 row)
+      )#"
+  ));
+}
+
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreSimpleKeyspaceToKeyspaceWithHyphen)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte", "yugabyte-restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreKeyspaceWithHyphenToKeyspaceWithHyphen)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte-restored");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace)) {
+  DoTestYSQLKeyspaceWithHyphenBackupRestore("yugabyte-hyphen", "yugabyte_restored");
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

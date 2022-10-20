@@ -376,8 +376,12 @@ def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
     return apply_sed_edit_reg_exp_cmd(
-        dump_file, "s|DATABASE {0}|DATABASE {1}|;s|\\\\connect {0}|\\\\connect {1}|".format(
-                   old_name, new_name))
+        dump_file,
+        "s|DATABASE {0}|DATABASE {1}|;"
+        "s|\\\\connect {0}|\\\\connect {1}|;"
+        "s|\\\\connect {2}|\\\\connect {1}|;"
+        "s|\\\\connect -reuse-previous=on \\\"dbname=\\x27{2}\\x27\\\"|\\\\connect {1}|".format(
+                old_name, new_name, old_name.replace('"', "")))
 
 
 def get_table_names_str(keyspaces, tables, delimeter, space):
@@ -3198,7 +3202,8 @@ class YBBackup:
                 else:
                     logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
                                  old_db_name, new_db_name))
-                    cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+                    cmd = replace_db_name_cmd(dump_file_path, old_db_name,
+                                              '"{}"'.format(new_db_name))
 
                     if self.args.local_yb_admin_binary:
                         self.run_program(cmd)
