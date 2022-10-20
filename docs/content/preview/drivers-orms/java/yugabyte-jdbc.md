@@ -46,6 +46,13 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
+
+  <li >
+    <a href="../ysql-vertx-pg-client/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Vert.x Pg Client
+    </a>
+  </li>
 </ul>
 
 [YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
