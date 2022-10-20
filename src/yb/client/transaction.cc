@@ -104,6 +104,20 @@ YB_STRONGLY_TYPED_BOOL(SetReady);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
 
+struct LogPrefixWithSessionId {
+  std::string prefix;
+  std::atomic<uint64_t> session_id = {0};
+};
+
+std::ostream& operator<<(std::ostream& str, const LogPrefixWithSessionId& value) {
+  const auto session_id = value.session_id.load();
+  str << value.prefix;
+
+  if (session_id)
+    str << " [Session " << session_id << "] ";
+  return str << ": ";
+}
+
 } // namespace
 
 Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
@@ -757,7 +771,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
-  const std::string& LogPrefix() {
+  const LogPrefixWithSessionId& LogPrefix() const {
     return log_prefix_;
   }
 
@@ -933,14 +947,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return Status::OK();
   }
 
-  bool HasSubTransactionState() EXCLUDES(mutex_) {
-    SharedLock<std::shared_mutex> lock(mutex_);
-    return subtransaction_.active();
+  void SetLogPrefixSessionId(uint64_t session_id) {
+    log_prefix_.session_id.store(session_id, std::memory_order_release);
+    VLOG_WITH_PREFIX(2) << "Session ID set";
   }
 
  private:
   void CompleteConstruction() {
-    log_prefix_ = Format("$0$1: ", metadata_.transaction_id, child_ ? " (CHILD)" : "");
+    log_prefix_.prefix = Format("$0$1", metadata_.transaction_id, child_ ? " (CHILD)" : "");
     heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     new_heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     commit_handle_ = manager_->rpcs().InvalidHandle();
@@ -1579,7 +1593,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // But here we just replace characters inplace.
         // It would not crash anyway, and could produce wrong id in the logs.
         // It is ok, since one moment before we would output nil id.
-        log_prefix_.replace(0, id_str.length(), id_str);
+        VLOG_WITH_PREFIX(1) << "Got distributed transaction id: " << id_str;
+        log_prefix_.prefix.replace(0, id_str.length(), id_str);
       } else {
         status = decode_result.status();
       }
@@ -1925,7 +1940,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status status_ GUARDED_BY(mutex_);
 
   // The following fields are initialized in CompleteConstruction() and can be used with no locking.
-  std::string log_prefix_;
+  LogPrefixWithSessionId log_prefix_;
   rpc::Rpcs::Handle heartbeat_handle_;
   rpc::Rpcs::Handle new_heartbeat_handle_;
   rpc::Rpcs::Handle commit_handle_;
@@ -2139,6 +2154,10 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
 
 bool YBTransaction::HasSubTransactionState() {
   return impl_->HasSubTransactionState();
+}
+
+void YBTransaction::SetLogPrefixSessionId(uint64_t session_id) {
+  return impl_->SetLogPrefixSessionId(session_id);
 }
 
 } // namespace client
