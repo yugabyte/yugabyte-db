@@ -29,7 +29,7 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 ## Prerequisites
 
-To develop Ruby applications for YugabyteDB, you need:
+To develop Ruby applications for YugabyteDB, you need the following:
 
 - **Ruby**
   - Install [Ruby](https://www.ruby-lang.org/en/documentation/installation/) 2.7.0 or later. Verify the ruby version using `ruby -v`.
