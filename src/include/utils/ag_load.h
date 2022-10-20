@@ -17,8 +17,8 @@
  * under the License.
  */
 
-#ifndef INCUBATOR_AGE_AG_LOAD_H
-#define INCUBATOR_AGE_AG_LOAD_H
+#ifndef AGE_AG_LOAD_H
+#define AGE_AG_LOAD_H
 
 #include "postgres.h"
 
@@ -57,4 +57,4 @@
 #include "utils/graphid.h"
 
 
-#endif //INCUBATOR_AGE_AG_LOAD_H
+#endif //AGE_AG_LOAD_H

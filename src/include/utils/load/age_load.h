@@ -54,8 +54,8 @@
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
-#ifndef INCUBATOR_AGE_ENTITY_CREATOR_H
-#define INCUBATOR_AGE_ENTITY_CREATOR_H
+#ifndef AGE_ENTITY_CREATOR_H
+#define AGE_ENTITY_CREATOR_H
 
 agtype* create_agtype_from_list(char **header, char **fields,
                                 size_t fields_len, int64 vertex_id);
@@ -67,4 +67,4 @@ void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype* end_properties);
 
-#endif //INCUBATOR_AGE_ENTITY_CREATOR_H
+#endif //AGE_ENTITY_CREATOR_H
