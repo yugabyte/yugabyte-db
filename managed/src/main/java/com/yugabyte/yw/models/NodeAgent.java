@@ -8,16 +8,22 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModelProperty;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -252,5 +258,24 @@ public class NodeAgent extends Model {
       }
     }
     delete();
+  }
+
+  @JsonIgnore
+  public PrivateKey getPrivateKey() {
+    return CertificateHelper.getPrivateKey(new String(getServerKey()));
+  }
+
+  @JsonIgnore
+  public PublicKey getPublicKey() {
+    try {
+      CertificateFactory factory = CertificateFactory.getInstance("X.509");
+      X509Certificate cert =
+          (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(getServerCert()));
+      return cert.getPublicKey();
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
   }
 }

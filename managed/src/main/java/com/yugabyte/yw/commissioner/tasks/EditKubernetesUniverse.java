@@ -196,6 +196,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Update disk size if there is a change
     boolean diskSizeChanged = curIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
     if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
       createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
     }
     boolean instanceTypeChanged = false;
@@ -525,6 +529,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               isReadOnlyCluster);
     }
     params.providerUUID = providerUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
     KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

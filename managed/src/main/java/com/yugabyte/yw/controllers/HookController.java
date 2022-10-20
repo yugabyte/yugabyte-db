@@ -71,7 +71,7 @@ public class HookController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
-    boolean isSudoEnabled = rConfigFactory.staticApplicationConf().getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
     form.verify(customerUUID, true, isSudoEnabled);
 
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
@@ -122,7 +122,7 @@ public class HookController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Form<HookRequestData> formData = formFactory.getFormDataOrBadRequest(HookRequestData.class);
     HookRequestData form = formData.get();
-    boolean isSudoEnabled = rConfigFactory.staticApplicationConf().getBoolean(ENABLE_SUDO_PATH);
+    boolean isSudoEnabled = rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
 
     MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
     if (multiPartBody == null) {
@@ -208,7 +208,7 @@ public class HookController extends AuthenticatedController {
   }
 
   public void verifyAuth() {
-    if (!rConfigFactory.staticApplicationConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
+    if (!rConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH))
       throw new PlatformServiceException(
           UNAUTHORIZED, "Custom hooks is not enabled on this Anywhere instance");
     tokenAuthenticator.superAdminOrThrow(ctx());

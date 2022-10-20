@@ -551,12 +551,16 @@ Result<PerformFuture> PgSession::Perform(
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.
-  // DDLs are ignored as they have operations in both template1 and the user database.
-  // Ex: create database and create table
-  if (!pg_txn_manager_->IsDdlMode() && !ops.relations.empty()) {
-    PgOid database_oid = ops.relations[0].database_oid;
+  // System database template1 is ignored as we may read global system catalog like tablespaces
+  // in the same batch.
+  if (!ops.relations.empty()) {
+    PgOid database_oid = kPgInvalidOid;
     for (const auto& relation : ops.relations) {
-      if (PREDICT_FALSE(database_oid != relation.database_oid)) {
+      if (relation.database_oid == kTemplate1Oid) {
+        continue;
+      }
+
+      if (PREDICT_FALSE(database_oid != kPgInvalidOid && database_oid != relation.database_oid)) {
         // We do not expect this to be true. Adding a log to catch violation just in case.
         YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
             "Operations from multiple databases ('$0', '$1') found in a single Perform step",
@@ -564,6 +568,8 @@ Result<PerformFuture> PgSession::Perform(
         database_oid = kPgInvalidOid;
         break;
       }
+
+      database_oid = relation.database_oid;
     }
 
     if (database_oid != kPgInvalidOid) {

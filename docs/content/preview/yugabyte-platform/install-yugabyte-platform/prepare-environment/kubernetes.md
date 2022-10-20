@@ -83,3 +83,22 @@ The output should be similar to the following:
 ```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
+
+To be able to make use of the YugabeteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9 add-on in your Kubernetes cluster.
+
+Since this add-on might already be installed and running, you should perform a check by executing the following command: 
+
+```sh
+kubectl get svc kube-state-metrics -n kube-system
+```
+
+If the add-on is not available, install it into the `kube-system` namespace by exectuting the following commands as a user of a service account with appropriate roles:
+
+```sh
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+```
+
+```sh
+helm install -n kube-system --version 2.13.2 kube-state-metrics prometheus-community/kube-state-metrics
+```
+

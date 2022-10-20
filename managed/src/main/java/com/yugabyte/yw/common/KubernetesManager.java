@@ -428,8 +428,8 @@ public abstract class KubernetesManager {
 
   // Get the name of StorageClass used for master/tserver PVCs
   public abstract String getStorageClassName(
-      Map<String, String> config, String namespace, boolean forMaster);
+      Map<String, String> config, String namespace, String universePrefix, boolean forMaster);
 
   public abstract boolean storageClassAllowsExpansion(
-      Map<String, String> config, String namespace, String storageClassName);
+      Map<String, String> config, String storageClassName);
 }

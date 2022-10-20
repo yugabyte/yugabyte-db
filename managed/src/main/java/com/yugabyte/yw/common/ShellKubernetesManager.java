@@ -374,36 +374,32 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public String getStorageClassName(
-      Map<String, String> config, String namespace, boolean forMaster) {
+      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
+    String appLabel = forMaster ? "yb-master" : "yb-tserver";
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
             "--namespace",
             namespace,
             "get",
-            "sts",
-            forMaster ? "yb-master" : "yb-tserver",
+            "pvc",
+            "-l",
+            labelSelector,
             "-o",
-            "jsonpath='{.spec.volumeClaimTemplates[0].spec.storageClassName}'");
+            "jsonpath='{.items[0].spec.storageClassName}'");
     ShellResponse response =
         execCommand(config, commandList, false)
-            .processErrors("Unable to read StorageClass name from yb-tserver sts");
+            .processErrors("Unable to read StorageClass name for yb-tserver PVC");
     return deserialize(response.getMessage(), String.class);
   }
 
   @Override
-  public boolean storageClassAllowsExpansion(
-      Map<String, String> config, String namespace, String storageClassName) {
+  public boolean storageClassAllowsExpansion(Map<String, String> config, String storageClassName) {
     List<String> commandList =
         ImmutableList.of(
-            "kubectl",
-            "--namespace",
-            namespace,
-            "get",
-            "sc",
-            storageClassName,
-            "-o",
-            "jsonpath='{.allowVolumeExpansion}'");
+            "kubectl", "get", "sc", storageClassName, "-o", "jsonpath='{.allowVolumeExpansion}'");
     ShellResponse response =
         execCommand(config, commandList, false)
             .processErrors("Unable to read StorageClass volume expansion");

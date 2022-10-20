@@ -13,6 +13,9 @@ import { SortOrder } from '../constants';
 import { formatBytes, tableSort } from '../ReplicationUtils';
 import { TableEligibilityPill, XClusterTableEligibility } from '../common/TableEligibilityPill';
 
+import { XClusterTableType } from '../XClusterTypes';
+import { TableType } from '../../../redesign/helpers/dtos';
+
 import styles from './ExpandedTableSelect.module.scss';
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -22,7 +25,7 @@ interface ExpandedTableSelectProps {
   row: KeyspaceRow;
   selectedTableUUIDs: string[];
   minPageSize: number;
-  hideCheckboxes: boolean;
+  tableType: XClusterTableType;
   handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
@@ -30,9 +33,9 @@ interface ExpandedTableSelectProps {
 export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs,
+  tableType,
   handleTableSelect,
-  handleAllTableSelect,
-  hideCheckboxes
+  handleAllTableSelect
 }: ExpandedTableSelectProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
@@ -64,7 +67,7 @@ export const ExpandedTableSelect = ({
           onSelect: handleTableSelect,
           onSelectAll: handleAllTableSelect,
           selected: selectedTableUUIDs,
-          hideSelectColumn: hideCheckboxes,
+          hideSelectColumn: tableType === TableType.PGSQL_TABLE_TYPE,
           unselectable: unselectableTableUUIDs
         }}
         options={tableOptions}
@@ -72,6 +75,13 @@ export const ExpandedTableSelect = ({
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="tableName" dataSort={true} dataFormat={formatTableName}>
           Table Name
+        </TableHeaderColumn>
+        <TableHeaderColumn
+          dataField="pgSchemaName"
+          dataSort={true}
+          hidden={tableType === TableType.YQL_TABLE_TYPE}
+        >
+          Schema Name
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField="sizeBytes"
