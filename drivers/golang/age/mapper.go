@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/antlr/antlr4/runtime/Go/antlr"
-	"github.com/apache/incubator-age/drivers/golang/parser"
+	"github.com/apache/age/drivers/golang/parser"
 )
 
 type AGMapper struct {

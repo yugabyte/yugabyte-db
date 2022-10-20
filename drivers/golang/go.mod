@@ -17,7 +17,7 @@
 //  * under the License.
 //  */
 
-module github.com/apache/incubator-age/drivers/golang
+module github.com/apache/age/drivers/golang
 
 go 1.16
 
