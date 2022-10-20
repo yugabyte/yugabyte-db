@@ -159,6 +159,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   bool HasSubTransactionState();
 
+  void SetLogPrefixSessionId(uint64_t session_id);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
