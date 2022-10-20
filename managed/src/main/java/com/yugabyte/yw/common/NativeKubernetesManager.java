@@ -259,14 +259,13 @@ public class NativeKubernetesManager extends KubernetesManager {
 
   @Override
   public String getStorageClassName(
-      Map<String, String> config, String namespace, boolean forMaster) {
+      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
     // TODO: Implement when switching to native client implementation
     return null;
   }
 
   @Override
-  public boolean storageClassAllowsExpansion(
-      Map<String, String> config, String namespace, String storageClassName) {
+  public boolean storageClassAllowsExpansion(Map<String, String> config, String storageClassName) {
     // TODO: Implement when switching to native client implementation
     return true;
   }
