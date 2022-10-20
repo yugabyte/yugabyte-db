@@ -115,26 +115,17 @@
 
 using namespace std::literals;  // NOLINT
 
-DEFINE_int32(scanner_default_batch_size_bytes, 64 * 1024,
-             "The default size for batches of scan results");
-TAG_FLAG(scanner_default_batch_size_bytes, advanced);
-TAG_FLAG(scanner_default_batch_size_bytes, runtime);
+DEFINE_NON_RUNTIME_int32(scanner_default_batch_size_bytes, 64 * 1024,
+    "DEPRECATED. The default size for batches of scan results");
+TAG_FLAG(scanner_default_batch_size_bytes, hidden);
 
-DEFINE_int32(scanner_max_batch_size_bytes, 8 * 1024 * 1024,
-             "The maximum batch size that a client may request for "
-             "scan results.");
-TAG_FLAG(scanner_max_batch_size_bytes, advanced);
-TAG_FLAG(scanner_max_batch_size_bytes, runtime);
+DEFINE_NON_RUNTIME_int32(scanner_max_batch_size_bytes, 8 * 1024 * 1024,
+    "DEPRECATED. The maximum batch size that a client may request for scan results.");
+TAG_FLAG(scanner_max_batch_size_bytes, hidden);
 
-DEFINE_int32(scanner_batch_size_rows, 100,
-             "The number of rows to batch for servicing scan requests.");
-TAG_FLAG(scanner_batch_size_rows, advanced);
-TAG_FLAG(scanner_batch_size_rows, runtime);
-
-// Fault injection flags.
-DEFINE_test_flag(int32, scanner_inject_latency_on_each_batch_ms, 0,
-                 "If set, the scanner will pause the specified number of milliesconds "
-                 "before reading each batch of data on the tablet server.");
+DEFINE_NON_RUNTIME_int32(scanner_batch_size_rows, 100,
+    "DEPRECATED. The number of rows to batch for servicing scan requests.");
+TAG_FLAG(scanner_batch_size_rows, hidden);
 
 DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
@@ -145,36 +136,33 @@ DEFINE_int32(num_concurrent_backfills_allowed, -1,
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
-DEFINE_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
-              "For Non-Txn tables, it is impossible to know at the tservers "
-              "whether or not an 'old transaction' is still active. To avoid "
-              "having such old transactions, we assume a bound on the duration "
-              "of such transactions (during the backfill process) and wait "
-              "it out. This flag denotes a conservative upper bound on the "
-              "duration of such user enforced transactions.");
+DEFINE_RUNTIME_uint64(index_backfill_upperbound_for_user_enforced_txn_duration_ms, 65000,
+    "For Non-Txn tables, it is impossible to know at the tservers "
+    "whether or not an 'old transaction' is still active. To avoid "
+    "having such old transactions, we assume a bound on the duration "
+    "of such transactions (during the backfill process) and wait "
+    "it out. This flag denotes a conservative upper bound on the "
+    "duration of such user enforced transactions.");
 TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, evolving);
-TAG_FLAG(index_backfill_upperbound_for_user_enforced_txn_duration_ms, runtime);
 
-DEFINE_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
-             "Operations that are received by the tserver, and have decided how "
-             "the indexes need to be updated (based on the IndexPermission), will "
-             "not be added to the list of current transactions until they are "
-             "replicated/applied. This delay allows for the GetSafeTime method "
-             "to wait for such operations to be replicated/applied. Ideally, this "
-             "value should be set to be something larger than the raft-heartbeat-interval "
-             "but can be as high as the client_rpc_timeout if we want to be more conservative.");
+DEFINE_RUNTIME_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
+    "Operations that are received by the tserver, and have decided how "
+    "the indexes need to be updated (based on the IndexPermission), will "
+    "not be added to the list of current transactions until they are "
+    "replicated/applied. This delay allows for the GetSafeTime method "
+    "to wait for such operations to be replicated/applied. Ideally, this "
+    "value should be set to be something larger than the raft-heartbeat-interval "
+    "but can be as high as the client_rpc_timeout if we want to be more conservative.");
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
-TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, runtime);
 
-DEFINE_int32(index_backfill_wait_for_old_txns_ms, 0,
-             "Index backfill needs to wait for transactions that started before the "
-             "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
-             "backfilling the index. This is the max time that the GetSafeTime call will "
-             "wait for, before it resorts to attempt aborting old transactions. This is "
-             "necessary to guard against the pathological active transaction that never "
-             "commits from blocking the index backfill forever.");
+DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
+    "Index backfill needs to wait for transactions that started before the "
+    "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
+    "backfilling the index. This is the max time that the GetSafeTime call will "
+    "wait for, before it resorts to attempt aborting old transactions. This is "
+    "necessary to guard against the pathological active transaction that never "
+    "commits from blocking the index backfill forever.");
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
-TAG_FLAG(index_backfill_wait_for_old_txns_ms, runtime);
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");

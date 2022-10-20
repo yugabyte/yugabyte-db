@@ -50,7 +50,6 @@ using namespace std::literals;
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
-TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
 namespace yb {
 namespace tablet {

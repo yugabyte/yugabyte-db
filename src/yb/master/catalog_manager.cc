@@ -330,22 +330,19 @@ DEFINE_int32(metrics_snapshots_table_num_tablets, 0,
              "Number of tablets to use when creating the metrics snapshots table."
              "0 to use the same default num tablets as for regular tables.");
 
-DEFINE_bool(disable_index_backfill, false,
+DEFINE_RUNTIME_bool(disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YCQL indexes.");
-TAG_FLAG(disable_index_backfill, runtime);
 TAG_FLAG(disable_index_backfill, hidden);
 
-DEFINE_bool(disable_index_backfill_for_non_txn_tables, true,
+DEFINE_RUNTIME_bool(disable_index_backfill_for_non_txn_tables, true,
     "A kill switch to disable multi-stage backfill for user enforced YCQL indexes. "
     "Note that enabling this feature may cause the create index flow to be slow. "
     "This is needed to ensure the safety of the index backfill process. See also "
     "index_backfill_upperbound_for_user_enforced_txn_duration_ms");
-TAG_FLAG(disable_index_backfill_for_non_txn_tables, runtime);
 TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 
-DEFINE_bool(enable_transactional_ddl_gc, true,
+DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
-TAG_FLAG(enable_transactional_ddl_gc, runtime);
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
 DEFINE_bool(
@@ -369,10 +366,9 @@ DEFINE_test_flag(bool, hang_on_namespace_transition, false,
 DEFINE_test_flag(bool, simulate_crash_after_table_marked_deleting, false,
     "Crash yb-master after table's state is set to DELETING. This skips tablets deletion.");
 
-DEFINE_bool(master_drop_table_after_task_response, true,
-            "Mark a table as DELETED as soon as we get all the responses from all the TS.");
+DEFINE_RUNTIME_bool(master_drop_table_after_task_response, true,
+    "Mark a table as DELETED as soon as we get all the responses from all the TS.");
 TAG_FLAG(master_drop_table_after_task_response, advanced);
-TAG_FLAG(master_drop_table_after_task_response, runtime);
 
 DEFINE_test_flag(bool, tablegroup_master_only, false,
                  "This is only for MasterTest to be able to test tablegroups without the"
@@ -383,10 +379,9 @@ DEFINE_bool(enable_register_ts_from_raft, true, "Whether to register a tserver f
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
-DEFINE_bool(use_create_table_leader_hint, true,
-            "Whether the Master should hint which replica for each tablet should "
-            "be leader initially on tablet creation.");
-TAG_FLAG(use_create_table_leader_hint, runtime);
+DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
+    "Whether the Master should hint which replica for each tablet should "
+    "be leader initially on tablet creation.");
 
 DEFINE_test_flag(bool, create_table_leader_hint_min_lexicographic, false,
                  "Whether the Master should hint replica with smallest lexicographic rank for each "
@@ -399,7 +394,6 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
-TAG_FLAG(TEST_num_missing_tablets, runtime);
 
 DEFINE_int32(partitions_vtable_cache_refresh_secs, 0,
              "Amount of time to wait before refreshing the system.partitions cached vtable. "
@@ -417,14 +411,12 @@ TAG_FLAG(txn_table_wait_min_ts_count, advanced);
 DEFINE_bool(master_auto_run_initdb, false,
             "Automatically run initdb on master leader initialization");
 
-DEFINE_bool(enable_ysql_tablespaces_for_placement, true,
-            "If set, tablespaces will be used for placement of YSQL tables.");
-TAG_FLAG(enable_ysql_tablespaces_for_placement, runtime);
+DEFINE_RUNTIME_bool(enable_ysql_tablespaces_for_placement, true,
+    "If set, tablespaces will be used for placement of YSQL tables.");
 
-DEFINE_int32(ysql_tablespace_info_refresh_secs, 30,
-             "Frequency at which the table to tablespace information will be updated in master "
-             "from pg catalog tables. A value of -1 disables the refresh task.");
-TAG_FLAG(ysql_tablespace_info_refresh_secs, runtime);
+DEFINE_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
+    "Frequency at which the table to tablespace information will be updated in master "
+    "from pg catalog tables. A value of -1 disables the refresh task.");
 
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022")
 
@@ -450,12 +442,11 @@ DEFINE_int64(tablet_force_split_threshold_bytes, 100_GB,
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
                  "When set, crash the master process if it performs a sys catalog leader affinity "
                  "move.");
-DEFINE_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
-             "When a master leader failsover, the time until which the progress of load movement "
-             "off the blacklisted tservers is reported as 0. This initial delay "
-             "gives sufficient time for heartbeats so that we don't report"
-             " a premature incorrect completion.");
-TAG_FLAG(blacklist_progress_initial_delay_secs, runtime);
+DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
+    "When a master leader failsover, the time until which the progress of load movement "
+    "off the blacklisted tservers is reported as 0. This initial delay "
+    "gives sufficient time for heartbeats so that we don't report"
+    " a premature incorrect completion.");
 
 DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
                  "When set to true, consider any tablet a valid candidate for splitting. "
@@ -466,7 +457,6 @@ DEFINE_test_flag(bool, validate_all_tablet_candidates, false,
 DEFINE_test_flag(bool, skip_placement_validation_createtable_api, false,
                  "When set, it skips checking that all the tablets of a table have enough tservers"
                  " conforming to the table placement policy during CreateTable API call.");
-TAG_FLAG(TEST_skip_placement_validation_createtable_api, runtime);
 
 DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
                  "Slows down the alter table rpc's send and response handler so that the TServer "
@@ -482,65 +472,55 @@ DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
                  "Return an error inside CatalogManager::RegisterNewTabletForSplit "
                  "after calling Upsert.");
 
-DEFINE_bool(enable_delete_truncate_xcluster_replicated_table, false,
+DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating tables currently in xCluster replication");
-TAG_FLAG(enable_delete_truncate_xcluster_replicated_table, runtime);
 
-DEFINE_bool(xcluster_wait_on_ddl_alter, true,
-            "When xCluster replication sends a DDL change, wait for the user to enter a "
-            "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
-TAG_FLAG(xcluster_wait_on_ddl_alter, runtime);
+DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
+    "When xCluster replication sends a DDL change, wait for the user to enter a "
+    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
 
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
                  "tests output consistent and predictable.");
 
-DEFINE_bool(disable_truncate_table, false, "When enabled, truncate table will be disallowed");
-TAG_FLAG(disable_truncate_table, runtime);
+DEFINE_RUNTIME_bool(disable_truncate_table, false,
+    "When enabled, truncate table will be disallowed");
 
-DEFINE_bool(enable_truncate_on_pitr_table, false,
+DEFINE_RUNTIME_bool(enable_truncate_on_pitr_table, false,
     "When enabled, truncate table will be allowed on PITR tables");
-TAG_FLAG(enable_truncate_on_pitr_table, runtime);
 
 DEFINE_test_flag(double, fault_crash_after_registering_split_children, 0.0,
                  "Crash after registering the children for a tablet split.");
 DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
                  "Number of seconds to sleep before a sys catalog reload.");
-TAG_FLAG(TEST_delay_sys_catalog_reload_secs, runtime);
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
-DEFINE_bool(batch_ysql_system_tables_metadata, false,
-            "Whether change metadata operation for ysql system tables during "
-            "a create database is performed one by one or batched together");
-TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
+DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, false,
+    "Whether change metadata operation for ysql system tables during "
+    "a create database is performed one by one or batched together");
 
 DEFINE_test_flag(bool, pause_split_child_registration,
                  false, "Pause split after registering one child");
-TAG_FLAG(TEST_pause_split_child_registration, runtime);
 
 DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
                  "tables only being dropped in the postgres layer.");
 
-DEFINE_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
-             "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
-TAG_FLAG(max_concurrent_delete_replica_rpcs_per_ts, runtime);
+DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
+    "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_bool(
-    enable_delete_truncate_cdcsdk_table, false,
+DEFINE_RUNTIME_bool(enable_delete_truncate_cdcsdk_table, false,
     "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
-TAG_FLAG(enable_delete_truncate_cdcsdk_table, runtime);
 
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup");
 
-DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
-            "When set, it enables automatic tablet splitting for tables that are part of an "
-            "xCluster replication setup and are currently being bootstrapped for xCluster.");
-TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
+DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
 namespace yb {
 namespace master {

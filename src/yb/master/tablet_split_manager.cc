@@ -66,10 +66,9 @@ DEFINE_uint64(outstanding_tablet_split_limit_per_tserver, 1,
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
-DEFINE_bool(enable_tablet_split_of_pitr_tables, true,
-            "When set, it enables automatic tablet splitting of tables covered by "
-            "Point In Time Restore schedules.");
-TAG_FLAG(enable_tablet_split_of_pitr_tables, runtime);
+DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
+    "When set, it enables automatic tablet splitting of tables covered by "
+    "Point In Time Restore schedules.");
 
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "

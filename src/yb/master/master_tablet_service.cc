@@ -31,8 +31,7 @@
 #include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
-                 "Reject specified percentage of writes to the YSQL catalog tables.");
-TAG_FLAG(TEST_ysql_catalog_write_rejection_percentage, runtime);
+    "Reject specified percentage of writes to the YSQL catalog tables.");
 
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 

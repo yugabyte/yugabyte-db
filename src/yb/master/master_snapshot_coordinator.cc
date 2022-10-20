@@ -70,26 +70,20 @@ DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
 
-DEFINE_bool(schedule_snapshot_rpcs_out_of_band, true,
-            "Should tablet snapshot RPCs be scheduled out of band from the periodic"
-            " background scheduling.");
-TAG_FLAG(schedule_snapshot_rpcs_out_of_band, runtime);
+DEFINE_RUNTIME_bool(schedule_snapshot_rpcs_out_of_band, true,
+    "Should tablet snapshot RPCs be scheduled out of band from the periodic"
+    " background scheduling.");
 
-DEFINE_bool(schedule_restoration_rpcs_out_of_band, true,
-            "Should tablet restoration RPCs be scheduled out of band from the periodic"
-            " background scheduling.");
-TAG_FLAG(schedule_restoration_rpcs_out_of_band, runtime);
+DEFINE_RUNTIME_bool(schedule_restoration_rpcs_out_of_band, true,
+    "Should tablet restoration RPCs be scheduled out of band from the periodic"
+    " background scheduling.");
 
-DEFINE_bool(skip_crash_on_duplicate_snapshot, false,
-            "Should we not crash when we get a create snapshot request with the same "
-            "id as one of the previous snapshots.");
-TAG_FLAG(skip_crash_on_duplicate_snapshot, runtime);
+DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
+    "Should we not crash when we get a create snapshot request with the same "
+    "id as one of the previous snapshots.");
 
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
-TAG_FLAG(TEST_delay_sys_catalog_restore_on_followers_secs, runtime);
-
-DECLARE_bool(allow_consecutive_restore);
 
 namespace yb {
 namespace master {

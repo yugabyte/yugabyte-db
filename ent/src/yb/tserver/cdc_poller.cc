@@ -33,38 +33,28 @@
 #include "yb/util/threadpool.h"
 
 // Similar heuristic to heartbeat_interval in heartbeater.cc.
-DEFINE_int32(async_replication_polling_delay_ms, 0,
-             "How long to delay in ms between applying and polling.");
-TAG_FLAG(async_replication_polling_delay_ms, runtime);
+DEFINE_RUNTIME_int32(async_replication_polling_delay_ms, 0,
+    "How long to delay in ms between applying and polling.");
 
-DEFINE_int32(async_replication_idle_delay_ms, 100,
-             "How long to delay between polling when we expect no data at the destination.");
-TAG_FLAG(async_replication_idle_delay_ms, runtime);
+DEFINE_RUNTIME_int32(async_replication_idle_delay_ms, 100,
+    "How long to delay between polling when we expect no data at the destination.");
 
-DEFINE_int32(async_replication_max_idle_wait, 3,
-             "Maximum number of consecutive empty GetChanges until the poller "
-             "backs off to the idle interval, rather than immediately retrying.");
-TAG_FLAG(async_replication_max_idle_wait, runtime);
+DEFINE_RUNTIME_int32(async_replication_max_idle_wait, 3,
+    "Maximum number of consecutive empty GetChanges until the poller "
+    "backs off to the idle interval, rather than immediately retrying.");
 
-DEFINE_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65 sec */,
-             "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
-TAG_FLAG(replication_failure_delay_exponent, runtime);
+DEFINE_RUNTIME_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65 sec */,
+    "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
 
-DEFINE_bool(cdc_consumer_use_proxy_forwarding, false,
-            "When enabled, read requests from the CDC Consumer that go to the wrong node are "
-            "forwarded to the correct node by the Producer.");
-TAG_FLAG(cdc_consumer_use_proxy_forwarding, runtime);
+DEFINE_RUNTIME_bool(cdc_consumer_use_proxy_forwarding, false,
+    "When enabled, read requests from the CDC Consumer that go to the wrong node are "
+    "forwarded to the correct node by the Producer.");
 
-DEFINE_test_flag(
-    int32, xcluster_simulated_lag_ms, 0,
+DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
     "Simulate lag in xcluster replication. Replication is paused if set to -1.");
-TAG_FLAG(TEST_xcluster_simulated_lag_ms, runtime);
-DEFINE_test_flag(
-    string, xcluster_simulated_lag_tablet_filter, "",
+DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
     "Comma separated list of producer tablet ids. If non empty, simulate lag in only applied to "
     "this list of tablets.");
-// Strings are usually not runtime safe but in our case its ok if we temporary read garbled data
-TAG_FLAG(TEST_xcluster_simulated_lag_tablet_filter, runtime);
 
 DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
                  "If true, polling will be skipped.");

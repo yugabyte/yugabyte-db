@@ -39,9 +39,8 @@
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
-DEFINE_bool(cdc_force_remote_tserver, false,
+DEFINE_RUNTIME_bool(cdc_force_remote_tserver, false,
     "Avoid local tserver apply optimization for CDC and force remote RPCs.");
-TAG_FLAG(cdc_force_remote_tserver, runtime);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
