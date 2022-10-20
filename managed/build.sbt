@@ -185,7 +185,6 @@ libraryDependencies ++= Seq(
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
-  "org.apache.commons" % "commons-text" % "1.9",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
