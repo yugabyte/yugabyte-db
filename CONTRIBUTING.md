@@ -1,4 +1,4 @@
-# Contributing to Apache Incubator AGE
+# Contributing to Apache AGE
 
 First off, thank you for considering contributing.
 
@@ -12,4 +12,4 @@ Thank you for raising issues.
 
 ## Pull Requests
 
-Pull requests are a great way to get your ideas into this repository. Check out our list of good [first issues](https://github.com/apache/incubator-age/labels/good%20first%20issue)
+Pull requests are a great way to get your ideas into this repository. Check out our list of good [first issues](https://github.com/apache/age/labels/good%20first%20issue)
