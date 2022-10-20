@@ -153,7 +153,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
       // Get the new tservers from the node list.
-      Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(primaryNodes);
+      Set<NodeDetails> newTservers =
+          PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet);
 
       // Start masters.
       createStartMasterProcessTasks(newMasters);
