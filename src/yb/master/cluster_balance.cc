@@ -37,72 +37,59 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-DEFINE_bool(enable_load_balancing,
-            true,
-            "Choose whether to enable the load balancing algorithm, to move tablets around.");
+DEFINE_RUNTIME_bool(enable_load_balancing, true,
+    "Choose whether to enable the load balancing algorithm, to move tablets around.");
 
-DEFINE_bool(transaction_tables_use_preferred_zones,
-            false,
-            "Choose whether transaction tablet leaders respect preferred zones.");
+DEFINE_RUNTIME_bool(transaction_tables_use_preferred_zones, false,
+    "Choose whether transaction tablet leaders respect preferred zones.");
 
-DEFINE_bool(enable_global_load_balancing,
-            true,
-            "Choose whether to allow the load balancer to make moves that strictly only balance "
-            "global load. Note that global balancing only occurs after all tables are balanced.");
+DEFINE_RUNTIME_bool(enable_global_load_balancing, true,
+    "Choose whether to allow the load balancer to make moves that strictly only balance "
+    "global load. Note that global balancing only occurs after all tables are balanced.");
 
-DEFINE_int32(leader_balance_threshold,
-             0,
-             "Number of leaders per each tablet server to balance below. If this is configured to "
-                 "0 (the default), the leaders will be balanced optimally at extra cost.");
+DEFINE_RUNTIME_int32(leader_balance_threshold, 0,
+    "Number of leaders per each tablet server to balance below. If this is configured to "
+    "0 (the default), the leaders will be balanced optimally at extra cost.");
 
-DEFINE_int32(leader_balance_unresponsive_timeout_ms,
-             3 * 1000,
-             "The period of time that a master can go without receiving a heartbeat from a "
-                 "tablet server before considering it unresponsive. Unresponsive servers are "
-                 "excluded from leader balancing.");
+DEFINE_RUNTIME_int32(leader_balance_unresponsive_timeout_ms, 3 * 1000,
+    "The period of time that a master can go without receiving a heartbeat from a "
+    "tablet server before considering it unresponsive. Unresponsive servers are "
+    "excluded from leader balancing.");
 
-DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps,
-             10,
-             "Maximum number of tablets being remote bootstrapped across the cluster.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps, 10,
+    "Maximum number of tablets being remote bootstrapped across the cluster.");
 
-DEFINE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table,
-             2,
-             "Maximum number of tablets being remote bootstrapped for any table. The maximum "
-             "number of remote bootstraps across the cluster is still limited by the flag "
-             "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
-             "a single table use all the available remote bootstrap sessions and starving other "
-             "tables.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_table, 2,
+    "Maximum number of tablets being remote bootstrapped for any table. The maximum "
+    "number of remote bootstraps across the cluster is still limited by the flag "
+    "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
+    "a single table use all the available remote bootstrap sessions and starving other "
+    "tables.");
 
-DEFINE_int32(load_balancer_max_over_replicated_tablets,
-             1,
-             "Maximum number of running tablet replicas that are allowed to be over the configured "
-             "replication factor.");
+DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 1,
+    "Maximum number of running tablet replicas that are allowed to be over the configured "
+    "replication factor.");
 
-DEFINE_int32(load_balancer_max_concurrent_adds,
-             1,
-             "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 1,
+    "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
 
-DEFINE_int32(load_balancer_max_concurrent_removals,
-             1,
-             "Maximum number of over-replicated tablet peer removals to do in any one run of the "
-             "load balancer.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 1,
+    "Maximum number of over-replicated tablet peer removals to do in any one run of the "
+    "load balancer.");
 
-DEFINE_int32(load_balancer_max_concurrent_moves,
-             10,
-             "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
-             "any one run of the load balancer.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 10,
+    "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
+    "any one run of the load balancer.");
 
-DEFINE_int32(load_balancer_max_concurrent_moves_per_table,
-             1,
-             "Maximum number of tablet leaders per table to move in any one run of the load "
-             "balancer. The maximum number of tablet leader moves across the cluster is still "
-             "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
-             "prevent a single table from using all of the leader moves quota and starving "
-             "other tables.");
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, 1,
+    "Maximum number of tablet leaders per table to move in any one run of the load "
+    "balancer. The maximum number of tablet leader moves across the cluster is still "
+    "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
+    "prevent a single table from using all of the leader moves quota and starving "
+    "other tables.");
 
-DEFINE_int32(load_balancer_num_idle_runs,
-             5,
-             "Number of idle runs of load balancer to deem it idle.");
+DEFINE_RUNTIME_int32(load_balancer_num_idle_runs, 5,
+    "Number of idle runs of load balancer to deem it idle.");
 
 DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false,
                  "Limit the functionality of the load balancer during tests so tests can make "
@@ -111,9 +98,9 @@ DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false
 // No longer used because leader stepdown is not as slow as it used to be.
 DEPRECATE_FLAG(bool, load_balancer_skip_leader_as_remove_victim, "10_2022")
 
-DEFINE_bool(allow_leader_balancing_dead_node, true,
-            "When a tserver is marked as dead, do we continue leader balancing for tables that "
-            "have a replica on this tserver");
+DEFINE_RUNTIME_bool(allow_leader_balancing_dead_node, true,
+    "When a tserver is marked as dead, do we continue leader balancing for tables that "
+    "have a replica on this tserver");
 
 DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
                  "For testing purposes, number of milliseconds to wait after counting and "
@@ -122,17 +109,16 @@ DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
-DEFINE_bool(load_balancer_count_move_as_add, true,
-            "Should we enable state change to count add server triggered by load move as just an "
-            "add instead of both an add and remove.");
+DEFINE_RUNTIME_bool(load_balancer_count_move_as_add, true,
+    "Should we enable state change to count add server triggered by load move as just an "
+    "add instead of both an add and remove.");
 
-DEFINE_bool(load_balancer_drive_aware, true,
-            "When LB decides to move a tablet from server A to B, on the target LB "
-            "should select the tablet to move from most loaded drive.");
+DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
+    "When LB decides to move a tablet from server A to B, on the target LB "
+    "should select the tablet to move from most loaded drive.");
 
-DEFINE_bool(load_balancer_ignore_cloud_info_similarity, false,
-            "If true, ignore the similarity between cloud infos when deciding which tablet "
-            "to move.");
+DEFINE_RUNTIME_bool(load_balancer_ignore_cloud_info_similarity, false,
+    "If true, ignore the similarity between cloud infos when deciding which tablet to move");
 
 METRIC_DEFINE_gauge_int64(cluster,
                           is_load_balancing_enabled,
