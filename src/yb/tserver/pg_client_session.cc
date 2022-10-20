@@ -60,7 +60,7 @@ constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
 std::string SessionLogPrefix(uint64_t id) {
-  return Format("S $0: ", id);
+  return Format("[Session $0] : ", id);
 }
 
 string GetStatusStringSet(const client::CollectedErrors& errors) {
@@ -744,16 +744,17 @@ Status PgClientSession::BeginTransactionIfNecessary(
 
   txn = transaction_pool_provider_().Take(
       client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
+  txn->SetLogPrefixSessionId(id_);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
     RETURN_NOT_OK(CheckPlainSessionReadTime());
     txn->InitWithReadPoint(isolation, std::move(*session->read_point()));
-    VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
+    VLOG_WITH_PREFIX(1) << "Start transaction " << IsolationLevel_Name(isolation)
                         << ", id: " << txn->id()
                         << ", kept read time: " << txn->read_point().GetReadTime();
   } else {
-    VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
+    VLOG_WITH_PREFIX(1) << "Start transaction " << IsolationLevel_Name(isolation)
                         << ", id: " << txn->id()
                         << ", new read time";
     RETURN_NOT_OK(txn->Init(isolation));
@@ -779,6 +780,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
     txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
+    txn->SetLogPrefixSessionId(id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
   }
