@@ -43,7 +43,6 @@
 #include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -72,7 +71,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -220,8 +219,7 @@ static bool ValidateLogsToRetain(const char* flagname, int value) {
                                     flagname, value);
   return false;
 }
-static bool dummy = google::RegisterFlagValidator(
-    &FLAGS_log_min_segments_to_retain, &ValidateLogsToRetain);
+DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
@@ -430,7 +428,7 @@ Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
           MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))) {
-  DCHECK(dummy);
+  DCHECK(log_min_segments_to_retain_validator_registered);
 }
 
 Status Log::Appender::Init() {

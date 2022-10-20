@@ -54,8 +54,6 @@ int main() {
 #include <exception>
 #include <thread>
 
-#include <gflags/gflags.h>
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -78,13 +76,13 @@ int main() {
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 
 using std::unique_ptr;
 
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 static const int64_t KB = 1024;
@@ -101,8 +99,7 @@ static bool ValidateUint32Range(const char* flagname, uint64_t value) {
 }
 
 DEFINE_uint64(seed, 2341234, "Seed for PRNG");
-static const bool FLAGS_seed_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_seed, &ValidateUint32Range);
+DEFINE_validator(seed, &ValidateUint32Range);
 
 DEFINE_int64(max_key, 1 * KB* KB,
              "Max number of key/values to place in database");
@@ -260,8 +257,7 @@ DEFINE_bool(allow_concurrent_memtable_write, true,
 DEFINE_bool(enable_write_thread_adaptive_yield, true,
             "Use a yielding spin loop for brief writer thread waits.");
 
-static const bool FLAGS_subcompactions_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_subcompactions, &ValidateUint32Range);
+DEFINE_validator(subcompactions, &ValidateUint32Range);
 
 static bool ValidateInt32Positive(const char* flagname, int32_t value) {
   if (value < 0) {
@@ -272,8 +268,7 @@ static bool ValidateInt32Positive(const char* flagname, int32_t value) {
   return true;
 }
 DEFINE_int32(reopen, 10, "Number of times database reopens");
-static const bool FLAGS_reopen_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_reopen, &ValidateInt32Positive);
+DEFINE_validator(reopen, &ValidateInt32Positive);
 
 DEFINE_int32(bloom_bits, 10, "Bloom filter bits per key. "
              "Negative means use default settings.");
@@ -303,8 +298,7 @@ DEFINE_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
 DEFINE_int32(kill_random_test, 0,
              "If non-zero, kill at various points in source code with "
              "probability 1/this");
-static const bool FLAGS_kill_random_test_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_kill_random_test, &ValidateInt32Positive);
+DEFINE_validator(kill_random_test, &ValidateInt32Positive);
 extern int test_kill_odds;
 
 DEFINE_string(kill_prefix_blacklist, "",
@@ -335,39 +329,32 @@ static bool ValidateInt32Percent(const char* flagname, int32_t value) {
 }
 DEFINE_int32(readpercent, 10,
              "Ratio of reads to total workload (expressed as a percentage)");
-static const bool FLAGS_readpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_readpercent, &ValidateInt32Percent);
+DEFINE_validator(readpercent, &ValidateInt32Percent);
 
 DEFINE_int32(prefixpercent, 20,
              "Ratio of prefix iterators to total workload (expressed as a"
              " percentage)");
-static const bool FLAGS_prefixpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefixpercent, &ValidateInt32Percent);
+DEFINE_validator(prefixpercent, &ValidateInt32Percent);
 
 DEFINE_int32(writepercent, 45,
              "Ratio of writes to total workload (expressed as a percentage)");
-static const bool FLAGS_writepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_writepercent, &ValidateInt32Percent);
+DEFINE_validator(writepercent, &ValidateInt32Percent);
 
 DEFINE_int32(delpercent, 15,
              "Ratio of deletes to total workload (expressed as a percentage)");
-static const bool FLAGS_delpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_delpercent, &ValidateInt32Percent);
+DEFINE_validator(delpercent, &ValidateInt32Percent);
 
 DEFINE_int32(nooverwritepercent, 60,
              "Ratio of keys without overwrite to total workload (expressed as "
              " a percentage)");
-static const bool FLAGS_nooverwritepercent_dummy __attribute__((__unused__)) =
-    RegisterFlagValidator(&FLAGS_nooverwritepercent, &ValidateInt32Percent);
+DEFINE_validator(nooverwritepercent, &ValidateInt32Percent);
 
 DEFINE_int32(iterpercent, 10, "Ratio of iterations to total workload"
              " (expressed as a percentage)");
-static const bool FLAGS_iterpercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_iterpercent, &ValidateInt32Percent);
+DEFINE_validator(iterpercent, &ValidateInt32Percent);
 
 DEFINE_uint64(num_iterations, 10, "Number of iterations per MultiIterate run");
-static const bool FLAGS_num_iterations_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_num_iterations, &ValidateUint32Range);
+DEFINE_validator(num_iterations, &ValidateUint32Range);
 
 namespace {
 enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
@@ -418,12 +405,10 @@ DEFINE_string(hdfs, "", "Name of hdfs environment");
 static rocksdb::Env* FLAGS_env = rocksdb::Env::Default();
 
 DEFINE_uint64(ops_per_thread, 1200000, "Number of operations per thread.");
-static const bool FLAGS_ops_per_thread_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_ops_per_thread, &ValidateUint32Range);
+DEFINE_validator(ops_per_thread, &ValidateUint32Range);
 
 DEFINE_uint64(log2_keys_per_lock, 2, "Log2 of number of keys per lock");
-static const bool FLAGS_log2_keys_per_lock_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_log2_keys_per_lock, &ValidateUint32Range);
+DEFINE_validator(log2_keys_per_lock, &ValidateUint32Range);
 
 DEFINE_bool(filter_deletes, false, "On true, deletes use KeyMayExist to drop"
             " the delete if key not present");
@@ -464,8 +449,7 @@ static bool ValidatePrefixSize(const char* flagname, int32_t value) {
   return true;
 }
 DEFINE_int32(prefix_size, 7, "Control the prefix size for HashSkipListRep");
-static const bool FLAGS_prefix_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefix_size, &ValidatePrefixSize);
+DEFINE_validator(prefix_size, &ValidatePrefixSize);
 
 DEFINE_bool(use_merge, false, "On true, replaces all writes with a Merge "
             "that behaves like a Put");
