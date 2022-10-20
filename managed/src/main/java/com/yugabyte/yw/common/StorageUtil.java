@@ -58,9 +58,10 @@ public interface StorageUtil {
                   PRECONDITION_FAILED, "Storage config credentials cannot list objects");
             }
           });
-    } else {
-      canCredentialListObjects(
-          configData, configLocationMap.values().stream().collect(Collectors.toList()));
+    } else if (!canCredentialListObjects(
+        configData, configLocationMap.values().stream().collect(Collectors.toList()))) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Storage config credentials cannot list objects");
     }
   }
 
