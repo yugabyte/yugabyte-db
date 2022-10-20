@@ -1,2 +1,3 @@
 version=4
-https://github.com/hypopg/hypopg/releases .*/(.*).tar.gz
+opts="uversionmangle=s/(beta)/~$1/" \
+https://github.com/hypopg/hypopg/tags .*/(.*).tar.gz

@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Julien Rouhaud <rjuju123@gmail.com>
 Uploaders:
  Christoph Berg <myon@debian.org>,
-Standards-Version: 4.6.0
+Standards-Version: 4.6.1
 Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13), postgresql-all (>= 217~)
 Homepage: https://hypopg.readthedocs.io/
