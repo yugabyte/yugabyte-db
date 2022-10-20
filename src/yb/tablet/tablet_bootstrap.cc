@@ -103,10 +103,10 @@ DEFINE_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
 TAG_FLAG(skip_remove_old_recovery_dir, hidden);
 
-DEFINE_bool(skip_wal_rewrite, true,
-            "Skip rewriting WAL files during bootstrap.");
+// This is technically runtime, but it only affects tablets that start bootstrap after the flag
+// value is changed.
+DEFINE_RUNTIME_bool(skip_wal_rewrite, true, "Skip rewriting WAL files during bootstrap.");
 TAG_FLAG(skip_wal_rewrite, experimental);
-TAG_FLAG(skip_wal_rewrite, runtime);
 
 DEFINE_test_flag(double, fault_crash_during_log_replay, 0.0,
                  "Fraction of the time when the tablet will crash immediately "

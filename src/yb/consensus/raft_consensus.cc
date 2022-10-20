@@ -112,7 +112,6 @@ TAG_FLAG(enable_leader_failure_detection, unsafe);
 
 DEFINE_test_flag(bool, do_not_start_election_test_only, false,
                  "Do not start election even if leader failure is detected. ");
-TAG_FLAG(TEST_do_not_start_election_test_only, runtime);
 
 DEFINE_bool(evict_failed_followers, true,
             "Whether to evict followers from the Raft config that have fallen "

@@ -54,18 +54,16 @@ DEFINE_test_flag(bool, assert_reads_served_by_follower, false, "If set, we verif
                  "consistency level is CONSISTENT_PREFIX, and that this server is not the leader "
                  "for the tablet");
 
-DEFINE_bool(parallelize_read_ops, true,
-            "Controls whether multiple (Redis) read ops that are present in a operation "
-            "should be executed in parallel.");
+DEFINE_RUNTIME_bool(parallelize_read_ops, true,
+    "Controls whether multiple (Redis) read ops that are present in a operation "
+    "should be executed in parallel.");
 TAG_FLAG(parallelize_read_ops, advanced);
-TAG_FLAG(parallelize_read_ops, runtime);
 
-DEFINE_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
-            "Controls whether ysql follower reads that specify a not-yet-safe read time "
-            "should be rejected. This will force them to go to the leader, which will likely be "
-            "faster than waiting for safe time to catch up.");
+DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
+    "Controls whether ysql follower reads that specify a not-yet-safe read time "
+    "should be rejected. This will force them to go to the leader, which will likely be "
+    "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
-TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, runtime);
 
 METRIC_DEFINE_coarse_histogram(server, read_time_wait,
                                "Read Time Wait",

@@ -160,46 +160,40 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
 DEFINE_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
-DEFINE_uint64(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
+DEFINE_RUNTIME_uint64(backfill_index_write_batch_size, 128,
+    "The batch size for backfilling the index.");
 TAG_FLAG(backfill_index_write_batch_size, advanced);
-TAG_FLAG(backfill_index_write_batch_size, runtime);
 
-DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
-             "indexed table's entries are populated into the index table during index "
-             "backfill. This is a per-tablet flag, i.e. a tserver responsible for "
-             "multiple tablets could be processing more than this.");
+DEFINE_RUNTIME_int32(backfill_index_rate_rows_per_sec, 0,
+    "Rate of at which the indexed table's entries are populated into the index table during index "
+    "backfill. This is a per-tablet flag, i.e. a tserver responsible for "
+    "multiple tablets could be processing more than this.");
 TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
-TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
 
-DEFINE_uint64(verify_index_read_batch_size, 128, "The batch size for reading the index.");
+DEFINE_RUNTIME_uint64(verify_index_read_batch_size, 128, "The batch size for reading the index.");
 TAG_FLAG(verify_index_read_batch_size, advanced);
-TAG_FLAG(verify_index_read_batch_size, runtime);
 
-DEFINE_int32(verify_index_rate_rows_per_sec, 0,
+DEFINE_RUNTIME_int32(verify_index_rate_rows_per_sec, 0,
     "Rate of at which the indexed table's entries are read during index consistency checks."
     "This is a per-tablet flag, i.e. a tserver responsible for multiple tablets could be "
     "processing more than this.");
 TAG_FLAG(verify_index_rate_rows_per_sec, advanced);
-TAG_FLAG(verify_index_rate_rows_per_sec, runtime);
 
-DEFINE_int32(backfill_index_timeout_grace_margin_ms, -1,
+DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
              "how far we have processed the rows.");
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
-TAG_FLAG(backfill_index_timeout_grace_margin_ms, runtime);
 
-DEFINE_bool(yql_allow_compatible_schema_versions, true,
+DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
             "of the server's schema, but is determined to be compatible with the current version.");
 TAG_FLAG(yql_allow_compatible_schema_versions, advanced);
-TAG_FLAG(yql_allow_compatible_schema_versions, runtime);
 
-DEFINE_bool(disable_alter_vs_write_mutual_exclusion, false,
-             "A safety switch to disable the changes from D8710 which makes a schema "
-             "operation take an exclusive lock making all write operations wait for it.");
+DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
+    "A safety switch to disable the changes from D8710 which makes a schema "
+    "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
-TAG_FLAG(disable_alter_vs_write_mutual_exclusion, runtime);
 
 DEFINE_bool(cleanup_intents_sst_files, true,
     "Cleanup intents files that are no more relevant to any running transaction.");

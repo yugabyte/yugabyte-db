@@ -75,12 +75,11 @@
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
-DEFINE_bool(enable_tablet_orphaned_block_deletion, true,
-            "Whether to enable deletion of orphaned blocks from disk. "
-            "Note: This is only exposed for debugging purposes!");
+DEFINE_NON_RUNTIME_bool(enable_tablet_orphaned_block_deletion, true,
+    "DEPRECATED. Whether to enable deletion of orphaned blocks from disk. "
+    "Note: This is only exposed for debugging purposes!");
 TAG_FLAG(enable_tablet_orphaned_block_deletion, advanced);
 TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
-TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
 
 using std::shared_ptr;
 using std::string;

@@ -85,9 +85,8 @@ DEFINE_int32(
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
 
-DEFINE_bool(master_webserver_require_https, false,
-            "Require HTTPS when redirecting master UI requests to the leader.");
-TAG_FLAG(master_webserver_require_https, runtime);
+DEFINE_RUNTIME_bool(master_webserver_require_https, false,
+    "Require HTTPS when redirecting master UI requests to the leader.");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
