@@ -53,7 +53,7 @@ The following sections demonstrate how to perform common tasks required for Java
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
-If you're building the application with SSL, do the following steps additionally:
+If you're building the application with SSL, do the following additional steps:
 
 - Set up SSL/TLS depending on the platform you choose to create your local cluster. To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](../../../reference/drivers/java/postgres-jdbc-reference/#ssl-certificates-for-a-cluster-in-kubernetes-optional). To set up SSL certificates for a local cluster, see [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications).
 - Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later.
