@@ -46,14 +46,6 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
-
-   <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL JDBC SSL/TLS Driver
-    </a>
-  </li>
-
 </ul>
 
 [YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
@@ -138,7 +130,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```sh
-jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 

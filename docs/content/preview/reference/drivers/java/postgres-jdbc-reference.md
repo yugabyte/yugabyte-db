@@ -210,10 +210,10 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | :----------------- |
-| disable  | SSL Disabled | supported
+| disable  | SSL Disabled | Supported
 | allow    | SSL enabled only if server requires SSL connection | Not supported
 | prefer | SSL enabled only if server requires SSL connection | Not supported
-| require | SSL enabled for data encryption and Server identity is not verified | supported
+| require | SSL enabled for data encryption and Server identity is not verified | Supported
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
@@ -235,7 +235,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
     Enter a password when you're prompted to enter one for your keystore.
 
-1. Export the truststore. In the following command, replace `<YOURSTOREPASS>` with the password you used for your keystore creation.
+1. Export the truststore. In the following command, replace `<YOURSTOREPASS>` with your keystore password.
 
     ```sh
     $ keytool -exportcert -keystore ybtruststore -alias ybtruststore -storepass <YOURSTOREPASS> -file ybtruststore.crt

@@ -144,8 +144,6 @@ The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC 
 
 For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../drivers-orms/java/postgres-jdbc/).
 
-For building a sample Java application with the PostgreSQL JDBC SSL/TLS driver, see [Connect an application](../../../drivers-orms/java/ysql-jdbc-ssl/).
-
 #### Install the PostgreSQL JDBC driver
 
 To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.

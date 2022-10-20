@@ -41,14 +41,6 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
-
-   <li >
-    <a href="../ysql-jdbc-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL JDBC SSL/TLS Driver
-    </a>
-  </li>
-
 </ul>
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YSQL has full compatibility with the PostgreSQL JDBC Driver, and allows Java programmers to connect to YugabyteDB databases to execute DMLs and DDLs using the standard JDBC APIs.
@@ -60,6 +52,11 @@ For Java applications, the JDBC driver provides database connectivity through th
 The following sections demonstrate how to perform common tasks required for Java application development.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
+
+If you're building the application with SSL, do the following steps additionally:
+
+- Set up SSL/TLS depending on the platform you choose to create your local cluster. To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](../../../reference/drivers/java/postgres-jdbc-reference/#ssl-certificates-for-a-cluster-in-kubernetes-optional). To set up SSL certificates for a local cluster, see [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications).
+- Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later.
 
 ### Step 1: Set up the client dependency
 
@@ -108,13 +105,13 @@ Use the `DriverManager.getConnection` method to create a connection object for t
 
 Following is the PostgreSQL JDBC URL format for connecting to YugabyteDB:
 
-```java
-jdbc://postgresql://hostname:port/database
+```sh
+jdbc:postgresql://hostname:port/database
 ```
 
 Following is an example JDBC URL for connecting to YugabyteDB:
 
-```java
+```sh
 Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
 ```
 
@@ -131,7 +128,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```java
-string yburl = "jdbc://postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+string yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
@@ -183,6 +180,12 @@ public class QuickStartApp {
     }
   }
 }
+```
+
+Replace the connection string `yburl` with the following code if you're using SSL:
+
+```java
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
 ```
 
 Run the project `QuickStartApp.java` using the following command:
