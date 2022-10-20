@@ -36,36 +36,30 @@ DEFINE_test_flag(bool, assert_reads_from_follower_rejected_because_of_staleness,
                  "a follower receives the request, but that it gets rejected because it's a stale "
                  "follower");
 
-DEFINE_uint64(
-    max_stale_read_bound_time_ms, 60000,
+DEFINE_RUNTIME_uint64(max_stale_read_bound_time_ms, 60000,
     "If we are allowed to read from followers, specify the maximum time a follower can be behind "
     "by using the last message received from the leader. If set to zero, a read can be served by a "
     "follower regardless of when was the last time it received a message from the leader or how "
     "far behind this follower is.");
 TAG_FLAG(max_stale_read_bound_time_ms, evolving);
-TAG_FLAG(max_stale_read_bound_time_ms, runtime);
 
-DEFINE_uint64(sst_files_soft_limit, 24,
-              "When majority SST files number is greater that this limit, we will start rejecting "
-              "part of write requests. The higher the number of SST files, the higher probability "
-              "of rejection.");
-TAG_FLAG(sst_files_soft_limit, runtime);
+DEFINE_RUNTIME_uint64(sst_files_soft_limit, 24,
+    "When majority SST files number is greater that this limit, we will start rejecting "
+    "part of write requests. The higher the number of SST files, the higher probability "
+    "of rejection.");
 
-DEFINE_uint64(sst_files_hard_limit, 48,
-              "When majority SST files number is greater that this limit, we will reject all write "
-              "requests.");
-TAG_FLAG(sst_files_hard_limit, runtime);
+DEFINE_RUNTIME_uint64(sst_files_hard_limit, 48,
+    "When majority SST files number is greater that this limit, we will reject all write "
+    "requests.");
 
 DEFINE_test_flag(int32, write_rejection_percentage, 0,
                  "Reject specified percentage of writes.");
 
-DEFINE_uint64(min_rejection_delay_ms, 100,
-              "Minimal delay for rejected write to be retried in milliseconds.");
-TAG_FLAG(min_rejection_delay_ms, runtime);
+DEFINE_RUNTIME_uint64(min_rejection_delay_ms, 100,
+    "Minimal delay for rejected write to be retried in milliseconds.");
 
-DEFINE_uint64(max_rejection_delay_ms, 5000, ""
-              "Maximal delay for rejected write to be retried in milliseconds.");
-TAG_FLAG(max_rejection_delay_ms, runtime);
+DEFINE_RUNTIME_uint64(max_rejection_delay_ms, 5000,
+    "Maximal delay for rejected write to be retried in milliseconds.");
 
 DECLARE_int32(memory_limit_warn_threshold_percentage);
 

@@ -34,9 +34,8 @@
 
 using namespace std::literals;
 
-DEFINE_int32(retryable_request_timeout_secs, 660,
-             "Amount of time to keep write request in index, to prevent duplicate writes.");
-TAG_FLAG(retryable_request_timeout_secs, runtime);
+DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
+    "Amount of time to keep write request in index, to prevent duplicate writes.");
 
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be

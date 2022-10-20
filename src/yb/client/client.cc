@@ -232,24 +232,22 @@ DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRp
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
-DEFINE_int32(ycql_num_tablets, -1,
-             "The number of tablets per YCQL table. Default value is -1. "
-             "Colocated tables are not affected. "
-             "If it's value is not set then the value of yb_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (with tablets = x syntax) then it takes precedence over the value "
-             "of this flag. Needs to be set at tserver.");
-TAG_FLAG(ycql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
+    "The number of tablets per YCQL table. Default value is -1. "
+    "Colocated tables are not affected. "
+    "If it's value is not set then the value of yb_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (with tablets = x syntax) then it takes precedence over the value "
+    "of this flag. Needs to be set at tserver.");
 
-DEFINE_int32(ysql_num_tablets, -1,
-             "The number of tablets per YSQL table. Default value is -1. "
-             "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (split into x tablets syntax) then it takes precedence over the "
-             "value of this flag. Needs to be set at tserver.");
-TAG_FLAG(ysql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
+    "The number of tablets per YSQL table. Default value is -1. "
+    "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (split into x tablets syntax) then it takes precedence over the "
+    "value of this flag. Needs to be set at tserver.");
 
 namespace yb {
 namespace client {

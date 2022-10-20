@@ -78,10 +78,9 @@ DECLARE_uint64(rpc_max_message_size);
 
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
-DEFINE_uint64(consensus_max_batch_size_bytes, 4_MB,
-              "The maximum per-tablet RPC batch size when updating peers.");
+DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
+    "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
-TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
 DEFINE_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
@@ -102,25 +101,22 @@ DEFINE_int32(cdc_checkpoint_opid_interval_ms, 60 * 1000,
              "specified by cdc_checkpoint_opid_interval, then log cache does not consider that "
              "consumer while determining which op IDs to evict.");
 
-DEFINE_bool(enable_consensus_exponential_backoff, true,
-            "Whether exponential backoff based on number of retransmissions at tablet leader "
-            "for number of entries to replicate to lagging follower is enabled.");
+DEFINE_RUNTIME_bool(enable_consensus_exponential_backoff, true,
+    "Whether exponential backoff based on number of retransmissions at tablet leader "
+    "for number of entries to replicate to lagging follower is enabled.");
 TAG_FLAG(enable_consensus_exponential_backoff, advanced);
-TAG_FLAG(enable_consensus_exponential_backoff, runtime);
 
-DEFINE_int32(consensus_lagging_follower_threshold, 10,
-             "Number of retransmissions at tablet leader to mark a follower as lagging. "
-             "-1 disables the feature.");
+DEFINE_RUNTIME_int32(consensus_lagging_follower_threshold, 10,
+    "Number of retransmissions at tablet leader to mark a follower as lagging. "
+    "-1 disables the feature.");
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
-TAG_FLAG(consensus_lagging_follower_threshold, runtime);
 
-DEFINE_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
-             "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-             "If we haven't received an updated checkpoint from CDC consumer within the interval "
-             "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-             "consumer while determining which op IDs to delete from the intent.");
+DEFINE_RUNTIME_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
+    "If we haven't received an updated checkpoint from CDC consumer within the interval "
+    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
+    "consumer while determining which op IDs to delete from the intent.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
-TAG_FLAG(cdc_intent_retention_ms, runtime);
 
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");

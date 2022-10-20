@@ -48,9 +48,7 @@ DEFINE_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_bool(disable_hybrid_scan, false,
-            "If true, hybrid scan will be disabled");
-TAG_FLAG(disable_hybrid_scan, runtime);
+DEFINE_RUNTIME_bool(disable_hybrid_scan, false, "If true, hybrid scan will be disabled");
 
 DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
