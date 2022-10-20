@@ -10,17 +10,6 @@ menu:
     weight: 500
 type: docs
 ---
-<!-- <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../yugabyte-jdbc/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
-  </li>
-
-  <li >
-    <a href="../ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
-  </li>
-</ul> -->
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
@@ -52,18 +41,24 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
-
 </ul>
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YSQL has full compatibility with the PostgreSQL JDBC Driver, and allows Java programmers to connect to YugabyteDB databases to execute DMLs and DDLs using the standard JDBC APIs.
 
+For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
+
 ## CRUD operations
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/java/ysql-jdbc/).
+The following sections demonstrate how to perform common tasks required for Java application development.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
-### Step 1: Add the PostgreSQL JDBC driver dependency
+If you're building the application with SSL, do the following additional steps:
+
+- Set up SSL/TLS depending on the platform you choose to create your local cluster. To set up a cluster in Minikube with SSL/TLS, see [SSL certificates for a cluster in Kubernetes](../../../reference/drivers/java/postgres-jdbc-reference/#ssl-certificates-for-a-cluster-in-kubernetes-optional). To set up SSL certificates for a local cluster, see [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications).
+- Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later.
+
+### Step 1: Set up the client dependency
 
 PostgreSQL JDBC Drivers are available as a maven dependency, and you can download the driver by adding the following dependency to the Java project.
 
@@ -89,7 +84,9 @@ If you are using [Gradle](https://docs.gradle.org/current/samples/sample_buildin
 implementation 'org.postgresql:postgresql:42.2.14'
 ```
 
-### Step 2: Connect to your cluster
+Install the added dependency using `mvn install`.
+
+### Step 2: Set up the database connection
 
 After setting up the dependencies, implement a Java client application that uses the PostgreSQL JDBC driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
@@ -97,25 +94,26 @@ Java applications can connect to and query the YugabyteDB database using the `ja
 
 Use the `DriverManager.getConnection` method to create a connection object for the YugabyteDB Database. This can be used to perform DDLs and DMLs against the database.
 
-Example PostgreSQL JDBC URL for connecting to YugabyteDB can be seen below.
-
-```java
-jdbc://postgresql://hostname:port/database
-```
-
-Example JDBC URL for connecting to YugabyteDB can be seen below.
-
-```java
-Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
-```
 
 | JDBC parameter | Description | Default |
 | :------------- | :---------- | :------ |
 | hostname | Hostname of the YugabyteDB instance | localhost |
 | port | Listen port for YSQL | 5433 |
 | database | Database name | yugabyte |
-| user | Username for connecting to the database | yugabyte |
-| password | Password for connecting to the database | yugabyte |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+
+Following is the PostgreSQL JDBC URL format for connecting to YugabyteDB:
+
+```sh
+jdbc:postgresql://hostname:port/database
+```
+
+Following is an example JDBC URL for connecting to YugabyteDB:
+
+```sh
+Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5433/yugabyte","yugabyte", "yugabyte");
+```
 
 #### Use SSL
 
@@ -130,7 +128,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```java
-string yburl = "jdbc://postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
+string yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=yugabyte&ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt"
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
@@ -138,25 +136,31 @@ If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/
 
 ### Step 3: Write your application
 
-Create a new Java class called `QuickStartApp.java` in the base package directory of your project. Copy the following sample code to set up a YugabyteDB table and query the table contents from the Java client. Replace the connection string `yburl` with your cluster credentials and SSL certificate if required.
+Create a new Java class called `QuickStartApp.java` in the base package directory of your project as follows:
+
+```sh
+touch ./src/main/java/com/yugabyte/QuickStartApp.java
+```
+
+Copy the following code to set up a YugabyteDB table and query the table contents from the Java client. Be sure to replace the connection string `yburl` with credentials of your cluster and SSL certificate if required.
 
 ```java
+package com.yugabyte;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.Scanner;
+import java.sql.Statement;
+import java.sql.ResultSet;
 
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
-    Class.forName("com.yugabyte.Driver");
-    String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte";
+    Class.forName("org.postgresql.Driver");
+    String yburl = "jdbc:postgresql://localhost:5433/yugabyte", "yugabyte", "yugabyte";
     Connection conn = DriverManager.getConnection(yburl);
     Statement stmt = conn.createStatement();
     try {
-        System.out.println("Connected to the YugabyteDB Cluster successfully.");
+        System.out.println("Connected to the PostgreSQL server successfully.");
         stmt.execute("DROP TABLE IF EXISTS employee");
         stmt.execute("CREATE TABLE IF NOT EXISTS employee" +
                     "  (id int primary key, name varchar, age int, language text)");
@@ -178,7 +182,19 @@ public class QuickStartApp {
 }
 ```
 
-When you run the Project, `QuickStartApp.java` should output something like the following:
+If you're using SSL, replace the connection string `yburl` with the following code:
+
+```java
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
+```
+
+Run the project `QuickStartApp.java` using the following command:
+
+```sh
+mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.QuickStartApp
+```
+
+You should see output similar to the following:
 
 ```output
 Connected to the YugabyteDB Cluster successfully.
@@ -189,9 +205,10 @@ Query returned: name=John, age=35, language: Java
 
 If there is no output or you get an error, verify that the connection string in your Java class has the correct parameters.
 
-After completing these steps, you should have a working Java application that uses the PostgreSQL JDBC driver to connect to your cluster, set up tables, run queries, and print out results.
-
 ## Learn more
 
-- Build Java applications using [Hibernate ORM](../hibernate)
+- [PostgreSQL JDBC driver reference](../../../reference/drivers/java/postgres-jdbc-reference/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- Build Java applications using [Hibernate ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../hibernate/)
