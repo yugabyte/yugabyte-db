@@ -203,6 +203,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
+  "io.grpc" % "grpc-testing" % "1.48.0" % Test
 )
 // Clear default resolvers.
 appResolvers := None

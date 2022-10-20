@@ -5,7 +5,6 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	pb "node-agent/generated/service"
 	"node-agent/util"
@@ -15,11 +14,16 @@ import (
 )
 
 type RPCServer struct {
+	addr    net.Addr
 	gServer *grpc.Server
 	isTLS   bool
 }
 
-func NewRPCServer(ctx context.Context, host, port string, isTLS bool) (*RPCServer, error) {
+func (server *RPCServer) Addr() string {
+	return server.addr.String()
+}
+
+func NewRPCServer(ctx context.Context, addr string, isTLS bool) (*RPCServer, error) {
 	serverOpts := []grpc.ServerOption{}
 	if isTLS {
 		tlsCredentials, err := loadTLSCredentials()
@@ -27,16 +31,18 @@ func NewRPCServer(ctx context.Context, host, port string, isTLS bool) (*RPCServe
 			util.FileLogger().Errorf("Error in loading TLS credentials: %s", err)
 			return nil, err
 		}
+		authenticator := Authenticator{util.CurrentConfig()}
 		serverOpts = append(serverOpts, grpc.Creds(tlsCredentials))
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(authenticator.UnaryInterceptor()))
+		serverOpts = append(serverOpts, grpc.StreamInterceptor(authenticator.StreamInterceptor()))
 	}
-	hostPort := fmt.Sprintf("%s:%s", host, port)
-	listener, err := net.Listen("tcp", hostPort)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		util.FileLogger().Errorf("Failed to listen to %s: %v", hostPort, err)
+		util.FileLogger().Errorf("Failed to listen to %s: %v", addr, err)
 		return nil, err
 	}
 	gServer := grpc.NewServer(serverOpts...)
-	server := &RPCServer{gServer: gServer, isTLS: isTLS}
+	server := &RPCServer{addr: listener.Addr(), gServer: gServer, isTLS: isTLS}
 	pb.RegisterNodeAgentServer(gServer, server)
 	go func() {
 		if err := gServer.Serve(listener); err != nil {

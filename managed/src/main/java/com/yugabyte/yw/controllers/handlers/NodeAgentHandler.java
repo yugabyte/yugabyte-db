@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -19,26 +20,15 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.nodeagent.NodeAgentGrpc;
-import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentBlockingStub;
-import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import io.ebean.annotation.Transactional;
-import io.grpc.ManagedChannel;
-import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
-import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
-import io.grpc.netty.shaded.io.netty.channel.ChannelOption;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,7 +42,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.net.ssl.SSLException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -72,7 +61,6 @@ public class NodeAgentHandler {
   public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
   public static final String UPGRADE_CHECK_INTERVAL_PROPERTY =
       "yb.node_agent.upgrade_check_interval";
-  public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
   public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
 
   public static final String CLEANER_CHECK_INTERVAL_PROPERTY =
@@ -90,15 +78,20 @@ public class NodeAgentHandler {
   private final Config appConfig;
   private final PlatformScheduler platformScheduler;
   private final ConfigHelper configHelper;
+  private final NodeAgentClient nodeAgentClient;
 
   private boolean validateConnection = true;
 
   @Inject
   public NodeAgentHandler(
-      Config appConfig, ConfigHelper configHelper, PlatformScheduler platformScheduler) {
+      Config appConfig,
+      ConfigHelper configHelper,
+      PlatformScheduler platformScheduler,
+      NodeAgentClient nodeAgentClient) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
     this.platformScheduler = platformScheduler;
+    this.nodeAgentClient = nodeAgentClient;
   }
 
   /** Starts background tasks. */
@@ -177,7 +170,22 @@ public class NodeAgentHandler {
           .flatMap(cUuid -> NodeAgent.getNodeAgents(cUuid).stream())
           .filter(n -> expiryDate.after(n.updatedAt))
           .filter(n -> !nodeIps.contains(n.ip))
-          .forEach(NodeAgent::purge);
+          .forEach(
+              n -> {
+                try {
+                  nodeAgentClient.validateConnection(n, true);
+                  log.warn(
+                      "Node agent {} is still reachable but not heartbeating. Skipping clean-up",
+                      n.uuid);
+                  // TODO may need to update time.
+                } catch (Exception e) {
+                  log.info(
+                      "Purging node agent {} because connection failed. Error: {}",
+                      n.uuid,
+                      e.getMessage());
+                  n.purge();
+                }
+              });
     } catch (Exception e) {
       log.error("Error occurred in cleaner service", e);
     }
@@ -196,15 +204,6 @@ public class NodeAgentHandler {
     Path certDirPath = getNodeAgentBaseCertDirectory(nodeAgent).resolve(certDir);
     log.info("Creating node agent cert directory {}", certDirPath);
     return Util.getOrCreateDir(certDirPath);
-  }
-
-  private Path getCertFilePath(NodeAgent nodeAgent, String certName) {
-    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isBlank(certDirPath)) {
-      throw new IllegalArgumentException(
-          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
-    }
-    return Paths.get(certDirPath, certName);
   }
 
   // Certs are created in each directory <base-cert-dir>/<index>/.
@@ -328,43 +327,26 @@ public class NodeAgentHandler {
     }
   }
 
-  private PublicKey getPublicKeyFromCert(byte[] content) {
-    try {
-      CertificateFactory factory = CertificateFactory.getInstance("X.509");
-      X509Certificate cert =
-          (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(content));
-      return cert.getPublicKey();
-    } catch (RuntimeException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
-  }
-
-  private PrivateKey getPrivateKey(byte[] content) {
-    return CertificateHelper.getPrivateKey(new String(content));
-  }
-
   /**
    * Returns the public key of the given node agent.
    *
    * @param nodeAgentUuid node agent UUID.
    * @return the public key.
    */
-  public PublicKey getNodeAgentPublicKey(UUID nodeAgentUuid) {
+  public static PublicKey getNodeAgentPublicKey(UUID nodeAgentUuid) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
     if (!nodeAgentOp.isPresent()) {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return getPublicKeyFromCert(nodeAgentOp.get().getServerCert());
+    return nodeAgentOp.get().getPublicKey();
   }
 
-  public PrivateKey getNodeAgentPrivateKey(UUID nodeAgentUuid) {
+  public static PrivateKey getNodeAgentPrivateKey(UUID nodeAgentUuid) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
     if (!nodeAgentOp.isPresent()) {
       throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
     }
-    return getPrivateKey(nodeAgentOp.get().getServerKey());
+    return nodeAgentOp.get().getPrivateKey();
   }
 
   /**
@@ -384,40 +366,6 @@ public class NodeAgentHandler {
         .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
         .signWith(SignatureAlgorithm.RS256, privateKey)
         .compact();
-  }
-
-  // TODO add caching of channels later.
-  private ManagedChannel createRpcChannel(NodeAgent nodeAgent, boolean enableTls) {
-    NettyChannelBuilder channelBuilder =
-        NettyChannelBuilder.forAddress(nodeAgent.ip, nodeAgent.port);
-    if (enableTls) {
-      Path caCertPath = getCertFilePath(nodeAgent, NodeAgent.ROOT_CA_CERT_NAME);
-      SslContext sslcontext;
-      try {
-        sslcontext = GrpcSslContexts.forClient().trustManager(caCertPath.toFile()).build();
-        channelBuilder = channelBuilder.sslContext(sslcontext);
-      } catch (SSLException e) {
-        throw new RuntimeException("SSL context creation for gRPC client failed", e);
-      }
-    } else {
-      channelBuilder = channelBuilder.usePlaintext();
-    }
-    Duration connectTimeout = appConfig.getDuration(NODE_AGENT_CONNECT_TIMEOUT_PROPERTY);
-    channelBuilder.withOption(
-        ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) connectTimeout.toMillis());
-    return channelBuilder.build();
-  }
-
-  private void validateConnection(NodeAgent nodeAgent) {
-    ManagedChannel channel = createRpcChannel(nodeAgent, false);
-    try {
-      NodeAgentBlockingStub stub = NodeAgentGrpc.newBlockingStub(channel);
-      stub.ping(PingRequest.newBuilder().setData("test").build());
-    } catch (Exception e) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Ping failed " + e.getMessage());
-    } finally {
-      channel.shutdownNow();
-    }
   }
 
   @VisibleForTesting
@@ -443,7 +391,7 @@ public class NodeAgentHandler {
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
     if (validateConnection) {
-      validateConnection(nodeAgent);
+      nodeAgentClient.validateConnection(nodeAgent, false);
     }
     // Save within the transaction to get DB generated column values.
     nodeAgent.saveState(State.REGISTERING);
