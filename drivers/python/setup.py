@@ -20,14 +20,14 @@ with open("README.md", "r", encoding='utf8') as fh:
     long_description = fh.read()
 
 setup(
-    name             = 'incubator-age',
+    name             = 'age',
     version          = VERSION.VERSION,
     description      = 'Python driver support for Apache AGE',
     long_description=long_description,
     long_description_content_type="text/markdown",
     author           = 'rhizome',
     author_email     = 'rhizome.ai@gmail.com',
-    url              = 'https://github.com/apache/incubator-age',
+    url              = 'https://github.com/apache/age',
     license          = 'Apache2.0',
     install_requires = [ 'psycopg2', 'antlr4-python3-runtime' ],
     packages         = ['age', 'age.gen'],

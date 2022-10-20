@@ -1,4 +1,4 @@
-# incubator-age AGType parser and driver support for Python 
+# AGE AGType parser and driver support for Python
 AGType parser and driver support for [Apache AGE](https://age.apache.org/), graph extention for PostgreSQL.
 
 ### Features
@@ -22,9 +22,9 @@ python -m unittest -v test_agtypes.py
 ```
 
 ### Build from source
-``` 
-git clone https://github.com/apache/incubator-age.git
-cd incubator-age/dirivers/python
+```
+git clone https://github.com/apache/age.git
+cd age/drivers/python
 
 python setup.py install
 
@@ -32,15 +32,15 @@ python setup.py install
 
 ### Install from PyPi
 
-``` 
+```
 pip install apache-age-python
 
 ```
 
 ### For more information about [Apache AGE](https://age.apache.org/)
-* Apache Incubator Age : https://age.apache.org/
-* Github : https://github.com/apache/incubator-age
-* Document : https://age.incubator.apache.org/docs/
+* Apache Age : https://age.apache.org/
+* Github : https://github.com/apache/age
+* Document : https://age.apache.org/age-manual/master/index.html
 * apache-age-python GitHub : https://github.com/rhizome-ai/apache-age-python
 
 ### Check AGE loaded on your PostgreSQL
