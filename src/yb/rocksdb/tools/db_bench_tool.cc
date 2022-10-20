@@ -47,8 +47,6 @@
 #include <thread>
 #include <unordered_map>
 
-#include <gflags/gflags.h>
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/options.h"
@@ -79,6 +77,7 @@
 #include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 
@@ -90,7 +89,6 @@ using std::unique_ptr;
 
 namespace {
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_string(benchmarks,
@@ -314,9 +312,7 @@ DEFINE_int32(max_background_compactions,
 DEFINE_uint64(subcompactions, 1,
               "Maximum number of subcompactions to divide L0-L1 compactions "
               "into.");
-static const bool FLAGS_subcompactions_dummy
-    __attribute__((unused)) = RegisterFlagValidator(&FLAGS_subcompactions,
-                                                    &ValidateUint32Range);
+DEFINE_validator(subcompactions, &ValidateUint32Range);
 
 DEFINE_int32(max_background_flushes,
              rocksdb::Options().max_background_flushes,
@@ -584,8 +580,7 @@ static bool ValidateCompressionLevel(const char* flagname, int32_t value) {
   return true;
 }
 
-static const bool FLAGS_compression_level_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_compression_level, &ValidateCompressionLevel);
+DEFINE_validator(compression_level, &ValidateCompressionLevel);
 
 DEFINE_int32(min_level_to_compress, -1, "If non-negative, compression starts"
              " from this level. Levels with number < min_level_to_compress are"
@@ -809,33 +804,23 @@ DEFINE_int32(skip_list_lookahead, 0, "Used with skip_list memtablerep; try "
 DEFINE_bool(report_file_operations, false, "if report number of file "
             "operations");
 
-static const bool FLAGS_soft_rate_limit_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_soft_rate_limit, &ValidateRateLimit);
+DEFINE_validator(soft_rate_limit, &ValidateRateLimit);
 
-static const bool FLAGS_hard_rate_limit_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_hard_rate_limit, &ValidateRateLimit);
+DEFINE_validator(hard_rate_limit, &ValidateRateLimit);
 
-static const bool FLAGS_prefix_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_prefix_size, &ValidatePrefixSize);
+DEFINE_validator(prefix_size, &ValidatePrefixSize);
 
-static const bool FLAGS_key_size_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_key_size, &ValidateKeySize);
+DEFINE_validator(key_size, &ValidateKeySize);
 
-static const bool FLAGS_cache_numshardbits_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_cache_numshardbits,
-                          &ValidateCacheNumshardbits);
+DEFINE_validator(cache_numshardbits, &ValidateCacheNumshardbits);
 
-static const bool FLAGS_readwritepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_readwritepercent, &ValidateInt32Percent);
+DEFINE_validator(readwritepercent, &ValidateInt32Percent);
 
 DEFINE_int32(disable_seek_compaction, false,
              "Not used, left here for backwards compatibility");
 
-static const bool FLAGS_deletepercent_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_deletepercent, &ValidateInt32Percent);
-static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((unused)) =
-    RegisterFlagValidator(&FLAGS_table_cache_numshardbits,
-                          &ValidateTableCacheNumshardbits);
+DEFINE_validator(deletepercent, &ValidateInt32Percent);
+DEFINE_validator(table_cache_numshardbits, &ValidateTableCacheNumshardbits);
 }  // namespace
 
 namespace rocksdb {

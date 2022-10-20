@@ -34,6 +34,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -89,7 +90,6 @@ DEFINE_int32(cql_system_query_cache_stale_msecs, 60000,
 DEFINE_string(cql_system_query_cache_tables, "",
     "Tables to cache connection data for. Entries are semicolon-delimited, in the "
     "format <keyspace>.<table>.");
-__attribute__((unused))
 DEFINE_validator(cql_system_query_cache_tables, &validate_tables);
 DEFINE_bool(cql_system_query_cache_empty_responses, true,
             "Whether to cache empty responses from the master.");
