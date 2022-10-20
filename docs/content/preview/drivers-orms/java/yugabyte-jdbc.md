@@ -46,7 +46,6 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
-
 </ul>
 
 [YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
@@ -131,7 +130,7 @@ The following table describes the connection parameters required to connect usin
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
 ```sh
-jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
@@ -158,11 +157,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.Scanner;
-
 
 public class QuickStartApp {
   public static void main(String[] args) throws ClassNotFoundException, SQLException {
@@ -212,9 +206,9 @@ If you receive no output or an error, check the parameters in the connection str
 
 ## Learn more
 
-- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- Build Java applications using [Spring Framework](../../../integrations/spring-framework/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../hibernate/)

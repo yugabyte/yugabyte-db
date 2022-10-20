@@ -18,8 +18,8 @@ The following projects can be used to implement Java applications using the Yuga
 
 | Driver | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| YugabyteDB JDBC Driver [Recommended] | [Documentation](yugabyte-jdbc/)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a/)<br />[Reference](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.2/) | 2.8 and above
-| PostgreSQL JDBC Driver | [Documentation](postgres-jdbc/)<br />[Hello World App](../../develop/build-apps/java/ysql-jdbc)<br /> [Reference](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14/) | 2.4 and above
+| YugabyteDB JDBC Driver [Recommended] | [Documentation](yugabyte-jdbc/)<br />[Blog](https://dev.to/yugabyte/yugabytedb-jdbc-smart-driver-for-proxyless-halb-2k8a/)<br />[Reference](../../reference/drivers/java/yugabyte-jdbc-reference/) | [42.3.5-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-1) | 2.8 and above
+| PostgreSQL JDBC Driver | [Documentation](postgres-jdbc/)<br /> [Reference](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | 2.4 and above
 | YugabyteDB YCQL (3.10) Driver | [Documentation](ycql)<br />[Reference](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-3-10) | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | |
 | YugabyteDB YCQL (4.6) Driver | [Documentation](ycql)<br />[Reference](../../reference/drivers/ycql-client-drivers/##yugabyte-java-driver-for-ycql-4-6) | [4.6.0-yb-11](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.6.0-yb-11) | |
 
@@ -63,6 +63,15 @@ To develop Java driver applications for YugabyteDB, you need the following:
         <properties>
           <maven.compiler.source>1.8</maven.compiler.source>
           <maven.compiler.target>1.8</maven.compiler.target>
+        </properties>
+        ```
+
+       If you're using Java 11, it should be:
+
+       ```xml
+        <properties>
+          <maven.compiler.source>11</maven.compiler.source>
+          <maven.compiler.target>11</maven.compiler.target>
         </properties>
         ```
 
