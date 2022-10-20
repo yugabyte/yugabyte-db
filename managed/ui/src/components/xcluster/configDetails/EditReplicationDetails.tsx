@@ -44,7 +44,7 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
   return (
     <YBModalForm
       size="large"
-      title="Edit cluster replication"
+      title="Edit Replication Name"
       visible={visible}
       onHide={onHide}
       validationSchema={validationSchema}
