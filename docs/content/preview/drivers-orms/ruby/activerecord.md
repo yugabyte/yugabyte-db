@@ -15,11 +15,13 @@ type: docs
 
 YugabyteDB YSQL API has full compatibility with Active Record ORM for data persistence in Ruby applications.
 
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
+
 ## CRUD operations
 
 This page provides details for getting started with Active Record ORM for connecting to YugabyteDB using the [orm-examples](https://github.com/YugabyteDB-Samples/orm-examples.git) repository.
 
-This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through ActiveRecord ORM. It consists of the following.
+This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Active Record ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
 - The products table contains a list of products the e-commerce site sells.
@@ -128,7 +130,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-Connect to the database that is mentioned in `config/database.yml` file. Default is `ysql_active_record`.
+Connect to the database mentioned in `config/database.yml` file. Default is `ysql_active_record`.
 
 ```sql
 yugabyte=# \c ysql_active_record
