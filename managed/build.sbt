@@ -6,6 +6,8 @@ import scala.sys.process.Process
 
 import Tests._
 
+historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
+
 useCoursier := false
 
 // ------------------------------------------------------------------------------------------------
@@ -180,7 +182,6 @@ libraryDependencies ++= Seq(
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
-  "org.apache.commons" % "commons-text" % "1.9"
 )
 // Clear default resolvers.
 appResolvers := None
