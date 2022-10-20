@@ -170,7 +170,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     // because the caller is skipping all intents written before or at the same time as
     // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
     // equal to DocHybridTime::kMin.
-    if (result.intent_value.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+    if (result.intent_value.starts_with(ValueEntryTypeAsChar::kRowLock)) {
       result.value_time = DocHybridTime::kMin;
     } else if (result.same_transaction) {
       if (txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id)) {

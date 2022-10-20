@@ -81,10 +81,12 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 ### Limitations
 
-#### Transactional semantics [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976)
+#### Transactional semantics 
 
 - Transactions from the source are not applied atomically on the target. That is, some changes in a transaction may be visible before others.
 - Transactions from the source might not respect global ordering on the target. While transactions affecting the same shards, are guaranteed to be timeline consistent even on the target, transactions affecting different shards might end up being visible on the target in a different order than they were committed on the source.
+
+This is tracked in [#10976](https://github.com/yugabyte/yugabyte-db/issues/10976).
 
 #### Bootstrapping sink clusters
 
@@ -131,9 +133,13 @@ Because 2DC replication is done asynchronously and by replicating the WAL (and t
 
 ## Transactional guarantees
 
+<!--
+
 ### Atomicity of transactions
 
 This implies one can never read a partial result of a transaction on the sink cluster.
+
+-->
 
 ### Not globally ordered
 

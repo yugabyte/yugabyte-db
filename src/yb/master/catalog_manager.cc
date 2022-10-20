@@ -3831,9 +3831,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
         }
         auto tablet = colocated_db_tablets_map_[ns->id()];
-        auto tablet_lock = tablet->LockForWrite();
+        auto tablet_lock = tablet->LockForRead();
 
-        std::set<ColocationId> colocation_ids;
+        std::unordered_set<ColocationId> colocation_ids;
+        colocation_ids.reserve(tablet_lock.data().pb.table_ids().size());
         if (!req.has_colocation_id()) {
           for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
             DCHECK(!table_id.empty());
@@ -3842,9 +3843,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
               // Needed because of #11129, should be replaced with DCHECK after the fix.
               continue;
             }
-            Schema colocated_table_schema;
-            RETURN_NOT_OK(colocated_table_info->GetSchema(&colocated_table_schema));
-            colocation_ids.insert(colocated_table_schema.colocation_id());
+            colocation_ids.insert(colocated_table_info->GetColocationId());
           }
         }
 

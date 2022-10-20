@@ -98,7 +98,7 @@ For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this w
 
 The ROWS_PER_TRANSACTION option defines the transaction size to be used by the `COPY` command.
 
-Deafult : 20000 for YugabyteDB versions 2.14/2.15, and 1000 for older releases.
+Default: 20000 for YugabyteDB versions 2.14 and 2.15 or later, and 1000 for prior versions.
 
 For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_TRANSACTION` is set to 1000, then the database will create 5 transactions and each transaction will insert 1000 rows. This also implies that if the error occurs after inserting the 3500th row, then the first 3000 rows will still be persisted in the database.
 
@@ -108,6 +108,27 @@ For example, if the total number of tuples to be copied are 5000 and `ROWS_PER_T
 - 3001 to 3500 → Error
 
 First 3000 rows will be persisted to the table and `tuples_processed` will show 3000.
+
+### REPLACE
+
+The `REPLACE` option replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
+
+Note that `REPLACE` doesn't work on tables that have more than 1 unique constraints (see [#13687](https://github.com/yugabyte/yugabyte-db/issues/13687) for explanation)
+
+Default: by default conflict error is reported.
+
+### DISABLE_FK_CHECK
+
+The `DISABLE_FK_CHECK` option skips the foreign key check when copying new rows to the table.
+
+Default: by default, foreign key check is always performed when `DISABLE_FK_CHECK` option is not provided.
+
+### SKIP n
+
+The `SKIP n` option skips the first `n` rows of the file. `n` must be a non-negative integer ().
+
+Default: 0, no rows are skipped.
+
 
 ## Examples
 
@@ -151,10 +172,44 @@ In the following example, the data exported in the previous examples are importe
 yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV HEADER;
 ```
 
-### Performance tips for large tables
+### Import with skipping rows
 
-The following copy options may help to speed up copying, or allow for faster recovery from a partial state:
+Assume we ran the command one time, and it failed in the middle, as if the server had crashed. 
+Since we use `ROWS_PER_TRANSACTION=5000`, we can resume importing at multiples of 5000:
 
-* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
-* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
-* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, SKIP 50000);
+```
+
+
+### Import with replacing rows
+
+If duplicate rows exist in the database, we can use `REPLACE` to upsert new rows:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', REPLACE);
+```
+
+### Import with disabling foreign key checks
+
+If we're certain that rows referred by foreign keys already exist, we can disable checking for them to make the import faster:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', DISABLE_FK_CHECK);
+```
+
+### Using all options
+
+In the following example, we use all of the `COPY` command's options:
+
+```plpgsql
+yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
+HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, DISABLE_FK_CHECK, REPLACE, SKIP 50);
+```
+
+
+For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).
+

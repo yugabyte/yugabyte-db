@@ -416,7 +416,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
 				ereport(ERROR,
@@ -2129,7 +2130,8 @@ transformIndexConstraints(CreateStmtContext *cxt)
 							"(exactly as defined in indexing.h header file!)");
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 			if (oid > max_system_relid)
 				elog(ERROR, "system indexes must have an OID <= %d "
 							"(exactly as defined in indexing.h header file!)",
@@ -2871,7 +2873,8 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 			Oid table_oid = strtol(defGetString(def), NULL, 10);
 
 			Oid max_system_relid = (yb_test_system_catalogs_creation
-									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+									? FirstNormalObjectId - 1
+									: YB_LAST_USED_OID);
 
 			if (!is_system && table_oid < FirstNormalObjectId)
 			{

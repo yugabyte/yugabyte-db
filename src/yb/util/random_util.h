@@ -56,6 +56,8 @@ std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
 std::string RandomHumanReadableString(size_t len, Random* rnd);
 
+bool IsRandomInitializingInThisThread();
+
 class RandomDeviceSequence {
  public:
   typedef std::random_device::result_type result_type;

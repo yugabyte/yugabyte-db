@@ -194,6 +194,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                            AlterUniverseReplicationResponsePB* resp,
                                            rpc::RpcContext* rpc);
 
+  Status ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req,
+                            ChangeXClusterRoleResponsePB* resp,
+                            rpc::RpcContext* rpc);
+
   // Enable/Disable an Existing Universe Replication.
   Status SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
                                                SetUniverseReplicationEnabledResponsePB* resp,
