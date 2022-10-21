@@ -57,7 +57,7 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Java application development.
+The following sections demonstrate how to perform common tasks required for Java application development using the Vert.x PG Client.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 {{< note title="Note" >}}
