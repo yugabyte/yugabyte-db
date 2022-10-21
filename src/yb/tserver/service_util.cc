@@ -210,7 +210,7 @@ Status CheckPeerIsReady(
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
 
-  auto* tablet = tablet_peer.tablet();
+  auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet_safe());
   SCHECK(tablet != nullptr, IllegalState, "Expected tablet peer to have a tablet");
   const auto tablet_data_state = tablet->metadata()->tablet_data_state();
   if (!allow_split_tablet &&
@@ -261,13 +261,12 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
     return s;
   }
 
-  result.tablet = result.tablet_peer->shared_tablet();
-  if (!result.tablet) {
-    Status s = STATUS(IllegalState,
-                      "Tablet not running",
-                      TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
-    return s;
+  auto tablet_result = result.tablet_peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    return tablet_result.status().CloneAndAddErrorCode(TabletServerError(
+        TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
+  result.tablet = *tablet_result;
   return result;
 }
 
@@ -292,9 +291,7 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
-    tablet_ptr = tablet_peer->shared_tablet();
-    LOG_IF(DFATAL, tablet_ptr == nullptr)
-        << "Empty tablet pointer for tablet id: " << tablet_id;
+    tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   } else {
     auto tablet_peer_result = VERIFY_RESULT(LookupTabletPeer(tablet_manager, tablet_id));
 
@@ -321,7 +318,8 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
         auto consensus = tablet_peer->shared_consensus();
         // TODO(hector): This safe time could be reused by the read operation.
-        auto safe_time_micros = tablet_peer->tablet()->mvcc_manager()->SafeTimeForFollower(
+        auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+        auto safe_time_micros = tablet->mvcc_manager()->SafeTimeForFollower(
             HybridTime::kMin, CoarseTimePoint::min()).GetPhysicalValueMicros();
         auto now_micros = tablet_peer->clock_ptr()->Now().GetPhysicalValueMicros();
         auto follower_staleness_us = now_micros - safe_time_micros;
@@ -331,7 +329,8 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
           return STATUS(
               IllegalState, "Stale follower",
               TabletServerError(TabletServerErrorPB::STALE_FOLLOWER));
-        } else if (PREDICT_FALSE(
+        }
+        if (PREDICT_FALSE(
             FLAGS_TEST_assert_reads_from_follower_rejected_because_of_staleness)) {
           LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true,"
                      << " but peer " << tablet_peer->permanent_uuid()
@@ -382,7 +381,7 @@ Status RejectWrite(
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
-  auto tablet = tablet_peer->tablet();
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->leader_memory_pressure_rejections->Increment();

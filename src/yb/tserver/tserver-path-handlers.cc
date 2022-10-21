@@ -372,7 +372,12 @@ void HandleRocksDBPage(
   std::stringstream *output = &resp->output;
   *output << "<h1>RocksDB for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
 
-  auto doc_db = peer->tablet()->doc_db();
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *output << tablet_result.status();
+    return;
+  }
+  auto doc_db = (*tablet_result)->doc_db();
   DumpRocksDB("Regular", doc_db.regular, output);
   DumpRocksDB("Intents", doc_db.intents, output);
 }
@@ -466,7 +471,8 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
     vector<OperationStatusPB> inflight;
 
-    if (peer->tablet() == nullptr) {
+    auto tablet = peer->shared_tablet();
+    if (tablet == nullptr) {
       continue;
     }
 
@@ -665,7 +671,8 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     string table_name = status.table_name();
     string table_id = status.table_id();
     string tablet_id_or_link;
-    if (peer->tablet() != nullptr) {
+    auto tablet = peer->shared_tablet();
+    if (tablet != nullptr) {
       tablet_id_or_link = TabletLink(id);
     } else {
       tablet_id_or_link = EscapeForHtmlToString(id);
@@ -674,11 +681,11 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
     );
 
-    string partition = peer->tablet_metadata()->partition_schema()
+    auto tablet_metadata = peer->tablet_metadata();
+    string partition = tablet_metadata->partition_schema()
                             ->PartitionDebugString(*peer->status_listener()->partition(),
-                                                   *peer->tablet_metadata()->schema());
+                                                   *tablet_metadata->schema());
 
-    auto tablet = peer->shared_tablet();
     uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
 
     // TODO: would be nice to include some other stuff like memory usage

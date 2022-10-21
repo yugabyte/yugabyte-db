@@ -122,7 +122,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<string> GetTabletDbPath() {
     for (const auto& peer : cluster_->GetTabletPeers(0)) {
-      if (peer->table_type() == TableType::YQL_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::YQL_TABLE_TYPE) {
         return peer->tablet_metadata()->rocksdb_dir();
       }
     }
