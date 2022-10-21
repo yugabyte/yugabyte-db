@@ -4,6 +4,11 @@
 package util
 
 import (
+	"crypto"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -114,4 +119,48 @@ func GenerateJWT(config *Config) (string, error) {
 	FileLogger().Infof("Created JWT using %s key", config.String(PlatformCertsKey))
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(key)
+}
+
+func PublicKey(config *Config) (crypto.PublicKey, error) {
+	certFilepath := ServerCertPath(config)
+	bytes, err := ioutil.ReadFile(certFilepath)
+	if err != nil {
+		FileLogger().Errorf("Error while reading the certificate: %s", err.Error())
+		return nil, err
+	}
+	block, _ := pem.Decode(bytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		FileLogger().Errorf("Error while parsing the certificate: %s", err.Error())
+		return nil, err
+	}
+	if cert.PublicKeyAlgorithm != x509.RSA {
+		err = errors.New("RSA public key is expected")
+		FileLogger().Errorf("Error - %s", err.Error())
+		return nil, err
+	}
+	return cert.PublicKey, nil
+}
+
+func VerifyJWT(config *Config, authToken string) (*jwt.MapClaims, error) {
+	publicKey, err := PublicKey(config)
+	if err != nil {
+		FileLogger().Errorf("Error in getting the public key: %s", err.Error())
+		return nil, err
+	}
+	token, err := jwt.ParseWithClaims(
+		authToken,
+		&jwt.MapClaims{},
+		func(token *jwt.Token) (interface{}, error) {
+			_, ok := token.Method.(*jwt.SigningMethodRSA)
+			if !ok {
+				return nil, fmt.Errorf("Unexpected token signing method")
+			}
+			return publicKey, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid token: %w", err)
+	}
+	return token.Claims.(*jwt.MapClaims), nil
 }

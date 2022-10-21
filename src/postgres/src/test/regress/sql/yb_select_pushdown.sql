@@ -189,6 +189,16 @@ ANALYZE tlateral1, tlateral2;
 EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
 SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
 
+-- Test PARAM_EXEC pushdown when parameters are coming from a subplan
+CREATE TABLE tmaster(k int primary key, v1 int, v2 int);
+INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+CREATE TABLE tsub(k int primary key, v1 int, v2 int);
+INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
+EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+
+DROP TABLE tmaster;
+DROP TABLE tsub;
 DROP TABLE tlateral1;
 DROP TABLE tlateral2;
 DROP TABLE pushdown_range;

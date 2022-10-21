@@ -1,7 +1,7 @@
 ---
 title: Use an ORM
 linkTitle: Use an ORM
-description: ActiveRecord ORM support for YugabyteDB
+description: Active Record ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,35 +11,69 @@ menu:
 type: docs
 ---
 
-## Clone the orm-examples repository
+[Active Record](https://guides.rubyonrails.org/active_record_basics.html) is an Object Relational Mapping (ORM) tool for Ruby applications.
 
-```sh
-$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
-```
+YugabyteDB YSQL API has full compatibility with Active Record ORM for data persistence in Ruby applications.
 
-```sh
-bundle install
-```
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
-This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through ActiveRecord ORM. It consists of the following.
+## CRUD operations
+
+This page provides details for getting started with Active Record ORM for connecting to YugabyteDB using the [orm-examples](https://github.com/YugabyteDB-Samples/orm-examples.git) repository.
+
+This repository has a Ruby on Rails example that implements a basic REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Active Record ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are a number of options that can be customized in the properties file located at `config/database.yml`.
+The source for the above application can be found in the [repository](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror). There are options that can be customized in the properties file located at `config/database.yml`.
 
-## Build and run the application
+### Clone the orm-examples repository
 
 ```sh
-$ cd ./ruby/ror
+$ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
+```
+
+### Build and run the application
+
+To install the dependencies specified in your project Gemfile, do the following:
+
+```sh
+$ cd ./orm-examples/ruby/ror/
 ```
 
 ```sh
 $ ./bin/bundle install
 ```
 
-## Send requests to the application
+Create a database using the following command:
+
+```sh
+$ bin/rails db:create
+```
+
+You should see output similar to the following:
+
+```output
+Created database 'ysql_active_record'
+```
+
+Perform migration to create tables and add columns using the following command:
+
+```sh
+$ bin/rails db:migrate
+```
+
+Start the rails server using the following command:
+
+```sh
+$ bin/rails server
+```
+
+### Send requests to the application
+
+Send requests to the application from another terminal as follows:
 
 Create 2 users.
 
@@ -81,9 +115,9 @@ $ curl \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
-## Query results
+### Query results
 
-### Using the YSQL shell
+#### Using the YSQL shell
 
 ```sh
 $ ./bin/ysqlsh
@@ -96,8 +130,14 @@ Type "help" for help.
 yugabyte=#
 ```
 
-```plpgsql
-yugabyte=# SELECT count(*) FROM users;
+Connect to the database mentioned in `config/database.yml` file. Default is `ysql_active_record`.
+
+```sql
+yugabyte=# \c ysql_active_record
+```
+
+```sql
+ysql_active_record=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -107,8 +147,8 @@ yugabyte=# SELECT count(*) FROM users;
 (1 row)
 ```
 
-```plpgsql
-yugabyte=# SELECT count(*) FROM products;
+```sql
+ysql_active_record=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -118,8 +158,8 @@ yugabyte=# SELECT count(*) FROM products;
 (1 row)
 ```
 
-```plpgsql
-yugabyte=# SELECT count(*) FROM orders;
+```sql
+ysql_active_record=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -129,7 +169,7 @@ yugabyte=# SELECT count(*) FROM orders;
 (1 row)
 ```
 
-### Using the REST API
+#### Using the REST API
 
 ```sh
 $ curl http://localhost:8080/users
@@ -189,26 +229,14 @@ $ curl http://localhost:8080/orders
     {
       "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 25,
       "products": []
     },
     {
       "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 15,
       "products": []
     }
@@ -217,6 +245,7 @@ $ curl http://localhost:8080/orders
 }
 ```
 
-## Explore the source
+## Learn more
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/ruby/ror).
+- Build Ruby applications using [Pg Gem Driver](../ysql-pg/).
+- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/).

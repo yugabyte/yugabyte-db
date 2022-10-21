@@ -41,6 +41,8 @@ class rw_semaphore;
 
 namespace tablet {
 
+class TabletRestorePatch;
+
 YB_DEFINE_ENUM(CreateIntentsCheckpointIn, (kSubDir)(kUseIntentsDbSuffix));
 
 struct CreateSnapshotData {
@@ -110,6 +112,9 @@ class TabletSnapshots : public TabletComponent {
   Env& env();
 
   Status RestorePartialRows(SnapshotOperation* operation);
+
+  Result<TabletRestorePatch> GenerateRestoreWriteBatch(
+      const tserver::TabletSnapshotOpRequestPB& request, docdb::DocWriteBatch* write_batch);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };

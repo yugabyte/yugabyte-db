@@ -35,6 +35,8 @@
 #include "parser/parse_type.h"
 #include "utils/lsyscache.h"
 #include "commands/dbcommands.h"
+#include "executor/executor.h"
+#include "executor/nodeSubplan.h"
 #include "executor/tuptable.h"
 #include "miscadmin.h"
 #include "utils/syscache.h"
@@ -102,19 +104,13 @@ Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate)
 		if (param->paramkind == PARAM_EXEC)
 		{
 			ParamExecData *prm = &(estate->es_param_exec_vals[param->paramid]);
-			/*
-			 * We do not support obtaining parameter values from a subplan yet,
-			 * and we are not aware of any cases when it is required.
-			 * Make a user friendly error message and suggest a workaround if
-			 * such a case is encountered in the wild.
-			 */
 			if (prm->execPlan != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Pushdown of param values provided by subplans "
-						 		"is not supported"),
-						 errhint("Please set yb_enable_expression_pushdown "
-								 "to false in order to run this query")));
+			{
+				/* Parameter not evaluated yet, so go do it */
+				ExecSetParamPlan(prm->execPlan, GetPerTupleExprContext(estate));
+				/* ExecSetParamPlan should have processed this param... */
+				Assert(prm->execPlan == NULL);
+			}
 			pval = prm->value;
 			pnull = prm->isnull;
 		}

@@ -152,7 +152,7 @@ static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::st
   return true;
 }
 
-REGISTER_VALIDATOR(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
+DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
 
 using gflags::CommandLineFlagInfo;
 using std::string;

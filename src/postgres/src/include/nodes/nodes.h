@@ -53,7 +53,6 @@ typedef enum NodeTag
 	T_BitmapOr,
 	T_Scan,
 	T_SeqScan,
-	T_YbSeqScan,
 	T_SampleScan,
 	T_IndexScan,
 	T_IndexOnlyScan,
@@ -71,7 +70,6 @@ typedef enum NodeTag
 	T_CustomScan,
 	T_Join,
 	T_NestLoop,
-	T_YbBatchedNestLoop,
 	T_MergeJoin,
 	T_HashJoin,
 	T_Material,
@@ -111,7 +109,6 @@ typedef enum NodeTag
 	T_BitmapOrState,
 	T_ScanState,
 	T_SeqScanState,
-	T_YbSeqScanState,
 	T_SampleScanState,
 	T_IndexScanState,
 	T_IndexOnlyScanState,
@@ -129,7 +126,6 @@ typedef enum NodeTag
 	T_CustomScanState,
 	T_JoinState,
 	T_NestLoopState,
-	T_YbBatchedNestLoopState,
 	T_MergeJoinState,
 	T_HashJoinState,
 	T_MaterialState,
@@ -522,7 +518,11 @@ typedef enum NodeTag
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
 	T_PartitionPruneStepFuncOp,
-	T_YbExprParamDesc
+	T_YbExprParamDesc,
+	T_YbSeqScan,
+	T_YbSeqScanState,
+	T_YbBatchedNestLoop,
+	T_YbBatchedNestLoopState
 
 } NodeTag;
 

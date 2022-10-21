@@ -40,7 +40,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
@@ -54,11 +54,6 @@ DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
              "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
              "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
-
-DEFINE_bool(xcluster_consistent_reads, false,
-    "Enable database level consistent reads in xCluster replicated databases");
-TAG_FLAG(xcluster_consistent_reads, runtime);
-TAG_FLAG(xcluster_consistent_reads, experimental);
 
 DEFINE_int32(xcluster_safe_time_update_interval_secs, 1,
     "The interval at which xcluster safe time is computed. This controls the staleness of the data "
@@ -74,9 +69,7 @@ static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 v
   return true;
 }
 
-static const bool FLAGS_xcluster_safe_time_update_interval_secs_dummy __attribute__((unused)) =
-    google::RegisterFlagValidator(
-        &FLAGS_xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
+DEFINE_validator(xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -146,18 +139,19 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
   return cdc_consumer;
 }
 
-CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
-                         rpc::ProxyCache* proxy_cache,
-                         const string& ts_uuid,
-                         std::unique_ptr<CDCClient> local_client,
-                         client::TransactionManager* transaction_manager) :
-  is_leader_for_tablet_(std::move(is_leader_for_tablet)),
-  rpcs_(new rpc::Rpcs),
-  log_prefix_(Format("[TS $0]: ", ts_uuid)),
-  local_client_(std::move(local_client)),
-  last_safe_time_published_at_(MonoTime::Now()),
-  xcluster_safe_time_table_ready_(false),
-  transaction_manager_(transaction_manager) {}
+CDCConsumer::CDCConsumer(
+    std::function<bool(const std::string&)> is_leader_for_tablet,
+    rpc::ProxyCache* proxy_cache,
+    const string& ts_uuid,
+    std::unique_ptr<CDCClient>
+        local_client,
+    client::TransactionManager* transaction_manager)
+    : is_leader_for_tablet_(std::move(is_leader_for_tablet)),
+      rpcs_(new rpc::Rpcs),
+      log_prefix_(Format("[TS $0]: ", ts_uuid)),
+      local_client_(std::move(local_client)),
+      last_safe_time_published_at_(MonoTime::Now()),
+      transaction_manager_(transaction_manager) {}
 
 CDCConsumer::~CDCConsumer() {
   Shutdown();
@@ -281,12 +275,14 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   if (!consumer_registry) {
     LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
+    consumer_role_ = cdc::XClusterRole::ACTIVE;
     cond_.notify_all();
     return;
   }
 
   LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
+  consumer_role_ = consumer_registry->role();
   streams_with_local_tserver_optimization_.clear();
   stream_to_schema_version_.clear();
 
@@ -560,14 +556,14 @@ Status CDCConsumer::ReloadCertificates() {
 }
 
 Status CDCConsumer::PublishXClusterSafeTime() {
+  if (consumer_role_ == cdc::XClusterRole::ACTIVE) {
+    return Status::OK();
+  }
+
   const client::YBTableName safe_time_table_name(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
 
   std::lock_guard<std::mutex> l(safe_time_update_mutex_);
-
-  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
-    return Status::OK();
-  }
 
   int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {

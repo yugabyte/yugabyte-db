@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"node-agent/app/executor"
 	"node-agent/app/scheduler"
 	"node-agent/app/task"
@@ -62,7 +63,7 @@ loop:
 			return
 		}
 	}
-	server, err := NewRPCServer(ctx, host, port, true)
+	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), true)
 	if err != nil {
 		util.FileLogger().Fatalf("Error in starting RPC server - %s", err.Error())
 	}

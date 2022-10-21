@@ -89,7 +89,7 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ## Fundamentals
 
-Learn how to perform the common tasks required for Java App Development using the PostgreSQL JDBC driver
+Learn how to perform common tasks required for Java application development using the YugabyteDB JDBC driver.
 
 {{< note title="Note">}}
 

@@ -102,3 +102,8 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')
 Query returned: John 35 Ruby
 ```
+
+## Learn more
+
+- Build Ruby applications using [Pg Gem Driver](../ysql-pg/).
+- Build Ruby applications using [Active Record ORM](../activerecord/).

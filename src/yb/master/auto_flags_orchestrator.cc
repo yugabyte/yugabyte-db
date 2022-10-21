@@ -24,6 +24,7 @@
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/auto_flags_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 using std::vector;
@@ -50,7 +51,6 @@ bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
   return true;
 }
 
-__attribute__((unused))
 DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClass);
 
 }  // namespace
