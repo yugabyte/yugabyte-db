@@ -2619,7 +2619,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
       InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
       ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
           leader_tserver, tablet_id_,
-          MonoDelta::FromSeconds(10)));
+          15s * kTimeMultiplier));
     }
   }
 
