@@ -482,6 +482,11 @@ run_cxx_build() {
     exit
   fi
 
+  if [[ ${build_cxx} == "false" ]]; then
+    log "Skipping C++ build after invoking CMake."
+    return
+  fi
+
   if [[ ${#object_files_to_delete[@]} -gt 0 ]]; then
     log_empty_line
     log "Deleting object files corresponding to: ${object_files_to_delete[*]}"
@@ -1383,7 +1388,7 @@ if [[ -z $reduce_log_output ]]; then
   fi
 fi
 
-if ! "$build_java" && "$resolve_java_dependencies"; then
+if [[ ${build_java} != "true" && ${resolve_java_dependencies} == "true" ]]; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 

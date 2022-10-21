@@ -18,7 +18,6 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/transaction.proto";
-import "yb/consensus/metadata.proto";
 import "yb/docdb/docdb.proto";
 import "yb/tablet/metadata.proto";
 
