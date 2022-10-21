@@ -15,7 +15,9 @@ import {
   MetricOrigin,
   DEFAULT_OUTLIER_NUM_NODES,
   MIN_OUTLIER_NUM_NODES,
-  MAX_OUTLIER_NUM_NODES
+  MAX_OUTLIER_NUM_NODES,
+  MAX_OUTLIER_NUM_TABLES,
+  SplitType
 } from '../../metrics/constants';
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
@@ -59,8 +61,9 @@ const outlierTypes = [
 ];
 
 const metricMeasureTypes = [
-  { value: MetricMeasure.OVERALL, },
-  { value: MetricMeasure.OUTLIER },
+  { value: MetricMeasure.OVERALL, label: 'Overall' },
+  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes' },
+  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' },
 ];
 
 const DEFAULT_FILTER_KEY = 0;
@@ -126,9 +129,7 @@ class GraphPanelHeader extends Component {
       refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel,
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
-      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
-      isOneNodeInSelectedZone: false,
-      isOneNodeInSelectedRegion: false
+      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
     };
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
@@ -228,7 +229,8 @@ class GraphPanelHeader extends Component {
       !_.isEqual(nextState, this.state) ||
       !_.isEqual(nextProps.universe, this.props.universe) ||
       this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled ||
-      this.props.visibleModal !== nextProps.visibleModal
+      this.props.visibleModal !== nextProps.visibleModal ||
+      this.props.graph?.tabName !== nextProps.graph?.tabName
     );
   }
 
@@ -313,9 +315,7 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value,
-        isOneNodeInSelectedZone: false,
-        isOneNodeInSelectedRegion: false
+        metricMeasure: metricMeasureTypes[0].value
       });
       newParams.nodePrefix = matchedUniverse.universeDetails.nodePrefix;
     } else {
@@ -326,9 +326,7 @@ class GraphPanelHeader extends Component {
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
-        metricMeasure: metricMeasureTypes[0].value,
-        isOneNodeInSelectedZone: false,
-        isOneNodeInSelectedRegion: false
+        metricMeasure: metricMeasureTypes[0].value
       });
       newParams.nodePrefix = null;
     }
@@ -374,29 +372,15 @@ class GraphPanelHeader extends Component {
     this.updateUrlQueryParams(newParams);
   };
 
-  nodeItemChanged = (nodeName, nodeItems, selectedZoneName) => {
-    let nodesInSelectedZone = [];
-    if (selectedZoneName) {
-      nodesInSelectedZone = nodeItems.filter((nodeItem) => selectedZoneName === nodeItem.cloudInfo.az);
-    }
-
+  nodeItemChanged = (nodeName, selectedZoneName) => {
     const newParams = _.cloneDeep(this.state);
     newParams.nodeName = nodeName;
     newParams.selectedZoneName = selectedZoneName;
     this.setState({
       nodeName: nodeName,
-      selectedZoneName: selectedZoneName,
-      isOneNodeInSelectedZone: false
+      selectedZoneName: selectedZoneName
     });
 
-    // When number of nodes in a selected zone is 1, button focus should move to Overall
-    if (nodeName && (nodeName !== MetricConsts.ALL || nodesInSelectedZone?.length === 1)) {
-      this.setState({
-        metricMeasure: MetricMeasure.OVERALL,
-        isOneNodeInSelectedZone: true
-      });
-      newParams.metricMeasure = MetricMeasure.OVERALL;
-    }
     this.updateUrlQueryParams(newParams);
   };
 
@@ -407,28 +391,10 @@ class GraphPanelHeader extends Component {
       selectedRegionClusterUUID: clusterId,
       selectedRegionCode: regionCode,
       nodeName: MetricConsts.ALL,
-      isOneNodeInSelectedZone: false,
-      isOneNodeInSelectedRegion: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
       selectedZoneName: null,
     });
 
-    const currentSelectedUniverse = this.state.currentSelectedUniverse;
-    const nodeDetailsSet = currentSelectedUniverse?.universeDetails?.nodeDetailsSet;
-    // When number of nodes in a selected region or cluster is 1, button focus should move to Overall
-    if (clusterId && nodeDetailsSet?.length) {
-      const nodesInSelectedRegion = nodeDetailsSet.filter(
-        (nodeDetail) => clusterId === nodeDetail.placementUuid);
-      if (nodesInSelectedRegion.length === 1) {
-        this.setState({
-          metricMeasure: MetricMeasure.OVERALL,
-          isOneNodeInSelectedRegion: true,
-          // If there is one node in selected region, then there cannot be more than one node in the zone
-          isOneNodeInSelectedZone: true,
-        });
-        newParams.metricMeasure = MetricMeasure.OVERALL;
-      }
-    }
     newParams.selectedZoneName = null;
     newParams.nodeName = MetricConsts.ALL;
     newParams.selectedRegionCode = regionCode;
@@ -437,16 +403,16 @@ class GraphPanelHeader extends Component {
     this.updateUrlQueryParams(newParams);
   }
 
+  // Go to Outlier, select YCQL OPs, last 6 hrs, select single region which has one node and then select TOP K TABLES 
   onMetricMeasureChanged = (selectedMetricMeasureValue) => {
     const newParams = _.cloneDeep(this.state);
-    if (this.state.nodeName &&
-      this.state.nodeName === MetricConsts.ALL) {
-      this.setState({
-        metricMeasure: selectedMetricMeasureValue
-      });
-      newParams.metricMeasure = selectedMetricMeasureValue;
-      this.updateUrlQueryParams(newParams);
-    }
+    this.setState({
+      metricMeasure: selectedMetricMeasureValue,
+      // Always have default number for outlier value when metric measure changes 
+      outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
+    });
+    newParams.metricMeasure = selectedMetricMeasureValue;
+    this.updateUrlQueryParams(newParams);
   }
 
   onOutlierTypeChanged = (selectedOutlierType) => {
@@ -460,8 +426,11 @@ class GraphPanelHeader extends Component {
 
   setNumNodeValue = (outlierNumNodes) => {
     const newParams = _.cloneDeep(this.state);
+    const maxOutlierValue = this.state.metricMeasure === MetricMeasure.OUTLIER
+      ? MAX_OUTLIER_NUM_NODES
+      : MAX_OUTLIER_NUM_TABLES
     if (typeof outlierNumNodes === 'number'
-      && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= MAX_OUTLIER_NUM_NODES
+      && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= maxOutlierValue
     ) {
       this.setState({
         outlierNumNodes
@@ -617,6 +586,8 @@ class GraphPanelHeader extends Component {
       }
     }
 
+    const splitType = this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ?
+      SplitType.TABLE : SplitType.NODE;
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
@@ -655,8 +626,9 @@ class GraphPanelHeader extends Component {
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
                         enableTopKMetrics={enableTopKMetrics}
+                        selectedRegionCode={this.state.selectedRegionCode}
                       />}
-                    {liveQueriesLink && !universePaused && !enableTopKMetrics &&(
+                    {liveQueriesLink && !universePaused && !enableTopKMetrics && (
                       <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
                         <i className="fa fa-search" /> See Queries
                       </Link>
@@ -768,9 +740,6 @@ class GraphPanelHeader extends Component {
                       metricMeasureTypes={metricMeasureTypes}
                       selectedMetricMeasureValue={this.state.metricMeasure}
                       onMetricMeasureChanged={this.onMetricMeasureChanged}
-                      selectedNode={this.state.nodeName}
-                      isOneNodeInSelectedZone={this.state.isOneNodeInSelectedZone}
-                      isOneNodeInSelectedRegion={this.state.isOneNodeInSelectedRegion}
                     />
                   }
                 </FlexGrow>
@@ -789,13 +758,18 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {enableTopKMetrics && this.state.metricMeasure === MetricMeasure.OUTLIER &&
+                  {/* Show Outlier Selector component if user has selected Outlier section
+                  or if user has selected TopTables tab in Overall section  */}
+                  {enableTopKMetrics && currentSelectedUniverse !== MetricConsts.ALL &&
+                    ((this.state.metricMeasure === MetricMeasure.OUTLIER) ||
+                      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
                     <OutlierSelector
                       outlierTypes={outlierTypes}
                       selectedOutlierType={this.state.outlierType}
                       onOutlierTypeChanged={this.onOutlierTypeChanged}
                       setNumNodeValue={this.setNumNodeValue}
                       defaultOutlierNumNodes={this.state.outlierNumNodes}
+                      splitType={splitType}
                     />}
                 </FlexGrow>
               </FlexContainer>

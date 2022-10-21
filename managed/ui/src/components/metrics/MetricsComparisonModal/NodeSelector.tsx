@@ -13,7 +13,8 @@ interface NodeSelectorData {
   topNodesSelection?: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
-  enableTopKMetrics: boolean
+  enableTopKMetrics: boolean;
+  selectedRegionCode: string;
 }
 
 export const NodeSelector: FC<NodeSelectorData> = ({
@@ -25,7 +26,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   topNodesSelection,
   selectedRegionClusterUUID,
   selectedZoneName,
-  enableTopKMetrics
+  enableTopKMetrics,
+  selectedRegionCode
 }) => {
   let nodeItems: any[] = [];
   let nodeItemsElement: any = [];
@@ -53,7 +55,8 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   if (enableTopKMetrics) {
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
-      nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionClusterUUID === nodeItem.placementUuid);
+      nodeItems = nodeItems.filter((nodeItem: any) => selectedRegionCode ? selectedRegionClusterUUID === nodeItem.placementUuid
+        && nodeItem.cloudInfo?.region === selectedRegionCode : selectedRegionClusterUUID === nodeItem.placementUuid);
     }
 
     nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
@@ -67,7 +70,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         zoneDividerElement = isNonEmptyString(zone) ? (<div id="zone-divider" className="divider" />) : null;
         zoneNameElement = (
           <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItems, nodeItem.cloudInfo.az)}
+            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az)}
             key={zoneKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
@@ -87,7 +90,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           {zoneNameElement}
           {nodeItems.length > 1 && isZoneDivider ? zoneDividerElement : null}
           <MenuItem
-            onSelect={() => nodeItemChanged(nodeItem.nodeName, nodeItems, null)}
+            onSelect={() => nodeItemChanged(nodeItem.nodeName, null)}
             key={nodeKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
@@ -112,7 +115,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
     const defaultMenuItem = (
       <Fragment>
         <MenuItem
-          onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItems, null)}
+          onSelect={() => nodeItemChanged(MetricConsts.ALL, null)}
           key={MetricConsts.ALL}
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
@@ -124,7 +127,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         </MenuItem>
         {topNodesSelection &&
           <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.TOP, nodeItems, null)}
+            onSelect={() => nodeItemChanged(MetricConsts.TOP, null)}
             key={MetricConsts.TOP}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected

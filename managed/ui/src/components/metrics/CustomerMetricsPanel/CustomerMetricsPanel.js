@@ -12,8 +12,11 @@ import {
   MetricTypes,
   MetricTypesWithOperations,
   MetricTypesByOrigin,
-  APIMetricToNodeFlag
+  MetricMeasure,
+  APIMetricToNodeFlag,
+  MetricConsts
 } from '../../metrics/constants';
+import { graphPanelTypes } from '../GraphPanel/GraphPanel';
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
@@ -28,17 +31,20 @@ import './CustomerMetricsPanel.scss';
  * Move this logic out of render function because we need `selectedUniverse` prop
  * that gets passed down from the `GraphPanelHeader` component.
  */
-const PanelBody = ({ origin,
+const PanelBody = ({
+  origin,
   selectedUniverse,
   nodePrefixes,
   width,
   tableName,
-  featureFlags
+  featureFlags,
+  graph
 }) => {
   const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
   let result = null;
 
   if (isTopKMetricsEnabled) {
+    let invalidTabType = [];
     // List of default tabs to display based on metrics origin
     let defaultTabToDisplay = MetricTypes.YSQL_OPS;
     if (origin === MetricOrigin.TABLE) {
@@ -47,50 +53,88 @@ const PanelBody = ({ origin,
       defaultTabToDisplay = MetricTypes.SERVER;
     }
 
-    result = (
-      <YBTabsPanel
-        defaultTab={defaultTabToDisplay}
-        id="overall-metrics"
-      >
-        {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
-          const invalidTabType =
-            selectedUniverse && isKubernetesUniverse(selectedUniverse)
-              ? MetricTypes.SERVER
-              : MetricTypes.CONTAINER;
-          const tabTitle = MetricTypesWithOperations[type].title;
-          const metricContent = MetricTypesWithOperations[type];
-          if (
-            !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
-            selectedUniverse?.universeDetails?.nodeDetailsSet.some(
-              (node) => node[APIMetricToNodeFlag[type]]
-            )
-          ) {
-            if (!(invalidTabType === type)) {
-              prevTabs.push(
-                <Tab
-                  eventKey={type}
-                  title={tabTitle}
-                  key={`${type}-tab`}
-                  mountOnEnter={true}
-                  unmountOnExit={true}
-                >
-                  <GraphTab
-                    type={type}
-                    metricsKey={metricContent.metrics}
-                    nodePrefixes={nodePrefixes}
-                    selectedUniverse={selectedUniverse}
-                    title={metricContent.title}
-                    width={width}
-                    tableName={tableName}
-                  />
-                </Tab>
-              );
+    const metricMeasure = graph?.graphFilter?.metricMeasure;
+    if (metricMeasure === MetricMeasure.OUTLIER || selectedUniverse === MetricConsts.ALL
+      || metricMeasure === MetricMeasure.OVERALL) {
+      invalidTabType.push(MetricTypes.OUTLIER_TABLES);
+    }
+    selectedUniverse && isKubernetesUniverse(selectedUniverse)
+      ? invalidTabType.push(MetricTypes.SERVER)
+      : invalidTabType.push(MetricTypes.CONTAINER);
+
+    if (metricMeasure === MetricMeasure.OUTLIER
+      || metricMeasure === MetricMeasure.OVERALL
+      || origin === MetricOrigin.TABLE) {
+      result = (
+        <YBTabsPanel
+          defaultTab={defaultTabToDisplay}
+          className="overall-metrics-by-origin"
+        >
+          {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
+
+
+
+
+            const tabTitle = MetricTypesWithOperations[type].title;
+            const metricContent = MetricTypesWithOperations[type];
+            if (
+              !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
+              selectedUniverse?.universeDetails?.nodeDetailsSet.some(
+                (node) => node[APIMetricToNodeFlag[type]]
+              )
+            ) {
+              if (!(invalidTabType.includes(type))) {
+                prevTabs.push(
+                  <Tab
+                    eventKey={type}
+                    title={tabTitle}
+                    key={`${type}-tab`}
+                    mountOnEnter={true}
+                    unmountOnExit={true}
+                  >
+                    <GraphTab
+                      type={type}
+                      metricsKey={metricContent.metrics}
+                      nodePrefixes={nodePrefixes}
+                      selectedUniverse={selectedUniverse}
+                      title={metricContent.title}
+                      width={width}
+                      tableName={tableName}
+                    />
+                  </Tab>
+                );
+              }
             }
-          }
-          return prevTabs;
-        }, [])}
-      </YBTabsPanel>
-    );
+            return prevTabs;
+          }, [])}
+        </YBTabsPanel>);
+    } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
+      result = (
+        <YBTabsPanel
+          defaultTab={MetricTypes.OUTLIER_TABLES}
+          activeTab={MetricTypes.OUTLIER_TABLES}
+          className="overall-metrics-by-origin"
+        >
+          <Tab
+            eventKey={MetricTypes.OUTLIER_TABLES}
+            title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+            key={`${MetricTypes.OUTLIER_TABLES}-tab`}
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <GraphTab
+              type={MetricTypes.OUTLIER_TABLES}
+              metricsKey={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].metrics}
+              nodePrefixes={nodePrefixes}
+              selectedUniverse={selectedUniverse}
+              title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+              width={width}
+              tableName={tableName}
+            />
+          </Tab>
+        </YBTabsPanel>
+      );
+    }
     // TODO: Needs to be removed once Top K metrics is tested and integrated fully
   } else {
     const location = browserHistory.getCurrentLocation();
@@ -98,11 +142,11 @@ const PanelBody = ({ origin,
 
     result = (
       <PanelGroup id={origin + ' metrics'}>
-        {MetricTypesByOrigin[origin].data.reduce((prevPanels, type, idx) => {
+        {graphPanelTypes[origin].data.reduce((prevPanels, type, idx) => {
           // if we have subtab query param, then we would have that metric tab open by default
           const isOpen = currentQuery.subtab
             ? type === currentQuery.subtab
-            : MetricTypesByOrigin[origin].isOpen[idx];
+            : graphPanelTypes[origin].isOpen[idx];
 
           if (
             !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
