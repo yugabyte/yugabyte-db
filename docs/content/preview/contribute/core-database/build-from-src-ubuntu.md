@@ -50,42 +50,31 @@ Update packages on your system, install development tools and additional package
 
 ```sh
 sudo apt-get update
-sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build \
-                     cmake curl rsync python3-pip python3-venv zip autoconf libtool \
-                     pkg-config libssl1.0-dev libicu-dev bison flex \
-                     libncurses5-dev
+sudo apt-get install -y autoconf cmake curl git libtool maven ninja-build pkg-config python3-pip \
+                        python3-venv rsync zip pkg-config git libtool locales pkg-config git
+sudo locale-gen en_US.UTF-8
 ```
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
 
 ```sh
 cd ~/code/yugabyte-db
-./yb_build.sh release
+./yb_build.sh release --no-linuxbrew
+```
+
+To create a release archive suitable for deployment on a cluster node:
+```
+./yb_release --build_args="--no-linuxbrew"
 ```
 
 {{< note title="Note" >}}
 
-If you see errors, such as `g++: internal compiler error: Killed`, the system has probably run out of memory.
+If you see errors, such as `internal compiler error: Killed`, the system has probably run out of memory.
 Try again by running the build script with less concurrency, for example, `-j1`.
 
 {{< /note >}}
 
 The command above will build the release configuration, add the C++ binaries into the `build/release-gcc-dynamic-ninja` directory, and create a `build/latest` symlink to that directory.
-
-
-{{< note title="Note" >}}
-If you are getting errors in the form of:
-```
-uild/release-gcc-dynamic-ninja/postgres_build/src/backend/libpq/be-secure-openssl.o: In function `my_sock_read':
-src/postgres/src/backend/libpq/be-secure-openssl.c:665: undefined reference to `BIO_get_data'
-build/release-gcc-dynamic-ninja/postgres_build/src/backend/libpq/be-secure-openssl.o: In function `my_sock_write':
-src/postgres/src/backend/libpq/be-secure-openssl.c:685: undefined reference to `BIO_get_data'
-```
-The code is probably not finding the right path for libssl1.0. Try a clean build `./yb_build.sh --clean release`.
-If that doesn't work, look into your $PATH if some other openssl version path is being used.
-{{< /note >}}
-
-
 
 {{< tip title="Tip" >}}
 
