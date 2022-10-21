@@ -30,6 +30,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 ## Limitations
 
 - The sum of the replication factor for all read replicas of a cluster can't be greater than 7.
+- You can't change the replication factor after the read replica is created.
 
 ## Add or edit read replicas
 
