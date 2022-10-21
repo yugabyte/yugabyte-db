@@ -1747,6 +1747,10 @@
           "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
           "type" : "string"
         },
+        "allTables" : {
+          "description" : "Backup all tables in Keyspace",
+          "type" : "boolean"
+        },
         "alterLoadBalancer" : {
           "description" : "Alter load balancer state",
           "type" : "boolean"
@@ -4100,6 +4104,9 @@
     },
     "KeyspaceTablesList" : {
       "properties" : {
+        "allTables" : {
+          "type" : "boolean"
+        },
         "backupSizeInBytes" : {
           "format" : "int64",
           "type" : "integer"
@@ -4132,7 +4139,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
+      "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
     "KubernetesOverrideError" : {
@@ -4666,6 +4673,10 @@
           "description" : "Action type",
           "enum" : [ "CREATE", "RESTORE", "RESTORE_KEYS", "DELETE" ],
           "type" : "string"
+        },
+        "allTables" : {
+          "description" : "Backup all tables in Keyspace",
+          "type" : "boolean"
         },
         "alterLoadBalancer" : {
           "description" : "Alter load balancer state",
