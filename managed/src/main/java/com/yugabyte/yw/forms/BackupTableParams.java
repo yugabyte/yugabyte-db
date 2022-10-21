@@ -47,6 +47,9 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Full Table type backup")
   public Boolean isFullBackup = false;
 
+  @ApiModelProperty(value = "Backup all tables in Keyspace")
+  public boolean allTables = false;
+
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
 
