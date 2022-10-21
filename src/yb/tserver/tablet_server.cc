@@ -643,7 +643,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
   }
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
-    LOG(INFO) << "Invalidating the entire cache since catalog version incremented";
+    LOG(INFO) << "Invalidating PgTableCache cache since catalog version incremented";
     pg_client_service->InvalidateTableCache();
   }
 }

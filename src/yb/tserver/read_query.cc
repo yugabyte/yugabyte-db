@@ -362,7 +362,9 @@ Status ReadQuery::DoPerform() {
   }
 
   if (!abstract_tablet_->system() && tablet()->metadata()->hidden()) {
-    return STATUS(NotFound, "Tablet not found", req_->tablet_id());
+    return STATUS(
+        NotFound, "Tablet not found", req_->tablet_id(),
+        TabletServerError(TabletServerErrorPB::TABLET_NOT_FOUND));
   }
 
   if (FLAGS_TEST_simulate_time_out_failures_msecs > 0 && RandomUniformInt(0, 10) < 2) {

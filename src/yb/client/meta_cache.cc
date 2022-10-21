@@ -504,6 +504,11 @@ void RemoteTablet::GetRemoteTabletServers(
                     << (!status.ok() ? status : StatusFromPB(resp.error().status()));
                 continue;
               }
+              if (resp.tablet_status().is_hidden()) {
+                // Should continue here because otherwise failed state will be cleared.
+                VLOG_WITH_PREFIX(3) << "Tablet is hidden";
+                continue;
+              }
 
               DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
               VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
