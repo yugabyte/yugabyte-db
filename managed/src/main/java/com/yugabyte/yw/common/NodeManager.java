@@ -686,9 +686,7 @@ public class NodeManager extends DevopsBase {
       gflags.put(
           "pgsql_proxy_bind_address",
           String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
+      gflags.put("pgsql_proxy_webserver_port", Integer.toString(node.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put("ysql_enable_auth", "true");
         gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
@@ -716,9 +714,7 @@ public class NodeManager extends DevopsBase {
       gflags.put(
           "cql_proxy_bind_address",
           String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
+      gflags.put("cql_proxy_webserver_port", Integer.toString(node.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put("use_cassandra_authentication", "true");
       } else {
