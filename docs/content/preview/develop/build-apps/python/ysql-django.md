@@ -13,18 +13,6 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-psycopg2.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - psycopg2
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./ysql-aiopg.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - aiopg
-    </a>
-  </li>
-  <li >
     <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
