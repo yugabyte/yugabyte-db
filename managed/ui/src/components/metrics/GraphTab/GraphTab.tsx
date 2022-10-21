@@ -1,12 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { FC, Fragment, useEffect } from 'react';
+import React, { FC, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import {
   queryMetrics,
   queryMetricsSuccess,
   queryMetricsFailure,
+  currentTabSelected
 } from '../../../actions/graph';
 import {
   getTabContent
@@ -20,7 +21,7 @@ import {
   GraphFilter,
   MetricQueryParams
 } from '../../../redesign/helpers/dtos';
-import { MetricMeasure, MetricConsts } from '../../metrics/constants';
+import { MetricMeasure, MetricConsts, SplitType, MetricTypes } from '../../metrics/constants';
 
 export const GraphTab: FC<MetricsData> = ({
   type,
@@ -50,7 +51,6 @@ export const GraphTab: FC<MetricsData> = ({
   const dispatch: any = useDispatch();
 
   const queryMetricsType = () => {
-    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === MetricConsts.TOP) ? 1 : 0;
     const metricsWithSettings = metricsKey.map((metricKey) => {
       const settings: any = {
         metric: metricKey,
@@ -59,10 +59,13 @@ export const GraphTab: FC<MetricsData> = ({
         settings.nodeAggregation = "AVG";
         settings.splitMode = outlierType;
         settings.splitCount = outlierNumNodes;
-        // TODO: Will fix this hardcoded value in PLAT-5636
-        settings.splitType = "NODE";
-      } else if (metricMeasure === MetricMeasure.OVERALL) {
-        settings.splitTopNodes = splitTopNodes;
+        settings.splitType = SplitType.NODE;
+        // Top K tables section will be displayed only in case of Metrics Measure "Overall"
+      } else if (type === MetricTypes.OUTLIER_TABLES) {
+        settings.splitMode = outlierType;
+        settings.splitCount = outlierNumNodes;
+        settings.returnAggregatedValue = false;
+        settings.splitType = SplitType.TABLE;
       }
       return settings;
     });
@@ -75,12 +78,15 @@ export const GraphTab: FC<MetricsData> = ({
     if (isNonEmptyString(nodePrefix) && nodePrefix !== MetricConsts.ALL) {
       params.nodePrefix = nodePrefix;
     }
-    if (isNonEmptyString(nodeName) && nodeName !== MetricConsts.ALL && nodeName !== MetricConsts.TOP) {
-      params.nodeNames = [nodeName];
-    }
+
     // In case of universe metrics , nodePrefix comes from component itself
     if (isNonEmptyArray(nodePrefixes)) {
       params.nodePrefix = nodePrefixes[0];
+    }
+
+    // Top K tables section should not have the below query params
+    if (isNonEmptyString(nodeName) && nodeName !== MetricConsts.ALL && nodeName !== MetricConsts.TOP) {
+      params.nodeNames = [nodeName];
     }
     // If specific region or cluster is selected from region dropdown, pass clusterUUID and region code
     if (isNonEmptyString(selectedRegionClusterUUID)) {
@@ -110,9 +116,14 @@ export const GraphTab: FC<MetricsData> = ({
         dispatch(queryMetricsFailure(response.payload, type));
       }
     });
-  }
+  };
+
+  const setSelectedTabName = (type: string) => {
+    dispatch(currentTabSelected(type));
+  };
 
   useEffect(() => {
+    setSelectedTabName(type);
     queryMetricsType();
   }, [nodeName, // eslint-disable-line react-hooks/exhaustive-deps
     nodePrefix,
@@ -135,8 +146,8 @@ export const GraphTab: FC<MetricsData> = ({
   );
 
   return (
-    <Fragment>
+    <>
       {tabContent}
-    </Fragment>
+    </>
   );
 }

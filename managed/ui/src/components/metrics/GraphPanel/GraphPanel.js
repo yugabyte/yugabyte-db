@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
+// TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully (PLAT-5689)
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
@@ -15,6 +15,46 @@ import {
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { YUGABYTE_TITLE } from '../../../config';
+
+export const graphPanelTypes = {
+  universe: {
+    data: [
+      'ysql_ops',
+      'ycql_ops',
+      'yedis_ops',
+      'container',
+      'server',
+      'sql',
+      'cql',
+      'redis',
+      'tserver',
+      'master',
+      'master_advanced',
+      'lsmdb'
+    ],
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
+  },
+  customer: {
+    data: [
+      'ysql_ops',
+      'ycql_ops',
+      'yedis_ops',
+      'container',
+      'server',
+      'cql',
+      'redis',
+      'tserver',
+      'master',
+      'master_advanced',
+      'lsmdb'
+    ],
+    isOpen: [true, true, false, false, false, false, false, false, false, false]
+  },
+  table: {
+    data: ['lsmdb_table', 'tserver_table'],
+    isOpen: [true, true]
+  }
+};
 
 export const panelTypes = {
   container: {
@@ -169,23 +209,6 @@ export const panelTypes = {
       'redis_rpcs_per_sec_local',
       'redis_ops_latency_local',
       'redis_yb_rpc_connections'
-    ]
-  },
-
-  top_tables: {
-    title: 'Top tables',
-    metrics: [
-      'table_read_latency',
-      'table_read_rps',
-      'table_log_latency',
-      'table_log_ops_second',
-      'table_log_bytes_written',
-      'table_seek_next_prev',
-      'table_ops_in_flight',
-      'table_write_rejections',
-      'table_memory_rejections',
-      'table_compaction',
-      'table_block_cache_hit_miss'
     ]
   },
 
@@ -365,8 +388,8 @@ class GraphPanel extends Component {
       }
       const invalidPanelType =
         selectedUniverse && isKubernetesUniverse(selectedUniverse)
-          ? panelTypes[type].title === 'Node'
-          : panelTypes[type].title === 'Container';
+          ? panelTypes[type]?.title === 'Node'
+          : panelTypes[type]?.title === 'Container';
       if (invalidPanelType) {
         return null;
       }
