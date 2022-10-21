@@ -54,14 +54,11 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
         throw new RuntimeException(
             String.format("%s %s", baseLogMessage, "Got error checking progress on YB-Controller"));
       }
-      if (backupServiceTaskProgressResponse.getTaskStatus().equals(ControllerStatus.NOT_FOUND)) {
-        throw new RuntimeException(
-            String.format("%s %s", baseLogMessage, "Task not found on YB-Controller"));
-      }
       log.info(
           "{} Number of retries {}",
           baseLogMessage,
           backupServiceTaskProgressResponse.getRetryCount());
+
       switch (backupServiceTaskProgressResponse.getStage()) {
         case UPLOAD:
         case DOWNLOAD:
@@ -91,6 +88,9 @@ public abstract class YbcTaskBase extends AbstractTaskBase {
       case ABORT:
         log.info(String.format("%s Task aborted on YB-Controller.", baseLogMessage));
         throw new CancellationException("Yb-Controller task aborted.");
+      case NOT_FOUND:
+        throw new RuntimeException(
+            String.format("%s %s", baseLogMessage, "Task not found on YB-Controller"));
       default:
         throw new PlatformServiceException(
             taskStatus.getNumber(),
