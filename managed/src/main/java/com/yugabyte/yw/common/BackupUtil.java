@@ -256,6 +256,7 @@ public class BackupUtil {
                   b -> {
                     return KeyspaceTablesList.builder()
                         .keyspace(b.getKeyspace())
+                        .allTables(b.allTables)
                         .tablesList(b.getTableNames())
                         .backupSizeInBytes(b.backupSizeInBytes)
                         .defaultLocation(b.storageLocation)

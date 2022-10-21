@@ -1805,6 +1805,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             }
             backupTableParamsList.add(backupParams);
           } else {
+            backupParams.allTables = true;
             for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : tableInfoList) {
               TableType tableType = table.getTableType();
               String tableKeySpace = table.getNamespace().getName();
