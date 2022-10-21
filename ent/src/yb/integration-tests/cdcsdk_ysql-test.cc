@@ -5491,6 +5491,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableToNamespaceWithActive
   std::unordered_map<std::string, std::string> options;
   ASSERT_OK(test_client()->GetCDCStream(stream_id, &ns_id, &stream_table_ids, &options));
   ASSERT_EQ(stream_table_ids, expected_table_ids);
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets_2));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2));
 }
 
 TEST_F(
@@ -5555,6 +5559,10 @@ TEST_F(
     ASSERT_TRUE(expected_tablet_ids.contains(tablet_id));
   }
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs_size(), 3);
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets_2));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddColocatedTableToNamespaceWithActiveStream)) {

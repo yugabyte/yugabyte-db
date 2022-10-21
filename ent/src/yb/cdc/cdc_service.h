@@ -231,7 +231,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
 
-  Result<std::shared_ptr<StreamMetadata>> GetStream(const std::string& stream_id);
+  Result<std::shared_ptr<StreamMetadata>> GetStream(
+      const std::string& stream_id, bool ignore_cache = false);
 
   std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(const std::string& stream_id,
