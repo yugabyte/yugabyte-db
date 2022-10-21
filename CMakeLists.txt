@@ -747,7 +747,7 @@ string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
-
+yb_deduplicate_arguments(CMAKE_C_FLAGS)
 message("CMAKE_C_FLAGS ${CMAKE_C_FLAGS}")
 
 set(CMAKE_CXX_STANDARD 20)
@@ -758,8 +758,10 @@ if (IS_GCC AND
   ADD_CXX_FLAGS("-Wno-aligned-new")
 endif()
 
+yb_deduplicate_arguments(CMAKE_CXX_FLAGS)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+yb_deduplicate_arguments(CMAKE_EXE_LINKER_FLAGS)
 message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
@@ -821,6 +823,10 @@ string(REPLACE "\\n" "\n" YB_ALL_DEPS_FINAL "${YB_ALL_DEPS}")
 # target: dep1;dep2;..;depN
 # The same target can appear on the left hand side of multiple such lines.
 file(WRITE "${YB_BUILD_ROOT}/yb_cmake_deps.txt" "${YB_ALL_DEPS_FINAL}")
+
+# ------------------------------------------------------------------------------------------------
+# Final reporting
+# ------------------------------------------------------------------------------------------------
 
 math(EXPR YB_NUM_EXCLUDED_TESTS "${YB_NUM_TESTS} - ${YB_NUM_INCLUDED_TESTS}")
 message("Total tests: ${YB_NUM_TESTS}, "

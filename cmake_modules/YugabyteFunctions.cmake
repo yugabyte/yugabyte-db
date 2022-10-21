@@ -260,6 +260,9 @@ function(YB_INCLUDE_EXTENSIONS)
 endfunction()
 
 function(yb_remember_dependency target)
+  if("${ARGN}" STREQUAL "")
+    message(FATAL_ERROR "yb_remember_dependency() called with no arguments")
+  endif()
   # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
   # of CMake can't parse their own cache in case some values have newlines.
   set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
@@ -577,8 +580,9 @@ function(ADD_YB_LIBRARY LIB_NAME)
 
   add_library(${LIB_NAME} ${ARG_SRCS})
 
-  target_link_libraries(${LIB_NAME} ${ARG_DEPS})
-  yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
+  if(ARG_DEPS)
+    target_link_libraries(${LIB_NAME} ${ARG_DEPS})
+  endif()
   if(ARG_NONLINK_DEPS)
     add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
   endif()
@@ -832,6 +836,35 @@ function(yb_add_lto_target exe_name)
   if("${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
     message(FATAL_ERROR "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} is not set")
   endif()
-  # We need to build the corresponding non-LTO executable, such as yb-master or yb-tserver, first.
+  # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${exe_name}" "${dynamic_exe_name}")
+endfunction()
+
+# Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
+# arguments and stores the result back in the same variable. If the
+# YB_DEBUG_DUPLICATE_COMPILER_ARGS environment variable is set to 1, prints detailed debug output.
+function(yb_deduplicate_arguments args_var_name)
+  set(debug OFF)
+  if("$ENV{YB_DEBUG_DUPLICATE_COMPILER_ARGS}" STREQUAL "1")
+    set(debug ON)
+  endif()
+  separate_arguments(args_list UNIX_COMMAND "${${args_var_name}}")
+  if(debug)
+    message("Deduplicating ${args_var_name}:")
+  endif()
+  set(deduplicated_args "")
+  foreach(arg IN LISTS args_list)
+    if(arg IN_LIST deduplicated_args)
+      if(debug)
+        message("    DUPLICATE argument     : ${arg}")
+      endif()
+    else()
+      if(debug)
+        message("    Non-duplicate argument : ${arg}")
+      endif()
+      list(APPEND deduplicated_args "${arg}")
+    endif()
+  endforeach()
+  list(JOIN "${deduplicated_args}" " " joined_deduplicated_args)
+  set("${args_var_name}" PARENT_SCOPE "${joined_deduplicated_args}")
 endfunction()
