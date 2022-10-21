@@ -575,7 +575,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   bool get_changes_error = false;
   for (const auto& tablet_id : tablet_ids) {
     GetChanges(tablet_id, stream_id_, 0, 0, &get_changes_error);
-    ASSERT_FALSE(get_changes_error);
+    ASSERT_TRUE(get_changes_error);
   }
 
   for (const auto& tablet_id : tablet_ids) {
