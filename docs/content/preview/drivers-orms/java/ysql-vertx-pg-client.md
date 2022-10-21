@@ -51,7 +51,7 @@ type: docs
 
 </ul>
 
-[Vert.x Pg Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with simple APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.Because YugabyteDB is wire compatible with PostgreSQL, Vert.x PG Client works with YugabyteDB as well.
+The [Vert.x Pg Client](https://vertx.io/docs/vertx-pg-client/java/) driver for PostgreSQL is a reactive and non-blocking client for handling database connections with a single threaded API. Because YugabyteDB is wire-compatible with PostgreSQL, Vert.x PG Client is fully compatible with YugabyteDB.
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
 
