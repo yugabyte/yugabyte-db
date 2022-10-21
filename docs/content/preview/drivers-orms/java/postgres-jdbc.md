@@ -41,6 +41,14 @@ type: docs
       PostgreSQL JDBC Driver
     </a>
   </li>
+
+   <li >
+    <a href="../ysql-vertx-pg-client/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      Vert.x Pg Client
+    </a>
+  </li>
+
 </ul>
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YSQL has full compatibility with the PostgreSQL JDBC Driver, and allows Java programmers to connect to YugabyteDB databases to execute DMLs and DDLs using the standard JDBC APIs.
@@ -211,4 +219,4 @@ If there is no output or you get an error, verify that the connection string in 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../ebean/)
