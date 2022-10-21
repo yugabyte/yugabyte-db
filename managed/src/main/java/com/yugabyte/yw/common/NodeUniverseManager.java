@@ -152,7 +152,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   public ShellResponse runYbAdminCommand(
-      NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
+      NodeDetails node,
+      Universe universe,
+      String ybAdminCommand,
+      List<String> args,
+      long timeoutSec) {
     List<String> command = new ArrayList<>();
     command.add(getYbHomeDir(node, universe) + "/master/bin/yb-admin");
     command.add("--master_addresses");
@@ -165,6 +169,7 @@ public class NodeUniverseManager extends DevopsBase {
     command.add("-timeout_ms");
     command.add(String.valueOf(TimeUnit.SECONDS.toMillis(timeoutSec)));
     command.add(ybAdminCommand);
+    command.addAll(args);
     ShellProcessContext context =
         ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(timeoutSec).build();
     return runCommand(node, universe, command, context);
