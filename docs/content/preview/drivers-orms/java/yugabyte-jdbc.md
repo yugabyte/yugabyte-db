@@ -218,4 +218,4 @@ If you receive no output or an error, check the parameters in the connection str
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../ebean/)

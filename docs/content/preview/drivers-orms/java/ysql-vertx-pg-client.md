@@ -53,8 +53,6 @@ type: docs
 
 The [Vert.x Pg Client](https://vertx.io/docs/vertx-pg-client/java/) driver for PostgreSQL is a reactive and non-blocking client for handling database connections with a single threaded API. Because YugabyteDB is wire-compatible with PostgreSQL, Vert.x PG Client is fully compatible with YugabyteDB.
 
-For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
-
 ## CRUD operations
 
 The following sections demonstrate how to perform common tasks required for Java application development using the Vert.x PG Client.
@@ -88,8 +86,10 @@ Java applications can connect to and query the YugabyteDB database using the `Pg
 
 Use the `PgPool.getConnection` method to create a connection object for the YugabyteDB Database. This can be used to perform DDLs and DMLs against the database.
 
-| JDBC parameter | Description | Default |
-| :------------- | :---------- | :------ |
+The following table describes the connection parameters required to connect.
+
+| Pg Client parameter | Description | Default |
+| :------------------ | :---------- | :------ |
 | setHost | Hostname of the YugabyteDB instance | localhost |
 | setPort | Listen port for YSQL | 5433 |
 | setDatabase | Database name | yugabyte |
@@ -202,4 +202,4 @@ Example ran successfully!
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../ebean/)

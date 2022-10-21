@@ -219,4 +219,4 @@ If there is no output or you get an error, verify that the connection string in 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
-- Build Java applications using [Ebean ORM](../hibernate/)
+- Build Java applications using [Ebean ORM](../ebean/)
