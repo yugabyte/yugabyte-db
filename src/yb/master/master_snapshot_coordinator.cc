@@ -1199,7 +1199,7 @@ class MasterSnapshotCoordinator::Impl {
       int64_t leader_term) {
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
     // If this tablet did not participate in snapshot, i.e. was deleted.
-    // We just change hybrid hybrid time limit and clear hide state.
+    // We just change hybrid time limit and clear hide state.
     auto task = context_.CreateAsyncTabletSnapshotOp(
         tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
         tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
@@ -1214,7 +1214,10 @@ class MasterSnapshotCoordinator::Impl {
         auto lock = tablet_info->LockForRead();
         for (const auto& table_id : lock->pb.table_ids()) {
           auto table_info_result = context_.GetTableById(table_id);
-          LOG_IF(FATAL, !table_info_result.ok()) << "Table not found for table id" << table_id;
+          // TODO(Sanket): Should make this check FATAL once GHI#14609 is fixed.
+          if (!table_info_result.ok()) {
+            LOG(WARNING) << "Table " << table_id << " does not exist";
+          }
           task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
         }
       }
