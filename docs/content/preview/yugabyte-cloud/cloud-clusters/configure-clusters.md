@@ -82,7 +82,7 @@ To scale nodes in a multi-region replicated cluster:
 
     <!--1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.-->
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster. The same number of nodes and node sizes apply across all regions.
+1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster. The same number of nodes and node sizes apply across all regions. Optionally, set or change the [Preferred region](../../cloud-basics/create-clusters/create-clusters-multisync/#preferred-region).\
     \
     **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
