@@ -50,8 +50,26 @@ Update packages on your system, install development tools and additional package
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y autoconf cmake curl git libtool maven ninja-build pkg-config python3-pip \
-                        python3-venv rsync zip pkg-config git libtool locales pkg-config git
+packages=(
+  autoconf
+  cmake
+  curl
+  git
+  git
+  git
+  libtool
+  libtool
+  locales
+  maven
+  ninja-build
+  patchelf
+  pkg-config
+  python3-pip
+  python3-venv
+  rsync
+  zip
+)
+sudo apt-get install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8
 ```
 
@@ -60,11 +78,6 @@ Assuming this repository is checked out in `~/code/yugabyte-db`, do the followin
 ```sh
 cd ~/code/yugabyte-db
 ./yb_build.sh release --no-linuxbrew
-```
-
-To create a release archive suitable for deployment on a cluster node:
-```
-./yb_release --build_args="--no-linuxbrew"
 ```
 
 {{< note title="Note" >}}
