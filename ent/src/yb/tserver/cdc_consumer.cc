@@ -40,7 +40,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
@@ -69,9 +69,7 @@ static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 v
   return true;
 }
 
-static const bool FLAGS_xcluster_safe_time_update_interval_secs_dummy __attribute__((unused)) =
-    google::RegisterFlagValidator(
-        &FLAGS_xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
+DEFINE_validator(xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);

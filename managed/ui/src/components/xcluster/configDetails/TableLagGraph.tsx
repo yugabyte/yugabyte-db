@@ -127,7 +127,7 @@ export const TableLagGraph: FC<Props> = ({
   const setTracesToPlot = (graphMetric: Metrics<'tserver_async_replication_lag_micros'>) => {
     const metric = graphMetric.tserver_async_replication_lag_micros;
     const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-    const trace = metric.data.find((trace) => (trace.name = traceAlias));
+    const trace = metric.data.find((trace) => trace.name === traceAlias);
 
     if (typeof maxAcceptableLag === 'number' && trace) {
       graphMetric.tserver_async_replication_lag_micros.data = [

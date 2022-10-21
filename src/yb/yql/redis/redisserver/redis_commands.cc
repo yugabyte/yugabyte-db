@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/client/client.h"
 #include "yb/client/session.h"
@@ -36,6 +35,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
@@ -71,7 +71,6 @@ DEFINE_string(redis_passwords_separator, ",", "The character used to separate mu
 DEFINE_int32(redis_keys_threshold, 10000,
              "Maximum number of keys allowed to be in the db before the KEYS operation errors out");
 
-__attribute__((unused))
 DEFINE_validator(redis_passwords_separator, &ValidateRedisPasswordSeparator);
 
 namespace yb {

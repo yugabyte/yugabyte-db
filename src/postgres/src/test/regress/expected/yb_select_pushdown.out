@@ -686,6 +686,29 @@ SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t
  550 | 0 | 0002 |     |      |     |     |
 (12 rows)
 
+-- Test PARAM_EXEC pushdown when parameters are coming from a subplan
+CREATE TABLE tmaster(k int primary key, v1 int, v2 int);
+INSERT INTO tmaster VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+CREATE TABLE tsub(k int primary key, v1 int, v2 int);
+INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
+EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+            QUERY PLAN
+-----------------------------------
+ Seq Scan on tmaster
+   Remote Filter: (v1 = $0)
+   InitPlan 1 (returns $0)
+     ->  Seq Scan on tsub
+           Remote Filter: (v2 = 3)
+(5 rows)
+
+SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
+ k | v1 | v2
+---+----+----
+ 2 |  2 |  2
+(1 row)
+
+DROP TABLE tmaster;
+DROP TABLE tsub;
 DROP TABLE tlateral1;
 DROP TABLE tlateral2;
 DROP TABLE pushdown_range;

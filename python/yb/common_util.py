@@ -480,3 +480,65 @@ def append_to_list_in_dict(dest: Dict[K, List[V]], key: K, new_item: V) -> None:
         dest[key].append(new_item)
     else:
         dest[key] = [new_item]
+
+
+def optional_message_to_prefix(message: str) -> str:
+    message = message.strip()
+    if message == '':
+        return ''
+    if message.endswith((':', '.')):
+        return message + ' '
+    return message + ': '
+
+
+def set_to_str_one_element_per_line(s: Set[Any]) -> str:
+    '''
+    >>> print(set_to_str_one_element_per_line({1}))
+    {1}
+    >>> print(set_to_str_one_element_per_line({1, 2}))
+    {
+        1,
+        2
+    }
+    >>> print(set_to_str_one_element_per_line({'a', 'b', 'c'}))
+    {
+        a,
+        b,
+        c
+    }
+    '''
+    if not s:
+        return '{}'
+    elements = sorted(s)
+    if len(elements) == 1:
+        return '{%s}' % str(elements[0])
+    return '{\n    %s\n}' % (
+        ',\n    '.join(
+            [str(element) for element in elements]
+        )
+    )
+
+
+def assert_sets_equal(a: Set[Any], b: Set[Any], message: str = '') -> None:
+    a = set(a)
+    b = set(b)
+    if a != b:
+        raise AssertionError(
+            f"{optional_message_to_prefix(message)}"
+            f"Sets are not equal: {set_to_str_one_element_per_line(a)} vs. "
+            f"{set_to_str_one_element_per_line(b)}. "
+            f"Elements only in the first set: {set_to_str_one_element_per_line(a - b)}. "
+            f"Elements only in the second set: {set_to_str_one_element_per_line(b - a)}.")
+
+
+def assert_set_contains_all(a: Set[Any], b: Set[Any], message: str = '') -> None:
+    a = set(a)
+    b = set(b)
+    d = b - a
+    if d:
+        raise AssertionError(
+            f"{optional_message_to_prefix(message)}"
+            f"First set does not contain the second: {set_to_str_one_element_per_line(a)} vs. "
+            f"{set_to_str_one_element_per_line(b)}. "
+            f"Elements in the second set but not in the first: "
+            f"{set_to_str_one_element_per_line(d)}.")

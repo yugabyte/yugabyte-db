@@ -51,7 +51,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
@@ -181,18 +181,16 @@ bool ValidatePercentage(const char* flagname, int value) {
 }
 
 // Marked as unused because this is not referenced in release mode.
-bool dummy[] __attribute__((unused)) = {
-    google::RegisterFlagValidator(&FLAGS_memory_limit_soft_percentage, &ValidatePercentage),
-    google::RegisterFlagValidator(&FLAGS_memory_limit_warn_threshold_percentage,
-        &ValidatePercentage)
+DEFINE_validator(memory_limit_soft_percentage, &ValidatePercentage);
+DEFINE_validator(memory_limit_warn_threshold_percentage, &ValidatePercentage);
 #ifdef TCMALLOC_ENABLED
-    , google::RegisterFlagValidator(&FLAGS_tcmalloc_max_free_bytes_percentage, &ValidatePercentage)
+DEFINE_validator(tcmalloc_max_free_bytes_percentage, &ValidatePercentage);
 #endif
-};
 
-template <class TrackerMetrics>
-bool TryIncrementBy(int64_t delta, int64_t max, HighWaterMark* consumption,
-                    const std::unique_ptr<TrackerMetrics>& metrics) {
+    template <class TrackerMetrics>
+    bool TryIncrementBy(
+        int64_t delta, int64_t max, HighWaterMark* consumption,
+        const std::unique_ptr<TrackerMetrics>& metrics) {
   if (consumption->TryIncrementBy(delta, max)) {
     if (metrics) {
       metrics->metric_->IncrementBy(delta);
@@ -356,7 +354,6 @@ void MemTracker::SetTCMallocCacheMemory() {
 }
 
 void MemTracker::CreateRootTracker() {
-  DCHECK_ONLY_NOTNULL(dummy);
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
     // If no limit is provided, we'll use

@@ -29,19 +29,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_FLAGS_H
-#define YB_UTIL_FLAGS_H
+#pragma once
 
 #include <gflags/gflags.h>
 #include "yb/util/auto_flags.h"
 #include "yb/util/flag_tags.h"
 
-namespace yb {
+// Redefine the macro from gflags.h with an unused attribute.
+#ifdef DEFINE_validator
+#undef DEFINE_validator
+#endif
+#define DEFINE_validator(name, validator) \
+  static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
+      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
 
-#define REGISTER_VALIDATOR(flag_name, validator) \
-  static const bool BOOST_PP_CAT(dummy_, BOOST_PP_CAT(BOOST_PP_CAT(FLAGS_, flag_name), _val)) \
-      __attribute__((unused)) = \
-          google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, flag_name), (validator))
+namespace yb {
 
 // Looks for flags in argv and parses them.  Rearranges argv to put
 // flags first, or removes them entirely if remove_flags is true.
@@ -72,7 +74,6 @@ YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE)(PG_SE
 // Set the current value of the flag if it is runtime safe or if force is set. old_value is only
 // set on success.
 SetFlagResult SetFlag(
-    const std::string& flag_name, const std::string& new_value, const SetFlagForce force, std::string* old_value,
-    std::string* output_msg);
-} // namespace yb
-#endif /* YB_UTIL_FLAGS_H */
+    const std::string& flag_name, const std::string& new_value, const SetFlagForce force,
+    std::string* old_value, std::string* output_msg);
+}  // namespace yb

@@ -37,7 +37,6 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.text.StringSubstitutor;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
@@ -422,10 +421,7 @@ public class ShellProcessHandler {
         Map<String, String> values =
             Json.mapper()
                 .readValue(matcher.group(2).trim(), new TypeReference<Map<String, String>>() {});
-        StringSubstitutor substitutor =
-            new StringSubstitutor(values).setEnableUndefinedVariableException(true);
-        // Flexible template to add more fields or change format.
-        return substitutor.replace("${type}: ${message}");
+        return values.get("type") + ": " + values.get("message");
       }
     } catch (Exception e) {
       log.error("Error occurred in processing command output", e);
