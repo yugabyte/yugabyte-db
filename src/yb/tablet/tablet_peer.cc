@@ -223,6 +223,7 @@ Status TabletPeer::InitTabletPeer(
           IllegalState, "Invalid tablet state for init: $0", RaftGroupStatePB_Name(state));
     }
     tablet_ = tablet;
+    tablet_weak_ = tablet;
     proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
@@ -320,7 +321,11 @@ Status TabletPeer::InitTabletPeer(
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
     ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
+
+    // "Publish" the tablet object right before releasing the lock.
+    tablet_obj_state_.store(TabletObjectState::kAvailable, std::memory_order_release);
   }
+  // End of lock scope for lock_.
 
   RETURN_NOT_OK(prepare_thread_->Start());
 
@@ -529,6 +534,8 @@ void TabletPeer::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdo
     tablet_->CompleteShutdown(disable_flush_on_shutdown);
   }
 
+  tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
+
   // Only mark the peer as SHUTDOWN when all other components have shut down.
   {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -705,8 +712,10 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
 
 void TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
+  // TODO: safely handle the case when tablet is not set.
+  // https://github.com/yugabyte/yugabyte-db/issues/14597
   if (!operation->tablet()) {
-    operation->SetTablet(tablet());
+    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()).get());
   }
   Submit(std::move(operation), term);
 }
@@ -745,7 +754,8 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
     TransactionStatePB* request) {
-  auto result = std::make_unique<UpdateTxnOperation>(tablet());
+  // TODO: safe handling for the case when tablet is not set.
+  auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()).get());
   result->TakeRequest(request);
   return result;
 }
@@ -940,7 +950,8 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
   }
 
-  auto* transaction_coordinator = tablet()->transaction_coordinator();
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto* transaction_coordinator = tablet->transaction_coordinator();
   if (transaction_coordinator) {
     auto transaction_coordinator_min_op_index = transaction_coordinator->PrepareGC(details);
     min_index = std::min(min_index, transaction_coordinator_min_op_index);
@@ -1062,18 +1073,24 @@ OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
 }
 
 CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
-  auto txn_participant = tablet()->transaction_participant();
-  if (txn_participant) {
-    return txn_participant->GetCheckpointExpirationTime();
+  auto tablet = shared_tablet();
+  if (tablet) {
+    auto txn_participant = tablet->transaction_participant();
+    if (txn_participant) {
+      return txn_participant->GetCheckpointExpirationTime();
+    }
   }
 
   return CoarseTimePoint();
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
-  auto txn_participant = tablet()->transaction_participant();
-  if (txn_participant) {
-    return txn_participant->GetLatestCheckPoint();
+  auto tablet = shared_tablet();
+  if (tablet) {
+    auto txn_participant = tablet->transaction_participant();
+    if (txn_participant) {
+      return txn_participant->GetLatestCheckPoint();
+    }
   }
   return OpId();
 }
@@ -1087,15 +1104,18 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   // fetch it from the client and populate the tablet metadata.
   auto* client = client_future().get();
   master::GetNamespaceInfoResponsePB resp;
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  auto* metadata = tablet->metadata();
+  auto namespace_name = metadata->namespace_name();
   RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
-                                         tablet()->metadata()->namespace_name(),
+                                         namespace_name,
                                          boost::none /* database_type */, &resp));
   namespace_id = resp.namespace_().id();
   if (namespace_id.empty()) {
     return STATUS(IllegalState, Format("Could not get namespace id for $0",
-                                       tablet()->metadata()->namespace_name()));
+                                       namespace_name));
   }
-  RETURN_NOT_OK(tablet()->metadata()->set_namespace_id(namespace_id));
+  RETURN_NOT_OK(metadata->set_namespace_id(namespace_id));
   return namespace_id;
 }
 
@@ -1127,7 +1147,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
     return cdc_sdk_intent_retention;
   }
 
-  auto txn_participant = tablet()->transaction_participant();
+  auto txn_participant = VERIFY_RESULT(shared_tablet_safe())->transaction_participant();
   if (txn_participant) {
     // Get the current tablet LEADER's intent retention expiration time.
     // Check how many milliseconds time remaining w.r.t current time, update
@@ -1144,49 +1164,52 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
+  // TODO: handle cases where tablet is unset safely.
+  auto shared_tablet = CHECK_RESULT(shared_tablet_safe());
+  auto* tablet = shared_tablet.get();
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
-      return std::make_unique<WriteOperation>(tablet());
+      return std::make_unique<WriteOperation>(tablet);
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
           " operation must receive an ChangeMetadataRequestPB";
-      return std::make_unique<ChangeMetadataOperation>(tablet(), log());
+      return std::make_unique<ChangeMetadataOperation>(tablet, log());
 
     case consensus::UPDATE_TRANSACTION_OP:
       DCHECK(replicate_msg->has_transaction_state()) << "UPDATE_TRANSACTION_OP replica"
           " operation must receive an TransactionStatePB";
-      return std::make_unique<UpdateTxnOperation>(tablet());
+      return std::make_unique<UpdateTxnOperation>(tablet);
 
     case consensus::TRUNCATE_OP:
       DCHECK(replicate_msg->has_truncate()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
-      return std::make_unique<TruncateOperation>(tablet());
+      return std::make_unique<TruncateOperation>(tablet);
 
     case consensus::SNAPSHOT_OP:
        DCHECK(replicate_msg->has_snapshot_request()) << "SNAPSHOT_OP replica"
           " operation must receive an TabletSnapshotOpRequestPB";
-      return std::make_unique<SnapshotOperation>(tablet());
+      return std::make_unique<SnapshotOperation>(tablet);
 
     case consensus::HISTORY_CUTOFF_OP:
        DCHECK(replicate_msg->has_history_cutoff()) << "HISTORY_CUTOFF_OP replica"
           " transaction must receive an HistoryCutoffPB";
-      return std::make_unique<HistoryCutoffOperation>(tablet());
+      return std::make_unique<HistoryCutoffOperation>(tablet);
 
     case consensus::SPLIT_OP:
        DCHECK(replicate_msg->has_split_request()) << "SPLIT_OP replica"
           " operation must receive an SplitOpRequestPB";
-      return std::make_unique<SplitOperation>(tablet(), tablet_splitter_);
+      return std::make_unique<SplitOperation>(tablet, tablet_splitter_);
 
     case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
       DCHECK(replicate_msg->has_auto_flags_config())
           << "CHANGE_AUTO_FLAGS_CONFIG_OP replica"
              " operation must receive an AutoFlagsConfigPB";
       return std::make_unique<ChangeAutoFlagsConfigOperation>(
-          tablet(), replicate_msg->mutable_auto_flags_config());
+          tablet, replicate_msg->mutable_auto_flags_config());
 
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
@@ -1299,7 +1322,13 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
 
   DCHECK(maintenance_ops_.empty());
 
-  auto log_gc = std::make_unique<LogGCOp>(this);
+  auto tablet_result = shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Not registering maintenance operations: "
+                             << tablet_result.status();
+    return;
+  }
+  auto log_gc = std::make_unique<LogGCOp>(this, *tablet_result);
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(std::move(log_gc));
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
@@ -1381,9 +1410,13 @@ HybridTime TabletPeer::HtLeaseExpiration() const {
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
-TableType TabletPeer::table_type() EXCLUDES(lock_) {
-  // TODO: what if tablet is not set?
-  return DCHECK_NOTNULL(tablet())->table_type();
+TableType TabletPeer::TEST_table_type() {
+  auto tablet_result = shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    LOG(WARNING) << "Cannot determine table type: " << tablet_result.status();
+    return static_cast<TableType>(-1);
+  }
+  return (*tablet_result)->table_type();
 }
 
 void TabletPeer::SetFailed(const Status& error) {
@@ -1536,9 +1569,10 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
 }
 
 void TabletPeer::PollWaitQueue() const {
-  if (tablet()) {
-    DCHECK_NOTNULL(tablet()->wait_queue());
-    tablet()->wait_queue()->Poll(clock_->Now());
+  auto tablet = shared_tablet();
+  if (tablet) {
+    DCHECK_NOTNULL(tablet->wait_queue());
+    tablet->wait_queue()->Poll(clock_->Now());
   }
 }
 
