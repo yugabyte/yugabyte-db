@@ -1375,7 +1375,7 @@ void CDCServiceImpl::ListTablets(const ListTabletsRequestPB* req,
 
 Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCServiceImpl::GetTablets(
     const CDCStreamId& stream_id) {
-  auto stream_metadata = VERIFY_RESULT(GetStream(stream_id));
+  auto stream_metadata = VERIFY_RESULT(GetStream(stream_id, /*ignore_cache*/ true));
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> all_tablets;
 
@@ -3742,10 +3742,13 @@ void CDCServiceImpl::RemoveCDCTabletMetrics(
   tablet->RemoveAdditionalMetadata(key);
 }
 
-Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(const std::string& stream_id) {
-  auto stream = GetStreamMetadataFromCache(stream_id);
-  if (stream != nullptr) {
-    return stream;
+Result<std::shared_ptr<StreamMetadata>> CDCServiceImpl::GetStream(
+    const std::string& stream_id, bool ignore_cache) {
+  if (!ignore_cache) {
+    auto stream = GetStreamMetadataFromCache(stream_id);
+    if (stream != nullptr) {
+      return stream;
+    }
   }
 
   // Look up stream in sys catalog.
