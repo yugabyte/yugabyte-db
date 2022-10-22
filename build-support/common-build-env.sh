@@ -338,7 +338,7 @@ decide_whether_to_use_linuxbrew() {
             ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
                $build_type =~ ^(release|prof_(gen|use))$ &&
               "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]]; then
+              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
       YB_USE_LINUXBREW=1
     fi
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
@@ -491,7 +491,7 @@ set_default_compiler_type() {
       detect_architecture
       if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
         if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
-          YB_COMPILER_TYPE=clang14
+          YB_COMPILER_TYPE=clang15
         else
           YB_COMPILER_TYPE=clang13
         fi
