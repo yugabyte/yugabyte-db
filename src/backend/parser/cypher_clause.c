@@ -128,10 +128,10 @@ static List *transform_match_path(cypher_parsestate *cpstate, Query *query,
                                   cypher_path *path);
 static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
                                    cypher_relationship *rel,
-                                   List **target_list);
+                                   List **target_list, bool valid_label);
 static Expr *transform_cypher_node(cypher_parsestate *cpstate,
                                    cypher_node *node, List **target_list,
-                                   bool output_node);
+                                   bool output_node, bool valid_label);
 static Node *make_vertex_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
                               char *label);
 static Node *make_edge_expr(cypher_parsestate *cpstate, RangeTblEntry *rte,
@@ -2139,6 +2139,64 @@ static Query *transform_cypher_with(cypher_parsestate *cpstate,
                                               wrapper);
 }
 
+static bool match_check_valid_label(cypher_match *match,
+                                    cypher_parsestate *cpstate)
+{
+    ListCell *cell1;
+    ListCell *cell2;
+    cypher_path *path;
+
+    foreach(cell1, match->pattern)
+    {
+        int i = 0;
+        path = (cypher_path*) lfirst(cell1);
+
+        foreach(cell2, path->path)
+        {
+            if (i % 2 == 0)
+            {
+                cypher_node *node = NULL;
+
+                node = lfirst(cell2);
+
+                if (node->label)
+                {
+                    label_cache_data *lcd =
+                        search_label_name_graph_cache(node->label,
+                                                      cpstate->graph_oid);
+
+                    if (lcd == NULL ||
+                        lcd->kind != LABEL_KIND_VERTEX)
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                cypher_relationship *rel = NULL;
+
+                rel = lfirst(cell2);
+
+                if (rel->label)
+                {
+                    label_cache_data *lcd =
+                        search_label_name_graph_cache(rel->label,
+                                                      cpstate->graph_oid);
+
+                    if (lcd == NULL || lcd->kind != LABEL_KIND_EDGE)
+                    {
+                        return false;
+                    }
+                }
+            }
+            i++;
+        }
+    }
+
+    return true;
+}
+
 static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
                                                  transform_method transform,
                                                  cypher_clause *clause)
@@ -2149,7 +2207,6 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
     cypher_match *match_self;
     cypher_call *call_self;
     Node *where;
-
 
     if (is_ag_node(self, cypher_call))
     {
@@ -2218,6 +2275,24 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
 static Query *transform_cypher_match(cypher_parsestate *cpstate,
                                      cypher_clause *clause)
 {
+    cypher_match *match_self = (cypher_match*) clause->self;
+
+    if(!match_check_valid_label(match_self, cpstate))
+    {
+        cypher_bool_const *l = make_ag_node(cypher_bool_const);
+        cypher_bool_const *r = make_ag_node(cypher_bool_const);
+
+        l->boolean = true;
+        l->location = -1;
+        r->boolean = false;
+        r->location = -1;
+
+        /*if the label is invalid, create a paradoxical where to get null*/
+        match_self->where = (Node *)makeSimpleA_Expr(AEXPR_OP, "=",
+                                                     (Node *)l,
+                                                     (Node *)r, -1);
+    }
+
     return transform_cypher_clause_with_where(
         cpstate, transform_cypher_match_pattern, clause);
 }
@@ -3556,6 +3631,56 @@ static bool isa_special_VLE_case(cypher_path *path)
     return false;
 }
 
+static bool path_check_valid_label(cypher_path *path,
+                                   cypher_parsestate *cpstate)
+{
+    ListCell *lc = NULL;
+    int i = 0;
+
+    foreach (lc, path->path)
+    {
+        if (i % 2 == 0)
+        {
+            cypher_node *node = NULL;
+
+            node = lfirst(lc);
+
+            if (node->label)
+            {
+                label_cache_data *lcd =
+                    search_label_name_graph_cache(node->label,
+                                                  cpstate->graph_oid);
+
+                if (lcd == NULL || lcd->kind != LABEL_KIND_VERTEX)
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            cypher_relationship *rel = NULL;
+
+            rel = lfirst(lc);
+
+            if (rel->label)
+            {
+                label_cache_data *lcd =
+                    search_label_name_graph_cache(rel->label,
+                                                  cpstate->graph_oid);
+
+                if (lcd == NULL || lcd->kind != LABEL_KIND_EDGE)
+                {
+                    return false;
+                }
+            }
+        }
+        i++;
+    }
+
+    return true;
+}
+
 /*
  * Iterate through the path and construct all edges and necessary vertices
  */
@@ -3569,8 +3694,10 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
     bool node_declared_in_prev_clause = false;
     transform_entity *prev_entity = NULL;
     bool special_VLE_case = false;
+    bool valid_label = true;
 
     special_VLE_case = isa_special_VLE_case(path);
+    valid_label = path_check_valid_label(path, cpstate);
 
     /*
      * Iterate through every node in the path, construct the expr node
@@ -3618,7 +3745,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
 
             /* transform vertex */
             expr = transform_cypher_node(cpstate, node, &query->targetList,
-                                         output_node);
+                                         output_node, valid_label);
 
             entity = make_transform_entity(cpstate, ENT_VERTEX, (Node *)node,
                                            expr);
@@ -3677,7 +3804,8 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                     }
                 }
 
-                expr = transform_cypher_edge(cpstate, rel, &query->targetList);
+                expr = transform_cypher_edge(cpstate, rel, &query->targetList,
+                                             valid_label);
 
                 entity = make_transform_entity(cpstate, ENT_EDGE, (Node *)rel,
                                                expr);
@@ -3964,7 +4092,8 @@ static Node *make_qual(cypher_parsestate *cpstate,
 
 static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
                                    cypher_relationship *rel,
-                                   List **target_list)
+                                   List **target_list,
+                                   bool valid_label)
 {
     ParseState *pstate = (ParseState *)cpstate;
     char *schema_name;
@@ -3980,31 +4109,20 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
     {
         rel->label = AG_DEFAULT_LABEL_EDGE;
     }
-    else
+    else if(!valid_label)
     {
         /*
          *  XXX: Need to determine proper rules, for when label does not exist
          *  or is for an edge. Maybe labels and edges should share names, like
          *  in openCypher. But these are stand in errors, to prevent
          *  segmentation faults, and other errors.
+         *
+         *  Update: Nonexistent and mismatched labels now return a NULL value to
+         *  prevent segmentation faults, and other errors. We can also consider 
+         *  if an all-purpose label would be useful.
          */
-        label_cache_data *lcd =
-            search_label_name_graph_cache(rel->label, cpstate->graph_oid);
+        rel->label = NULL;
 
-        if (lcd == NULL)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("label %s does not exists", rel->label),
-                            parser_errposition(pstate, rel->location)));
-        }
-
-        if (lcd->kind != LABEL_KIND_EDGE)
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg("label %s is for vertices, not edges", rel->label),
-                     parser_errposition(pstate, rel->location)));
-        }
     }
 
     if (rel->name != NULL)
@@ -4077,7 +4195,16 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
     }
 
     schema_name = get_graph_namespace_name(cpstate->graph_name);
-    rel_name = get_label_relation_name(rel->label, cpstate->graph_oid);
+
+    if (valid_label)
+    {
+        rel_name = get_label_relation_name(rel->label, cpstate->graph_oid);
+    }
+    else
+    {
+        rel_name = AG_DEFAULT_LABEL_EDGE;
+    }
+
     label_range_var = makeRangeVar(schema_name, rel_name, -1);
     alias = makeAlias(rel->name, NIL);
 
@@ -4091,7 +4218,14 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
 
     resno = pstate->p_next_resno++;
 
-    expr = (Expr *)make_edge_expr(cpstate, rte, rel->label);
+    if (valid_label)
+    {
+        expr = (Expr *)make_edge_expr(cpstate, rte, rel->label);
+    }
+    else
+    {
+        expr = (Expr*)makeNullConst(AGTYPEOID, -1, InvalidOid);
+    }
 
     if (rel->name)
     {
@@ -4104,7 +4238,7 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
 
 static Expr *transform_cypher_node(cypher_parsestate *cpstate,
                                    cypher_node *node, List **target_list,
-                                   bool output_node)
+                                   bool output_node, bool valid_label)
 {
     ParseState *pstate = (ParseState *)cpstate;
     char *schema_name;
@@ -4120,30 +4254,20 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
     {
         node->label = AG_DEFAULT_LABEL_VERTEX;
     }
-    else
+    else if (!valid_label)
     {
         /*
          *  XXX: Need to determine proper rules, for when label does not exist
          *  or is for an edge. Maybe labels and edges should share names, like
          *  in openCypher. But these are stand in errors, to prevent
          *  segmentation faults, and other errors.
+         *
+         *  Update: Nonexistent and mismatched labels now return a NULL value to
+         *  prevent segmentation faults, and other errors. We can also consider 
+         *  if an all-purpose label would be useful.
          */
-        label_cache_data *lcd =
-            search_label_name_graph_cache(node->label, cpstate->graph_oid);
+        node->label = NULL;
 
-        if (lcd == NULL)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("label %s does not exists", node->label),
-                            parser_errposition(pstate, node->location)));
-        }
-        if (lcd->kind != LABEL_KIND_VERTEX)
-        {
-            ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                            errmsg("label %s is for edges, not vertices",
-                                   node->label),
-                            parser_errposition(pstate, node->location)));
-        }
     }
 
     if (!output_node)
@@ -4222,7 +4346,16 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
     }
 
     schema_name = get_graph_namespace_name(cpstate->graph_name);
-    rel_name = get_label_relation_name(node->label, cpstate->graph_oid);
+
+    if (valid_label)
+    {
+        rel_name = get_label_relation_name(node->label, cpstate->graph_oid);
+    }
+    else
+    {
+        rel_name = AG_DEFAULT_LABEL_VERTEX;
+    }
+
     label_range_var = makeRangeVar(schema_name, rel_name, -1);
     alias = makeAlias(node->name, NIL);
 
@@ -4236,7 +4369,14 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
 
     resno = pstate->p_next_resno++;
 
-    expr = (Expr *)make_vertex_expr(cpstate, rte, node->label);
+    if (valid_label)
+    {
+        expr = (Expr *)make_vertex_expr(cpstate, rte, node->label);
+    }
+    else
+    {
+        expr = (Expr*)makeNullConst(AGTYPEOID, -1, InvalidOid);
+    }
 
     /* make target entry and add it */
     te = makeTargetEntry(expr, resno, node->name, false);

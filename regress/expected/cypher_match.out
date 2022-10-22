@@ -523,21 +523,45 @@ LINE 2:  MATCH (a:v1)-[]-()-[]-(a {id:'will_fail'}) RETURN a
                                ^
 --Incorrect Labels
 SELECT * FROM cypher('cypher_match', $$MATCH (n)-[:v]-() RETURN n$$) AS (n agtype);
-ERROR:  label v is for vertices, not edges
-LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n)-[:v]-() RET...
-                                                         ^
+ n 
+---
+(0 rows)
+
 SELECT * FROM cypher('cypher_match', $$MATCH (n)-[:emissing]-() RETURN n$$) AS (n agtype);
-ERROR:  label emissing does not exists
-LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n)-[:emissing]...
-                                                         ^
+ n 
+---
+(0 rows)
+
 SELECT * FROM cypher('cypher_match', $$MATCH (n:e1)-[]-() RETURN n$$) AS (n agtype);
-ERROR:  label e1 is for edges, not vertices
-LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n:e1)-[]-() RE...
-                                                     ^
+ n 
+---
+(0 rows)
+
 SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]-() RETURN n$$) AS (n agtype);
-ERROR:  label vmissing does not exists
-LINE 1: SELECT * FROM cypher('cypher_match', $$MATCH (n:vmissing)-[]...
-                                                     ^
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$MATCH (:e1)-[r]-() RETURN r$$) AS (r agtype);
+ r 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$MATCH (:vmissing)-[r]-() RETURN r$$) AS (r agtype);
+ r 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$MATCH (n),(:e1) RETURN n$$) AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_match', $$MATCH (n),()-[:v]-() RETURN n$$) AS (n agtype);
+ n 
+---
+(0 rows)
+
 --
 -- Path of one vertex. This should select 14
 --
