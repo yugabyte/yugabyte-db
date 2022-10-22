@@ -6,10 +6,11 @@ import {
   QUERY_METRICS,
   QUERY_METRICS_SUCCESS,
   QUERY_METRICS_FAILURE,
+  SELECTED_METRIC_TYPE_TAB,
   RESET_METRICS,
   TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
-import { DEFAULT_GRAPH_FILTER } from '../components/metrics';
+import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
 
 const INITIAL_STATE = {
   graphFilter: DEFAULT_GRAPH_FILTER,
@@ -18,6 +19,7 @@ const INITIAL_STATE = {
   error: null,
   universeMetricList: [],
   prometheusQueryEnabled: true,
+  tabName: null
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -36,6 +38,9 @@ export default function (state = INITIAL_STATE, action) {
         ...action.payload.data
       };
       return { ...state, metrics: metricData, loading: false };
+    }
+    case SELECTED_METRIC_TYPE_TAB: {
+      return { ...state, tabName: action.tabName };
     }
     case QUERY_METRICS_FAILURE: {
       const metricData = state.metrics;

@@ -235,7 +235,8 @@ class UniverseDetail extends Component {
       params: { tab },
       featureFlags,
       providers,
-      accessKeys
+      accessKeys,
+      graph
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -391,6 +392,7 @@ class UniverseDetail extends Component {
                 isKubernetesUniverse={isItKubernetesUniverse}
                 visibleModal={visibleModal}
                 featureFlags={featureFlags}
+                graph={graph}
               />
             </div>
           </Tab.Pane>

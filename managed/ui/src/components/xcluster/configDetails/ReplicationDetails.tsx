@@ -44,7 +44,7 @@ import { ReplicationOverview } from './ReplicationOverview';
 import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
-import { YBBanner, YBBannerVariant } from '../../common/descriptors';
+import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
 import { api } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 
@@ -257,21 +257,12 @@ export function ReplicationDetails({
                       }}
                       disabled={!_.includes(enabledConfigActions, ReplicationAction.EDIT)}
                     >
-                      Edit Replication Configurations
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-pencil">
+                        Edit Replication Name
+                      </YBLabelWithIcon>
                     </MenuItem>
                     <MenuItem
                       eventKey="2"
-                      onClick={() => {
-                        if (_.includes(enabledConfigActions, ReplicationAction.DELETE)) {
-                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
-                        }
-                      }}
-                      disabled={!_.includes(enabledConfigActions, ReplicationAction.DELETE)}
-                    >
-                      Delete Replication
-                    </MenuItem>
-                    <MenuItem
-                      eventKey="3"
                       onClick={() => {
                         if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
                           dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
@@ -279,21 +270,50 @@ export function ReplicationDetails({
                       }}
                       disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
                     >
-                      Restart Replication
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-refresh">
+                        Restart Replication
+                      </YBLabelWithIcon>
+                    </MenuItem>
+                    <MenuItem divider />
+                    <MenuItem
+                      eventKey="3"
+                      onClick={() => {
+                        if (_.includes(enabledConfigActions, ReplicationAction.DELETE)) {
+                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
+                        }
+                      }}
+                      disabled={!_.includes(enabledConfigActions, ReplicationAction.DELETE)}
+                    >
+                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-times">
+                        Delete Replication
+                      </YBLabelWithIcon>
                     </MenuItem>
                   </DropdownButton>
                 </ButtonGroup>
               </Row>
             </Col>
           </Row>
-          <div className="replication-info-banner-container">
+          <div className="replication-info-banners-container">
             {shouldShowConfigError && (
               <YBBanner variant={YBBannerVariant.DANGER}>
-                <b>Error!</b>
-                {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
-                  numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
-                } and replication restart is
+                <div className="replication-info-banner-content">
+                  <b>Error!</b>
+                  {` Write-ahead logs are deleted for ${numTablesRequiringBootstrap} ${
+                    numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
+                  } and replication restart is
                 required.`}
+                  <YBButton
+                    className="restart-replication-button"
+                    btnIcon="fa fa-refresh"
+                    btnText="Restart Replication"
+                    onClick={() => {
+                      if (_.includes(enabledConfigActions, ReplicationAction.RESTART)) {
+                        dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                      }
+                    }}
+                    disabled={!_.includes(enabledConfigActions, ReplicationAction.RESTART)}
+                  />
+                </div>
               </YBBanner>
             )}
             {shouldShowTableLagWarning && (

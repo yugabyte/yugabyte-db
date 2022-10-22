@@ -18,7 +18,8 @@ export const MetricTypes = {
   SQL: 'sql',
   CQL: 'cql',
   TSERVER_TABLE: 'tserver_table',
-  LSMDB_TABLE: 'lsmdb_table'
+  LSMDB_TABLE: 'lsmdb_table',
+  OUTLIER_TABLES: 'outlier_tables'
 } as const;
 
 export const MetricTypesWithOperations = {
@@ -134,6 +135,7 @@ export const MetricTypesWithOperations = {
       'master_log_bytes_read',
       'master_tc_malloc_stats',
       'master_glog_info_messages',
+      'master_lsm_rocksdb_seek_next_prev',
       'master_lsm_rocksdb_num_seek_or_next',
       'master_lsm_rocksdb_num_seeks_per_node',
       'master_lsm_rocksdb_total_sst_per_node',
@@ -150,6 +152,7 @@ export const MetricTypesWithOperations = {
   lsmdb: {
     title: 'Docs DB',
     metrics: [
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_num_seek_or_next',
       'lsm_rocksdb_num_seeks_per_node',
       'lsm_rocksdb_total_sst_per_node',
@@ -163,6 +166,7 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_blooms_checked_and_useful',
       'lsm_rocksdb_stalls',
       'lsm_rocksdb_write_rejections',
+      'lsm_rocksdb_memory_rejections',
       'lsm_rocksdb_flush_size',
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
@@ -206,6 +210,7 @@ export const MetricTypesWithOperations = {
   lsmdb_table: {
     title: 'DocDB',
     metrics: [
+      'lsm_rocksdb_seek_next_prev',
       'lsm_rocksdb_num_seek_or_next',
       'lsm_rocksdb_num_seeks_per_node',
       'lsm_rocksdb_total_sst_per_node',
@@ -222,10 +227,26 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction'
     ]
+  },
+  outlier_tables: {
+    title: 'Outlier Tables',
+    metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_log_latency',
+      'table_log_ops_second',
+      'table_log_bytes_written',
+      'table_seek_next_prev',
+      'table_ops_in_flight',
+      'table_write_rejections',
+      'table_memory_rejections',
+      'table_compaction',
+      'table_block_cache_hit_miss'
+    ]
   }
 } as const;
 
-export const MetricTypesByOrigin= {
+export const MetricTypesByOrigin = {
   universe: {
     data: [
       'ysql_ops',
@@ -239,9 +260,9 @@ export const MetricTypesByOrigin= {
       'tserver',
       'master',
       'master_advanced',
-      'lsmdb'
-    ],
-    isOpen: [true, true, false, false, false, false, false, false, false, false]
+      'lsmdb',
+      'outlier_tables'
+    ]
   },
   customer: {
     data: [
@@ -255,13 +276,12 @@ export const MetricTypesByOrigin= {
       'tserver',
       'master',
       'master_advanced',
-      'lsmdb'
-    ],
-    isOpen: [true, true, false, false, false, false, false, false, false, false]
+      'lsmdb',
+      'outlier_tables'
+    ]
   },
   table: {
-    data: ['lsmdb_table', 'tserver_table'],
-    isOpen: [true, true]
+    data: ['lsmdb_table', 'tserver_table']
   }
 } as const;
 
@@ -281,7 +301,7 @@ export const APIMetricToNodeFlag = {
 } as const;
 
 export const MetricConsts = {
-  CLUSTER_AVERAGE: 'Cluster average',
+  NODE_AVERAGE: 'Selected Nodes Average',
   ALL: 'all',
   TOP: 'top',
   PRIMARY: 'PRIMARY'
@@ -289,9 +309,16 @@ export const MetricConsts = {
 
 export enum MetricMeasure {
   OVERALL = 'Overall',
-  OUTLIER = 'Outlier'
+  OUTLIER = 'Outlier',
+  OUTLIER_TABLES = "Outlier_Tables"
+};
+
+export enum SplitType {
+  NODE = 'NODE',
+  TABLE = 'TABLE'
 };
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;
 export const MAX_OUTLIER_NUM_NODES = 5;
+export const MAX_OUTLIER_NUM_TABLES = 7;
