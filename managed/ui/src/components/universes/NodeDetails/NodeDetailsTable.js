@@ -49,32 +49,25 @@ export default class NodeDetailsTable extends Component {
         isMaster ? row.masterPort : row.tserverPort
       );
       const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
-      if (!row.isLoading) {
-        return (
-          <div>
-            {isAlive ? successIcon : warningIcon}&nbsp;
-            {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-              <a
-                href={href}
-                onClick={setCookiesFromLocalStorage}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {isMaster ? 'Master' : 'TServer'}
-              </a>
-            ) : (
-              <span>{isMaster ? 'Master' : 'TServer'}</span>
-            )}
-            {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
-          </div>
-        );
-      } else {
-        return (
-          <div>
-            {loadingIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
-          </div>
-        );
-      }
+      return (
+        <div>
+          {isAlive ? successIcon : warningIcon}&nbsp;
+          {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
+            <a
+              href={href}
+              onClick={setCookiesFromLocalStorage}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {isMaster ? 'Master' : 'TServer'}
+            </a>
+          ) : (
+            <span>{isMaster ? 'Master' : 'TServer'}</span>
+          )}
+          {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
+        </div>
+      );
+
     };
 
     const getIpPortLinks = (cell, row) => {
