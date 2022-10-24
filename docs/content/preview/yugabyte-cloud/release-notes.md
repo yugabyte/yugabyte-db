@@ -271,4 +271,5 @@ The following **AWS regions** are available:
 
 - If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.
