@@ -568,7 +568,12 @@ class AwsCloud(AbstractCloud):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=host_info["id"])
             instance.start()
-            instance.wait_until_running()
+            # Default is 15, 40, double it to work around failures in provisioning instances.
+            wait_config = {
+                'Delay': 15,
+                'MaxAttempts': 80
+            }
+            instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
             self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
