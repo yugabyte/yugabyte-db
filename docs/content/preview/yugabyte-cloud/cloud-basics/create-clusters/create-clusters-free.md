@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
+  - /preview/yugabyte-cloud/free-tier/
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-free
