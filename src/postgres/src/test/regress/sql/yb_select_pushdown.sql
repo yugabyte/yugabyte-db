@@ -197,6 +197,27 @@ INSERT INTO tsub VALUES (1, 2, 3), (4, 5, 6);
 EXPLAIN (COSTS FALSE) SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
 SELECT * FROM tmaster WHERE v1 = (SELECT v1 FROM tsub WHERE v2 = 3);
 
+-- Test rescan of a subquery with pushdown of PARAM_EXEC parameters
+CREATE TABLE tidxrescan1(k1 int, k2 int, v1 int, v2 int, primary key (k1 hash, k2 asc));
+CREATE TABLE tidxrescan2(k1 int primary key, v1 int);
+CREATE TABLE tidxrescan3(k1 int, v1 int);
+CREATE INDEX ON tidxrescan3(k1) INCLUDE (v1);
+
+INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
+INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
+INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
+
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+
+EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
+
+DROP TABLE tidxrescan1;
+DROP TABLE tidxrescan2;
+DROP TABLE tidxrescan3;
 DROP TABLE tmaster;
 DROP TABLE tsub;
 DROP TABLE tlateral1;
