@@ -135,6 +135,9 @@ struct TableInfo {
   const Schema& schema() const;
 
   Status MergeWithRestored(const TableInfoPB& pb);
+
+  // Should account for every field in TableInfo.
+  static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
@@ -187,6 +190,9 @@ struct KvStoreInfo {
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> snapshot_schedules;
+
+  // Should account for every field in KvStoreInfo.
+  static bool TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs);
 };
 
 struct RaftGroupMetadataData {
@@ -492,6 +498,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Result<docdb::CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+  const KvStoreInfo& TEST_kv_store() const {
+    return kv_store_;
+  }
 
  private:
   typedef simple_spinlock MutexType;

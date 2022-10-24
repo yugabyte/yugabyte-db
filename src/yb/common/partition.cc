@@ -1161,17 +1161,10 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
   }
 
   // Compare range component.
-  if (range_schema_.column_ids != other.range_schema_.column_ids) return false;
+  if (range_schema_ != other.range_schema_) return false;
 
   // Compare hash bucket components.
-  if (hash_bucket_schemas_.size() != other.hash_bucket_schemas_.size()) return false;
-  for (size_t i = 0; i < hash_bucket_schemas_.size(); i++) {
-    if (hash_bucket_schemas_[i].seed != other.hash_bucket_schemas_[i].seed) return false;
-    if (hash_bucket_schemas_[i].num_buckets
-        != other.hash_bucket_schemas_[i].num_buckets) return false;
-    if (hash_bucket_schemas_[i].column_ids
-        != other.hash_bucket_schemas_[i].column_ids) return false;
-  }
+  if (hash_bucket_schemas_ != other.hash_bucket_schemas_) return false;
 
   return true;
 }

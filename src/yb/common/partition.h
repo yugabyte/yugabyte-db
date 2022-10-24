@@ -348,17 +348,23 @@ class PartitionSchema {
     explicit RangeSplit(const std::string& bounds) : column_bounds(bounds) {}
 
     std::string column_bounds;
+
+    friend bool operator==(const RangeSplit&, const RangeSplit&) = default;
   };
 
   struct RangeSchema {
     std::vector<ColumnId> column_ids;
     std::vector<RangeSplit> splits;
+
+    friend bool operator==(const RangeSchema&, const RangeSchema&) = default;
   };
 
   struct HashBucketSchema {
     std::vector<ColumnId> column_ids;
     int32_t num_buckets;
     uint32_t seed;
+
+    friend bool operator==(const HashBucketSchema&, const HashBucketSchema&) = default;
   };
 
   // Convertion between PB and partition schema.
