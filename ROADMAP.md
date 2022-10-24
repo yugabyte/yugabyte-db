@@ -1,4 +1,4 @@
-- # YugabyteDB roadmap
+# YugabyteDB roadmap
 
 YugabyteDB roadmap is divided in five themes:
 - Dynamic workload optimization - features allowing YugabyteDB to cover every operational use case and transactional workload.
@@ -9,7 +9,7 @@ YugabyteDB roadmap is divided in five themes:
 
 See detailed backgroud of every theme below.
 
-- #- # Dynamic workload optimization
+## Dynamic workload optimization
 
 Coming soon (Q4 ‘22, Q1 ‘23):
 - Query optimization: More query pushdowns, richer table statistics, auto-ANALYZE
@@ -22,11 +22,11 @@ Coming Later (Q2 ‘23+):
 - Automatic table partition management
 - QoS: Fine grained control over other metrics (CPU, memory, etc.)
 
-- #- #- # Handling smaller-scale workloads
+### Handling smaller-scale workloads
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
-| Query Optimization: Reverse scan improvement | Q4 '22 | - #12609 |
+| Query Optimization: Reverse scan improvement | Q4 '22 | - GH-12609 |
 | Query Planning: Better stats (auto analyze, DocDB sampling) | Q1 '23 | - #11842 |
 | Query Planning: Better cost estimates | Q1 '23 | - #11842 |
 | Query Optimization:  Expressions push downs | Q1 '23 | - #11842 |
@@ -35,7 +35,7 @@ Coming Later (Q2 ‘23+):
 | Query Routing: Built-in routing to colocated database | | |
 | Query Optimization: Improve tablegroups performance | | |
 
-- #- #- # Multi-tenant workloads
+### Multi-tenant workloads
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ Coming Later (Q2 ‘23+):
 | Cross-database concurrent DDLs | Q1 ‘23 | - #11665 |
 | Per-tenant/database metrics | Q2 ‘23 | - #11665 |
 
-- #- #- # Optimizing for dynamic workloads
+### Optimizing for dynamic workloads
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ Coming Later (Q2 ‘23+):
 | Auto-tiering to cold storage | | |
 | Automatic table partition management | | |
 
-- #- # Cloud native capabilities
+## Cloud native capabilities
 
 Coming soon (Q4 ‘22, Q1 ‘23):
 - Cost optimization: Graviton support, workload sizing estimator
@@ -65,7 +65,7 @@ Coming Later (Q2 ‘23+):
 - Multi-cloud cost optimizer
 - Geo-partitioning: simplify usage
 
-- #- #- # xCluster: Cloud native “Golden Gate” capability
+### xCluster: Cloud native “Golden Gate” capability
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Coming Later (Q2 ‘23+):
 | Handling fail-back scenario (BCDR) - Planned failover | Q2 ‘23 | - #13807<br/>- #10978 |
 | Handling fail-back scenario (BCDR) - Unplanned failover | Q2 ‘23 | - #13382<br/>- #13535<br/>- #13536 |
 
-- #- #- # Simplified xCluster replication
+### Simplified xCluster replication
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -84,7 +84,7 @@ Coming Later (Q2 ‘23+):
 | API to wait for replication to drain | Q4 '22 |
 | API if we need to re-bootstrap replication| Q2 '23 | - #10645
 
-- #- #- # Better troubleshooting
+### Better troubleshooting
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -98,7 +98,7 @@ Coming Later (Q2 ‘23+):
 | EXPLAIN: Single vs multi-shard transaction | | 
 | EXPLAIN: nodes included in execution | | 
 
-- #- # Developer productivity
+## Developer productivity
 
 Coming soon (Q4 ‘22, Q1 ‘23):
 - APIs for DBMS management
@@ -115,7 +115,7 @@ Coming Later (Q2 ‘23+):
 - Native REST API service
 - CDC: Feed stored as SQL/Relational tables in YB
 
-- #- #- # PostgreSQL compatibility
+### PostgreSQL compatibility
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ Coming Later (Q2 ‘23+):
 | PostgreSQL 13 support for new clusters | Q2 '23 | - #9797 |
 | PostgreSQL 13 support for upgrade clusters | | |
 
-- #- #- # Change Data Capture
+### Change Data Capture
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -140,11 +140,11 @@ Coming Later (Q2 ‘23+):
 | Object store integration (S3, Minio, etc) | | - #11860 |
 | Message bus integration (PubSub, Kinesis) | | - #11861 |
 
-- #- #- # Performance advisor
+### Performance advisor
 
 _TBD_
 
-- #- #- # Client drivers and ORMs
+### Client drivers and ORMs
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -155,14 +155,14 @@ _TBD_
 | YB listed on ORM sites / documentation | | |
 | R2DBC support (reactive drivers) | | |
 
-- #- #- # Building applications quickly
+### Building applications quickly
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
 | Better GraphQL/Hasura Performance | | |
 | Lambda support for YSQL | | |
 
-- #- # Autonomous operations
+## Autonomous operations
 
 Coming soon (Q4 ‘22, Q1 ‘23):
 - Incremental backups
@@ -175,13 +175,13 @@ Coming Later (Q2 ‘23+):
 - Multi-tenant offering for bursty workloads
 - Cost/size estimator
 
-- #- #- # Serverless auto-scaling infrastructure
+### Serverless auto-scaling infrastructure
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
 | Fast horizontal auto-scaling | Q2 '23 | |
 
-- #- #- # Backup and restore
+### Backup and restore
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -192,7 +192,7 @@ Coming Later (Q2 ‘23+):
 | Table-level restore | | |
 | File-level incremental backups | Q4 '22 | |
 
-- #- #- # Point-in-time recovery (PITR)
+### Point-in-time recovery (PITR)
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
@@ -201,7 +201,7 @@ Coming Later (Q2 ‘23+):
 | PITR with off-cluster backups | | |
 | Table-level restore | | |
 
-- #- # Security & compliance
+## Security & compliance
 
 Coming soon (Q4 ‘22, Q1 ‘23):
 - Support for external identity providers using SAML 2.0, OIDC - (Okta, Azure AD) in YB Managed
@@ -222,7 +222,7 @@ Coming Later (Q2 ‘23+):
 - PCI DSS Level 1 Authorization Issuance
 - Multi-factor authentication
 
-- #- #- # Integration with third-party security products
+### Integration with third-party security products
 
 | Feature | Timeline | Issues |
 | --- | --- | --- |
