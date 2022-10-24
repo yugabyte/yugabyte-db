@@ -125,6 +125,7 @@ Consul
 Contentful
 Corosync
 Coursier
+CPUs
 cron
 cronjob
 cronjobs
@@ -265,6 +266,7 @@ hardcode
 hardcoded
 hardcodes
 Hashicorp
+Hasura
 Haswell
 heatmap
 heatmaps
@@ -828,12 +830,15 @@ UUIDs
 Vagrantfile
 validator
 validators
+vCPU
+vCPUs
 vendored
 versionless
 viewport
 viewports
 virtualized
 virtualizing
+VPCs
 Vue
 Vuex
 walkthrough
