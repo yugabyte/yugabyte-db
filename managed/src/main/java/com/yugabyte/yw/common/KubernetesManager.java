@@ -71,6 +71,7 @@ public abstract class KubernetesManager {
             "install",
             helmReleaseName,
             helmPackagePath,
+            "--debug",
             "--namespace",
             namespace,
             "-f",
@@ -165,6 +166,7 @@ public abstract class KubernetesManager {
             "upgrade",
             helmReleaseName,
             helmPackagePath,
+            "--debug",
             "-f",
             overridesFile,
             "--namespace",
@@ -178,7 +180,8 @@ public abstract class KubernetesManager {
 
   public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
     String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
+    List<String> commandList =
+        ImmutableList.of("helm", "delete", helmReleaseName, "--debug", "-n", namespace);
     execCommand(config, commandList);
   }
 
@@ -214,8 +217,7 @@ public abstract class KubernetesManager {
 
   // Checks if override keys are present in values.yaml in the chart.
   // Runs helm template.
-  // Returns K8sOverridesResponse = {universeOverridesErrors, azOverridesErrors,
-  // helmTemplateErrors}.
+  // Returns set of error strings.
   public Set<String> validateOverrides(
       String ybSoftwareVersion,
       Map<String, String> config,
@@ -298,6 +300,7 @@ public abstract class KubernetesManager {
             "helm",
             "template",
             "yb-validate-k8soverrides" /* dummy name */,
+            "--debug",
             helmPackagePath,
             "-f",
             mergedOverrides,
