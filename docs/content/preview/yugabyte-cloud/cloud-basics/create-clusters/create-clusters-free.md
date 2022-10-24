@@ -6,6 +6,7 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
+  - /preview/yugabyte-cloud/free-tier/
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-free
@@ -80,9 +81,7 @@ Sandbox clusters are deleted after 30 days of inactivity. Only paused clusters a
 To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
 - Any SELECT, UPDATE, INSERT, or DELETE database operation.
-
 - Create or delete tables.
-
 - Add or remove IP allow lists.
 
 ## Limitations
