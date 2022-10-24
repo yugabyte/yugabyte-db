@@ -81,9 +81,7 @@ Sandbox clusters are deleted after 30 days of inactivity. Only paused clusters a
 To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
 - Any SELECT, UPDATE, INSERT, or DELETE database operation.
-
 - Create or delete tables.
-
 - Add or remove IP allow lists.
 
 ## Limitations
