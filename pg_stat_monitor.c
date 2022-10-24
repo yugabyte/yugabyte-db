@@ -19,9 +19,6 @@
 #include "access/parallel.h"
 #include "utils/guc.h"
 #include <regex.h>
-#ifdef BENCHMARK
-#include <time.h>				/* clock() */
-#endif
 #include "pgstat.h"
 #include "commands/explain.h"
 #include "pg_stat_monitor.h"
@@ -78,9 +75,6 @@ static struct rusage rusage_end;
 /* Query buffer, store queries' text. */
 static unsigned char *pgss_qbuf = NULL;
 static char *pgss_explain(QueryDesc *queryDesc);
-#ifdef BENCHMARK
-static struct pg_hook_stats_t *pg_hook_stats;
-#endif
 
 static void extract_query_comments(const char *query, char *comments, size_t max_len);
 static int	get_histogram_bucket(double q_time);
@@ -349,18 +343,6 @@ pg_stat_monitor_version(PG_FUNCTION_ARGS)
 }
 
 #if PG_VERSION_NUM >= 140000
-#ifdef BENCHMARK
-static void
-pgss_post_parse_analyze_benchmark(ParseState *pstate, Query *query, JumbleState *jstate)
-{
-	double		start_time = (double) clock();
-
-	pgss_post_parse_analyze(pstate, query, jstate);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_POST_PARSE_ANALYZE, elapsed);
-}
-#endif
 /*
  * Post-parse-analysis hook: mark query with a queryId
  */
@@ -412,20 +394,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   jstate,		/* JumbleState */
 				   PGSS_PARSE); /* pgssStoreKind */
 }
-#else
+#elif
 
-#ifdef BENCHMARK
-static void
-pgss_post_parse_analyze_benchmark(ParseState *pstate, Query *query)
-{
-	double		start_time = (double) clock();
-
-	pgss_post_parse_analyze(pstate, query);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_POST_PARSE_ANALYZE, elapsed);
-}
-#endif
 /*
  * Post-parse-analysis hook: mark query with a queryId
  */
@@ -484,18 +454,6 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 }
 #endif
 
-#ifdef BENCHMARK
-static void
-pgss_ExecutorStart_benchmark(QueryDesc *queryDesc, int eflags)
-{
-	double		start_time = (double) clock();
-
-	pgss_ExecutorStart(queryDesc, eflags);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_EXECUTORSTART, elapsed);
-}
-#endif
 /*
  * ExecutorStart hook: start up tracking if needed
  */
@@ -552,19 +510,6 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 }
 
-#ifdef BENCHMARK
-static void
-pgss_ExecutorRun_benchmark(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
-						   bool execute_once)
-{
-	double		start_time = (double) clock();
-
-	pgss_ExecutorRun(queryDesc, direction, count, execute_once);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_EXECUTORUN, elapsed);
-}
-#endif
 
 /*
  * ExecutorRun hook: all we need do is track nesting depth
@@ -595,19 +540,6 @@ pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 	}
 	PG_END_TRY();
 }
-
-#ifdef BENCHMARK
-static void
-pgss_ExecutorFinish_benchmark(QueryDesc *queryDesc)
-{
-	double		start_time = (double) clock();
-
-	pgss_ExecutorFinish(queryDesc);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_EXECUTORFINISH, elapsed);
-}
-#endif
 
 /*
  * ExecutorFinish hook: all we need do is track nesting depth
@@ -651,19 +583,6 @@ pgss_explain(QueryDesc *queryDesc)
 		es->str->data[--es->str->len] = '\0';
 	return es->str->data;
 }
-
-#ifdef BENCHMARK
-static void
-pgss_ExecutorEnd_benchmark(QueryDesc *queryDesc)
-{
-	double		start_time = (double) clock();
-
-	pgss_ExecutorEnd(queryDesc);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_EXECUTOREND, elapsed);
-}
-#endif
 
 /*
  * ExecutorEnd hook: store results if needed
@@ -726,21 +645,6 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	num_relations = 0;
 }
 
-#ifdef BENCHMARK
-static bool
-pgss_ExecutorCheckPerms_benchmark(List *rt, bool abort)
-{
-	bool		ret;
-	double		start_time = (double) clock();
-
-	ret = pgss_ExecutorCheckPerms(rt, abort);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_EXECUTORCHECKPERMS, elapsed);
-	return ret;
-}
-#endif
-
 static bool
 pgss_ExecutorCheckPerms(List *rt, bool abort)
 {
@@ -792,20 +696,6 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 }
 
 #if PG_VERSION_NUM >= 130000
-#ifdef BENCHMARK
-static PlannedStmt *
-pgss_planner_hook_benchmark(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
-{
-	PlannedStmt *ret;
-	double		start_time = (double) clock();
-
-	ret = pgss_planner_hook(parse, query_string, cursorOptions, boundParams);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_PLANNER_HOOK, elapsed);
-	return ret;
-}
-#endif
 static PlannedStmt *
 pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
@@ -912,23 +802,6 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
  * ProcessUtility hook
  */
 #if PG_VERSION_NUM >= 140000
-#ifdef BENCHMARK
-static void
-pgss_ProcessUtility_benchmark(PlannedStmt *pstmt, const char *queryString,
-							  bool readOnlyTree,
-							  ProcessUtilityContext context,
-							  ParamListInfo params, QueryEnvironment *queryEnv,
-							  DestReceiver *dest,
-							  QueryCompletion *qc)
-{
-	double		start_time = (double) clock();
-
-	pgss_ProcessUtility(pstmt, queryString, readOnlyTree, context, params, queryEnv, dest, qc);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_PROCESSUTILITY, elapsed);
-}
-#endif
 static void
 pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					bool readOnlyTree,
@@ -938,22 +811,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					QueryCompletion *qc)
 
 #elif PG_VERSION_NUM >= 130000
-#ifdef BENCHMARK
-static void
-pgss_ProcessUtility_benchmark(PlannedStmt *pstmt, const char *queryString,
-							  ProcessUtilityContext context,
-							  ParamListInfo params, QueryEnvironment *queryEnv,
-							  DestReceiver *dest,
-							  QueryCompletion *qc)
-{
-	double		start_time = (double) clock();
-
-	pgss_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, qc);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_PROCESSUTILITY, elapsed);
-}
-#endif
 static void
 pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ProcessUtilityContext context,
@@ -962,22 +819,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					QueryCompletion *qc)
 
 #else
-#ifdef BENCHMARK
-static void
-pgss_ProcessUtility_benchmark(PlannedStmt *pstmt, const char *queryString,
-							  ProcessUtilityContext context, ParamListInfo params,
-							  QueryEnvironment *queryEnv,
-							  DestReceiver *dest,
-							  char *completionTag)
-{
-	double		start_time = (double) clock();
-
-	pgss_ProcessUtility(pstmt, queryString, context, params, queryEnv, dest, completionTag);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSS_PROCESSUTILITY, elapsed);
-}
-#endif
 static void
 pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ProcessUtilityContext context, ParamListInfo params,
@@ -1714,19 +1555,6 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 	/* Reset query buffer. */
 	*(uint64 *) pgss_qbuf = 0;
 
-#ifdef BENCHMARK
-	{
-		int			i;
-
-		for (i = STATS_START; i < STATS_END; ++i)
-		{
-			pg_hook_stats[i].min_time = 0;
-			pg_hook_stats[i].max_time = 0;
-			pg_hook_stats[i].total_time = 0;
-			pg_hook_stats[i].ncalls = 0;
-		}
-	}
-#endif
 	LWLockRelease(pgss->lock);
 	PG_RETURN_VOID();
 }
@@ -3497,63 +3325,6 @@ pg_stat_monitor_settings(PG_FUNCTION_ARGS)
 Datum
 pg_stat_monitor_hook_stats(PG_FUNCTION_ARGS)
 {
-#ifdef BENCHMARK
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	enum pg_hook_stats_id hook_id;
-
-	/* Safety check... */
-	if (!IsSystemInitialized())
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
-
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
-
-	/* Switch into long-lived context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "pg_stat_monitor: return type must be a row type");
-
-	if (tupdesc->natts != 5)
-		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	for (hook_id = 0; hook_id < STATS_END; hook_id++)
-	{
-		Datum		values[5];
-		bool		nulls[5];
-		int			j = 0;
-
-		memset(values, 0, sizeof(values));
-		memset(nulls, 0, sizeof(nulls));
-
-		values[j++] = CStringGetTextDatum(pg_hook_stats[hook_id].hook_name);
-		values[j++] = Float8GetDatumFast(pg_hook_stats[hook_id].min_time);
-		values[j++] = Float8GetDatumFast(pg_hook_stats[hook_id].max_time);
-		values[j++] = Float8GetDatumFast(pg_hook_stats[hook_id].total_time);
-		values[j++] = Int64GetDatumFast(pg_hook_stats[hook_id].ncalls);
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-	}
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-#endif							/* #ifdef BENCHMARK */
 	return (Datum) 0;
 }
 
@@ -3564,18 +3335,6 @@ set_qbuf(unsigned char *buf)
 	*(uint64 *) pgss_qbuf = 0;
 }
 
-#ifdef BENCHMARK
-static void
-pgsm_emit_log_hook_benchmark(ErrorData *edata)
-{
-	double		start_time = (double) clock();
-
-	pgsm_emit_log_hook(edata);
-	double		elapsed = ((double) clock() - start_time) / CLOCKS_PER_SEC;
-
-	update_hook_stats(STATS_PGSM_EMIT_LOG_HOOK, elapsed);
-}
-#endif
 void
 pgsm_emit_log_hook(ErrorData *edata)
 {
@@ -3941,49 +3700,3 @@ djb2_hash_str(unsigned char *str, int *out_len)
 
 	return hash;
 }
-
-#ifdef BENCHMARK
-void
-init_hook_stats(void)
-{
-	bool		found = false;
-
-	pg_hook_stats = ShmemInitStruct("pg_stat_monitor_hook_stats", HOOK_STATS_SIZE, &found);
-	if (!found)
-	{
-		memset(pg_hook_stats, 0, HOOK_STATS_SIZE);
-
-#define SET_HOOK_NAME(hook, name) \
-	snprintf(pg_hook_stats[hook].hook_name, sizeof(pg_hook_stats->hook_name), name);
-
-		SET_HOOK_NAME(STATS_PGSS_POST_PARSE_ANALYZE, "pgss_post_parse_analyze");
-		SET_HOOK_NAME(STATS_PGSS_EXECUTORSTART, "pgss_ExecutorStart");
-		SET_HOOK_NAME(STATS_PGSS_EXECUTORUN, "pgss_ExecutorRun");
-		SET_HOOK_NAME(STATS_PGSS_EXECUTORFINISH, "pgss_ExecutorFinish");
-		SET_HOOK_NAME(STATS_PGSS_EXECUTOREND, "pgss_ExecutorEnd");
-		SET_HOOK_NAME(STATS_PGSS_PROCESSUTILITY, "pgss_ProcessUtility");
-#if PG_VERSION_NUM >= 130000
-		SET_HOOK_NAME(STATS_PGSS_PLANNER_HOOK, "pgss_planner_hook");
-#endif
-		SET_HOOK_NAME(STATS_PGSM_EMIT_LOG_HOOK, "pgsm_emit_log_hook");
-		SET_HOOK_NAME(STATS_PGSS_EXECUTORCHECKPERMS, "pgss_ExecutorCheckPerms");
-	}
-}
-
-void
-update_hook_stats(enum pg_hook_stats_id hook_id, double time_elapsed)
-{
-	Assert(hook_id > STATS_START && hook_id < STATS_END);
-
-	struct pg_hook_stats_t *p = &pg_hook_stats[hook_id];
-
-	if (time_elapsed < p->min_time)
-		p->min_time = time_elapsed;
-
-	if (time_elapsed > p->max_time)
-		p->max_time = time_elapsed;
-
-	p->total_time += time_elapsed;
-	p->ncalls++;
-}
-#endif
