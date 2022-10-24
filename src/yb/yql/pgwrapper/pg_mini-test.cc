@@ -2857,9 +2857,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompaction)) {
   VerifyFileSizeAfterCompaction(&conn, 3 /* num_tables */);
 }
 
-// TODO: enable this test when issue #12898 is resolved.
 // Ensure that after restart, there is no data loss in compaction.
-TEST_F(PgMiniTest, YB_DISABLE_TEST(TablegroupCompactionWithRestart)) {
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
   const auto num_tables = 3;
