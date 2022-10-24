@@ -55,6 +55,11 @@ Result<Snapshots> SnapshotTestUtil::ListSnapshots(
   if (!snapshot_id.IsNil()) {
     req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   }
+  auto options = req.mutable_detail_options();
+  options->set_show_namespace_details(true);
+  options->set_show_udtype_details(true);
+  options->set_show_table_details(true);
+  options->set_show_tablet_details(true);
 
   rpc::RpcController controller;
   controller.set_timeout(60s);

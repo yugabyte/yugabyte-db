@@ -100,10 +100,19 @@ message RestorationInfoPB {
   optional SysRestorationEntryPB entry = 2;
 }
 
+message ListSnapshotsDetailOptionsPB {
+  // Defaults are set to true to support backwards compatibility.
+  optional bool show_namespace_details = 1 [default = true];
+  optional bool show_udtype_details = 2 [default = true];
+  optional bool show_table_details = 3 [default = true];
+  optional bool show_tablet_details = 4 [default = true];
+}
+
 message ListSnapshotsRequestPB {
   optional bytes snapshot_id = 2;
   optional bool list_deleted_snapshots = 3;
   optional bool prepare_for_backup = 4;
+  optional ListSnapshotsDetailOptionsPB detail_options = 5;
 }
 
 message ListSnapshotsResponsePB {

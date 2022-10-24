@@ -90,7 +90,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       Status* complete_status) override;
 
   Status ListSnapshots(
-      const TxnSnapshotId& snapshot_id, bool list_deleted, ListSnapshotsResponsePB* resp);
+      const TxnSnapshotId& snapshot_id, bool list_deleted,
+      ListSnapshotsDetailOptionsPB options, ListSnapshotsResponsePB* resp);
 
   Result<TxnSnapshotRestorationId> Restore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term);
