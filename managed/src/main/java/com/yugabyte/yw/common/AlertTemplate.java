@@ -457,7 +457,7 @@ public enum AlertTemplate {
 
   DB_CORE_FILES(
       "DB core files",
-      "Core files detected on DB TServer instances",
+      "Core files detected on DB TServer/Master instances",
       "ybp_health_check_tserver_core_files{universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }}",
       "Core files detected for universe '{{ $labels.source_name }}'"
