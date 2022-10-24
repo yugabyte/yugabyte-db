@@ -94,7 +94,7 @@ class TransactionIntentApplier {
   virtual CHECKED_STATUS RemoveIntents(
       const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
 
-  virtual Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
+  virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 
   // See TransactionParticipant::WaitMinRunningHybridTime below
   virtual void MinRunningHybridTimeSatisfied() = 0;
