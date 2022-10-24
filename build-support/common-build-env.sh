@@ -2386,14 +2386,14 @@ lint_java_code() {
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
              "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrAArch64\.class\)' \
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
-            "YBTestRunnerNonSanitizersOrAArch64, " \
+            "YBTestRunnerNonSanOrAArch64Mac, " \
             "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
