@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -232,6 +233,24 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createXClusterConfigSetStatusForTablesTask(
+      Set<String> tableIds, XClusterTableConfig.Status desiredStatus) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigSetStatusForTables", executor);
+    XClusterConfigSetStatusForTables.Params setStatusForTablesParams =
+        new XClusterConfigSetStatusForTables.Params();
+    setStatusForTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
+    setStatusForTablesParams.xClusterConfig = taskParams().getXClusterConfig();
+    setStatusForTablesParams.tableIds = tableIds;
+    setStatusForTablesParams.desiredStatus = desiredStatus;
+
+    XClusterConfigSetStatusForTables task = createTask(XClusterConfigSetStatusForTables.class);
+    task.initialize(setStatusForTablesParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /**
    * It makes an RPC call to pause/enable the xCluster config and saves it in the Platform DB.
    *
@@ -258,14 +277,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createXClusterConfigModifyTablesTask(
-      Set<String> tableIdsToAdd, Set<String> tableIdsToRemove) {
+      Set<String> tables, XClusterConfigModifyTables.Params.Action action) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("XClusterConfigModifyTables", executor);
     XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
     modifyTablesParams.universeUUID = taskParams().getXClusterConfig().targetUniverseUUID;
     modifyTablesParams.xClusterConfig = taskParams().getXClusterConfig();
-    modifyTablesParams.tableIdsToAdd = tableIdsToAdd;
-    modifyTablesParams.tableIdsToRemove = tableIdsToRemove;
+    modifyTablesParams.tables = tables;
+    modifyTablesParams.action = action;
 
     XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
     task.initialize(modifyTablesParams);
@@ -897,6 +916,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           Set<String> requestedTableIdsToBootstrap,
           Universe sourceUniverse,
           Universe targetUniverse) {
+    log.debug(
+        "requestedTableIds are {} and requestedTableIdsToBootstrap are {}",
+        requestedTableIds,
+        requestedTableIdsToBootstrap);
     // Ensure at least one table exists to verify.
     if (requestedTableIds.isEmpty()) {
       throw new IllegalArgumentException("requestedTableIds cannot be empty");
@@ -985,7 +1008,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 }
               });
     }
-
+    log.debug("requestedTableInfoList is {}", requestedTableInfoList);
     return requestedTableInfoList;
   }
 

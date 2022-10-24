@@ -32,10 +32,24 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
   public static class Params extends XClusterConfigTaskParams {
     // The target universe UUID must be stored in universeUUID field.
     // The parent xCluster config must be stored in xClusterConfig field.
-    // Table ids to add to the replication.
-    public Set<String> tableIdsToAdd;
-    // Table ids to remove from the replication.
-    public Set<String> tableIdsToRemove;
+    // Tables to apply the action to.
+    public Set<String> tables;
+
+    public enum Action {
+      // Add the tables to the replication group.
+      ADD,
+      // Delete the tables from the replication group and remove their corresponding DB entry.
+      DELETE,
+      // Remove the tables from the replication group but keep its DB entry.
+      REMOVE_FROM_REPLICATION_ONLY;
+
+      @Override
+      public String toString() {
+        return name().toLowerCase();
+      }
+    }
+
+    public Action action;
   }
 
   @Override
@@ -46,12 +60,12 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(targetUniverse=%s,xClusterConfig=%s,tableIdsToAdd=%s,tableIdsToRemove=%s)",
+        "%s(targetUniverse=%s,xClusterConfig=%s,tables=%s,action=%s)",
         super.getName(),
         taskParams().universeUUID,
         taskParams().getXClusterConfig(),
-        taskParams().tableIdsToAdd,
-        taskParams().tableIdsToRemove);
+        taskParams().tables,
+        taskParams().action);
   }
 
   @Override
@@ -60,16 +74,14 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Map<String, String> tableIdsToAddBootstrapIdsMap = new HashMap<>();
-    Set<String> tableIdsToAdd =
-        taskParams().tableIdsToAdd == null ? new HashSet<>() : taskParams().tableIdsToAdd;
-    Set<String> tableIdsToRemove =
-        taskParams().tableIdsToRemove == null ? new HashSet<>() : taskParams().tableIdsToRemove;
-
-    // Ensure the tableIdsToAdd and tableIdsToRemove sets are disjoint.
-    if (tableIdsToAdd.stream().anyMatch(tableIdsToRemove::contains)) {
-      throw new IllegalArgumentException(
-          "taskParams().tableIdsToAdd and "
-              + "taskParams().tableIdsToRemove sets must be disjoint");
+    Set<String> tableIdsToAdd;
+    Set<String> tableIdsToRemove;
+    if (taskParams().action == Params.Action.ADD) {
+      tableIdsToAdd = taskParams().tables;
+      tableIdsToRemove = new HashSet<>();
+    } else {
+      tableIdsToAdd = new HashSet<>();
+      tableIdsToRemove = taskParams().tables;
     }
 
     // Ensure each tableId exits in the xCluster config and replication is not set up for it. Also,
@@ -142,16 +154,15 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
           // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
           // that taskParams().tableIdsToAdd exist in the xCluster config, so it will not throw an
           // exception.
-          xClusterConfig.setReplicationSetupDone(taskParams().tableIdsToAdd);
-          xClusterConfig.setStatusForTables(
-              taskParams().tableIdsToAdd, XClusterTableConfig.Status.Running);
+          xClusterConfig.setReplicationSetupDone(tableIdsToAdd);
+          xClusterConfig.setStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Running);
 
           // Get the stream ids from the target universe and put it in the Platform DB for the
           // added tables to the xCluster config.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
               getClusterConfig(client, targetUniverse.universeUUID);
           updateStreamIdsFromTargetUniverseClusterConfig(
-              clusterConfig, xClusterConfig, taskParams().tableIdsToAdd);
+              clusterConfig, xClusterConfig, tableIdsToAdd);
 
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER
@@ -160,8 +171,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             getUniverse(true).incrementVersion();
           }
         } catch (Exception e) {
-          xClusterConfig.setStatusForTables(
-              taskParams().tableIdsToAdd, XClusterTableConfig.Status.Failed);
+          xClusterConfig.setStatusForTables(tableIdsToAdd, XClusterTableConfig.Status.Failed);
           throw e;
         }
       }
@@ -218,10 +228,24 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
               getUniverse(true).incrementVersion();
             }
           }
-          xClusterConfig.removeTables(tableIdsToRemove);
+
+          if (taskParams().action == Params.Action.DELETE) {
+            xClusterConfig.removeTables(tableIdsToRemove);
+          } else {
+            xClusterConfig
+                .getTablesById(tableIdsToRemove)
+                .forEach(
+                    tableConfig -> {
+                      tableConfig.status = XClusterTableConfig.Status.Validated;
+                      tableConfig.replicationSetupDone = false;
+                      tableConfig.streamId = null;
+                      tableConfig.bootstrapCreateTime = null;
+                      tableConfig.restoreTime = null;
+                    });
+            xClusterConfig.update();
+          }
         } catch (Exception e) {
-          xClusterConfig.setStatusForTables(
-              taskParams().tableIdsToRemove, XClusterTableConfig.Status.Failed);
+          xClusterConfig.setStatusForTables(tableIdsToRemove, XClusterTableConfig.Status.Failed);
           throw e;
         }
       }
