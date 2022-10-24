@@ -133,8 +133,7 @@ Status RestoreInitialSysCatalogSnapshot(
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
   auto tablet = VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe());
-  auto operation = std::make_unique<SnapshotOperation>(
-      tablet.get(), &tablet_snapshot_req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet, &tablet_snapshot_req);
 
   CountDownLatch latch(1);
   operation->set_completion_callback(

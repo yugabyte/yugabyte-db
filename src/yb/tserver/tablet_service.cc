@@ -491,7 +491,7 @@ void TabletServiceAdminImpl::BackfillDone(
   }
 
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet.get(), tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log(), req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -935,7 +935,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
     }
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet.tablet.get(), tablet.peer->log(), req);
+      tablet.tablet, tablet.peer->log(), req);
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1076,7 +1076,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
     return;
   }
 
-  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet.get(), &req->state());
+  auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet, &req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
@@ -1283,7 +1283,7 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
 
   auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context->GetClientDeadline(), tablet.peer.get(),
-      tablet.tablet.get());
+      tablet.tablet);
   auto* request = query->operation().AllocateRequest();
   metadata->ToPB(request->mutable_write_batch()->mutable_transaction());
 
@@ -1345,7 +1345,7 @@ void TabletServiceImpl::Truncate(const TruncateRequestPB* req,
     return;
   }
 
-  auto operation = std::make_unique<TruncateOperation>(tablet.tablet.get(), &req->truncate());
+  auto operation = std::make_unique<TruncateOperation>(tablet.tablet, &req->truncate());
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -1678,7 +1678,7 @@ void TabletServiceAdminImpl::SplitTablet(
   }
 
   auto operation = std::make_unique<tablet::SplitOperation>(
-      leader_tablet_peer.tablet.get(), server_->tablet_manager(), req);
+      leader_tablet_peer.tablet, server_->tablet_manager(), req);
   *operation->AllocateRequest() = *req;
   operation->mutable_request()->set_split_parent_leader_uuid(
       leader_tablet_peer.peer->permanent_uuid());
@@ -1868,7 +1868,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   auto query = std::make_unique<tablet::WriteQuery>(
       tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
-      tablet.tablet.get(), resp);
+      tablet.tablet, resp);
   query->set_client_request(*req);
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(context));

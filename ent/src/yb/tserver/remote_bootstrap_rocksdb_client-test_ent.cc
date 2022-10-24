@@ -44,7 +44,8 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     LOG(INFO) << "Creating Snapshot " << snapshot_id << " ...";
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(snapshot_id);
-    tablet::SnapshotOperation operation(tablet_peer_->tablet(), &request);
+    tablet::SnapshotOperation operation(
+        ASSERT_RESULT(tablet_peer_->shared_tablet_safe()), &request);
     operation.set_hybrid_time(tablet_peer_->clock().Now());
     operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
     ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&operation));

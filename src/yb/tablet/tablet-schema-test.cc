@@ -82,7 +82,7 @@ class TestTabletSchema : public YBTabletTest {
   }
 
   void InsertRow(int32_t key) {
-    LocalTabletWriter writer(tablet().get());
+    LocalTabletWriter writer(tablet());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);
     QLAddInt32ColumnValue(&req, kFirstColumnId + 1, key);
@@ -90,7 +90,7 @@ class TestTabletSchema : public YBTabletTest {
   }
 
   void DeleteRow(int32_t key) {
-    LocalTabletWriter writer(tablet().get());
+    LocalTabletWriter writer(tablet());
     QLWriteRequestPB req;
     req.set_type(QLWriteRequestPB::QL_STMT_DELETE);
     QLAddInt32HashValue(&req, key);
@@ -98,7 +98,7 @@ class TestTabletSchema : public YBTabletTest {
   }
 
   void MutateRow(int32_t key, int32_t col_idx, int32_t new_val) {
-    LocalTabletWriter writer(tablet().get());
+    LocalTabletWriter writer(tablet());
     QLWriteRequestPB req;
     QLAddInt32HashValue(&req, key);
     QLAddInt32ColumnValue(&req, kFirstColumnId + col_idx, new_val);

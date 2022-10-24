@@ -680,7 +680,7 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_
   // TODO(tablet_ptr) The operation needs to hold a refcount for the tablet.
   // https://github.com/yugabyte/yugabyte-db/issues/14546
   LOG_IF(DFATAL, !tablet_result.ok()) << "Tablet is not running: " << tablet_result.status();
-  operation->SetTablet(tablet_result->get());
+  operation->SetTablet(*tablet_result);
   tablet_peer()->Submit(std::move(operation), leader_term);
 }
 

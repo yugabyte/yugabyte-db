@@ -874,7 +874,7 @@ Status TSTabletManager::ApplyTabletSplit(
   SCHECK_FORMAT(
       split_op_id.valid() && !split_op_id.empty(), InvalidArgument,
       "Incorrect ID for SPLIT_OP: $0", operation->ToString());
-  auto* tablet = CHECK_NOTNULL(operation->tablet());
+  auto tablet = VERIFY_RESULT(operation->tablet_safe());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
   SCHECK_EQ(
