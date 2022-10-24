@@ -278,6 +278,8 @@ public enum TaskType {
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
+  XClusterConfigSetStatusForTables("subtasks.xcluster.XClusterConfigSetStatusForTables"),
+
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
   XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),

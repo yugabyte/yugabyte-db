@@ -426,8 +426,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(1).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString(setupErrMsg));
     assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
 
@@ -475,8 +475,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(1).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",

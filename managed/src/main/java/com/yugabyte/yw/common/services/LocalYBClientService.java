@@ -50,8 +50,10 @@ public class LocalYBClientService implements YBClientService {
       return null;
     }
     return new YBClient.YBClientBuilder(config.getMasterHostPorts())
-        .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
         .sslCertFile(config.getCertFile())
+        .defaultAdminOperationTimeoutMs(config.getAdminOperationTimeout().toMillis())
+        .defaultOperationTimeoutMs(config.getOperationTimeout().toMillis())
+        .defaultSocketReadTimeoutMs(config.getSocketReadTimeout().toMillis())
         .build();
   }
 }
