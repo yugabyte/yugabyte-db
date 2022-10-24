@@ -264,27 +264,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return nullptr;
   }
 
-  Result<TabletPtr> shared_tablet_safe() const {
-    // Note that there is still a possible race condition between the time we check the tablet state
-    // and the time we access the tablet shared pointer through the weak pointer.
-    auto tablet_obj_state = tablet_obj_state_.load(std::memory_order_acquire);
-    if (tablet_obj_state != TabletObjectState::kAvailable) {
-      return STATUS_FORMAT(
-          IllegalState,
-          "Tablet not running: tablet object $0 has invalid state $1",
-          tablet_id_, tablet_obj_state);
-    }
-    // The weak pointer is safe to access as long as the state is not kUninitialized, because it
-    // never changes after the state is set to kAvailable. However, we still need to check if
-    // lock() returns nullptr.
-    auto tablet_ptr = tablet_weak_.lock();
-    if (tablet_ptr)
-      return tablet_ptr;
-    return STATUS_FORMAT(
-        IllegalState,
-        "Tablet object $0 has already been destroyed",
-        tablet_id_);
-  }
+  Result<TabletPtr> shared_tablet_safe() const;
 
   RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);

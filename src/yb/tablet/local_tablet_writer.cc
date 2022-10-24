@@ -45,7 +45,7 @@ class AutoIncrementingCounter {
 
 } // namespace
 
-LocalTabletWriter::LocalTabletWriter(Tablet* tablet)
+LocalTabletWriter::LocalTabletWriter(TabletPtr tablet)
     : tablet_(tablet), req_(std::make_unique<tserver::WriteRequestPB>()),
       resp_(std::make_unique<tserver::WriteResponsePB>()) {
 }

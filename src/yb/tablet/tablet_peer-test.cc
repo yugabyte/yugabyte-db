@@ -251,7 +251,8 @@ class TabletPeerTest : public YBTabletTest {
   void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     WriteResponsePB resp;
     auto query = std::make_unique<WriteQuery>(
-        /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
+        /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
+        ASSERT_RESULT(tablet_peer->shared_tablet_safe()), &resp);
     query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
@@ -507,7 +508,7 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
     req->set_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = std::make_unique<WriteQuery>(
-        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), resp);
+        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet(), resp);
     query->set_client_request(*req);
     query->set_callback([&latch, resp](const Status& status) {
       if (!status.ok()) {
@@ -573,13 +574,14 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
   req.set_tablet_id(tablet()->tablet_id());
   AddTestRowInsert(1, 1, value, &req);
   auto query = std::make_unique<WriteQuery>(
-      /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
-      query->set_client_request(req);
-      query->set_callback([&latch, &resp](const Status& status) {
-        if (!status.ok()) {
-        StatusToPB(status, resp.mutable_error()->mutable_status());
-      }
-      latch.CountDown();
+      /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer,
+      ASSERT_RESULT(tablet_peer->shared_tablet_safe()), &resp);
+  query->set_client_request(req);
+  query->set_callback([&latch, &resp](const Status& status) {
+      if (!status.ok()) {
+      StatusToPB(status, resp.mutable_error()->mutable_status());
+    }
+    latch.CountDown();
   });
 
   tablet_peer->WriteAsync(std::move(query));

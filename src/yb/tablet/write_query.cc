@@ -118,11 +118,12 @@ WriteQuery::WriteQuery(
     int64_t term,
     CoarseTimePoint deadline,
     WriteQueryContext* context,
-    Tablet* tablet,
+    TabletPtr tablet,
     tserver::WriteResponsePB* response,
     docdb::OperationKind kind)
-    : operation_(std::make_unique<WriteOperation>(tablet)),
-      term_(term), deadline_(deadline),
+    : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
+      term_(term),
+      deadline_(deadline),
       context_(context),
       response_(response),
       kind_(kind),
@@ -600,6 +601,7 @@ Status WriteQuery::DoCompleteExecute() {
 }
 
 Tablet& WriteQuery::tablet() const {
+  // TODO(tablet_ptr): add error handling here to prevent crashes.
   return *operation_->tablet();
 }
 

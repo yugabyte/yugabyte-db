@@ -88,7 +88,7 @@ void TabletTestPreBase::InsertTestRows(int32_t first_row,
                                        int32_t count,
                                        int32_t val,
                                        TimeSeries *ts) {
-  LocalTabletWriter writer(tablet().get());
+  LocalTabletWriter writer(tablet());
 
   uint64_t inserted_since_last_report = 0;
   for (int32_t i = first_row; i < first_row + count; i++) {

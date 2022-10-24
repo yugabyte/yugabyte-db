@@ -40,9 +40,10 @@ class SplitOperation
       public OperationFilter {
  public:
   SplitOperation(
-      Tablet* tablet, TabletSplitter* tablet_splitter,
+      TabletPtr tablet, TabletSplitter* tablet_splitter,
       const SplitTabletRequestPB* request = nullptr)
-      : OperationBase(tablet, request), tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
+      : OperationBase(std::move(tablet), request),
+        tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
 
   TabletSplitter& tablet_splitter() const { return tablet_splitter_; }
 

@@ -25,7 +25,7 @@ namespace tablet {
 class ChangeAutoFlagsConfigOperation
     : public OperationBase<OperationType::kChangeAutoFlagsConfig, AutoFlagsConfigPB> {
  public:
-  explicit ChangeAutoFlagsConfigOperation(Tablet* tablet, const AutoFlagsConfigPB* config)
+  explicit ChangeAutoFlagsConfigOperation(TabletPtr tablet, const AutoFlagsConfigPB* config)
       : OperationBase(tablet, config) {}
 
   Status Apply();
