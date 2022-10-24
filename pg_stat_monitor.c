@@ -394,7 +394,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   jstate,		/* JumbleState */
 				   PGSS_PARSE); /* pgssStoreKind */
 }
-#elif
+#else
 
 /*
  * Post-parse-analysis hook: mark query with a queryId
