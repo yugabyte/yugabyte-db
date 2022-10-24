@@ -57,7 +57,7 @@ class LocalTabletWriter : public WriteQueryContext {
  public:
   typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
 
-  explicit LocalTabletWriter(Tablet* tablet);
+  explicit LocalTabletWriter(TabletPtr tablet);
   ~LocalTabletWriter();
 
   Status Write(QLWriteRequestPB* req);
@@ -67,7 +67,7 @@ class LocalTabletWriter : public WriteQueryContext {
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
   Result<HybridTime> ReportReadRestart() override;
 
-  Tablet* const tablet_;
+  TabletPtr tablet_;
 
   std::unique_ptr<tserver::WriteRequestPB> req_;
   std::unique_ptr<tserver::WriteResponsePB> resp_;

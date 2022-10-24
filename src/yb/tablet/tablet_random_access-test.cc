@@ -114,7 +114,7 @@ class TestRandomAccess : public YBTabletTest {
 
   void SetUp() override {
     YBTabletTest::SetUp();
-    writer_.reset(new LocalTabletWriter(tablet().get()));
+    writer_.reset(new LocalTabletWriter(tablet()));
   }
 
   // Pick a random row of the table, verify its current state, and then
@@ -311,7 +311,7 @@ void TestRandomAccess::RunFuzzCase(const vector<TestOp>& test_ops,
                                    int update_multiplier = 1) {
   LOG(INFO) << "test case: " << DumpTestCase(test_ops);
 
-  LocalTabletWriter writer(tablet().get());
+  LocalTabletWriter writer(tablet());
   LocalTabletWriter::Batch batch;
 
   string cur_val = "";

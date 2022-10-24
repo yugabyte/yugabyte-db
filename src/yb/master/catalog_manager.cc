@@ -12116,11 +12116,11 @@ Status CatalogManager::ProcessTabletReplicationStatus(
   return Status::OK();
 }
 
-void CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
-  // TODO: operation should hold a shared_ptr for Tablet.
-  auto tablet = CHECK_RESULT(tablet_peer()->shared_tablet_safe());
-  operation->SetTablet(tablet.get());
+Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
+  return Status::OK();
 }
 
 Status CatalogManager::PromoteAutoFlags(

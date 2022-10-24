@@ -48,10 +48,9 @@ namespace yb {
 namespace tablet {
 
 using tserver::TabletServerError;
-using tserver::TabletServerErrorPB;
 
-Operation::Operation(OperationType operation_type, Tablet* tablet)
-    : operation_type_(operation_type), tablet_(tablet) {
+Operation::Operation(OperationType operation_type, TabletPtr tablet)
+    : operation_type_(operation_type), tablet_(std::move(tablet)) {
 }
 
 Operation::~Operation() {}
@@ -116,10 +115,11 @@ HybridTime Operation::WriteHybridTime() const {
 
 void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   HybridTime hybrid_time;
+  auto shared_tablet = tablet();
   if (use_mvcc()) {
-    hybrid_time = tablet_->mvcc_manager()->AddLeaderPending(op_id);
+    hybrid_time = shared_tablet->mvcc_manager()->AddLeaderPending(op_id);
   } else {
-    hybrid_time = tablet_->clock()->Now();
+    hybrid_time = shared_tablet->clock()->Now();
   }
 
   {
@@ -164,6 +164,23 @@ void Operation::Replicated(WasPending was_pending) {
   if (was_pending) {
     RemovedFromPending();
   }
+}
+
+TabletPtr Operation::tablet() const {
+  auto shared_tablet = tablet_.lock();
+  // TODO(tablet_ptr): graceful handling for tablet having being destroyed before the operation.
+  if (!shared_tablet) {
+    LOG(FATAL) << "Tablet referenced by an operation has already been destroyed";
+  }
+  return shared_tablet;
+}
+
+Result<TabletPtr> Operation::tablet_safe() const {
+  auto shared_tablet = tablet_.lock();
+  if (!shared_tablet) {
+    return STATUS(IllegalState, "Tablet referenced by an operation has already been destroyed");
+  }
+  return shared_tablet;
 }
 
 void Operation::Release() {

@@ -998,7 +998,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
 
-  void SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
+  Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
