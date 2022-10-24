@@ -386,7 +386,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The returned iterator is not initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema& projection,
-      const ReadHybridTime read_hybrid_time = {},
+      const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
@@ -966,7 +966,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void RegularDbFilesChanged();
 
-  Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
+  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   void MinRunningHybridTimeSatisfied() override {
     CleanupIntentFiles();
