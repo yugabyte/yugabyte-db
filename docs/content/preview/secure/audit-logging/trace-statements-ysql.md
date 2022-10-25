@@ -142,18 +142,12 @@ Start two sessions and execute transactions concurrently as follows:
    <td>
 
 ```sql
-yugabyte=# BEGIN;
+BEGIN;
+INSERT INTO my_table VALUES (5,2,2);
 ```
 
 ```output
 BEGIN
-```
-
-```sql
-yugabyte=# INSERT INTO my_table VALUES (6,2,2);
-```
-
-```output
 INSERT 0 1
 ```
 
@@ -168,25 +162,13 @@ INSERT 0 1
 
 ```sql
 yugabyte=# BEGIN;
-```
-
-```output
-BEGIN
-```
-
-```sql
 yugabyte=# INSERT INTO my_table VALUES (6,2,2);
-```
-
-```output
-INSERT 0 1
-```
-
-```sql
 yugabyte=# COMMIT;
 ```
 
 ```output
+BEGIN
+INSERT 0 1
 COMMIT
 ```
 
