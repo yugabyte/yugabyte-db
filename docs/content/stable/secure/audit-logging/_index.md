@@ -19,7 +19,7 @@ type: indexpage
     <a class="section-link icon-offset" href="trace-statements-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Manually trace statements in YSQL</div>
+        <div class="title">Manually trace statements</div>
       </div>
       <div class="body">
           Trace executed statements in a session using session identifiers.
