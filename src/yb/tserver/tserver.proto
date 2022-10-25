@@ -300,15 +300,3 @@ message IsTabletServerReadyResponsePB {
   optional int32 num_tablets_not_running = 2;
   optional int32 total_tablets = 3 [default = 0];
 }
-
-message ReadIntentsRequestPB {
-  // If specified, only read the intents from this tablet ID.
-  optional bytes tablet_id = 1;
-}
-
-message ReadIntentsResponsePB {
-  optional TabletServerErrorPB error = 1;
-
-  // List of intents
-  repeated bytes intents = 2;
-}
