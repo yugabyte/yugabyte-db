@@ -32,10 +32,10 @@ Session information is written to the PostgreSQL logs, located in the YugabyteDB
 Create a local cluster using yugabyted, and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\""
+./bin/yb-ctl create --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\"" --rf 1
 ```
 
-For local clusters created using yugabyted, logs are located in `~/var/logs`.
+For local clusters created using yb-ctl, `postgresql` logs are located in `~/yugabyte-data/node-1/disk-1/yb-data/tserver/logs`.
 
 Connect to the cluster using ysqlsh as follows:
 
@@ -73,8 +73,8 @@ INSERT 0 1
 Your PostgreSQL log should include output similar to the following:
 
 ```output
-timestamp: 2022-10-24 16:49:42.825 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: create table my_table ( h int, r int, v int, primary key(h,r));
-timestamp: 2022-10-24 16:51:01.258 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: insert into my_table values (1, 1, 1);
+timestamp: 2022-10-24 16:49:42.825 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: CREATE TABLE my_table ( h int, r int, v int, primary key(h,r));
+timestamp: 2022-10-24 16:51:01.258 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: INSERT INTO my_table VALUES (1, 1, 1);
 ```
 
 ### Trace an explicit transaction
@@ -116,11 +116,10 @@ COMMIT
 Your PostgreSQL log should include output similar to the following:
 
 ```output
-timestamp: 2022-10-24 16:56:56.269 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: begin;
-timestamp: 2022-10-24 16:57:05.410 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: insert into my_table values (2,2,2);
-
-timestamp: 2022-10-24 16:57:25.015 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: delete from my_table where h = 1;
-timestamp: 2022-10-24 16:57:27.595 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: commit;
+timestamp: 2022-10-24 16:56:56.269 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: BEGIN;
+timestamp: 2022-10-24 16:57:05.410 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: INSERT INTO my_table VALUES (2,2,2);
+timestamp: 2022-10-24 16:57:25.015 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: DELETE FROM my_table WHERE h = 1;
+timestamp: 2022-10-24 16:57:27.595 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: COMMIT;
 ```
 
 ### Trace concurrent transactions
@@ -215,12 +214,12 @@ COMMIT
 Your PostgreSQL log should include output similar to the following:
 
 ```output
-timestamp: 2022-10-24 17:04:09.007 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: begin;
-timestamp: 2022-10-24 17:05:10.647 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: insert into my_table values (5,2,2);
-timestamp: 2022-10-24 17:05:15.042 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: begin;
-timestamp: 2022-10-24 17:05:19.227 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: insert into my_table values (6,2,2);
-timestamp: 2022-10-24 17:05:22.288 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: commit;
-timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: commit;
+timestamp: 2022-10-24 17:04:09.007 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: BEGIN;
+timestamp: 2022-10-24 17:05:10.647 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: INSERT INTO my_table VALUES (5,2,2);
+timestamp: 2022-10-24 17:05:15.042 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: BEGIN;
+timestamp: 2022-10-24 17:05:19.227 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: INSERT INTO my_table VALUES (6,2,2);
+timestamp: 2022-10-24 17:05:22.288 UTC --pid: 2343 session: 6356c4a4.927 LOG:  statement: COMMIT;
+timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  statement: COMMIT;
 ```
 
 ## Next steps
