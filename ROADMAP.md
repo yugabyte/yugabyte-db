@@ -11,17 +11,6 @@ See detailed backgroud of every theme below.
 
 ## Dynamic workload optimization
 
-Coming soon (Q4 ‘22, Q1 ‘23):
-- Query optimization: More query pushdowns, richer table statistics, auto-ANALYZE
-- Transparent, workload-aware sharding using colocation 
-
-Coming Later (Q2 ‘23+):
-- Data mesh connecting cloud and edge, supporting data mobility and orchestration across multiple sites
-- Auto-tiering to cold storage
-- Query optimization: parallel query framework
-- Automatic table partition management
-- QoS: Fine grained control over other metrics (CPU, memory, etc.)
-
 ### Handling smaller-scale workloads
 
 | Feature | Timeline | Issues |
@@ -54,16 +43,6 @@ Coming Later (Q2 ‘23+):
 | Automatic table partition management | | |
 
 ## Cloud native capabilities
-
-Coming soon (Q4 ‘22, Q1 ‘23):
-- Cost optimization: Graviton support, workload sizing estimator
-- xCluster: atomicity of replicated transactions
-
-Coming Later (Q2 ‘23+):
-- xCluster: auto-propagation of DDLs, tiering unflushed updates to S3 on partitions
-- Native metrics integration with external observability services (DataDog, etc.)
-- Multi-cloud cost optimizer
-- Geo-partitioning: simplify usage
 
 ### xCluster: Cloud native “Golden Gate” capability
 
@@ -99,21 +78,6 @@ Coming Later (Q2 ‘23+):
 | EXPLAIN: nodes included in execution | | 
 
 ## Developer productivity
-
-Coming soon (Q4 ‘22, Q1 ‘23):
-- APIs for DBMS management
-- CDC: support push to websockets and downstream OLAP
-- CDC: Ordered transactions
-- CDC: Support for formats like Parquet, Iceberg.
-- Pessimistic locking for Serializable and Repeatable read
-
-Coming Later (Q2 ‘23+):
-- Rebase to PostgreSQL 13
-- GIST indexes and PostGIS
-- Multi APIs: Babelfish TSQL, Oracle, MySQL, MongoDB
-- Native support for lambda applications
-- Native REST API service
-- CDC: Feed stored as SQL/Relational tables in YB
 
 ### PostgreSQL compatibility
 
@@ -164,17 +128,6 @@ _TBD_
 
 ## Autonomous operations
 
-Coming soon (Q4 ‘22, Q1 ‘23):
-- Incremental backups
-
-Coming Later (Q2 ‘23+):
-- 100% serverless
-  - Auto-sizing
-  - Auto-scaling in seconds
-  - For both dedicated and multi-tenant tiers
-- Multi-tenant offering for bursty workloads
-- Cost/size estimator
-
 ### Serverless auto-scaling infrastructure
 
 | Feature | Timeline | Issues |
@@ -202,25 +155,6 @@ Coming Later (Q2 ‘23+):
 | Table-level restore | | |
 
 ## Security & compliance
-
-Coming soon (Q4 ‘22, Q1 ‘23):
-- Support for external identity providers using SAML 2.0, OIDC - (Okta, Azure AD) in YB Managed
-- Customer Managed Encryption Key (CMK) in YB Managed
-- Azure KMS
-- Google KMS
-- Custom roles with fine-grained RBAC in YB Managed
-- ISO 27001 Stage 1 Audit
-- SOC 2 Type 2 Issuance
-- HiTrust Readiness Assessment
-- PCI DSS Readiness Assessment
-
-Coming Later (Q2 ‘23+):
-- Per-tenant encryption
-- ISO 27001 Stage 2 Audit
-- ISO 27001 Certification Issuance
-- HiTrust Certification Issuance
-- PCI DSS Level 1 Authorization Issuance
-- Multi-factor authentication
 
 ### Integration with third-party security products
 
