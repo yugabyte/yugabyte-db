@@ -1,6 +1,6 @@
-# YugabyteDB roadmap
+# YugabyteDB Product Roadmap
 
-YugabyteDB roadmap is divided in five themes:
+YugabyteDB roadmap is divided in five pillars:
 - Dynamic workload optimization - features allowing YugabyteDB to cover every operational use case and transactional workload.
 - Cloud native capabilities - features allowing YugabyteDB to run in any cloud, leveraging unique infrastructure strengths and addressing pitfalls.
 - Developer productivity - features designed to make it easy for enterprise developers to build and ship with YugabyteDB.
