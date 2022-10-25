@@ -65,104 +65,16 @@ CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 You can further customize YSQL audit logging by configuring the `pgAudit` flags, as per the following table.
 
-<table>
-  <tr>
-   <td><strong>Option</strong>
-   </td>
-   <td><strong>Values notes</strong>
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log</code>
-   </td>
-   <td>Specifies which classes of statements are to be logged by <strong>session audit logging</strong>.
-<ul>
-
-<li><strong><code>READ</code></strong>: <code>SELECT</code> and <code>COPY</code> when the source is a relation or a query.
-
-<li><strong><code>WRITE</code></strong>: <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>TRUNCATE</code>, and <code>COPY</code> when the destination is a relation.
-
-<li><strong><code>FUNCTION</code></strong>: Function calls and <code>DO</code> blocks.
-
-<li><strong><code>ROLE</code></strong>: Statements related to roles and privileges: <code>GRANT</code>, <code>REVOKE</code>, <code>CREATE/ALTER/DROP ROLE</code>.
-
-<li><strong><code>DDL</code></strong>: All <code>DDL</code> that is not included in the <code>ROLE</code> class.
-
-<li><strong><code>MISC</code></strong>: Miscellaneous commands, such as <code>DISCARD, FETCH, CHECKPOINT, VACUUM, SET</code>.
-
-<li><strong><code>MISC_SET</code></strong>: Miscellaneous <code>SET</code> commands, such as <code>SET ROLE</code>.
-
-<li><strong><code>ALL</code></strong>: Include all of the preceding options.
-
-Multiple classes can be provided using a comma-separated list and classes can be subtracted by prefacing the class with a `-` (minus) sign.
-
-</li>
-</ul>
-
-The default is none.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_catalog</code>
-   </td>
-   <td><strong><code>ON</code></strong>: <strong>Session logging</strong> would be enabled in the case for all relations in a statement that are in pg_catalog.
-<strong><code>OFF</code></strong>: Disabling this setting will reduce noise in the log from tools.<p>
-The default is <strong><code>ON</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_client</code>
-   </td>
-   <td><strong><code>ON</code></strong>: Log messages are to be visible to a client process such as psql. Helpful for debugging.
-<strong><code>OFF</code></strong>: Reverse.
-Note that `pgaudit.log_level` is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>.<p>
-The default is <strong><code>OFF</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_level</code>
-   </td>
-   <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>.
-Log level to be used for log entries (<code>ERROR</code>, <code>FATAL</code>, and <code>PANIC</code> are not allowed). This setting is used for testing.
-
-<p>
-Note that <code>pgaudit.log_level</code> is only enabled when pgaudit.log_client is <strong><code>ON</code></strong>; otherwise the default will be used.<br><br>
-The default is <strong><code>LOG</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_parameter</code>
-   </td>
-   <td><strong><code>ON</code></strong>: Audit logging includes the parameters that were passed with the statement. When parameters are present they will be included in CSV format after the statement text.
-<p>
-The default is <strong><code>OFF</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_relation</code>
-   </td>
-   <td><strong><code>ON</code></strong>: Session audit logging creates separate log entries for each relation (<code>TABLE</code>, <code>VIEW</code>, etc.) referenced in a <code>SELECT</code> or <code>DML</code> statement. This is a shortcut for exhaustive logging without using <strong>object audit logging</strong>.
-<p>
-The default is <strong><code>OFF</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.log_statement_once</code>
-   </td>
-   <td><strong><code>ON</code></strong>: Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Disabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry.
-<p>
-The default is <strong><code>OFF</code></strong>.
-   </td>
-  </tr>
-  <tr>
-   <td><code>pgaudit.role</code>
-   </td>
-   <td>Specifies the master role to use for <strong>object audit logging</strong>. Multiple audit roles can be defined by granting them to the master role. This allows multiple groups to be in charge of different aspects of audit logging.
-<p>
-There is no default.
-   </td>
-  </tr>
-</table>
+| Option | Description | Default |
+| :----- | :----- | :------ |
+| pgaudit.log | Specifies which classes of statements are logged by session audit logging, as follows:<ul><li>**READ**: SELECT and COPY when the source is a relation or a query.<li>**WRITE**: INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.<li>**FUNCTION**: Function calls and DO blocks.<li>**ROLE**: Statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.<li>**DDL**: All DDL that is not included in the ROLE class.<li>**MISC**: Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.<li>**MISC_SET**: Miscellaneous SET commands, such as SET ROLE.<li>**ALL**: Include all of the preceding options.</ul>Multiple classes can be provided using a comma-separated list and classes can be subtracted by prefacing the class with a minus (`-`) sign. | none |
+| pgaudit.log_catalog | ON - Session logging would be enabled in the case for all relations in a statement that are in `pg_catalog`.<br>OFF - Disabling this setting reduces noise in the log from tools. | ON |
+| pgaudit.log_client | ON - Log messages are to be visible to a client process such as psql. Helpful for debugging.<br>OFF - Reverse.<br>Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is ON. | OFF |
+| pgaudit.log_level | Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG.<br>Log level is used for log entries (ERROR, FATAL, and PANIC are not allowed). This setting is used for testing.<br>Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is ON; otherwise the default is used. | LOG |
+| pgaudit.log_parameter | ON - Audit logging includes the parameters that were passed with the statement. When parameters are present they are included in CSV format after the statement text. | OFF |
+| pgaudit.log_relation | ON - Session audit logging creates separate log entries for each relation (TABLE, VIEW, and so on) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging. | OFF |
+| pgaudit.log_statement_once | ON - Specifies whether logging will include the statement text and parameters with the first log entry for a statement or sub-statement combination or with every entry. Disabling this setting results in less verbose logging but may make it more difficult to determine the statement that generated a log entry. | OFF |
+| pgaudit.role | Specifies the master role to use for object audit logging. Multiple audit roles can be defined by granting them to the master role. This allows multiple groups to be in charge of different aspects of audit logging. | None |
 
 ## Example
 
