@@ -480,7 +480,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   TabletWeakPtr tablet_weak_;
   std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
 
-  rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   std::unique_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
