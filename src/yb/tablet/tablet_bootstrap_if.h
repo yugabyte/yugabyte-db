@@ -163,6 +163,7 @@ struct BootstrapTabletData {
   ThreadPool* allocation_pool = nullptr;
   consensus::RetryableRequests* retryable_requests = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
+  bool bootstrap_retryable_requests = true;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

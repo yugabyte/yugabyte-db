@@ -1397,8 +1397,30 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   LOG(INFO) << kLogPrefix << "Bootstrapping tablet";
   TRACE("Bootstrapping tablet");
 
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  auto s = ConsensusMetadata::Load(
+      meta->fs_manager(), tablet_id, meta->fs_manager()->uuid(), &cmeta);
+  if (!s.ok()) {
+    LOG(ERROR) << kLogPrefix << "Tablet failed to load consensus meta data: " << s;
+    tablet_peer->SetFailed(s);
+    return;
+  }
+
   consensus::ConsensusBootstrapInfo bootstrap_info;
   consensus::RetryableRequests retryable_requests(kLogPrefix);
+  bool bootstrap_retryable_requests = true;
+
+  if (cmeta->has_split_parent_tablet_id()) {
+    auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
+    if (parent_tablet_requests.ok()) {
+      retryable_requests = std::move(*parent_tablet_requests);
+      retryable_requests.set_log_prefix(kLogPrefix);
+      bootstrap_retryable_requests = false;
+    } else {
+      LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
+                << ResultToStatus(parent_tablet_requests);
+    }
+  }
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
@@ -1413,7 +1435,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
-    auto s = tablet_peer->SetBootstrapping();
+    s = tablet_peer->SetBootstrapping();
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to set bootstrapping: " << s;
       tablet_peer->SetFailed(s);
@@ -1452,6 +1474,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .retryable_requests = &retryable_requests,
+      .bootstrap_retryable_requests = bootstrap_retryable_requests,
     };
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
@@ -1475,6 +1498,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         raft_pool(),
         tablet_prepare_pool(),
         &retryable_requests,
+        std::move(cmeta),
         multi_raft_manager_.get());
 
     if (!s.ok()) {
@@ -1700,6 +1724,17 @@ Result<std::shared_ptr<tablet::TabletPeer>> TSTabletManager::LookupTablet(
   TabletPeerPtr tablet_peer;
   SCHECK(LookupTablet(tablet_id, &tablet_peer), NotFound, Format("Tablet $0 not found", tablet_id));
   return tablet_peer;
+}
+
+Result<consensus::RetryableRequests> TSTabletManager::GetTabletRetryableRequests(
+    const TabletId& tablet_id) const {
+  auto raft_consensus = VERIFY_RESULT(LookupTablet(tablet_id))->shared_raft_consensus();
+  // raft_consensus is nullptr during bootstrap.
+  SCHECK_FORMAT(raft_consensus,
+                IllegalState,
+                "Tablet $0 raft_consensus not initialized",
+                tablet_id);
+  return raft_consensus->GetRetryableRequests();
 }
 
 bool TSTabletManager::LookupTabletUnlocked(const string& tablet_id,

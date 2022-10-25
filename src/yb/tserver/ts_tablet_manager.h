@@ -212,6 +212,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id,
       std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
 
+  Result<consensus::RetryableRequests> GetTabletRetryableRequests(
+      const TabletId& tablet_id) const;
+
   const NodeInstancePB& NodeInstance() const override;
 
   Status GetRegistration(ServerRegistrationPB* reg) const override;
