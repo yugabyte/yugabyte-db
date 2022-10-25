@@ -48,10 +48,9 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
                       yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 
-METRIC_DEFINE_coarse_histogram(table, write_op_duration_client_propagated_consistency,
-  "Write Op Duration with Propagated Consistency",
+METRIC_DEFINE_coarse_histogram(table, ql_write_latency, "Write latency at tserver layer",
   yb::MetricUnit::kMicroseconds,
-  "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.");
+  "Time taken to handle a batch of writes at tserver layer");
 
 METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
@@ -138,7 +137,7 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
   : MINIT(table_entity, snapshot_read_inflight_wait_duration),
     MINIT(table_entity, ql_read_latency),
     MINIT(table_entity, write_lock_latency),
-    MINIT(table_entity, write_op_duration_client_propagated_consistency),
+    MINIT(table_entity, ql_write_latency),
     MINIT(tablet_entity, not_leader_rejections),
     MINIT(tablet_entity, leader_memory_pressure_rejections),
     MINIT(tablet_entity, majority_sst_files_rejections),

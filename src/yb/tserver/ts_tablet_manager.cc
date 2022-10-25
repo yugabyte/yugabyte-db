@@ -336,7 +336,13 @@ void TSTabletManager::VerifyTabletData() {
         LOG_WITH_PREFIX(INFO)
             << Format("Skipped tablet data verification check on $0", peer->tablet_id());
       } else {
-        Status s = peer->tablet()->VerifyDataIntegrity();
+        auto tablet_result = peer->shared_tablet_safe();
+        Status s;
+        if (tablet_result.ok()) {
+          s = (*tablet_result)->VerifyDataIntegrity();
+        } else {
+          s = tablet_result.status();
+        }
         if (!s.ok()) {
           LOG(WARNING) << "Tablet data integrity verification failed on " << peer->tablet_id()
                        << ": " << s;
@@ -868,7 +874,7 @@ Status TSTabletManager::ApplyTabletSplit(
   SCHECK_FORMAT(
       split_op_id.valid() && !split_op_id.empty(), InvalidArgument,
       "Incorrect ID for SPLIT_OP: $0", operation->ToString());
-  auto* tablet = CHECK_NOTNULL(operation->tablet());
+  auto tablet = VERIFY_RESULT(operation->tablet_safe());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
   SCHECK_EQ(

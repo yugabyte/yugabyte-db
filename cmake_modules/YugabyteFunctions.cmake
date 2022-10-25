@@ -361,7 +361,16 @@ macro(YB_SETUP_CLANG)
       # We get a directory like this:
       # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
       set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        set(CLANG_RUNTIME_LIB_DIR
+            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR
+                  "Failed to determine Clang runtime library directory inside of "
+                  "${CLANG_RUNTIME_LIB_DIR}/lib")
+        endif()
+      endif()
     else()
       message(FATAL_ERROR
               "Could not parse the output of 'clang -print-search-dirs': "

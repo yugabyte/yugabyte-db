@@ -72,8 +72,8 @@ ChangeMetadataRequestPB* RequestTraits<ChangeMetadataRequestPB>::MutableRequest(
 }
 
 ChangeMetadataOperation::ChangeMetadataOperation(
-    Tablet* tablet, log::Log* log, const ChangeMetadataRequestPB* request)
-    : ExclusiveSchemaOperation(tablet, request), log_(log) {
+    TabletPtr tablet, log::Log* log, const ChangeMetadataRequestPB* request)
+    : ExclusiveSchemaOperation(std::move(tablet), request), log_(log) {
 }
 
 ChangeMetadataOperation::ChangeMetadataOperation(const ChangeMetadataRequestPB* request)
@@ -105,7 +105,7 @@ Status ChangeMetadataOperation::Prepare() {
     }
   }
 
-  Tablet* tablet = this->tablet();
+  TabletPtr tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(tablet->CreatePreparedChangeMetadata(this, schema_holder_.get()));
 
   SetIndexes(request()->indexes());
@@ -117,7 +117,7 @@ Status ChangeMetadataOperation::Prepare() {
 Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 
-  Tablet* tablet = this->tablet();
+  TabletPtr tablet = VERIFY_RESULT(tablet_safe());
   log::Log* log = mutable_log();
   size_t num_operations = 0;
 
@@ -235,7 +235,7 @@ Status SyncReplicateChangeMetadataOperation(
     TabletPeer* tablet_peer,
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      tablet_peer->tablet(), tablet_peer->log(), req);
+      VERIFY_RESULT(tablet_peer->shared_tablet_safe()), tablet_peer->log(), req);
 
   Synchronizer synchronizer;
 

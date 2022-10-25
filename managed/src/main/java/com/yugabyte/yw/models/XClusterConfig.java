@@ -259,14 +259,20 @@ public class XClusterConfig extends Model {
   }
 
   @JsonIgnore
-  public Set<String> getTableIdsWithReplicationSetup(boolean done) {
+  public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
     return this.tables
         .stream()
-        .filter(table -> table.replicationSetupDone == done)
+        .filter(table -> tableIds.contains(table.tableId) && table.replicationSetupDone == done)
         .map(table -> table.tableId)
         .collect(Collectors.toSet());
   }
 
+  @JsonIgnore
+  public Set<String> getTableIdsWithReplicationSetup(boolean done) {
+    return getTableIdsWithReplicationSetup(getTables(), done);
+  }
+
+  @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup() {
     return getTableIdsWithReplicationSetup(true /* done */);
   }
@@ -487,11 +493,18 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   public Set<String> getTableIdsInStatus(
       Collection<String> tableIds, XClusterTableConfig.Status status) {
+    return getTableIdsInStatus(tableIds, Collections.singleton(status));
+  }
+
+  @JsonIgnore
+  public Set<String> getTableIdsInStatus(
+      Collection<String> tableIds, Collection<XClusterTableConfig.Status> statuses) {
     ensureTableIdsExist(new HashSet<>(tableIds));
     return this.tables
         .stream()
         .filter(
-            tableConfig -> tableIds.contains(tableConfig.tableId) && tableConfig.status == status)
+            tableConfig ->
+                tableIds.contains(tableConfig.tableId) && statuses.contains(tableConfig.status))
         .map(tableConfig -> tableConfig.tableId)
         .collect(Collectors.toSet());
   }

@@ -957,6 +957,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   Consensus* consensus = tablet_peer()->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
@@ -967,7 +968,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   // Wait for all transactions to be committed.
   const CoarseTimePoint deadline = CoarseMonoClock::now() + timeout;
   {
-    tablet::HistoryCutoffPropagationDisabler disabler(tablet_peer()->tablet()->RetentionPolicy());
+    tablet::HistoryCutoffPropagationDisabler disabler(tablet->RetentionPolicy());
     RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
   }
 
@@ -1488,11 +1489,16 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
         master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
-      Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
-          sys_catalog_->tablet_peer()->tablet(),
-          FLAGS_initial_sys_catalog_snapshot_path);
-      if (!write_snapshot_status.ok()) {
-        status = write_snapshot_status;
+      auto sys_catalog_tablet_result = sys_catalog_->tablet_peer()->shared_tablet_safe();
+      if (sys_catalog_tablet_result.ok()) {
+        Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
+            sys_catalog_tablet_result->get(),
+            FLAGS_initial_sys_catalog_snapshot_path);
+        if (!write_snapshot_status.ok()) {
+          status = write_snapshot_status;
+        }
+      } else {
+        status = sys_catalog_tablet_result.status();
       }
     }
     Status finish_status = InitDbFinished(status, term);
@@ -1577,6 +1583,8 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
 }
 
 Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet_safe());
+
   // Prepare sys catalog table info.
   auto sys_catalog_table_iter = table_ids_map_->find(kSysCatalogTableId);
   if (sys_catalog_table_iter == table_ids_map_->end()) {
@@ -1627,7 +1635,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  system_tablets_[kSysCatalogTabletId] = sys_catalog_->tablet_peer_->shared_tablet();
+  system_tablets_[kSysCatalogTabletId] = sys_catalog_tablet;
 
   return Status::OK();
 }
@@ -12108,9 +12116,11 @@ Status CatalogManager::ProcessTabletReplicationStatus(
   return Status::OK();
 }
 
-void CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
-  operation->SetTablet(tablet_peer()->tablet());
+Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
+  return Status::OK();
 }
 
 Status CatalogManager::PromoteAutoFlags(

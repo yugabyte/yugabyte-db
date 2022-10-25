@@ -43,36 +43,36 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
     // Select uses txn.
     verifyStatementMetric(statement, "SELECT * FROM test",
-                          SELECT_STMT_METRIC, 1, 1, 1, true);
+                          SELECT_STMT_METRIC, 1, 0, 1, true);
 
     // Non-txn insert.
     verifyStatementMetric(statement, "INSERT INTO test VALUES (1, 1)",
-                          INSERT_STMT_METRIC, 1, 0, 1, true);
+                          INSERT_STMT_METRIC, 1, 1, 1, true);
     // Txn insert.
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (2, 2)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "END",
                           COMMIT_STMT_METRIC, 1, 0, 1, true);
 
     // Limit query on complex view (issue #3811).
     verifyStatementMetric(statement, "SELECT * FROM information_schema.key_column_usage LIMIT 1",
-                          SELECT_STMT_METRIC, 1, 1, 1, true);
+                          SELECT_STMT_METRIC, 1, 0, 1, true);
 
     // Non-txn update.
     verifyStatementMetric(statement, "UPDATE test SET v = 2 WHERE k = 1",
-                          UPDATE_STMT_METRIC, 1, 0, 1, true);
+                          UPDATE_STMT_METRIC, 1, 1, 1, true);
     // Txn update.
     verifyStatementMetric(statement, "UPDATE test SET v = 3",
-                          UPDATE_STMT_METRIC, 1, 1, 1, true);
+                          UPDATE_STMT_METRIC, 1, 0, 1, true);
 
     // Non-txn delete.
     verifyStatementMetric(statement, "DELETE FROM test WHERE k = 2",
-                          DELETE_STMT_METRIC, 1, 0, 1, true);
+                          DELETE_STMT_METRIC, 1, 1, 1, true);
     // Txn delete.
     verifyStatementMetric(statement, "DELETE FROM test",
-                          DELETE_STMT_METRIC, 1, 1, 1, true);
+                          DELETE_STMT_METRIC, 1, 0, 1, true);
 
     // Invalid statement should not update metrics.
     verifyStatementMetric(statement, "INSERT INTO invalid_table VALUES (1)",
@@ -82,9 +82,9 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (3, 3)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (4, 4)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "END",
                           COMMIT_STMT_METRIC, 1, 0, 1, true);
 
@@ -110,13 +110,13 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (5, 5)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "CREATE TABLE test2 (a int)",
                           OTHER_STMT_METRIC, 1, 0, 1, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (6, 6)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "UPDATE test SET k = 600 WHERE k = 6",
-                          UPDATE_STMT_METRIC, 1, 1, 0, true);
+                          UPDATE_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "ALTER TABLE test2 ADD COLUMN b INT",
                           OTHER_STMT_METRIC, 1, 0, 1, true);
     verifyStatementMetric(statement, "DROP TABLE test2",
@@ -128,13 +128,13 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (7, 7)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "CREATE TABLE test2 (a int)",
                           OTHER_STMT_METRIC, 1, 0, 1, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (8, 8)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "UPDATE test SET k = 800 WHERE k = 8",
-                          UPDATE_STMT_METRIC, 1, 1, 0, true);
+                          UPDATE_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "ALTER TABLE test2 ADD COLUMN b INT",
                           OTHER_STMT_METRIC, 1, 0, 1, true);
     verifyStatementMetric(statement, "DROP TABLE test2",
@@ -150,7 +150,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (9, 9)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "END",
                           COMMIT_STMT_METRIC, 1, 0, 1, true);
 
@@ -158,7 +158,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "DELETE FROM test WHERE k = 9;",
-                          DELETE_STMT_METRIC, 1, 1, 0, true);
+                          DELETE_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "END",
@@ -180,7 +180,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
     // Empty transaction block with DML execution prior to BEGIN.
     verifyStatementMetric(statement, "INSERT INTO test VALUES (10, 10)",
-                          INSERT_STMT_METRIC, 1, 0, 1, true);
+                          INSERT_STMT_METRIC, 1, 1, 1, true);
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "END",
@@ -198,7 +198,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     verifyStatementMetric(statement, "BEGIN",
                           BEGIN_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "INSERT INTO test VALUES (11, 11)",
-                          INSERT_STMT_METRIC, 1, 1, 0, true);
+                          INSERT_STMT_METRIC, 1, 0, 0, true);
     verifyStatementMetric(statement, "COMMIT",
                           COMMIT_STMT_METRIC, 1, 0, 1, true);
     verifyStatementMetric(statement, "COMMIT",
@@ -230,12 +230,12 @@ public class TestYsqlMetrics extends BasePgSQLTest {
 
       verifyStatementMetricRows(
         stmt, "INSERT INTO test VALUES (6, 6), (7, 7)",
-        SINGLE_SHARD_TRANSACTIONS_METRIC, 1, 2);
+        SINGLE_SHARD_TRANSACTIONS_METRIC, 0, 0);
 
       // Single row transaction.
       verifyStatementMetricRows(
         stmt, "INSERT INTO test VALUES (8, 8)",
-        SINGLE_SHARD_TRANSACTIONS_METRIC, 0, 0);
+        SINGLE_SHARD_TRANSACTIONS_METRIC, 1, 1);
 
       verifyStatementMetricRows(
         stmt, "DELETE FROM test",

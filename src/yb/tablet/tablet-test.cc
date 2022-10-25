@@ -87,7 +87,7 @@ TYPED_TEST_CASE(TestTablet, TabletTestHelperTypes);
 // Test that inserting a row which already exists causes an AlreadyPresent
 // error
 TYPED_TEST(TestTablet, TestInsertDuplicateKey) {
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
 
   CHECK_OK(this->InsertTestRow(&writer, 12345, 0));
 
@@ -123,7 +123,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
   int32_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
 
   // Put a row in (insert and flush).
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
   for (int32_t i = 0; i < max_rows; i++) {
     ASSERT_OK_FAST(this->InsertTestRow(&writer, i, 0));
   }
@@ -152,7 +152,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 // the most recent value.
 TYPED_TEST(TestTablet, TestMultipleUpdates) {
   // Insert and update same row several times.
-  LocalTabletWriter writer(this->tablet().get());
+  LocalTabletWriter writer(this->tablet());
   ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 1));
   ASSERT_OK(this->UpdateTestRow(&writer, 0, 2));
@@ -199,7 +199,7 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
 }
 
 TYPED_TEST(TestTablet, TestFlushedOpId) {
-  auto tablet = this->tablet().get();
+  auto tablet = this->tablet();
   LocalTabletWriter writer(tablet);
   const int64_t kCount = 1000;
 

@@ -118,11 +118,12 @@ WriteQuery::WriteQuery(
     int64_t term,
     CoarseTimePoint deadline,
     WriteQueryContext* context,
-    Tablet* tablet,
+    TabletPtr tablet,
     tserver::WriteResponsePB* response,
     docdb::OperationKind kind)
-    : operation_(std::make_unique<WriteOperation>(tablet)),
-      term_(term), deadline_(deadline),
+    : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
+      term_(term),
+      deadline_(deadline),
       context_(context),
       response_(response),
       kind_(kind),
@@ -198,7 +199,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = operation->tablet()->metrics();
     if (metrics) {
       auto op_duration_usec = MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->write_op_duration_client_propagated_consistency->Increment(op_duration_usec);
+      metrics->ql_write_latency->Increment(op_duration_usec);
     }
   }
 
@@ -600,6 +601,7 @@ Status WriteQuery::DoCompleteExecute() {
 }
 
 Tablet& WriteQuery::tablet() const {
+  // TODO(tablet_ptr): add error handling here to prevent crashes.
   return *operation_->tablet();
 }
 

@@ -247,11 +247,11 @@ ADD_THIRDPARTY_LIB(crypt_blowfish
 ## librt
 if (NOT APPLE)
   find_library(RT_LIB_PATH rt)
-  if(NOT RT_LIB_PATH)
-    message(FATAL_ERROR "Could not find librt on the system path")
+  if(RT_LIB_PATH)
+    ADD_THIRDPARTY_LIB(rt SHARED_LIB "${RT_LIB_PATH}")
+  else()
+    message(WARNING "Could not find librt on the system path, proceeding without it.")
   endif()
-  ADD_THIRDPARTY_LIB(rt
-    SHARED_LIB "${RT_LIB_PATH}")
 endif()
 
 ## Boost

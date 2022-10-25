@@ -36,6 +36,11 @@
     .replication-actions {
       .more-actions-button {
         margin-left: 10px;
+        .xCluster-dropdown-button {
+          i {
+            margin: 0 4px 0 0;
+          }
+        }
       }
 
       .replication-status-button {
@@ -43,12 +48,24 @@
       }
     }
 
-    .replication-info-banner-container {
+    .replication-info-banners-container {
       display: flex;
       flex-direction: column;
       gap: 10px;
 
       margin: 30px 0 20px;
+      .replication-info-banner-content {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+
+        width: 100%;
+
+        .restart-replication-button {
+          margin-left: auto;
+        }
+      }
     }
 
     .replication-status {

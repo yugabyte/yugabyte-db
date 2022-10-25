@@ -152,6 +152,10 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
       tablet_replicas_ = tablet_replicas;
     }
   } while (replicas_missing && num_retries < kMaxRetries);
+
+  tablet_id_ = (*tablet_replicas_.begin()).first;
+  CHECK_OK(WaitUntilAllTabletReplicasRunning(TServerDetailsVector(tablet_replicas_), tablet_id_,
+                                               10s * kTimeMultiplier));
 }
 
 // Returns the last committed leader of the consensus configuration. Tries to get it from master
@@ -426,7 +430,6 @@ void TabletServerIntegrationTestBase::BuildAndStart(
   ASSERT_NO_FATALS(CreateTable());
   WaitForTSAndReplicas();
   CHECK_GT(tablet_replicas_.size(), 0);
-  tablet_id_ = (*tablet_replicas_.begin()).first;
 }
 
 void TabletServerIntegrationTestBase::AssertAllReplicasAgree(size_t expected_result_count) {

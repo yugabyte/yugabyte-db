@@ -103,7 +103,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   List<TaskType> ADD_TABLE_IS_ALTER_DONE_FAILURE =
       ImmutableList.of(
           TaskType.XClusterConfigSetStatus,
+          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigModifyTables,
+          TaskType.XClusterConfigModifyTables,
+          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigSetStatus,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
@@ -216,6 +219,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             editFormData,
             requestedTableToAddInfoList,
             Collections.emptyMap(),
+            XClusterConfigTaskBase.getTableIds(requestedTableToAddInfoList),
             tableIdsToRemove);
     try {
       UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, taskParams);
@@ -836,7 +840,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to add tables to XClusterConfig(%s): %s", xClusterConfig.uuid, alterErrMsg);
@@ -911,7 +915,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
@@ -1051,8 +1055,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(1).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(2).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to remove tables from XClusterConfig(%s): %s",
