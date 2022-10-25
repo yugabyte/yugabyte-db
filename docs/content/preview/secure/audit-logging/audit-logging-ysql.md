@@ -45,7 +45,7 @@ This can be done in one of the following ways:
 
     These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
 
-- Use the YugabyteDB `SET` command.
+- Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command.
 
     An alternative is to use the YB `SET` command, which essentially changes the run-time configuration parameters.
 
