@@ -7443,6 +7443,11 @@ CatalogManager::XClusterConsumerTableStreamInfoMap
 bool CatalogManager::IsCdcEnabled(
     const TableInfo& table_info) const {
   SharedLock lock(mutex_);
+  return IsCdcEnabledUnlocked(table_info);
+}
+
+bool CatalogManager::IsCdcEnabledUnlocked(
+    const TableInfo& table_info) const {
   return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
 }
 
@@ -7468,6 +7473,11 @@ bool CatalogManager::IsCdcSdkEnabled(const TableInfo& table_info) {
 
 bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {
   SharedLock lock(mutex_);
+  return IsTablePartOfBootstrappingCdcStreamUnlocked(table_info);
+}
+
+bool CatalogManager::IsTablePartOfBootstrappingCdcStreamUnlocked(
+    const TableInfo& table_info) const {
   auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
   if (it != xcluster_producer_tables_to_stream_map_.end()) {
     // Check that at least one of these streams is being bootstrapped.
