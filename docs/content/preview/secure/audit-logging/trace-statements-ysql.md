@@ -151,8 +151,8 @@ Start two sessions and execute transactions concurrently as follows:
    <td>
 
 ```sql
-BEGIN;
-INSERT INTO my_table VALUES (5,2,2);
+yugabyte=# BEGIN;
+yugabyte=# INSERT INTO my_table VALUES (5,2,2);
 ```
 
 ```output
