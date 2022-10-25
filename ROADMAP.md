@@ -7,7 +7,7 @@ YugabyteDB roadmap is divided in five pillars:
 - Autonomous operations - features designed to eliminate all overhead in deploying, scaling, and maintaining YugabyteDB.
 - Security & complience - features designed to embrace a secure-first approach for any workload while simplifying compliance.
 
-See detailed backgroud of every theme below.
+See detailed backgroud of every pillar below.
 
 ## Dynamic workload optimization
 
