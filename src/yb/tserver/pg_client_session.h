@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_PG_CLIENT_SESSION_H
-#define YB_TSERVER_PG_CLIENT_SESSION_H
+#pragma once
 
 #include <stdint.h>
 
@@ -149,4 +148,3 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 }  // namespace tserver
 }  // namespace yb
 
-#endif  // YB_TSERVER_PG_CLIENT_SESSION_H

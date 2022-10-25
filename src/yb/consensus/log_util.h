@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_CONSENSUS_LOG_UTIL_H_
-#define YB_CONSENSUS_LOG_UTIL_H_
+#pragma once
 
 #include <iosfwd>
 #include <map>
@@ -513,4 +512,3 @@ void UpdateSegmentFooterIndexes(
 }  // namespace log
 }  // namespace yb
 
-#endif /* YB_CONSENSUS_LOG_UTIL_H_ */

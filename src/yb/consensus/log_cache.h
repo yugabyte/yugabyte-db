@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_CACHE_H
-#define YB_CONSENSUS_LOG_CACHE_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -299,4 +298,3 @@ class LogCache {
 
 } // namespace consensus
 } // namespace yb
-#endif /* YB_CONSENSUS_LOG_CACHE_H */

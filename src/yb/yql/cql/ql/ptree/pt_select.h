@@ -15,8 +15,7 @@
 // Tree node definitions for SELECT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -507,4 +506,3 @@ class PTSelectStmt : public PTDmlStmt {
 }  // namespace ql
 }  // namespace yb
 
-#endif  // YB_YQL_CQL_QL_PTREE_PT_SELECT_H_

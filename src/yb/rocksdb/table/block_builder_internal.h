@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_ROCKSDB_TABLE_BLOCK_BUILDER_INTERNAL_H
-#define YB_ROCKSDB_TABLE_BLOCK_BUILDER_INTERNAL_H
+#pragma once
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/status.h"
@@ -240,4 +239,3 @@ inline void EncodeThreeSharedPartsSizes(
 
 }  // namespace rocksdb
 
-#endif // YB_ROCKSDB_TABLE_BLOCK_BUILDER_INTERNAL_H

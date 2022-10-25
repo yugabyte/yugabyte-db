@@ -32,8 +32,7 @@
 // These are weird things we need to do to get this compiling on
 // random systems (and on SWIG).
 
-#ifndef YB_GUTIL_PORT_H
-#define YB_GUTIL_PORT_H
+#pragma once
 
 #include <errno.h>
 #include <limits.h>         // So we can set the bounds of our types
@@ -1293,4 +1292,3 @@ enum { kPlatformUsesOPDSections = 0 };
 #define FUNC_PTR_TO_CHAR_PTR(func)  (reinterpret_cast<char *>(func))
 #endif
 
-#endif  // YB_GUTIL_PORT_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_PROTOBUF_H_
-#define YB_UTIL_PROTOBUF_H_
+#pragma once
 
 namespace yb {
 namespace util {
@@ -30,4 +29,3 @@ google::protobuf::RepeatedPtrField<T> ToRepeatedPtrField(const std::vector<T> &i
 }  // namespace util
 }  // namespace yb
 
-#endif  // YB_UTIL_PROTOBUF_H_

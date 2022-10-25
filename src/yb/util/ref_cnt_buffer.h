@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_REF_CNT_BUFFER_H
-#define YB_UTIL_REF_CNT_BUFFER_H
+#pragma once
 
 #include <stdlib.h>
 #include <string.h>
@@ -214,4 +213,3 @@ struct RefCntPrefixHash {
 
 } // namespace yb
 
-#endif // YB_UTIL_REF_CNT_BUFFER_H

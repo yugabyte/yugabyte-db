@@ -30,8 +30,7 @@
 // under the License.
 //
 // Helpers for dealing with the protobufs defined in wire_protocol.proto.
-#ifndef YB_COMMON_WIRE_PROTOCOL_H
-#define YB_COMMON_WIRE_PROTOCOL_H
+#pragma once
 
 #include <vector>
 
@@ -204,4 +203,3 @@ typedef yb::StatusErrorCodeImpl<SplitChildTabletIdsTag> SplitChildTabletIdsData;
 
 } // namespace yb
 
-#endif  // YB_COMMON_WIRE_PROTOCOL_H

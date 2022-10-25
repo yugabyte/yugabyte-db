@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TSERVER_FWD_H
-#define YB_TSERVER_TSERVER_FWD_H
+#pragma once
 
 #include <functional>
 
@@ -56,4 +55,3 @@ using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 } // namespace tserver
 } // namespace yb
 
-#endif // YB_TSERVER_TSERVER_FWD_H

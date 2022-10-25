@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_MOCKED_H
-#define YB_MASTER_CLUSTER_BALANCE_MOCKED_H
+#pragma once
 
 #include "yb/master/cluster_balance.h"
 #include "yb/master/cluster_balance_util.h"
@@ -125,4 +124,3 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_CLUSTER_BALANCE_MOCKED_H

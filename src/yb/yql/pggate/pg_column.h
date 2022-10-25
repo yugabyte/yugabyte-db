@@ -15,8 +15,7 @@
 // Structure definitions for column descriptor of a table.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_COLUMN_H_
-#define YB_YQL_PGGATE_PG_COLUMN_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
@@ -144,4 +143,3 @@ class PgColumn {
 }  // namespace pggate
 }  // namespace yb
 
-#endif  // YB_YQL_PGGATE_PG_COLUMN_H_

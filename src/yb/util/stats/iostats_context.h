@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATS_IOSTATS_CONTEXT_H
-#define YB_UTIL_STATS_IOSTATS_CONTEXT_H
+#pragma once
 
 #include <string>
 
@@ -70,4 +69,3 @@ extern __thread IOStatsContext iostats_context;
 
 }  // namespace yb
 
-#endif // YB_UTIL_STATS_IOSTATS_CONTEXT_H

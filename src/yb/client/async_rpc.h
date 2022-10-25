@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_ASYNC_RPC_H_
-#define YB_CLIENT_ASYNC_RPC_H_
+#pragma once
 
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
@@ -191,4 +190,3 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_ASYNC_RPC_H_

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_SCHEMA_H
-#define YB_COMMON_SCHEMA_H
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -1255,4 +1254,3 @@ struct hash<yb::ColumnId> {
 };
 } // namespace std
 
-#endif  // YB_COMMON_SCHEMA_H

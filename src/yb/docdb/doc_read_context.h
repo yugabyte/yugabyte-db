@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READ_CONTEXT_H
-#define YB_DOCDB_DOC_READ_CONTEXT_H
+#pragma once
 
 #include "yb/common/schema.h"
 
@@ -71,4 +70,3 @@ struct DocReadContext {
 } // namespace docdb
 } // namespace yb
 
-#endif // YB_DOCDB_DOC_READ_CONTEXT_H

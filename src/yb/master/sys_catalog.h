@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_SYS_CATALOG_H_
-#define YB_MASTER_SYS_CATALOG_H_
+#pragma once
 
 #include <string>
 #include <vector>
@@ -349,4 +348,3 @@ class SysCatalogTable {
 
 #include "yb/master/sys_catalog-internal.h"
 
-#endif // YB_MASTER_SYS_CATALOG_H_

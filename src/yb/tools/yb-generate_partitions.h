@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
-#define YB_TOOLS_YB_GENERATE_PARTITIONS_H
+#pragma once
 
 #include <functional>
 #include <locale>
@@ -80,4 +79,3 @@ class YBPartitionGenerator {
 
 } // namespace tools
 } // namespace yb
-#endif // YB_TOOLS_YB_GENERATE_PARTITIONS_H

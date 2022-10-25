@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H
-#define ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -61,4 +60,3 @@ void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);
 } // namespace yb
 
 
-#endif // ENT_SRC_YB_TSERVER_TWODC_WRITE_INTERFACE_H

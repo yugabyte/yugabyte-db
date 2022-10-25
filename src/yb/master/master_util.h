@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_UTIL_H
-#define YB_MASTER_MASTER_UTIL_H
+#pragma once
 
 #include <memory>
 
@@ -108,4 +107,3 @@ BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_UTIL_H

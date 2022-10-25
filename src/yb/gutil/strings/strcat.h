@@ -18,8 +18,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_STRCAT_H
-#define YB_GUTIL_STRINGS_STRCAT_H
+#pragma once
 
 #include <string>
 
@@ -400,4 +399,3 @@ void StrAppend(std::string *dest,      const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &h = gEmptyAlphaNum,
                const AlphaNum &i = gEmptyAlphaNum);
 
-#endif  // YB_GUTIL_STRINGS_STRCAT_H

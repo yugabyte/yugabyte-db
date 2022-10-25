@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_WRITE_QUERY_H
-#define YB_TABLET_WRITE_QUERY_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -230,4 +229,3 @@ class WriteQuery {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_WRITE_QUERY_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_CONSTANTS_H
-#define YB_COMMON_CONSTANTS_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -42,4 +41,3 @@ static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
 } // namespace yb
 
-#endif  // YB_COMMON_CONSTANTS_H

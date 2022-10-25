@@ -16,8 +16,7 @@
 //
 // A collection of useful (static) bit-twiddling functions.
 
-#ifndef YB_GUTIL_BITS_H
-#define YB_GUTIL_BITS_H
+#pragma once
 
 #include <glog/logging.h>
 
@@ -264,4 +263,3 @@ inline bool Bits::BytesAllInRange(T bytes, uint8 lo, uint8 hi) {
                                          lo + (255 - hi));
 }
 
-#endif // YB_GUTIL_BITS_H

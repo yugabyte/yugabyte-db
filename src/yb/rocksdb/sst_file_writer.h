@@ -18,8 +18,7 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H
-#define ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H
+#pragma once
 
 #include <string>
 #include "yb/rocksdb/env.h"
@@ -98,4 +97,3 @@ class SstFileWriter {
 };
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_RESTORATION_STATE_H
-#define YB_MASTER_RESTORATION_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -155,4 +154,3 @@ class RestorationState : public StateWithTablets {
 } // namespace master
 } // namespace yb
 
-#endif  // YB_MASTER_RESTORATION_STATE_H

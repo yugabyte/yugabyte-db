@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_FWD_H
-#define YB_MASTER_MASTER_FWD_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -142,4 +141,3 @@ class CatalogManager;
 } // namespace master
 } // namespace yb
 
-#endif // YB_MASTER_MASTER_FWD_H

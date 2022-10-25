@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_COMPACTION_FILTER_INTENTS_H
-#define YB_DOCDB_DOCDB_COMPACTION_FILTER_INTENTS_H
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -48,4 +47,3 @@ class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFact
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOCDB_COMPACTION_FILTER_INTENTS_H

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
-#define YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
+#pragma once
 
 #include <condition_variable>
 #include <string>
@@ -292,4 +291,3 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 }  // namespace tablet
 }  // namespace yb
 
-#endif // YB_TABLET_OPERATIONS_OPERATION_DRIVER_H

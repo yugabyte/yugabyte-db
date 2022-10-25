@@ -27,8 +27,7 @@
 // See the header of file "/util/bfql/bfql.h" for overall info.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFUNC_CONVERT_H_
-#define YB_BFQL_BFUNC_CONVERT_H_
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -1468,4 +1467,3 @@ Status ConvertToDate(PTypePtr source, RTypePtr target) {
 } // namespace bfql
 } // namespace yb
 
-#endif  // YB_BFQL_BFUNC_CONVERT_H_

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_ENUMS_H_
-#define YB_UTIL_ENUMS_H_
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -425,4 +424,3 @@ Result<EnumType> ParseEnumInsensitive(const std::string& str) {
 
 }  // namespace yb
 
-#endif  // YB_UTIL_ENUMS_H_

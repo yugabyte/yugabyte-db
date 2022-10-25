@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_H
-#define YB_ROCKSDB_DB_H
+#pragma once
 
 #include <stdint.h>
 #include <stdio.h>
@@ -945,4 +944,3 @@ Status RepairDB(const std::string& dbname, const Options& options);
 
 }  // namespace rocksdb
 
-#endif  // YB_ROCKSDB_DB_H

@@ -14,8 +14,7 @@
 // Classes that implement secondary index.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_INDEX_H_
-#define YB_COMMON_INDEX_H_
+#pragma once
 
 #include <memory>
 #include <set>
@@ -169,4 +168,3 @@ class IndexMap : public std::unordered_map<TableId, IndexInfo> {
 
 }  // namespace yb
 
-#endif  // YB_COMMON_INDEX_H_

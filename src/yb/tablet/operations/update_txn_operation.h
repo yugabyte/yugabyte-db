@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
-#define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
+#pragma once
 
 #include "yb/tablet/operations/operation.h"
 
@@ -44,4 +43,3 @@ class UpdateTxnOperation
 } // namespace tablet
 } // namespace yb
 
-#endif // YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
