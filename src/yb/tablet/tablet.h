@@ -387,7 +387,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // The returned iterator is not initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema& projection,
-      const ReadHybridTime read_hybrid_time = {},
+      const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse,
@@ -987,7 +987,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void RegularDbFilesChanged();
 
-  Result<HybridTime> ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
+  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   void MinRunningHybridTimeSatisfied() override {
     CleanupIntentFiles();
@@ -1058,6 +1058,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
 // A helper class to manage read transactions. Grabs and registers a read point with the tablet
 // when created, and deregisters the read point when this object is destructed.
+// TODO: should reference the tablet as a shared pointer (make sure there are no reference cycles.)
 class ScopedReadOperation {
  public:
   ScopedReadOperation() : tablet_(nullptr) {}

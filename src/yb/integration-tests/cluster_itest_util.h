@@ -172,6 +172,7 @@ Result<OpId> GetLastOpIdForReplica(
     const MonoDelta& timeout);
 
 // Creates server vector from map.
+std::vector<TServerDetails*> TServerDetailsVector(const TabletReplicaMap& tablet_servers);
 std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
 std::vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
 
@@ -510,6 +511,10 @@ Status WaitForTabletConfigChange(const master::TabletInfoPtr tablet,
 Status WaitUntilTabletRunning(TServerDetails* ts,
                               const TabletId& tablet_id,
                               const MonoDelta& timeout);
+
+Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tservers,
+                                         const std::string& tablet_id,
+                                         const MonoDelta& timeout);
 
 // Send a DeleteTablet() to the server at 'ts' of the specified 'delete_type'.
 Status DeleteTablet(const TServerDetails* ts,

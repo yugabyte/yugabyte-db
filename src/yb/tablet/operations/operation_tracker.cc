@@ -160,8 +160,9 @@ Status OperationTracker::Add(OperationDriver* driver) {
 
     // May be nullptr due to TabletPeer::SetPropagatedSafeTime.
     auto* operation = driver->operation();
+
     // May be nullptr in unit tests even when operation is not nullptr.
-    auto* tablet = operation ? operation->tablet() : nullptr;
+    TabletPtr tablet = operation ? operation->tablet_nullable() : nullptr;
 
     string msg = Substitute(
         "Operation failed, tablet $0 operation memory consumption ($1) "

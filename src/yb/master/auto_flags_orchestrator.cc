@@ -193,7 +193,7 @@ Status PromoteAutoFlags(
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
             << ", promote_non_runtime: " << promote_non_runtime_flags << ", force: " << force;
 
-  catalog_manager->SubmitToSysCatalog(std::move(operation));
+  RETURN_NOT_OK(catalog_manager->SubmitToSysCatalog(std::move(operation)));
 
   latch.Wait();
 

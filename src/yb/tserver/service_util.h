@@ -177,10 +177,10 @@ auto MakeRpcOperationCompletionCallback(
 struct LeaderTabletPeer {
   tablet::TabletPeerPtr peer;
   tablet::TabletPtr tablet;
-  int64_t leader_term;
+  int64_t leader_term = -1;
 
   bool operator!() const {
-    return !peer;
+    return !peer || !tablet;
   }
 
   Status FillTerm();

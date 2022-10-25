@@ -753,9 +753,10 @@ Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::
   }
   uint64_t min_file_size = std::numeric_limits<uint64_t>::max();
   for (const auto& peer : peers) {
-    min_file_size = std::min(
-        min_file_size,
-        peer->shared_tablet()->GetCurrentVersionSstFilesSize());
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      min_file_size = std::min(min_file_size, tablet->GetCurrentVersionSstFilesSize());
+    }
   }
   return min_file_size;
 }
@@ -795,7 +796,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
-    const auto shared_tablet = peer->shared_tablet();
+    const auto shared_tablet = VERIFY_RESULT(peer->shared_tablet_safe());
     const SchemaPtr schema = shared_tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
     auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));

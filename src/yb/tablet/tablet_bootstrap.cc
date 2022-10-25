@@ -978,7 +978,7 @@ class TabletBootstrap {
   Status PlayTabletSnapshotRequest(ReplicateMsg* replicate_msg) {
     TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
 
-    SnapshotOperation operation(tablet_.get(), snapshot);
+    SnapshotOperation operation(tablet_, snapshot);
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
 
@@ -987,8 +987,7 @@ class TabletBootstrap {
   }
 
   Status PlayHistoryCutoffRequest(ReplicateMsg* replicate_msg) {
-    HistoryCutoffOperation operation(
-        tablet_.get(), replicate_msg->mutable_history_cutoff());
+    HistoryCutoffOperation operation(tablet_, replicate_msg->mutable_history_cutoff());
 
     return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
   }
@@ -1008,7 +1007,7 @@ class TabletBootstrap {
       return Status::OK();
     }
 
-    SplitOperation operation(tablet_.get(), data_.tablet_init_data.tablet_splitter, split_request);
+    SplitOperation operation(tablet_, data_.tablet_init_data.tablet_splitter, split_request);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
     return data_.tablet_init_data.tablet_splitter->ApplyTabletSplit(
@@ -1033,7 +1032,7 @@ class TabletBootstrap {
     }
 
     ChangeAutoFlagsConfigOperation operation(
-        tablet_.get(), replicate_msg->mutable_auto_flags_config());
+        tablet_, replicate_msg->mutable_auto_flags_config());
 
     return operation.Apply();
   }
@@ -1443,7 +1442,7 @@ class TabletBootstrap {
 
     SCHECK(write->has_write_batch(), Corruption, "A write request must have a write batch");
 
-    WriteOperation operation(tablet_.get(), write);
+    WriteOperation operation(tablet_, write);
     operation.set_op_id(OpId::FromPB(replicate_msg->id()));
     HybridTime hybrid_time(replicate_msg->hybrid_time());
     operation.set_hybrid_time(hybrid_time);
@@ -1542,7 +1541,7 @@ class TabletBootstrap {
   Status PlayTruncateRequest(ReplicateMsg* replicate_msg) {
     auto* req = replicate_msg->mutable_truncate();
 
-    TruncateOperation operation(tablet_.get(), req);
+    TruncateOperation operation(tablet_, req);
 
     Status s = tablet_->Truncate(&operation);
 

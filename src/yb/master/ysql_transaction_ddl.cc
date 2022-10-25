@@ -133,10 +133,11 @@ void YsqlTransactionDdl::TransactionReceived(
 Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid,
                                                TableId relfilenode_oid) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  if (!tablet_peer || !tablet_peer->tablet()) {
+  if (!tablet_peer) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
-  const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
+  auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  const tablet::Tablet* catalog_tablet = shared_tablet.get();
   const Schema& pg_database_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
