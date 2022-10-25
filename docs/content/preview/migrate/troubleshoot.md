@@ -17,26 +17,26 @@ This page documents the known issues unsupported features when migrating data wi
 
 To troubleshoot problems when migrating data using [yb-voyager](https://github.com/yugabyte/yb-voyager), use the following sections.
 
-| Issue | Source database | GitHub issue | Description | Solutions | Examples |
-| :---- | :-------------- | :----------- | :---------- | :-------- | :------- |
-| Unsigned data types are not migrated | MySQL |[188](https://github.com/yugabyte/yb-voyager/issues/188) |Unsigned data types are migrated as signed data types. | Manual intervention needed. Unsigned is not supported in YugabyteDB. You have to allocate extra space for all the unsigned types in their schema. | [Unsigned data types](#unsigned-data-types) |
-| Double precision data type is not exported | MySQL | [188](https://github.com/yugabyte/yb-voyager/issues/188) | Exporting double precision values near max/min value results in an _out of range_ error. | Unable to replicate error. All float style data types are exported to double precision value in YugabyteDB. You can either manually edit the data type post export, or edit the DATA_TYPE directive in the ora2pg base configuration file before starting export. | [Double precision data types](#double-precision-data-types) |
-| Check constraints are not being exported | MySQL | [242](https://github.com/yugabyte/yb-voyager/issues/242) | Check constraints are not exported along with the DDL. | Manual intervention needed. You have to add checks manually to the exported schema files. | [Check constarints](##check-constraints) |
-| Some numeric types do not get exported | Oracle | [207](https://github.com/yugabyte/yb-voyager/issues/207) | In cases where the precision is less than the scale in a numeric attribute, it fails to get imported to YugabyteDB. | Manually remove the explicit precision and scale values from the exported numeric/decimal attributes. PostgreSQL/YugabyteDB does allow explicitly keeping the precision less than the scale. This is currently a fix that works, ora2pg directives need to be explored more to avoid such intervention. | [Export numeric types](#export-numeric-types) |
-| RAW data fails to get imported in some cases | Oracle | [219](https://github.com/yugabyte/yb-voyager/issues/219) | In some cases, you may face _invalid hexadecimal error_ when attempting to migrate a (LONG) RAW attribute from an Oracle instance. | Unable to replicate error. Exploring more currently. | |
-| Functional/Expression indexes fail to migrate | MySQL | [277](https://github.com/yugabyte/yb-voyager/issues/277) | If your schema contains Functional/Expression indexes in MYSQL, during the migration the index creation fails with a syntax error and the index doesn't get migrated. | Manual intervention needed. You have to remove the back-ticks/oblique quotes “”  `  ”” to the exported schema files. | [Migrate Functional/Expression indexes](#migrate-functional-expression-indexes) |
-| Sequences are exported with incorrect restart value 0 | MySQL | [245](https://github.com/yugabyte/yb-voyager/issues/245) | Occasionally, when attempting to export a MySQL schema containing AUTO_INCREMENT column types, the exported DDL states an incorrect restart value of 0 pertaining to said column(s). | Manual intervention needed. You have to edit an appropriate restart value into the exported schema DDL corresponding to the auto incremented columns. | [Export sequences](#export-sequences) |
-| Issue in Exporting the data from MySQL with table_name including quotes | MySQL | [320](https://github.com/yugabyte/yb-voyager/issues/320) | While exporting the schema from MySQL which consists of the table_name with quotes, it exports the table with table-name converted to lowercase and without quotes, and while exporting the data it throws the error. | Manual intervention needed. You have to rename the table in MySQL and then export and import the whole data, and rename it again in YugabyteDB. | [Quotes in table names](#quotes-in-table-names) |
-| Issue while importing with case-sensitive schema names | MySQL <br/> Oracle | [334](https://github.com/yugabyte/yb-voyager/issues/334) | When the source is either MySQL or Oracle, if you attempt to migrate your database using a case-sensitive schema name, the migration will fail owing to _no schema has been selected_ or _schema already exists_ error(s). |  Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If needed, you may alter the schema names to a case-sensitive alternative post-migration using the `ALTER SCHEMA` command. | [Case-senstive schema names](#case-sensitive-schema-names) |
+| Issue | Source database | Description | Solutions | Examples |
+| :---- | :-------------- | :---------- | :-------- | :------- |
+| [Unsigned data types are not migrated](https://github.com/yugabyte/yb-voyager/issues/188) | MySQL | Unsigned data types are migrated as signed data types. | Manual intervention needed. Unsigned is not supported in YugabyteDB. You have to allocate extra space for all the unsigned types in their schema. | [Unsigned data types](#unsigned-data-types) |
+| [Double precision data type is not exported](https://github.com/yugabyte/yb-voyager/issues/188) | MySQL | Exporting double precision values near max/min value results in an _out of range_ error. | Unable to replicate error. All float style data types are exported to double precision value in YugabyteDB. You can either manually edit the data type post export, or edit the DATA_TYPE directive in the ora2pg base configuration file before starting export. | [Double precision data types](#double-precision-data-types) |
+| [Check constraints are not being exported](https://github.com/yugabyte/yb-voyager/issues/242) | MySQL | Check constraints are not exported along with the DDL. | Manual intervention needed. You have to add checks manually to the exported schema files. | [Check constarints](##check-constraints) |
+| [Some numeric types do not get exported](https://github.com/yugabyte/yb-voyager/issues/207) | Oracle | In cases where the precision is less than the scale in a numeric attribute, it fails to get imported to YugabyteDB. | Manually remove the explicit precision and scale values from the exported numeric/decimal attributes. PostgreSQL/YugabyteDB does allow explicitly keeping the precision less than the scale. This is currently a fix that works, ora2pg directives need to be explored more to avoid such intervention. | [Export numeric types](#export-numeric-types) |
+| [RAW data fails to get imported in some cases](https://github.com/yugabyte/yb-voyager/issues/219) | Oracle | In some cases, you may face _invalid hexadecimal error_ when attempting to migrate a (LONG) RAW attribute from an Oracle instance. | Unable to replicate error. Exploring more currently. | |
+| [Functional/Expression indexes fail to migrate](https://github.com/yugabyte/yb-voyager/issues/277) | MySQL | If your schema contains Functional/Expression indexes in MYSQL, during the migration the index creation fails with a syntax error and the index doesn't get migrated. | Manual intervention needed. You have to remove the back-ticks/oblique quotes “”  `  ”” to the exported schema files. | [Migrate Functional/Expression indexes](#migrate-functional-expression-indexes) |
+| [Sequences are exported with incorrect restart value 0](https://github.com/yugabyte/yb-voyager/issues/245) | MySQL | Occasionally, when attempting to export a MySQL schema containing AUTO_INCREMENT column types, the exported DDL states an incorrect restart value of 0 pertaining to said column(s). | Manual intervention needed. You have to edit an appropriate restart value into the exported schema DDL corresponding to the auto incremented columns. | [Export sequences](#export-sequences) |
+| [Exporting the data from MySQL with table_name including quotes](https://github.com/yugabyte/yb-voyager/issues/320) | MySQL | While exporting the schema from MySQL which consists of the table_name with quotes, it exports the table with table-name converted to lowercase and without quotes, and while exporting the data it throws the error. | Manual intervention needed. You have to rename the table in MySQL and then export and import the whole data, and rename it again in YugabyteDB. | [Quotes in table names](#quotes-in-table-names) |
+| [Issue while importing with case-sensitive schema names](https://github.com/yugabyte/yb-voyager/issues/334) | MySQL <br/> Oracle | When the source is either MySQL or Oracle, if you attempt to migrate your database using a case-sensitive schema name, the migration will fail owing to _no schema has been selected_ or _schema already exists_ error(s). |  Currently, yb-voyager does not support migration via case-sensitive schema names; all schema names are assumed to be case-insensitive (lower-case). If needed, you may alter the schema names to a case-sensitive alternative post-migration using the `ALTER SCHEMA` command. | [Case-senstive schema names](#case-sensitive-schema-names) |
 
 
 ### Examples
 
-
+The following examples include suggested changes to the entries from the [Known issues](#known-issues).
 
 #### Unsigned data types
 
-Sample schema on MySQL Database:
+A sample schema on a MySQL database is as follows:
 
 ```sql
 CREATE TABLE int_types (
@@ -48,27 +48,27 @@ CREATE TABLE int_types (
 );
 ```
 
-Exported Schema:
+The exported schema is as follows:
 
 ```sql
 CREATE TABLE int_types (
-	tint_u smallint,
-	sint_u smallint,
-	mint_u integer,
-	int_u integer,
-	bint_u bigint
+    tint_u smallint,
+    sint_u smallint,
+    mint_u integer,
+    int_u integer,
+    bint_u bigint
 );
 ```
 
-Suggested Changes:
+Suggested change to the schema is as follows:
 
 ```sql
 CREATE TABLE int_types (
-	tint_u smallint,
-	sint_u integer,
-	mint_u integer,
-	int_u bigint,
-	bint_u bigint /*can also be converted to numeric(20) if values are too large*/
+    tint_u smallint,
+    sint_u integer,
+    mint_u integer,
+    int_u bigint,
+    bint_u bigint /*can also be converted to numeric(20) if values are too large*/
 );
 ```
 
