@@ -12,7 +12,9 @@ menu:
 type: docs
 ---
 
-To trace executed statements in a session, you can use session identifiers. Session identifiers can be used to filter PostgreSQL log files for statements executed in a specific session and are unique in a YB-TServer node. A session identifier is a combination of process start time and PostgreSQL process ID (PID) and is output to the logs in hexadecimal format. Note that in a YugabyteDB cluster with multiple nodes, session identifier is not guaranteed to be unique, as both process start time and the PostgreSQL PID can be the same across different nodes.
+To trace executed statements in a session, you can use session identifiers. Session identifiers can be used to filter PostgreSQL log files for statements executed in a specific session and are unique in a YB-TServer node. A session identifier is a combination of process start time and PostgreSQL process ID (PID) and is output to the logs in hexadecimal format.
+
+Note that in a YugabyteDB cluster with multiple nodes, session identifier is not guaranteed to be unique, as both process start time and the PostgreSQL PID can be the same across different nodes. Be sure to connect to the node where the statements were executed.
 
 ## Set logging options
 
@@ -23,7 +25,7 @@ To log the appropriate session information, you need to set the following config
 
 ## Review logs
 
-Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the yb-data/tserver/logs directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](../../../troubleshoot/nodes/check-logs/).
+Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](../../../troubleshoot/nodes/check-logs/).
 
 ## Example session
 
