@@ -54,6 +54,8 @@ endif
 ifndef YB_BUILD_ROOT
 $(error YB_BUILD_ROOT is not set)
 endif
+# Do not append $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS) here. We will append it
+# later, after initializing SHLIB_LINK.
 LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util -lyb_pggate -lyb_common
 
 CCLD = $(CXX)
@@ -64,7 +66,12 @@ NAME = yb_pgbackend
 SO_MAJOR_VERSION= 1
 SO_MINOR_VERSION= $(MAJORVERSION)
 
-SHLIB_LINK = $(LIBS)
+# Use := for immediate variable expansion. Further changes to $(LIBS) must not affect
+# $(SHLIB_LINK).
+SHLIB_LINK := $(LIBS)
+
+# YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS should only be used for linking executables.
+LIBS += $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
 
 SHLIB_EXPORTS = exports.txt
 
