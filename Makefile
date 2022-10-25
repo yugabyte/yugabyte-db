@@ -90,6 +90,7 @@ REGRESS = scan \
           cypher_union \
 	  cypher_call \
           cypher_merge \
+	  age_global_graph \
           age_load \
           index \
           drop

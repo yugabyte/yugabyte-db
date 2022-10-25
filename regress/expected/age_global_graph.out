@@ -1,0 +1,196 @@
+LOAD 'age';
+SET search_path TO ag_catalog;
+--
+-- test delete_specific_GRAPH_global_contexts function 
+--
+-- create 3 graphs 
+SELECT * FROM create_graph('age_global_graph_1');
+NOTICE:  graph "age_global_graph_1" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_1', $$ CREATE (v:vertex_from_graph_1) RETURN v  $$) AS (v agtype);
+                                         v                                         
+-----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_1", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM create_graph('age_global_graph_2');
+NOTICE:  graph "age_global_graph_2" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_2', $$ CREATE (v:vertex_from_graph_2) RETURN v  $$) AS (v agtype);
+                                         v                                         
+-----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_2", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM create_graph('age_global_graph_3');
+NOTICE:  graph "age_global_graph_3" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_3', $$ CREATE (v:vertex_from_graph_3) RETURN v  $$) AS (v agtype);
+                                         v                                         
+-----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_3", "properties": {}}::vertex
+(1 row)
+
+-- load contexts using the vertex_stats command 
+SELECT * FROM cypher('age_global_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_3", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_2", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_1", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+-- delete age_global_graph_2's context
+-- should return true (succeeded)
+SELECT * FROM cypher('age_global_graph_2', $$ RETURN delete_global_graphs('age_global_graph_2') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete age_global_graph_1's context
+-- should return true (succeed) because previous command should not delete the 1st graph's context
+SELECT * FROM cypher('age_global_graph_1', $$ RETURN delete_global_graphs('age_global_graph_1') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete age_global_graph_3's context
+-- should return true (succeed) because previous commands should not delete the 3rd graph's context
+SELECT * FROM cypher('age_global_graph_3', $$ RETURN delete_global_graphs('age_global_graph_3') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete all graphs' context again
+-- should return false (did not succeed) for all of them because already removed
+SELECT * FROM cypher('age_global_graph_2', $$ RETURN delete_global_graphs('age_global_graph_2') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_1', $$ RETURN delete_global_graphs('age_global_graph_1') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_3', $$ RETURN delete_global_graphs('age_global_graph_3') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+    
+--
+-- test delete_GRAPH_global_contexts function 
+--
+-- load contexts again 
+SELECT * FROM cypher('age_global_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_3", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_2", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                                  result                                                   
+-----------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex_from_graph_1", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+-- delete all graph contexts
+-- should return true
+SELECT * FROM cypher('age_global_graph_1', $$ RETURN delete_global_graphs(NULL) $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete all graphs' context individually
+-- should return false for all of them because already removed
+SELECT * FROM cypher('age_global_graph_1', $$ RETURN delete_global_graphs('age_global_graph_1') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_2', $$ RETURN delete_global_graphs('age_global_graph_2') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('age_global_graph_3', $$ RETURN delete_global_graphs('age_global_graph_3') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+-- drop graphs
+SELECT * FROM drop_graph('age_global_graph_1', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table age_global_graph_1._ag_label_vertex
+drop cascades to table age_global_graph_1._ag_label_edge
+drop cascades to table age_global_graph_1.vertex_from_graph_1
+NOTICE:  graph "age_global_graph_1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('age_global_graph_2', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table age_global_graph_2._ag_label_vertex
+drop cascades to table age_global_graph_2._ag_label_edge
+drop cascades to table age_global_graph_2.vertex_from_graph_2
+NOTICE:  graph "age_global_graph_2" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('age_global_graph_3', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table age_global_graph_3._ag_label_vertex
+drop cascades to table age_global_graph_3._ag_label_edge
+drop cascades to table age_global_graph_3.vertex_from_graph_3
+NOTICE:  graph "age_global_graph_3" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End of tests
+--
