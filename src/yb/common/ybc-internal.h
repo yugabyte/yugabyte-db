@@ -39,10 +39,6 @@ void* YBCPAlloc(size_t size);
 void YBCSetCStringToTextWithLenFn(YBCCStringToTextWithLenFn fn);
 void* YBCCStringToTextWithLen(const char* c, int size);
 
-// YBCStatus definition for Some common Status.
-YBCStatus YBCStatusOK();
-YBCStatus YBCStatusNotSupport(const std::string& feature_name);
-
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
 const char* YBCPAllocStdString(const std::string& s);
 

@@ -203,12 +203,6 @@ YBPgErrorCode FetchErrorCode(YBCStatus s) {
 
 extern "C" {
 
-YBCStatus YBCStatusOKValue = nullptr;
-
-bool YBCStatusIsOK(YBCStatus s) {
-  return StatusWrapper(s)->IsOk();
-}
-
 bool YBCStatusIsNotFound(YBCStatus s) {
   return StatusWrapper(s)->IsNotFound();
 }
