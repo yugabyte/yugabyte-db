@@ -32,7 +32,7 @@ Session information is written to the PostgreSQL logs, located in the YugabyteDB
 Create a local cluster using yugabyted, and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\"" --rf 1
+./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\""
 ```
 
 For local clusters created using yugabyted, logs are located in `~/var/logs`.
