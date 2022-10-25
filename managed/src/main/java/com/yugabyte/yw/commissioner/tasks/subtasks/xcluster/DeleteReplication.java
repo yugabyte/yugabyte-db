@@ -7,6 +7,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteUniverseReplicationResponse;
@@ -107,7 +108,11 @@ public class DeleteReplication extends XClusterConfigTaskBase {
             .getTablesById(xClusterConfig.getTableIdsWithReplicationSetup())
             .forEach(
                 tableConfig -> {
+                  tableConfig.status = XClusterTableConfig.Status.Validated;
+                  tableConfig.replicationSetupDone = false;
                   tableConfig.streamId = null;
+                  tableConfig.bootstrapCreateTime = null;
+                  tableConfig.restoreTime = null;
                 });
         xClusterConfig.update();
       } else {

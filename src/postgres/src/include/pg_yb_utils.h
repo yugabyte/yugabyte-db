@@ -669,6 +669,8 @@ bool YBCIsRegionLocal(Relation rel);
  * for all range-partitioned tables with more than one tablet.
  * Return an empty string when duplicate split points exist
  * after tablet splitting.
+ * Return an emptry string when a NULL value is present in split points
+ * after tablet splitting.
  */
 extern Datum yb_get_range_split_clause(PG_FUNCTION_ARGS);
 

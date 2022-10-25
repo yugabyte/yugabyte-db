@@ -1729,6 +1729,18 @@ TEST_F_EX(YBBackupTest,
   ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
                                         "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
 
+  // Verify yb_get_range_split_clause returns an empty string because null values are present
+  // in split points.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT yb_get_range_split_clause('$0'::regclass)", index_name),
+      R"#(
+         yb_get_range_split_clause
+        ---------------------------
+
+        (1 row)
+      )#"
+  ));
+
   // Backup
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
@@ -1745,6 +1757,18 @@ TEST_F_EX(YBBackupTest,
   ASSERT_EQ(tablets.size(), 3);
   ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
                                         "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+
+  // Verify yb_get_range_split_clause returns an empty string because null values are present
+  // in split points.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT yb_get_range_split_clause('$0'::regclass)", index_name),
+      R"#(
+         yb_get_range_split_clause
+        ---------------------------
+
+        (1 row)
+      )#"
+  ));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

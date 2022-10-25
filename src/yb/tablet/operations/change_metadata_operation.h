@@ -63,7 +63,7 @@ class ChangeMetadataOperation
     : public ExclusiveSchemaOperation<OperationType::kChangeMetadata,
                                       ChangeMetadataRequestPB> {
  public:
-  ChangeMetadataOperation(Tablet* tablet, log::Log* log,
+  ChangeMetadataOperation(TabletPtr tablet, log::Log* log,
                           const ChangeMetadataRequestPB* request = nullptr);
 
   explicit ChangeMetadataOperation(const ChangeMetadataRequestPB* request);

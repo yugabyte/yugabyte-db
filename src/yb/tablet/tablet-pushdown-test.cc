@@ -80,7 +80,7 @@ class TabletPushdownTest : public YBTabletTest {
       nrows_ = 100000;
     }
 
-    LocalTabletWriter writer(tablet().get());
+    LocalTabletWriter writer(tablet());
     QLWriteRequestPB req;
     for (int i = 0; i < nrows_; i++) {
       QLAddInt32HashValue(&req, i);

@@ -41,6 +41,7 @@ provider:
   onprem:
     - USE_HOSTNAME
     - airGapInstall
+    - YB_HOME_DIR
 
   kubernetes:
     - KUBECONFIG_NAME

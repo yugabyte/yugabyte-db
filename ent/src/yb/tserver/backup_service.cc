@@ -39,7 +39,6 @@ namespace tserver {
 using rpc::RpcContext;
 using tablet::SnapshotOperation;
 using tablet::OperationCompletionCallback;
-using tablet::Tablet;
 
 TabletServiceBackupImpl::TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                                                  const scoped_refptr<MetricEntity>& metric_entity)
@@ -105,7 +104,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
-  auto operation = std::make_unique<SnapshotOperation>(tablet.tablet.get(), req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet.tablet, req);
 
   auto clock = tablet_manager_->server()->Clock();
   operation->set_completion_callback(

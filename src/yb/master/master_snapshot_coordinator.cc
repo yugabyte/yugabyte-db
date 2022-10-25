@@ -500,9 +500,10 @@ class MasterSnapshotCoordinator::Impl {
     if (leader_term >= 0) {
       context_.PrepareRestore();
     }
+    auto tablet = VERIFY_RESULT(operation.tablet_safe());
     LOG_SLOW_EXECUTION(INFO, 1000, "Restore sys catalog took") {
       RETURN_NOT_OK_PREPEND(
-          context_.RestoreSysCatalog(restoration.get(), operation.tablet(), complete_status),
+          context_.RestoreSysCatalog(restoration.get(), tablet.get(), complete_status),
           "Restore sys catalog failed");
     }
     return Status::OK();

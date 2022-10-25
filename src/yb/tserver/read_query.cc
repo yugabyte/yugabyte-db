@@ -410,7 +410,7 @@ Status ReadQuery::DoPerform() {
         leader_peer.leader_term,
         deadline,
         leader_peer.peer.get(),
-        leader_peer.tablet.get(),
+        leader_peer.tablet,
         nullptr /* response */,
         docdb::OperationKind::kRead);
 

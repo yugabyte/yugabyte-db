@@ -62,9 +62,11 @@ void RemoteBootstrapSessionTest::TearDown() {
 
 void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   scoped_refptr<Log> log;
-  ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
-                     fs_manager()->GetFirstTabletWalDirOrDie(tablet()->metadata()->table_id(),
-                                                             tablet()->tablet_id()),
+  auto tablet_ptr = harness_->tablet();
+  auto tablet_id = tablet_ptr->tablet_id();
+  ASSERT_OK(Log::Open(LogOptions(), tablet_id,
+                     fs_manager()->GetFirstTabletWalDirOrDie(tablet_ptr->metadata()->table_id(),
+                                                             tablet_id),
                      fs_manager()->uuid(),
                      *tablet()->schema(),
                      0,  // schema_version
@@ -89,11 +91,11 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   hp->set_port(0);
 
   tablet_peer_.reset(new TabletPeer(
-      tablet()->metadata(), config_peer, clock(), fs_manager()->uuid(),
+      tablet_ptr->metadata(), config_peer, clock(), fs_manager()->uuid(),
       Bind(
           &RemoteBootstrapSessionTest::TabletPeerStateChangedCallback,
           Unretained(this),
-          tablet()->tablet_id()),
+          tablet_id),
       &metric_registry_,
       nullptr /* tablet_splitter */,
       std::shared_future<client::YBClient*>()));
@@ -105,7 +107,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
 
   std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
-                                     tablet()->tablet_id(), fs_manager()->uuid(),
+                                     tablet_id, fs_manager()->uuid(),
                                      config, consensus::kMinimumTerm, &cmeta));
 
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
@@ -153,6 +155,7 @@ void RemoteBootstrapSessionTest::TabletPeerStateChangedCallback(
 }
 
 void RemoteBootstrapSessionTest::PopulateTablet() {
+  auto tablet_ptr = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
   for (int32_t i = 0; i < 1000; i++) {
     WriteRequestPB req;
     req.set_tablet_id(tablet_peer_->tablet_id());
@@ -163,7 +166,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
-        tablet_peer_->tablet(), &resp);
+        tablet_ptr, &resp);
     query->set_client_request(req);
     query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
     tablet_peer_->WriteAsync(std::move(query));

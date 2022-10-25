@@ -2,6 +2,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,6 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 import org.yb.master.MasterDdlOuterClass;
 
 @NoArgsConstructor
@@ -21,6 +21,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   private Map<String, List<String>> mainTableIndexTablesMap;
   private XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
   private XClusterConfigEditFormData editFormData;
+  private Set<String> tableIdsToAdd;
   private Set<String> tableIdsToRemove;
   private boolean isForced = false;
 
@@ -41,6 +42,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       XClusterConfigEditFormData editFormData,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
+      Set<String> tableIdsToAdd,
       Set<String> tableIdsToRemove) {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;
@@ -48,6 +50,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.bootstrapParams = editFormData.bootstrapParams;
     this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
+    this.tableIdsToAdd = tableIdsToAdd;
     this.tableIdsToRemove = tableIdsToRemove;
   }
 
@@ -63,6 +66,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.bootstrapParams.backupRequestParams = restartFormData.bootstrapParams.backupRequestParams;
     this.tableInfoList = tableInfoList;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
+    this.tableIdsToAdd = XClusterConfigTaskBase.getTableIds(tableInfoList);
     this.isForced = isForced;
   }
 

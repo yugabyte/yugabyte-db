@@ -379,7 +379,7 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     if (propagated_history_cutoff) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
-      auto operation = std::make_unique<HistoryCutoffOperation>(tablet_.get());
+      auto operation = std::make_unique<HistoryCutoffOperation>(tablet_);
       auto request = operation->AllocateRequest();
       request->set_history_cutoff(propagated_history_cutoff.ToUint64());
 
@@ -715,7 +715,7 @@ void TabletPeer::SubmitUpdateTransaction(
   // TODO: safely handle the case when tablet is not set.
   // https://github.com/yugabyte/yugabyte-db/issues/14597
   if (!operation->tablet()) {
-    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()).get());
+    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()));
   }
   Submit(std::move(operation), term);
 }
@@ -755,7 +755,7 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
     TransactionStatePB* request) {
   // TODO: safe handling for the case when tablet is not set.
-  auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()).get());
+  auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()));
   result->TakeRequest(request);
   return result;
 }
@@ -801,6 +801,28 @@ Status TabletPeer::RunLogGC() {
   }
   int32_t num_gced = 0;
   return log_->GC(min_log_index, &num_gced);
+}
+
+Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
+  // Note that there is still a possible race condition between the time we check the tablet state
+  // and the time we access the tablet shared pointer through the weak pointer.
+  auto tablet_obj_state = tablet_obj_state_.load(std::memory_order_acquire);
+  if (tablet_obj_state != TabletObjectState::kAvailable) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Tablet not running: tablet object $0 has invalid state $1",
+        tablet_id_, tablet_obj_state);
+  }
+  // The weak pointer is safe to access as long as the state is not kUninitialized, because it
+  // never changes after the state is set to kAvailable. However, we still need to check if
+  // lock() returns nullptr.
+  auto tablet_ptr = tablet_weak_.lock();
+  if (tablet_ptr)
+    return tablet_ptr;
+  return STATUS_FORMAT(
+      IllegalState,
+      "Tablet object $0 has already been destroyed",
+      tablet_id_);
 }
 
 TabletDataState TabletPeer::data_state() const {
@@ -1165,8 +1187,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
-  auto shared_tablet = CHECK_RESULT(shared_tablet_safe());
-  auto* tablet = shared_tablet.get();
+  auto tablet = CHECK_RESULT(shared_tablet_safe());
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
       DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
