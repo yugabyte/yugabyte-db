@@ -57,7 +57,6 @@
 #include "yb/server/generic_service.h"
 #include "yb/server/glog_metrics.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/intentsdb-path-handler.h"
 #include "yb/server/logical_clock.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/rpcz-path-handler.h"
@@ -619,8 +618,6 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
-  // IntentsDB.
-  DisplayIconTile(output, "fa-lock", "IntentsDB", "/intentsdb");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -650,7 +647,6 @@ Status RpcAndWebServerBase::Start() {
 
   AddDefaultPathHandlers(web_server_.get());
   AddRpczPathHandlers(messenger_.get(), web_server_.get());
-  AddIntentsDBPathHandler(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
   RegisterTlsHandler(web_server_.get(), this);

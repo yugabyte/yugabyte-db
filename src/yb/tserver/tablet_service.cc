@@ -1585,40 +1585,6 @@ void TabletServiceAdminImpl::CountIntents(
   context.RespondSuccess();
 }
 
-void TabletServiceAdminImpl::ReadIntents(
-    const ReadIntentsRequestPB* req,
-    ReadIntentsResponsePB* resp,
-    rpc::RpcContext context) {
-  TSTabletManager::TabletPtrs tablet_ptrs;
-  TabletPeers tablet_peers;
-
-  if (req->has_tablet_id()) {
-    auto tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
-    auto tablet = tablet_peer.tablet;
-    if (tablet != nullptr) {
-      tablet_ptrs.push_back(std::move(tablet));
-    } else {
-      SetupErrorAndRespond(resp->mutable_error(),
-          STATUS_FORMAT(InternalError, "Unable to lookup for tablet with ID $0", req->tablet_id()),
-          &context);
-      return;
-    }
-  } else {
-    tablet_peers = server_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
-  }
-
-  for (const auto& tablet : tablet_ptrs) {
-    auto res = tablet->ReadIntents(resp);
-    if (!res.ok()) {
-      SetupErrorAndRespond(resp->mutable_error(), res, &context);
-      return;
-    }
-  }
-
-  context.RespondSuccess();
-}
-
 void TabletServiceAdminImpl::AddTableToTablet(
     const AddTableToTabletRequestPB* req, AddTableToTabletResponsePB* resp,
     rpc::RpcContext context) {
