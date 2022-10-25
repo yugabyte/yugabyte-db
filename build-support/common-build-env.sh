@@ -489,15 +489,10 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" ]]; then
-        if [[ ${build_type} =~ ^(debug|fastdebug|release|tsan|prof_(gen|use))$ ]]; then
-          YB_COMPILER_TYPE=clang15
-        else
-          YB_COMPILER_TYPE=clang13
-        fi
+      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
+        YB_COMPILER_TYPE=clang13
       else
-        # https://github.com/yugabyte/yugabyte-db/issues/12603
-        YB_COMPILER_TYPE=clang12
+        YB_COMPILER_TYPE=clang15
       fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
