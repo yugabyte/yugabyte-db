@@ -85,8 +85,6 @@ extern int yb_xcluster_consistency_level;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOKValue;
-bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
