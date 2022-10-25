@@ -227,10 +227,6 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
 
-  void ReadIntents(const ReadIntentsRequestPB* req,
-                   ReadIntentsResponsePB* resp,
-                   rpc::RpcContext context) override;
-
   void AddTableToTablet(const AddTableToTabletRequestPB* req,
                         AddTableToTabletResponsePB* resp,
                         rpc::RpcContext context) override;
