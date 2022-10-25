@@ -73,40 +73,40 @@ The available flags are described in the following table:
   <tr>
    <td><code>ycql_enable_audit_log</code></td>
    <td><code>true</code>/<code>false</code></td>
-   <td>Whether to enable YCQL audit</td>
+   <td>Enable YCQL audit</td>
    <td><code>false</code></td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_categories</code></td>
-   <td rowspan="2" >comma-separated list of statement categories.</td>
-   <td>categories to be audited.</td>
+   <td rowspan="2" >Comma-separated list of statement categories.</td>
+   <td>Categories to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_categories</code></td>
-   <td>categories to be excluded from auditing.</td>
+   <td>Categories to exclude</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_users</code></td>
-   <td rowspan="2" >comma-separated list of users.</td>
-   <td>users to be audited.</td>
+   <td rowspan="2" >Comma-separated list of users.</td>
+   <td>Users to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_users</code></td>
-   <td>users to be excluded from auditing.</td>
+   <td>Users to exclude</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_included_keyspaces</code></td>
-   <td rowspan="2" >comma-separated list of keyspaces.</td>
-   <td>keyspaces to be audited.</td>
+   <td rowspan="2" >Comma-separated list of keyspaces.</td>
+   <td>keyspaces to audit</td>
    <td>empty</td>
   </tr>
   <tr>
    <td><code>ycql_audit_excluded_keyspaces</code></td>
-   <td>keyspaces to be excluded from auditing.</td>
+   <td>keyspaces to exclude</td>
    <td><code>system,system_schema,system_virtual_schema,system_auth</code></td>
   </tr>
   <tr>
