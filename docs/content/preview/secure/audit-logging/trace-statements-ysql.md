@@ -155,11 +155,6 @@ yugabyte=# BEGIN;
 yugabyte=# INSERT INTO my_table VALUES (5,2,2);
 ```
 
-```output
-BEGIN
-INSERT 0 1
-```
-
    </td>
    <td>
    </td>
@@ -175,12 +170,6 @@ yugabyte=# INSERT INTO my_table VALUES (6,2,2);
 yugabyte=# COMMIT;
 ```
 
-```output
-BEGIN
-INSERT 0 1
-COMMIT
-```
-
    </td>
   </tr>
   <tr>
@@ -188,10 +177,6 @@ COMMIT
 
 ```sql
 COMMIT;
-```
-
-```output
-COMMIT
 ```
 
    </td>
