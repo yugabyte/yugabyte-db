@@ -13,45 +13,46 @@ import {
 } from '../../../actions/xClusterReplication';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { formatBytes, CurrentTableReplicationLag } from '../ReplicationUtils';
+import { formatBytes, CurrentTableReplicationLag, adaptTableUUID } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { api } from '../../../redesign/helpers/api';
-import { XClusterModalName } from '../constants';
+import { XClusterModalName, XClusterTableStatus } from '../constants';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
+import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 
-import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, YBTable } from '../XClusterTypes';
+import { TableType, TABLE_TYPE_MAP, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTable, XClusterTableDetails } from '../XClusterTypes';
 
 import styles from './ReplicationTables.module.scss';
 
 interface props {
-  replication: XClusterConfig;
+  xClusterConfig: XClusterConfig;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({ replication }: props) {
-  const dispatch = useDispatch();
-  const queryClient = useQueryClient();
-  const { visibleModal } = useSelector((state: any) => state.modal);
-
+export function ReplicationTables({ xClusterConfig }: props) {
   const [deleteTableDetails, setDeleteTableDetails] = useState<YBTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<YBTable>();
+
+  const dispatch = useDispatch();
+  const { visibleModal } = useSelector((state: any) => state.modal);
+  const queryClient = useQueryClient();
 
   const showAddTablesToClusterModal = () => {
     dispatch(openDialog(XClusterModalName.ADD_TABLE_TO_CONFIG));
   };
 
-  const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
-    ['universe', replication.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
+  const sourceUniverseTableQuery = useQuery<YBTable[]>(
+    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
+    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((respone) => respone.data)
   );
 
-  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
-    ['universe', replication.sourceUniverseUUID],
-    () => api.fetchUniverse(replication.sourceUniverseUUID)
+  const sourceUniverseQuery = useQuery(['universe', xClusterConfig.sourceUniverseUUID], () =>
+    api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
   const removeTableFromXCluster = useMutation(
@@ -84,20 +85,24 @@ export function ReplicationTables({ replication }: props) {
     }
   );
 
-  if (isTablesLoading || currentUniverseLoading) {
-    return null;
+  if (
+    sourceUniverseTableQuery.isLoading ||
+    (sourceUniverseTableQuery.isIdle && sourceUniverseTableQuery.data === undefined) ||
+    sourceUniverseQuery.isLoading ||
+    (sourceUniverseQuery.isIdle && sourceUniverseQuery.data === undefined)
+  ) {
+    return <YBLoading />;
+  }
+  if (sourceUniverseTableQuery.isError || sourceUniverseQuery.isError) {
+    return <YBErrorIndicator />;
   }
 
-  const tablesInReplication = tablesInSourceUniverse
-    ?.map((tables: YBTable) => {
-      return {
-        ...tables,
-        tableUUID: tables.tableUUID.replaceAll('-', '')
-      };
-    })
-    .filter((table: YBTable) => replication.tables.includes(table.tableUUID));
-
+  const tablesInReplication = getTablesInReplication(
+    sourceUniverseTableQuery.data,
+    xClusterConfig.tableDetails
+  );
   const isActiveTab = window.location.search === '?tab=tables';
+  const sourceUniverse = sourceUniverseQuery.data;
 
   return (
     <div className={styles.rootContainer}>
@@ -137,13 +142,26 @@ export function ReplicationTables({ replication }: props) {
             Size
           </TableHeaderColumn>
           <TableHeaderColumn
+            dataField="status"
+            dataFormat={(cell: XClusterTableStatus, row: YBTable) => (
+              <XClusterTableStatusLabel
+                status={cell}
+                tableUUID={row.tableUUID}
+                nodePrefix={sourceUniverse.universeDetails.nodePrefix}
+                universeUUID={sourceUniverse.universeUUID}
+              />
+            )}
+          >
+            Status
+          </TableHeaderColumn>
+          <TableHeaderColumn
             dataFormat={(_cell, row) => (
               <span className="lag-text">
                 <CurrentTableReplicationLag
                   tableUUID={row.tableUUID}
-                  nodePrefix={universeInfo?.universeDetails.nodePrefix}
+                  nodePrefix={sourceUniverse.universeDetails.nodePrefix}
                   queryEnabled={isActiveTab}
-                  sourceUniverseUUID={replication.sourceUniverseUUID}
+                  sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                 />
               </span>
             )}
@@ -187,12 +205,12 @@ export function ReplicationTables({ replication }: props) {
           ></TableHeaderColumn>
         </BootstrapTable>
       </div>
-      {openTableLagGraphDetails && universeInfo && (
+      {openTableLagGraphDetails && (
         <ReplicationLagGraphModal
           tableDetails={openTableLagGraphDetails}
-          replicationUUID={replication.uuid}
-          universeUUID={universeInfo.universeUUID}
-          nodePrefix={universeInfo.universeDetails.nodePrefix}
+          replicationUUID={xClusterConfig.uuid}
+          universeUUID={sourceUniverse.universeUUID}
+          nodePrefix={sourceUniverse.universeDetails.nodePrefix}
           queryEnabled={isActiveTab}
           visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
           onHide={() => {
@@ -204,8 +222,8 @@ export function ReplicationTables({ replication }: props) {
         deleteTableName={deleteTableDetails?.tableName ?? ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({
-            ...replication,
-            tables: replication.tables.filter((t) => t !== deleteTableDetails!.tableUUID)
+            ...xClusterConfig,
+            tables: xClusterConfig.tables.filter((t) => t !== deleteTableDetails!.tableUUID)
           });
         }}
         onCancel={() => {
@@ -214,4 +232,28 @@ export function ReplicationTables({ replication }: props) {
       />
     </div>
   );
+}
+
+function getTablesInReplication(
+  ybTable: YBTable[],
+  xClusterConfigTables: XClusterTableDetails[]
+): XClusterTable[] {
+  const ybTableMap = new Map<string, YBTable>();
+  ybTable.forEach((table) => {
+    const { tableUUID, ...tableDetails } = table;
+    const adaptedTableUUID = adaptTableUUID(table.tableUUID);
+    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
+  });
+  return xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
+    const ybTableDetails = ybTableMap.get(table.tableId);
+    if (ybTableDetails) {
+      const { tableId, ...xClusterTableDetails } = table;
+      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
+    } else {
+      console.error(
+        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
+      );
+    }
+    return tables;
+  }, []);
 }
