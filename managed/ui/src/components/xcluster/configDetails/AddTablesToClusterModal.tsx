@@ -13,8 +13,8 @@ import { YBModalForm } from '../../common/forms';
 import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 
-import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, YBTable } from '../XClusterTypes';
+import { TableType, TABLE_TYPE_MAP, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterConfig } from '../XClusterTypes';
 
 import './AddTableToClusterModal.scss';
 
