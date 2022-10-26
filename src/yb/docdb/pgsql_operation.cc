@@ -80,6 +80,9 @@ DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
 
 DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
 
+DEFINE_bool(ysql_enable_packed_row_for_colocated_table, false,
+            "Whether disable packed row for colocated tables.");
+
 DEFINE_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
@@ -181,6 +184,11 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
         RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
         return key;
       });
+}
+
+bool DisablePackedRowIfColocatedTable(const Schema& schema) {
+  return !FLAGS_ysql_enable_packed_row_for_colocated_table &&
+         (schema.has_colocation_id() || schema.has_cotable_id());
 }
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -571,7 +579,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (FLAGS_ysql_enable_packed_row) {
+  if (FLAGS_ysql_enable_packed_row &&
+      !DisablePackedRowIfColocatedTable(doc_read_context_->schema)) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -677,6 +686,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     skipped = request_.column_new_values().empty();
     const size_t num_non_key_columns = schema.num_columns() - schema.num_key_columns();
     if (FLAGS_ysql_enable_packed_row &&
+        !DisablePackedRowIfColocatedTable(schema) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
           request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
