@@ -31,7 +31,7 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
   const nodePrefix = universeInfo?.universeDetails.nodePrefix;
 
   const { data: metrics } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, 'metric', 'lagGraph'],
+    ['xcluster-metric', replicationUUID, nodePrefix, 'metric'],
     () => queryLagMetricsForUniverse(nodePrefix, replicationUUID),
     {
       enabled: !currentUniverseLoading

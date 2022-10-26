@@ -94,7 +94,7 @@ export function fetchXClusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .get<XClusterConfig>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
-    .then((resp) => resp.data);
+    .then((response) => response.data);
 }
 
 export function editXClusterState(replication: XClusterConfig, state: XClusterConfigState) {
@@ -121,7 +121,8 @@ export function editXClusterTables(replication: XClusterConfig) {
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   const customerId = localStorage.getItem('customerId');
   return axios.delete(
-    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`);
+    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`
+  );
 }
 
 export function queryLagMetricsForUniverse(

@@ -6,21 +6,10 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   ReplicationStatus,
-  YBTableRelationType
+  XClusterTableStatus
 } from './constants';
 
-import { TableType } from '../../redesign/helpers/dtos';
-
-export interface YBTable {
-  isIndexTable: boolean;
-  keySpace: string;
-  pgSchemaName: string;
-  relationType: YBTableRelationType;
-  sizeBytes: number;
-  tableName: string;
-  tableType: TableType;
-  tableUUID: string;
-}
+import { TableType, YBTable } from '../../redesign/helpers/dtos';
 
 /**
  * XCluster supported table type.
@@ -34,18 +23,26 @@ export interface XClusterConfig {
   paused: boolean;
   sourceUniverseUUID: string;
   status: ReplicationStatus;
-  tableDetails: TableDetails[];
+  tableDetails: XClusterTableDetails[];
   tables: string[];
   targetUniverseUUID: string;
   uuid: string;
 }
 
-export interface TableDetails {
+/**
+ * Source: XClusterTableConfig.java
+ */
+export interface XClusterTableDetails {
   needBootstrap: boolean;
   replicationSetupDone: true;
+  bootstrapCreateTime: string;
+  status: XClusterTableStatus;
+  restoreTime: string;
   streamId: string;
   tableId: string;
 }
+
+export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
 
 // TODO: Move the metric types to dtos.ts or another more appropriate file.
 
