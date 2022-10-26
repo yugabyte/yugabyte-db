@@ -178,7 +178,6 @@ public class TaskInfo extends Model {
     return subTaskGroupType;
   }
 
-  @JsonIgnore
   public JsonNode getTaskDetails() {
     return details;
   }

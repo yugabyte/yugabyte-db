@@ -1197,6 +1197,10 @@
     "Backup" : {
       "description" : "A single backup. Includes the backup's status, expiration time, and configuration.",
       "properties" : {
+        "backupCategory" : {
+          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
+          "type" : "string"
+        },
         "backupInfo" : {
           "$ref" : "#/definitions/BackupTableParams",
           "description" : "Details of the backup"
@@ -1291,7 +1295,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "createTime", "incrementalBackup", "parentBackup", "updateTime" ],
+      "required" : [ "backupCategory", "createTime", "incrementalBackup", "parentBackup", "updateTime" ],
       "type" : "object"
     },
     "BackupApiFilter" : {
@@ -1422,6 +1426,10 @@
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
           "type" : "string"
         },
+        "backupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "baseBackupUUID" : {
           "description" : "UUID of the parent backup",
           "format" : "uuid",
@@ -1440,6 +1448,13 @@
         },
         "cronExpression" : {
           "description" : "Cron expression for a recurring backup",
+          "type" : "string"
+        },
+        "currentIdx" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "currentYbcTaskId" : {
           "type" : "string"
         },
         "customerUUID" : {
@@ -1631,7 +1646,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -2005,6 +2020,10 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "timeTakenPartial" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "transactionalBackup" : {
           "description" : "Is backup transactional across tables",
           "type" : "boolean"
@@ -2029,7 +2048,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID" ],
+      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "BootstarpBackupParams" : {
@@ -4947,6 +4966,10 @@
           "format" : "int64",
           "type" : "integer"
         },
+        "timeTakenPartial" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
         "transactionalBackup" : {
           "description" : "Is backup transactional across tables",
           "type" : "boolean"
@@ -4971,7 +4994,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID" ],
+      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NodeActionFormData" : {
@@ -5054,7 +5077,7 @@
           "type" : "integer"
         },
         "masterRpcPort" : {
-          "description" : "Master RCP port",
+          "description" : "Master RPC port",
           "format" : "int32",
           "type" : "integer"
         },
@@ -5214,7 +5237,7 @@
           "type" : "integer"
         },
         "masterRpcPort" : {
-          "description" : "Master RCP port",
+          "description" : "Master RPC port",
           "format" : "int32",
           "type" : "integer"
         },
@@ -6488,6 +6511,13 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "currentIdx" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "currentYbcTaskId" : {
+          "type" : "string"
+        },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -6558,6 +6588,10 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "prefixUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -6618,7 +6652,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
+      "required" : [ "creatingUser", "currentIdx", "currentYbcTaskId", "prefixUUID", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
