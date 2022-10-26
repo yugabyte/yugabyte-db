@@ -142,14 +142,14 @@ To create a universe, do the following:
 
 1. Create a single node cluster by running the following command:
 
-   ```sh
-   $ ./bin/yugabyted start \
+    ```sh
+    $ ./bin/yugabyted start \
                      --base_dir=/tmp/ybd1 \
                      --listen=127.0.0.1 \
                      --tserver_flags "memstore_size_mb=1"
-   ```
+    ```
 
-   * `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
+    `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
 
 1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the `memstore_size` flag to each of the added YB-TServer servers.
 
@@ -193,13 +193,15 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
 
 ### Explore tablets
 
-* **The tablets are evenly balanced across the various nodes**. You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the image below.
+Using the cluster Admin UI, you can observe the following:
+
+* **The tablets are evenly balanced across the various nodes**. You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the following image:
 
     ![Number of tablets in the table](/images/ce/sharding_evenload.png)
 
     Notice that each node has 3 tablets, and the total number of tablets is 9 as expected. Out of these 3, it is the leader of 1 and follower of other 2.
 
-* **The table has 3 shards, each owning a range of the keyspace**. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows.
+* **The table has 3 shards, each owning a range of the keyspace**. Navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows:
 
     ![Tablet details of the table](/images/ce/sharding_keyranges.png)
 
@@ -207,29 +209,29 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
 
 * **Each tablet has a separate directory dedicated to it for data**. List out all the tablet directories and check their sizes, as follows:
 
-1. Get the table-id of the table you created by going to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table-id is `769f533fbde9425a8520b9cd59efc8b8`.
+    1. Get the table-id of the table you created by going to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table-id is `769f533fbde9425a8520b9cd59efc8b8`.
 
-    ![Id of the created table](/images/ce/sharding_tableid.png)
+        ![Id of the created table](/images/ce/sharding_tableid.png)
 
-1. View all the tablet directories and their sizes for this table by running the following command. Remember to replace the id with your corresponding id.
+    1. View all the tablet directories and their sizes for this table by running the following command. Remember to replace the id with your corresponding id.
 
-    ```sh
-    $ du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
-    ```
+        ```sh
+        $ du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
+        ```
 
-    ```output
-    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    ```
+        ```output
+        28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+        28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+        28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+        28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+        28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+        28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+        28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+        28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+        28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+        ```
 
-    There are nine entries, one corresponding to each tablet with 28K bytes as the size.
+        There are nine entries, one corresponding to each tablet with 28K bytes as the size.
 
 ### Insert and query a table
 
