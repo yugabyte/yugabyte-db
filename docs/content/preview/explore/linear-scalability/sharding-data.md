@@ -140,7 +140,7 @@ This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) 
 
 To create a universe, do the following:
 
-1. Begin by creating a single node cluster. Run the following command.
+1. Create a single node cluster by running the following command:
 
    ```sh
    $ ./bin/yugabyted start \
@@ -151,7 +151,7 @@ To create a universe, do the following:
 
    * `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This will force a flush of the data to disk when a value greater than 1MB is added, so that you can observe which tablets the data is written to.
 
-1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the memstore_size flag to each of the added YB-TServer servers.
+1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the `memstore_size` flag to each of the added YB-TServer servers.
 
     ```sh
     $ ./bin/yugabyted start \
@@ -175,7 +175,7 @@ Setting `memstore_size` to such a low value is not recommended in production, an
 
 ### Create a table
 
-After you've got your nodes set up, you can create a YCQL table. Because you'll be using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, **create the keyspace and table name below exactly as shown**.
+After you've got your nodes set up, you can create a YCQL table. Because you're using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, create the keyspace and table name as follows.
 
 ```sh
 $ ./bin/ycqlsh
@@ -207,11 +207,11 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
 
 * **Each tablet has a separate directory dedicated to it for data**. List out all the tablet directories and check their sizes, as follows:
 
-1. First get the table-id of the table you created by going to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table-id is `769f533fbde9425a8520b9cd59efc8b8`.
+1. Get the table-id of the table you created by going to the [table listing page](http://127.0.0.1:7000/tables) and accessing the row corresponding to `ybdemo_keyspace.cassandrakeyvalue`. In this illustration, the table-id is `769f533fbde9425a8520b9cd59efc8b8`.
 
     ![Id of the created table](/images/ce/sharding_tableid.png)
 
-1. Next, you can view all the tablet directories and their sizes for this table by running the following command. Remember to replace the id with your corresponding id.
+1. View all the tablet directories and their sizes for this table by running the following command. Remember to replace the id with your corresponding id.
 
     ```sh
     $ du -hs /tmp/ybd*/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/* | grep -v '0B'
@@ -233,9 +233,9 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
 
 ### Insert and query a table
 
-In this section, you'll use a sample app to insert a key-value entry with the value size around 10MB. Because the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
+In this section, you use a sample application to insert a key-value entry with the value size around 10MB. Because the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
 
-The key flags you pass to the sample app are:
+The key flags you pass to the sample application are:
 
 * `--num_unique_keys 1` to write exactly one key. Keys are numbers converted to text, and typically start from 0.
 * `--num_threads_read 0` to not perform any reads (hence 0 read threads).
@@ -243,7 +243,7 @@ The key flags you pass to the sample app are:
 * `--value_size 10000000` to generate the value being written as a random byte string of around 10MB size.
 * `--nouuid` to not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
-Let's get started:
+Do the following:
 
 1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`):
 
@@ -393,8 +393,6 @@ $ ./bin/yugabyted destroy \
 
 To learn more about sharding in YugabyteDB, you may wish to read the [architecture documentation](../../../architecture/docdb-sharding/), or the following blog posts:
 
-[How Data Sharding Works in a Distributed SQL Database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
-
-[Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
-
-[Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
+* [How Data Sharding Works in a Distributed SQL Database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
+* [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+* [Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
