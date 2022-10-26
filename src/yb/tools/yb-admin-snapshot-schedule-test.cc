@@ -3699,7 +3699,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuri
   auto prev_tablets_count = tablets_obj.GetArray().Size();
   LOG(INFO) << prev_tablets_count << " tablets present before restore";
 
-  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
 
   // Insert enough data conducive to splitting.
   ASSERT_OK(InsertDataForSplitting(&conn));
@@ -3752,7 +3752,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNew
   auto prev_tablets_count = tablets_obj.GetArray().Size();
   LOG(INFO) << prev_tablets_count << " tablets present before restore";
 
-  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
 
   // Insert enough data conducive to splitting.
   ASSERT_OK(InsertDataForSplitting(&conn));
@@ -3841,7 +3841,7 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
         client::kTableName.table_name()));
 
     // Note down time to restore.
-    Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+    Timestamp time = ASSERT_RESULT(GetCurrentTime());
 
     // Insert enough data conducive to splitting.
     ASSERT_OK(InsertDataForSplitting(&conn));
