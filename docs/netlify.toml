@@ -424,6 +424,10 @@
    to = "/preview/drivers-orms/python/postgres-psycopg2/"
 
 [[redirects]]
+   from = "/preview/develop/build-apps/nodejs/ysql-pg/"
+   to = "/preview/drivers-orms/nodejs/yugabyte-node-driver/"
+
+[[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"
    to = "/preview/drivers-orms/:lang/:driver/"
 

@@ -46,9 +46,9 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/nodejs/ysql-pg/) page.
+The following sections demonstrate how to perform common tasks required for Python application development using the PostgreSQL node-postgres smart driver.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Install the driver dependency and async utility
 
@@ -115,7 +115,9 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
-Create a new JavaScript file called `yb-ysql-helloworld-ssl.js` in your project directory. Copy the following code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
+Create a new JavaScript file called `QuickStartApp.js` in your project directory.
+
+Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate, if required.
 
 ```js
 var pg = require('pg');
@@ -167,7 +169,13 @@ async.series([
 });
 ```
 
-When you run the application using the command `node yb-ysql-helloworld-ssl.js`, you should see output similar to the following:
+Run the application `QuickStartApp.js` using the following command:
+
+```js
+node QuickStartApp.js
+```
+
+You should see output similar to the following:
 
 ```output
 Creating table employee
@@ -178,9 +186,9 @@ Shutting down
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Node.js app that uses the PostgreSQL node.js driver to connect to your cluster, set up tables, run queries, and print out results.
+## Learn more
 
-## Next steps
-
-- Build Node.js applications using [Sequelize ORM](../sequelize).
-- [Node.js driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/#fundamentals) of the PostgreSQL psycopg2 driver.
+- [PostgreSQL node-postgres driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/).
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/).
+- Build Node.js applications using [Sequelize ORM](../sequelize/).
+- Build Node.js applications using [Prisma ORM](../prisma/).

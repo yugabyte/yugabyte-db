@@ -28,7 +28,6 @@ The following projects can be used to implement Python applications using the Yu
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-psycopg2/) or [Use an ORM](django/).
 
-
 For reference documentation, including using projects with SSL, refer to the [drivers and ORMs reference](../../reference/drivers/python/yugabyte-psycopg2-reference/) pages.
 
 ## Prerequisites
