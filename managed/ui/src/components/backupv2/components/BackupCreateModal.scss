@@ -30,6 +30,36 @@
     }
   }
 
+  .incremental-backups {
+    border: 1px solid #e5e5e9;
+    border-radius: 8px;
+    padding: 12px;
+
+    .toggle-incremental-status {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      span {
+        margin-top: 4px;
+      }
+
+      .form-group {
+        margin-right: 16px;
+      }
+    }
+
+    .incremental-interval-info {
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 32px;
+      color: #545454;
+      margin-bottom: 10px;
+    }
+    .incremental-interval-ctrls {
+      margin-top: 8px;
+    }
+  }
+
   label.btn-group-radio {
     display: flex;
     align-items: center;
@@ -91,6 +121,7 @@
     margin-top: 4px;
     margin-bottom: 6px;
     color: #67666c;
+
     > span {
       margin-right: 10px;
     }

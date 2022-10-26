@@ -55,10 +55,9 @@ struct TabletMetrics {
   // Probe stats
   scoped_refptr<Histogram> commit_wait_duration;
   scoped_refptr<Histogram> snapshot_read_inflight_wait_duration;
-  scoped_refptr<Histogram> redis_read_latency;
   scoped_refptr<Histogram> ql_read_latency;
   scoped_refptr<Histogram> write_lock_latency;
-  scoped_refptr<Histogram> write_op_duration_client_propagated_consistency;
+  scoped_refptr<Histogram> ql_write_latency;
   scoped_refptr<Histogram> write_op_duration_commit_wait_consistency;
 
   scoped_refptr<Counter> not_leader_rejections;

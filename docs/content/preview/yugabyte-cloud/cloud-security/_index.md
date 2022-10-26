@@ -1,8 +1,8 @@
 ---
-title: Security architecture
-headerTitle: Security architecture
+title: Security architecture overview
+headerTitle: Security architecture overview
 linkTitle: Security architecture
-description: Security architecture of YugabyteDB Managed.
+description: Review and overview of the YugabyteDB Managed database security architecture and shared responsibility model.
 image: /images/section_icons/index/secure.png
 headcontent: Review the YugabyteDB Managed security architecture and shared responsibility model.
 menu:

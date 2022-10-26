@@ -16,6 +16,8 @@
 
 #include <string>
 
+#include "yb/cdc/cdc_consumer.pb.h"
+
 #include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
@@ -23,6 +25,7 @@
 
 #include "yb/master/master_replication.fwd.h"
 
+#include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -33,7 +36,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cdc_enable_replicate_intents);
 
 namespace yb {
 
@@ -45,17 +47,6 @@ constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kKeyColumnName = "key";
-
-struct TwoDCTestParams {
-  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
-      : batch_size(batch_size_),
-        enable_replicate_intents(enable_replicate_intents_),
-        transactional_table(transactional_table_) {}
-
-  int batch_size;
-  bool enable_replicate_intents;
-  bool transactional_table;
-};
 
 class TwoDCTestBase : public YBTest {
  public:
@@ -165,6 +156,8 @@ class TwoDCTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, int num_expected_table);
 
+  Status ChangeXClusterRole(cdc::XClusterRole role);
+
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
@@ -192,7 +185,7 @@ class TwoDCTestBase : public YBTest {
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
+  Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -216,6 +209,28 @@ class TwoDCTestBase : public YBTest {
 
   client::TransactionManager* consumer_txn_mgr() {
     return consumer_cluster_.txn_mgr_.get_ptr();
+  }
+
+  std::string GetAdminToolPath() {
+    const std::string kAdminToolName = "yb-admin";
+    return GetToolPath(kAdminToolName);
+  }
+
+  template <class... Args>
+  Result<std::string> CallAdmin(MiniCluster* cluster, Args&&... args) {
+    return CallAdminVec(ToStringVector(
+        GetAdminToolPath(), "-master_addresses", cluster->GetMasterAddresses(),
+        std::forward<Args>(args)...));
+  }
+
+  Result<std::string> CallAdminVec(const std::vector<std::string>& args) {
+    std::string result;
+    LOG(INFO) << "Execute: " << AsString(args);
+    auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+    if (!status.ok()) {
+      return status.CloneAndAppend(result);
+    }
+    return result;
   }
 
  protected:

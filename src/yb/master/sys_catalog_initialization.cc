@@ -30,6 +30,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 
+using std::string;
+
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
@@ -130,8 +132,8 @@ Status RestoreInitialSysCatalogSnapshot(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto operation = std::make_unique<SnapshotOperation>(
-      sys_catalog_tablet_peer->tablet(), &tablet_snapshot_req);
+  auto tablet = VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe());
+  auto operation = std::make_unique<SnapshotOperation>(tablet, &tablet_snapshot_req);
 
   CountDownLatch latch(1);
   operation->set_completion_callback(

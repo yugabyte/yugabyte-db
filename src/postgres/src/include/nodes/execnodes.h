@@ -722,6 +722,12 @@ typedef struct TupleHashTableData
 	int			numCols;		/* number of columns in lookup key */
 	AttrNumber *keyColIdx;		/* attr numbers of key columns */
 	FmgrInfo   *tab_hash_funcs; /* hash functions for table datatype(s) */
+	ExprState  **yb_keyColExprs; /*
+								  * expressions that are input to hash
+								  * functions. If these are null, we
+								  * revert to using keyColIdx to know
+								  * what tuple attributes to hash.
+								  */
 	ExprState  *tab_eq_func;	/* comparator for table datatype(s) */
 	MemoryContext tablecxt;		/* memory context containing table */
 	MemoryContext tempcxt;		/* context for function evaluations */
@@ -731,6 +737,10 @@ typedef struct TupleHashTableData
 	TupleTableSlot *inputslot;	/* current input tuple's slot */
 	FmgrInfo   *in_hash_funcs;	/* hash functions for input datatype(s) */
 	AttrNumber *in_keyColIdx;	/* attr numbers of input key columns */
+	ExprState  **yb_in_keycolExprs; /*
+									 * equivalent of yb_keyColExprs for input
+									 * tuples
+									 */
 	ExprState  *cur_eq_func;	/* comparator for input vs. table */
 	uint32		hash_iv;		/* hash-function IV */
 	ExprContext *exprcontext;	/* expression context */

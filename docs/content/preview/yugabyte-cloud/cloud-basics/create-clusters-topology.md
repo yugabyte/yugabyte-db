@@ -78,7 +78,7 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 
 **Tradeoffs**
 
-- Write latency can be high (depends on the distance//network packet transfer times
+- Write latency can be high (depends on the distance/network packet transfer times)
 - Follower reads trade off consistency for latency
 
 **Deployment**

@@ -90,7 +90,7 @@ TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningT
     auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       if (peer->tablet() &&
-          peer->table_type() == PGSQL_TABLE_TYPE &&
+          peer->TEST_table_type() == PGSQL_TABLE_TYPE &&
           peer->data_state() == tablet::TABLET_DATA_TOMBSTONED) {
         return false;
       }

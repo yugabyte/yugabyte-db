@@ -56,6 +56,9 @@
 namespace rocksdb {
 
 using std::string;
+using std::vector;
+using std::map;
+using std::unique_ptr;
 
 const string LDBCommand::ARG_DB = "db";
 const string LDBCommand::ARG_PATH = "path";

@@ -149,7 +149,7 @@ public class RuntimeConfController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List configuration entries for a scope",
-      response = RuntimeConfigFormData.class,
+      response = ScopedConfig.class,
       notes = "Lists all runtime config entries for a given scope for current customer.")
   public Result getConfig(UUID customerUUID, UUID scopeUUID, boolean includeInherited) {
     LOG.trace(

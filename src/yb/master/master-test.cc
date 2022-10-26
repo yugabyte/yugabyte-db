@@ -77,6 +77,11 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"
 
+using std::shared_ptr;
+using std::make_shared;
+using std::string;
+using std::vector;
+
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(TEST_return_error_if_namespace_not_found);

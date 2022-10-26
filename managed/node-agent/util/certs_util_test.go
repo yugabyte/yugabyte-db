@@ -50,6 +50,29 @@ func TestCreateJWTToken(t *testing.T) {
 	}
 }
 
+func TestVerifyJWTToken(t *testing.T) {
+	config := CurrentConfig()
+	private, public := getPublicAndPrivateKey()
+	err := SaveCerts(config, string(public), string(private), "test2")
+	jwtToken, err := GenerateJWT(config)
+	if err != nil {
+		t.Errorf("Error generating JWT")
+	}
+	claims, err := VerifyJWT(config, jwtToken)
+	if err != nil {
+		t.Errorf("Error verifying JWT")
+	}
+	mapClaims := *claims
+	if mapClaims[JwtClientIdClaim] != config.String(NodeAgentIdKey) {
+		t.Errorf(
+			"Expected %s, found %s in %v",
+			config.String(NodeAgentIdKey),
+			mapClaims[JwtClientIdClaim],
+			mapClaims,
+		)
+	}
+}
+
 func getPublicAndPrivateKey() ([]byte, []byte) {
 	// Generate RSA key.
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

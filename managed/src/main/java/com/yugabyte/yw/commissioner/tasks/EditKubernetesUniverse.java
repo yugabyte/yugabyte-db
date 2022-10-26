@@ -12,13 +12,16 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckStorageClass;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map.Entry;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -65,7 +70,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         primaryCluster = universeDetails.getPrimaryCluster();
       }
 
-      Provider provider = Provider.get(UUID.fromString(primaryCluster.userIntent.provider));
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
 
       /* Steps for multi-cluster edit
       1) Compute masters with the new placement info.
@@ -187,6 +193,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
+    // Update disk size if there is a change
+    boolean diskSizeChanged = curIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
+    if (diskSizeChanged) {
+      log.info(
+          "Creating task for disk size change from {} to {}",
+          curIntent.deviceInfo.volumeSize,
+          newIntent.deviceInfo.volumeSize);
+      createResizeDiskTask(newPlacement, masterAddresses, newIntent, isReadOnlyCluster);
+    }
     boolean instanceTypeChanged = false;
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
@@ -275,8 +290,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (!tserversToRemove.isEmpty()) {
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
-    // If tservers have been added, we wait for the load to balance.
-    if (!tserversToAdd.isEmpty()) {
+
+    if (!tserversToAdd.isEmpty()
+        && runtimeConfigFactory
+            .forUniverse(universe)
+            .getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      // If tservers have been added, we wait for the load to balance.
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 
@@ -412,5 +431,109 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     createWaitForServersTasks(podsToAdd, serverType)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Add disk resize tasks for each AZ in given cluster placement. Call this for each cluster of the
+   * universe.
+   */
+  protected void createResizeDiskTask(
+      KubernetesPlacement placement,
+      String masterAddresses,
+      UserIntent userIntent,
+      boolean isReadOnlyCluster) {
+
+    // The method to expand disk size is:
+    // 1. Delete statefulset without deleting the pods
+    // 2. Patch PVC to new disk size
+    // 3. Run helm upgrade so that new StatefulSet is created with updated disk size.
+    // The newly created statefulSet also claims the already running pods.
+    String newDiskSizeGi = String.format("%dGi", userIntent.deviceInfo.volumeSize);
+    String softwareVersion = userIntent.ybSoftwareVersion;
+    UUID providerUUID = UUID.fromString(userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
+
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azName =
+          PlacementInfoUtil.isMultiAZ(provider)
+              ? AvailabilityZone.getOrBadRequest(azUUID).code
+              : null;
+      Map<String, String> azConfig = entry.getValue();
+      // Validate that the StorageClass has allowVolumeExpansion=true
+      createTaskToValidateExpansion(azConfig, azName, isReadOnlyCluster, providerUUID);
+      // create the three tasks to update volume size
+      createSingleKubernetesExecutorTaskForServerType(
+          KubernetesCommandExecutor.CommandType.STS_DELETE,
+          placement.placementInfo,
+          azName,
+          masterAddresses,
+          softwareVersion,
+          ServerType.TSERVER,
+          azConfig,
+          0,
+          0,
+          null,
+          null,
+          isReadOnlyCluster,
+          null,
+          newDiskSizeGi);
+      createSingleKubernetesExecutorTaskForServerType(
+          KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
+          placement.placementInfo,
+          azName,
+          masterAddresses,
+          softwareVersion,
+          ServerType.TSERVER,
+          azConfig,
+          0,
+          0,
+          null,
+          null,
+          isReadOnlyCluster,
+          null,
+          newDiskSizeGi,
+          true);
+      createSingleKubernetesExecutorTaskForServerType(
+          KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+          placement.placementInfo,
+          azName,
+          masterAddresses,
+          softwareVersion,
+          ServerType.TSERVER,
+          azConfig,
+          0,
+          0,
+          null,
+          null,
+          isReadOnlyCluster,
+          null,
+          newDiskSizeGi);
+    }
+  }
+
+  private void createTaskToValidateExpansion(
+      Map<String, String> config, String azName, boolean isReadOnlyCluster, UUID providerUUID) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor()
+            .createSubTaskGroup(KubernetesCheckStorageClass.getSubTaskGroupName(), executor);
+    KubernetesCheckStorageClass.Params params = new KubernetesCheckStorageClass.Params();
+    params.config = config;
+    if (config != null) {
+      params.namespace =
+          PlacementInfoUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              azName,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    params.providerUUID = providerUUID;
+    params.helmReleaseName =
+        PlacementInfoUtil.getHelmReleaseName(taskParams().nodePrefix, azName, isReadOnlyCluster);
+    KubernetesCheckStorageClass task = createTask(KubernetesCheckStorageClass.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

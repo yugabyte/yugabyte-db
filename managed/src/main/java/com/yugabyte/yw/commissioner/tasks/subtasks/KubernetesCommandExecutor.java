@@ -85,6 +85,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     NAMESPACE_DELETE,
     POD_DELETE,
     POD_INFO,
+    STS_DELETE,
+    PVC_EXPAND_SIZE,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -112,6 +114,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case INIT_YSQL:
           return UserTaskDetails.SubTaskGroupType.KubernetesInitYSQL.name();
+        case STS_DELETE:
+        case PVC_EXPAND_SIZE:
+          return UserTaskDetails.SubTaskGroupType.ResizingDisk.name();
       }
       return null;
     }
@@ -148,6 +153,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Map<String, Object> universeOverrides;
     public Map<String, Object> azOverrides;
     public String podName;
+    public String newDiskSize;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -259,6 +265,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case POD_INFO:
         processNodeInfo();
+        break;
+      case STS_DELETE:
+        kubernetesManagerFactory
+            .getManager()
+            .deleteStatefulSet(config, taskParams().namespace, "yb-tserver");
+        break;
+      case PVC_EXPAND_SIZE:
+        kubernetesManagerFactory
+            .getManager()
+            .expandPVC(
+                config,
+                taskParams().namespace,
+                taskParams().helmReleaseName,
+                "yb-tserver",
+                taskParams().newDiskSize);
         break;
     }
   }

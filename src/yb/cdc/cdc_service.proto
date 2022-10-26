@@ -60,6 +60,8 @@ service CDCService {
   rpc SetCDCCheckpoint (SetCDCCheckpointRequestPB) returns (SetCDCCheckpointResponsePB) {
     option (yb.rpc.trivial) = true;
   };
+  rpc GetTabletListToPollForCDC (GetTabletListToPollForCDCRequestPB)
+      returns (GetTabletListToPollForCDCResponsePB);
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
@@ -83,6 +85,7 @@ message CDCErrorPB {
     NOT_RUNNING = 8;
     INTERNAL_ERROR = 9;
     INVALID_REQUEST = 10;
+    TABLET_SPLIT = 12;
   }
 
   // The error code.
@@ -473,6 +476,20 @@ message SetCDCCheckpointRequestPB {
 
 message SetCDCCheckpointResponsePB {
   optional CDCErrorPB error = 1;
+}
+
+message TabletCheckpointPair {
+  optional bytes tablet_id = 1;
+  optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
+}
+
+message GetTabletListToPollForCDCRequestPB {
+  optional TableInfo table_info = 1;
+}
+
+message GetTabletListToPollForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated TabletCheckpointPair tablet_checkpoint_pairs = 2;
 }
 
 message IsBootstrapRequiredRequestPB {

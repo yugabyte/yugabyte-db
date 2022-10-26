@@ -73,6 +73,8 @@ METRIC_DECLARE_entity(tablet);
 
 using std::shared_ptr;
 using std::unique_ptr;
+using std::vector;
+using std::string;
 
 namespace yb {
 

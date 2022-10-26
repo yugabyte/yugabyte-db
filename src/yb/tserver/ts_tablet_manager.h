@@ -171,7 +171,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // and returns a bad Status.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
-      const string& tablet_id,
+      const std::string& tablet_id,
       const Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
@@ -212,6 +212,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Result<tablet::TabletPeerPtr> GetTablet(const char* tablet_id) const {
     return GetTablet(Slice(tablet_id));
   }
+
+  Result<consensus::RetryableRequests> GetTabletRetryableRequests(
+      const TabletId& tablet_id) const;
 
   // Lookup the given tablet peer by its ID.
   // Returns NotFound error if the tablet is not found.

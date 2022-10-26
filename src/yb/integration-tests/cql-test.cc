@@ -37,6 +37,8 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(cleanup_intents_sst_files);
@@ -387,17 +389,6 @@ class CqlRF1Test : public CqlTest {
   }
 };
 
-namespace {
-
-class CompactionListener : public rocksdb::EventListener {
- public:
-  void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
-    LOG(INFO) << "Compaction time: " << ci.stats.elapsed_micros;
-  }
-};
-
-}
-
 // Check that we correctly update SST file range values, after removing delete markers.
 TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
   constexpr int kKeys = 20;
@@ -461,10 +452,7 @@ TEST_F_EX(CqlTest, CompactRanges, CqlRF1Test) {
   constexpr int kColumns = 10;
   const std::string kRangeValue = RandomHumanReadableString(1_KB);
 
-  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(
-        std::make_shared<CompactionListener>());
-  }
+  ActivateCompactionTimeLogging(cluster_.get());
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   std::string expr = "CREATE TABLE t (h INT, r TEXT";
   for (auto column : Range(kColumns)) {

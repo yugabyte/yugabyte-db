@@ -281,7 +281,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = decoded_value.transaction_id;
-        bool lock_only = decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock);
+        bool lock_only = decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock);
 
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           auto p = conflicts_.emplace(transaction_id,
@@ -1295,10 +1295,9 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
 // transaction_id_slice used in INTENT_KEY_SCHECK
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
   ParsedIntent result;
-  size_t doc_ht_size = 0;
   result.doc_path = intent_key;
   // Intent is encoded as "DocPath + IntentType + DocHybridTime".
-  RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));
+  size_t doc_ht_size = VERIFY_RESULT(DocHybridTime::GetEncodedSize(result.doc_path));
   // 3 comes from (ValueType::kIntentType, the actual intent type, ValueType::kHybridTime).
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);

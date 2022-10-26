@@ -5,7 +5,6 @@ package com.yugabyte.yw.common;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.helm.HelmUtils;
-import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -20,8 +19,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -114,7 +111,7 @@ public abstract class KubernetesManager {
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
     List<String> commandList = ImmutableList.of("helm", "show", "values", helmPackagePath);
     LOG.info(String.join(" ", commandList));
-    ShellResponse response = execCommand(config, commandList);
+    ShellResponse response = execCommand(config, commandList, false);
     if (response != null) {
       if (response.getCode() != ShellResponse.ERROR_CODE_SUCCESS) {
         throw new RuntimeException(response.getMessage());
@@ -283,17 +280,26 @@ public abstract class KubernetesManager {
     }
   }
 
-  public String getTimeout() {
+  public Long getTimeoutSecs() {
     Long timeout = appConfig.getLong("yb.helm.timeout_secs");
     if (timeout == null || timeout == 0) {
       timeout = DEFAULT_TIMEOUT_SECS;
     }
-    return String.valueOf(timeout) + "s";
+    return timeout;
+  }
+
+  public String getTimeout() {
+    return String.valueOf(getTimeoutSecs()) + "s";
+  }
+
+  private ShellResponse execCommand(
+      Map<String, String> config, List<String> command, boolean logCmdOutput) {
+    String description = String.join(" ", command);
+    return shellProcessHandler.run(command, config, logCmdOutput, description);
   }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
-    String description = String.join(" ", command);
-    return shellProcessHandler.run(command, config, description);
+    return execCommand(config, command, true);
   }
 
   public String getHelmPackagePath(String ybSoftwareVersion) {
@@ -409,4 +415,21 @@ public abstract class KubernetesManager {
   public abstract void deletePod(Map<String, String> config, String namespace, String podName);
 
   public abstract List<Event> getEvents(Map<String, String> config, String namespace);
+
+  public abstract boolean deleteStatefulSet(
+      Map<String, String> config, String namespace, String stsName);
+
+  public abstract boolean expandPVC(
+      Map<String, String> config,
+      String namespace,
+      String universePrefix,
+      String appLabel,
+      String newDiskSize);
+
+  // Get the name of StorageClass used for master/tserver PVCs
+  public abstract String getStorageClassName(
+      Map<String, String> config, String namespace, String universePrefix, boolean forMaster);
+
+  public abstract boolean storageClassAllowsExpansion(
+      Map<String, String> config, String storageClassName);
 }

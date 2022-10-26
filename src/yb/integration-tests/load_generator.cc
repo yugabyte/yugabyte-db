@@ -49,6 +49,10 @@ using std::unique_ptr;
 using strings::Substitute;
 
 using std::shared_ptr;
+using std::string;
+using std::set;
+using std::ostream;
+using std::vector;
 using yb::Status;
 using yb::ThreadPool;
 using yb::ThreadPoolBuilder;

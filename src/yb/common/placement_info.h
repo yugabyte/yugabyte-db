@@ -34,9 +34,9 @@ YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));
 class PlacementInfoConverter {
  public:
   struct PlacementInfo {
-    string cloud = "";
-    string region = "";
-    string zone = "";
+    std::string cloud = "";
+    std::string region = "";
+    std::string zone = "";
     int min_num_replicas = 0;
     int leader_preference = 0;
   };

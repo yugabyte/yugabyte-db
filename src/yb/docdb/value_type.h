@@ -117,8 +117,6 @@ namespace docdb {
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \
-    /* Indicator for whether an intent is for a row lock. */ \
-    ((kRowLock, 'l'))  /* ASCII code 108 */ \
     ((kBitSet, 'm')) /* ASCII code 109 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     /* Timestamp value in microseconds */ \
@@ -186,6 +184,7 @@ namespace docdb {
     ((kUuid, '_')) /* ASCII code 95 */ \
     \
     /* Indicator for whether an intent is for a row lock. */ \
+    ((kRowLock, 'l'))  /* ASCII code 108 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \

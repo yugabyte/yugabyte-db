@@ -348,9 +348,7 @@ public class GFlagsUtil {
       gflags.put(
           PSQL_PROXY_BIND_ADDRESS,
           String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(
-          PSQL_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
+      gflags.put(PSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put(YSQL_ENABLE_AUTH, "true");
         gflags.put(YSQL_HBA_CONF_CSV, "local all yugabyte trust");
@@ -380,9 +378,7 @@ public class GFlagsUtil {
       gflags.put(
           CSQL_PROXY_BIND_ADDRESS,
           String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(
-          CSQL_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
+      gflags.put(CSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "true");
       } else {

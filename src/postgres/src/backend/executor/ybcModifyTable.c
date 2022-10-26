@@ -175,7 +175,11 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 							 Relation rel,
 							 int *rows_affected_count)
 {
-	HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
+	if (YBIsDBCatalogVersionMode())
+		HandleYBStatus(YBCPgSetDBCatalogCacheVersion(
+			ybc_stmt, MyDatabaseId, yb_catalog_cache_version));
+	else
+		HandleYBStatus(YBCPgSetCatalogCacheVersion(ybc_stmt, yb_catalog_cache_version));
 
 	bool is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 

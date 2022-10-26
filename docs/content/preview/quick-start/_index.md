@@ -192,19 +192,31 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
+{{< tabpane code=false >}}
+
+  {{% tab header="macOS Pre-Monterey" lang="Pre-Monterey" %}}
+
+On macOS pre-Monterey, create a single-node local cluster with a replication factor (RF) of 1 by running the following command:
 
 ```sh
 ./bin/yugabyted start
 ```
 
-If you are running macOS Monterey, run the following command:
+  {{% /tab %}}
+
+  {{% tab header="macOS Monterey" lang="Monterey" %}}
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](../reference/configuration/yugabyted/#advanced-flags) when you start the cluster to change the default port number, as follows:
 
 ```sh
 ./bin/yugabyted start --master_webserver_port=9999
 ```
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Using the [--master_webserver_port flag](../reference/configuration/yugabyted/#advanced-flags) when you start the cluster changes the default port number. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 ### Check the cluster status
 

@@ -55,6 +55,8 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);
@@ -70,6 +72,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -1315,12 +1318,17 @@ class PgMiniTestTxnHelperSerializable
     : public PgMiniTestTxnHelper<IsolationLevel::SERIALIZABLE_ISOLATION> {
  protected:
   // Check two SERIALIZABLE txns has no conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2, 3)"));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(StartTxn(&conn));
     ASSERT_OK(conn.Execute("UPDATE t SET v1 = 20 WHERE k = 1"));
@@ -1350,9 +1358,14 @@ class PgMiniTestTxnHelperSnapshot
     : public PgMiniTestTxnHelper<IsolationLevel::SNAPSHOT_ISOLATION> {
  protected:
   // Check two SNAPSHOT txns has a conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2)"));
@@ -1430,15 +1443,27 @@ TEST_F_EX(PgMiniTest,
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializable),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
           PgMiniTestTxnHelperSerializable) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
           PgMiniTestTxnHelperSnapshot) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          PgMiniTestTxnHelperSerializable) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          PgMiniTestTxnHelperSnapshot) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
@@ -1827,7 +1852,9 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     for (const auto& peer : peers) {
       auto tp = peer->tablet()->transaction_participant();
       if (tp) {
-        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+        const auto count_intents_result = tp->TEST_CountIntents();
+        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
       }
     }
 
@@ -2874,6 +2901,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
 
   FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());

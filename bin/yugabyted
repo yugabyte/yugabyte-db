@@ -80,6 +80,8 @@ COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
 YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/"
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
+GENERATE_SERVER_CERTS = "https://docs.yugabyte.com/preview/secure/tls-encryption/\
+server-certificates/#create-the-server-certificates"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
@@ -110,7 +112,7 @@ PREREQS_ERROR_MSGS = {
     'transparent_hugepages' :'Transparent hugepages disabled. Please enable transparent_hugepages.',
     'ntp/chrony' :'ntp/chrony package is missing for clock synchronization. For centos 7, ' +
         'we recommend installing either ntp or chrony package and for centos 8, ' +
-        'we recommend installing chrony package.'
+        'we recommend installing chrony package.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/latest/quick-start/install/macos/',
@@ -120,6 +122,7 @@ LINUX_PREREQS_CMDS = {
     'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
     'ntp' : 'which ntpd',
     'chrony' : 'which chronyd',
+    'openssl' : 'which openssl',
 }
 MAC_PREREQS_CMDS = {
 }
@@ -143,6 +146,8 @@ PREFIX = {
     'demo' : "",
     'demo connect' : "",
     'demo destroy' : "",
+    'cert' : "",
+    'cert generate_server_certs' : "",
 }
 
 USAGE = {
@@ -160,6 +165,8 @@ USAGE = {
     'demo' : "yugabyted demo [command] [flags]",
     'demo connect' : "yugabyted demo connect [flags]",
     'demo destroy' : "yugabyted demo destroy [flags]",
+    'cert' : "yugabyted cert [command] [flags]",
+    'cert generate_server_certs' : "yugabyted cert generate_server_certs [flag]",
 }
 
 EXAMPLE = {
@@ -174,6 +181,8 @@ EXAMPLE = {
     'version' : "",
     'collect_logs' : "",
     'configure' : "",
+    'cert' : "# Create node sever certificates:\n" +
+             "yugabyted cert generate_server_certs --hostnames=<comma_seperated_hostnames>\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -187,6 +196,7 @@ EPILOG_SPECIFIC = {
     'version' : "",
     'collect_logs' : "",
     'configure' : "",
+    'cert' : "",
 }
 
 # YugabyteDB configs.
@@ -262,6 +272,17 @@ def search_file_in_paths(dir_candidates, file_name):
         "Yugabyte {} file not found in paths {}. Please check "
         "the paths.".format(file_name, dir_candidates)
     )
+
+# Checks if all given files exist in the given path
+def check_files_in_path(path, files):
+    has_error = False
+
+    for file in files:
+        if not os.path.exists(os.path.join(path, file)):
+            has_error = True
+            Output.log("{} file not found.".format(os.path.join(path, file)))
+
+    return not has_error
 
 # Finds the path of a particular YB binary
 def find_binary_location(binary_name):
@@ -383,6 +404,8 @@ class ControlScript(object):
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         logpath = self.configs.saved_data.get("log_dir")
         datapath = self.configs.saved_data.get("data_dir")
+        gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
+        certs_dir = self.configs.saved_data.get("certs_dir")
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -396,6 +419,14 @@ class ControlScript(object):
         if os.path.isdir(datapath):
             shutil.rmtree(datapath)
             Output.print_out("Deleted data at {}.".format(datapath))
+
+        if os.path.isdir(gen_certs_dir):
+            shutil.rmtree(gen_certs_dir)
+            Output.print_out("Deleted generated certs at {}.".format(gen_certs_dir))
+
+        if os.path.isdir(certs_dir):
+            shutil.rmtree(certs_dir)
+            Output.print_out("Deleted certs at {}.".format(certs_dir))
 
         if os.path.exists(self.conf_file):
             os.remove(self.conf_file)
@@ -638,6 +669,144 @@ class ControlScript(object):
             ]
 
         Output.print_out(self.get_status_string_for_configure(status_details))
+
+    # Generate the node server certificates
+    def cert_generate_server_certs(self):
+        if self.check_openssl():
+            Output.log_error_and_exit(Output.make_red("Error") + ": openssl not installed. " +
+                "Can't create certificates.")
+
+        gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
+        root_certs_dir = os.path.join(gen_certs_dir, "root-ca")
+
+        status_details = []
+        if not self.generate_ca_certs(root_certs_dir=root_certs_dir):
+            status_details = [
+                (Output.make_yellow("Status"), "Cert generation failed. Please check the logs."),
+            ]
+            Output.print_out(self.get_status_string_for_cert_generation(status_details))
+            sys.exit(1)
+
+        hostnames = self.configs.temp_data.get("hostnames")
+        hostnames = hostnames.split(',')
+
+        generated_certs_hostnames = self.generate_node_server_certs(hostnames=hostnames,
+                                                                    gen_certs_dir=gen_certs_dir)
+        if len(generated_certs_hostnames):
+            status_details = [
+                (Output.make_yellow("Status"), "Server nodes certs generation for hostnames " +
+                                "{} successful.".format(",".join(generated_certs_hostnames))),
+                (Output.make_yellow("Server node certs path"),
+                        "Certs can be found at: {}".format(gen_certs_dir+"/<hostname>")),
+            ]
+        else:
+            status_details = [
+                (Output.make_yellow("Status"), "No certs generated. All hostnames already have " +
+                                               "certs generated."),
+                (Output.make_yellow("Server node certs path"),
+                        "Certs can be found at: {}".format(gen_certs_dir+"/<hostname>")),
+            ]
+
+        Output.print_out(self.get_status_string_for_cert_generation(status_details))
+
+    # Generate the root certificates
+    def generate_ca_certs(self, root_certs_dir):
+        generate_certs = False
+
+        if os.path.isdir(root_certs_dir):
+            if self.check_root_cert_files(root_certs_dir):
+                Output.log("Found an existing root certs directory {}.".format(root_certs_dir) +
+                    " Found appropriate files. Using the existing root certs.")
+            else:
+                Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING + " WARNING:") +
+                    " Found an existing root certs directory {}.".format(root_certs_dir) +
+                    " Appropriate files not found. Removing these and creating new root certs." +
+                    " Please recreate any server certs created with previous root certs.")
+                shutil.rmtree(root_certs_dir)
+
+                generate_certs = True
+        else:
+            generate_certs = True
+
+        if generate_certs:
+            Output.log("Creating root certs...")
+            if not os.path.isdir(root_certs_dir):
+                os.makedirs(root_certs_dir)
+
+            status = CertGenProxy.generate_root_ca_certs(root_certs_dir=root_certs_dir)
+
+            if not status:
+                return False
+
+        return True
+
+    # Generate node server certififcates
+    def generate_node_server_certs(self, hostnames, gen_certs_dir):
+        root_certs_dir = os.path.join(gen_certs_dir, "root-ca")
+
+        existing_certs_hostnames = []
+        generated_certs_hostnames = []
+        # Generate certs for each server node
+        for hostname in hostnames:
+            # Check whether the hostname is already present in the certs database or not.
+            if self.check_hostname_in_root_ca_database(hostname=hostname,
+                                                       root_certs_dir=root_certs_dir):
+                existing_certs_hostnames.append(hostname)
+                continue
+
+            # Check whether the hostname cert folder is present or not
+            node_certs_dir = os.path.join(gen_certs_dir, hostname)
+            if os.path.isdir(node_certs_dir):
+                Output.log("Found an existing cert directory {} for ".format(node_certs_dir) +
+                    "hostname {}. But no data entry found in ".format(hostname) +
+                    "root-ca certs database. Removing...")
+                shutil.rmtree(node_certs_dir)
+
+            status = CertGenProxy.generate_node_server_certs(root_certs_dir=root_certs_dir,
+                hostname=hostname, server_cert_dir=node_certs_dir)
+
+            if not status:
+                status_details = [
+                    (Output.make_yellow("Status"), "Server node cert generation failed for " +
+                        "hostname {}. Please check the logs.".format(hostname)),
+                ]
+                Output.print_out(self.get_status_string_for_cert_generation(status_details))
+                exit(1)
+            else:
+                generated_certs_hostnames.append(hostname)
+
+        if len(existing_certs_hostnames):
+            Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING + " WARNING:") +
+                " Hostnames {} ".format(Output.make_green(",".join(existing_certs_hostnames))) +
+                "already have their certifcates generated according to root-ca certs database " +
+                "index. Please use the previously generated certs. Skipping these hostnames....")
+
+
+        return generated_certs_hostnames
+
+    # Check if all root certificate files are present in a path or not
+    def check_root_cert_files(self, path):
+        root_certs_files = ["ca.crt", "ca.key", "ca.conf", "index.txt",
+            "index.txt.attr", "serial.txt"]
+
+        return check_files_in_path(path, root_certs_files)
+
+    # Check if a hostname is present in the root-ca database
+    def check_hostname_in_root_ca_database(self, hostname, root_certs_dir):
+        root_ca_database_file = os.path.join(root_certs_dir, "index.txt")
+
+        with open(root_ca_database_file, 'r') as certs_database_file:
+            certs_database = certs_database_file.read()
+            if hostname in certs_database:
+                return True
+
+        return False
+
+    #Check for openssl
+    def check_openssl(self):
+        openssl_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('openssl')))
+        openssl_exit_code = openssl_check[2]
+        return openssl_exit_code != 0
 
     #All Pre-requisites check for Linux
     def linux_prereqs_check(self):
@@ -899,14 +1068,6 @@ class ControlScript(object):
         if self.configs.saved_data.get("use_cassandra_authentication"):
             yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
 
-        # yw_cmd = [
-        #     os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
-        #     "-Dplay.evolutions.db.default.autoApply=true",
-        #     "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
-        #     "-Dhttp.address={}".format(bind_ip),
-        #     "-Dlog.override.path={}".format(self.configs.saved_data.get("log_dir"))
-        # ]
-
         self.processes = {
             "master": YBProcessManager(
                 "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
@@ -915,11 +1076,6 @@ class ControlScript(object):
                 "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir")),
         }
-
-        # if self.configs.temp_data.get("ui"):
-        #     self.processes["yugaware"] = ProcessManager(
-        #         "yugaware", yw_cmd, self.configs.saved_data.get("log_dir"),
-        #         self.configs.saved_data.get("data_dir"))
 
         if self.configs.temp_data.get("ui"):
             yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
@@ -994,16 +1150,21 @@ class ControlScript(object):
 
                 Output.update_animation("YugabyteDB Started")
 
+                if join_ip:
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " Node joined a running cluster with UUID {}"
+                            .format(self.configs.saved_data.get("universe_uuid")))
+
                 if self.configs.saved_data.get("secure"):
-                    Output.init_animation("Enabling SSL Authentication...")
+                    Output.init_animation("Enabling Encryption in Transit and " +
+                        "Password Authentication...")
                     if not join_ip:
                         alphadigits = string.ascii_letters + string.digits
                         new_password = ''.join(PASSWORD_GENNERATOR(alphadigits) for i in range(12))
                         self.update_db_passwords(new_password)
                         self.create_password_file()
-                    Output.update_animation("SSL Authentication enabled.")
-                    Output.print_and_log(Output.ANIMATION_SUCCESS +
-                            " User Authentication enabled.")
+                    Output.update_animation("Encryption in Transit and " +
+                        "Password Authentication enabled.")
                 else:
                     Output.print_and_log(Output.make_yellow(Output.ANIMATION_WARNING +
                         " WARNING:") + " Cluster started in an insecure mode without " +
@@ -1012,11 +1173,6 @@ class ControlScript(object):
 
                 # Persist the config after successful start
                 self.configs.save_configs()
-                Output.update_animation("YugabyteDB Started")
-                if join_ip:
-                    Output.print_and_log(Output.ANIMATION_SUCCESS +
-                            " Node joined a running cluster with UUID {}"
-                            .format(self.configs.saved_data.get("universe_uuid")))
             else:
                 for name in ("master", "tserver"):
                     process = self.processes.get(name)
@@ -1851,6 +2007,27 @@ class ControlScript(object):
         status += div_line
         return status
 
+    # Returns pretty output table for cert command.
+    def get_status_string_for_cert_generation(self, status_info):
+
+        title = Output.make_bold(Output.make_green(SCRIPT_NAME))
+        extra_len = len(Output.make_bold(Output.make_green("")))
+
+        max_len = 0
+        for k, v in status_info:
+            max_len = max(max_len, len(v))
+
+        div_line = "+" + "-" * (max_len + 33) + "+" + "\n"
+        status = "\n" + div_line
+        status += ("| {:^" + str(max_len + 31 + extra_len) + "} |\n").format(title)
+        status += div_line
+        for k, v in status_info:
+            extra_len = len(Output.make_yellow(""))
+            status += ("| {:" + str(27 + extra_len) + "}: ").format(k)
+            status += ("{:<" + str(max_len + 2) + "} |\n").format(v)
+        status += div_line
+        return status
+
     # Callhome loop. Sends data every minute for the first hour, then every hour after.
     def callhome_loop(self):
         num_times_called = 0
@@ -1955,8 +2132,27 @@ class ControlScript(object):
 
         return fqdn
 
-    # Parse config file and input args. Validate them and save any new configs.
-    def validate_and_set_configs(self, args):
+    # Check whether the leader master is secure.
+    def is_leader_master_secure(self, master_hostport):
+        try:
+            leaderMasterURL = "http://{}/api/v1/varz".format(master_hostport)
+            response = urlopen(Request(leaderMasterURL))
+            jsonResponseFromMaster = json.load(response)
+            listOfAllFlags = jsonResponseFromMaster.get("flags")
+
+            encryptionFlag = [flag for flag in listOfAllFlags if
+                flag.get("name") == "use_node_to_node_encryption"]
+
+            return encryptionFlag[0].get("value") == "true"
+
+        except HTTPError as http_err:
+            print('HTTP error occurred while checking for security of leader master: {}', http_err)
+        except Exception as err:
+            print('Other error occurred while checking for security of leader master: {}', err)
+
+    # Parse the config file and input parent flags to validate and set them.
+    # Parent flags: --config, --data_dir, --log_dir
+    def validate_and_set_parent_configs(self, args):
 
         home_dir = os.path.expanduser("~")
         default_base_dir = os.path.join(home_dir, "var")
@@ -1982,6 +2178,216 @@ class ControlScript(object):
             path = getattr(args, path_args, None)
             if path:
                 setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
+
+        if args.data_dir is not None:
+            config_data_dir = self.configs.saved_data.get("data_dir")
+            if (config_data_dir and os.path.exists(config_data_dir) and
+                    config_data_dir != args.data_dir):
+                has_errors = True
+                # TODO: Gradefully handle this case... User should be able to override config.
+                Output.print_out(
+                    "Data directory already exists at {}.".format(config_data_dir))
+
+        if args.log_dir is not None:
+            config_log_dir = self.configs.saved_data.get("log_dir")
+            if (config_log_dir and os.path.exists(config_log_dir) and
+                    config_log_dir != args.log_dir):
+                Output.print_out(
+                    "Old log directory already exists at {}. New logs will go to {}".format(
+                        config_log_dir, args.log_dir))
+
+        if has_errors:
+            sys.exit(1)
+
+        parent_flags = ["config", "log_dir", "data_dir"]
+        # Override configs and defaults with user specified variables
+        for k, v in get_kv(args.__dict__):
+            if (v is not None and k in parent_flags and k in self.configs.saved_data
+                    and v != self.configs.saved_data.get(k)):
+                self.configs.saved_data[k] = v
+
+        data_dir = self.configs.saved_data["data_dir"]
+        log_dir = self.configs.saved_data["log_dir"]
+        self.configs.save_configs()
+
+        if not os.path.isdir(data_dir):
+            os.makedirs(data_dir)
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir)
+
+        self.script = ScriptProcessManager(log_dir, data_dir)
+
+    # Check and validate the flags regarding the secure deployment of the node.
+    # Check whether the certs files are present or not.
+    # Create certs if it is 1-node cluster throw error otherwise.
+    def validate_security_configs(self, args):
+        home_dir = os.path.expanduser("~")
+        default_base_dir = os.path.join(home_dir, "var")
+        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
+
+        default_certs_dir = os.path.join(base_dir, "certs")
+
+        certs_dir = self.configs.saved_data.get("certs_dir") or \
+                    default_certs_dir
+
+        has_errors = False
+
+        certs_files = ["ca.crt", "node."+args.advertise_address+".crt",
+                    "node."+args.advertise_address+".key"]
+
+        if args.certs_dir is not None:
+            if not os.path.exists(args.certs_dir):
+                # Case Scenario: When the directory provided by the user through
+                # --certs_dir flag in CLI does not exists.
+                has_errors = True
+                Output.print_out(Output.make_red("ERROR") +
+                    ": Trying to use {} as the certs directory. ".format(args.certs_dir) +
+                    "No such directory found. Please provide the correct directory " +
+                    "where the certificates are through --certs_dir flag.")
+            else:
+                if not check_files_in_path(args.certs_dir, certs_files):
+                    # Case Scenario: When the directory provided by the user through --certs_dir
+                    # flag in CLI exists but doesn't have the correct certs.
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Trying to use {} as the certs ".format(args.certs_dir) +
+                        "directory. Correct certs not found in this directory. Please " +
+                        "either use 'cert generate_server_certs' command to create " +
+                        "certificates or follow this doc to create your own " +
+                        "certificates: {}".format(GENERATE_SERVER_CERTS))
+                else:
+                    # Case Scenario: When the directory provided by the user through
+                    # --certs_dir flag in CLI exists and have the correct certs.
+                    Output.log("Found certs at {}.".format(args.certs_dir))
+        else:
+            if os.path.exists(certs_dir):
+                if not check_files_in_path(certs_dir, certs_files):
+                    # Case Scenario: When the default certs directory or the certs directory saved
+                    # in conf file exists but doesn't have the correct certs.
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Trying to use {} as the certs ".format(certs_dir) +
+                        "directory. Correct certs not found in this directory. Please " +
+                        "either use 'cert generate_server_certs' command to create " +
+                        "certificates or follow this doc to create your own " +
+                        "certificates: {}".format(GENERATE_SERVER_CERTS))
+                else:
+                    # Case Scenario: When the default certs directory or the certs directory saved
+                    # in conf file exists and has the correct certs.
+                    Output.log("Found certs at {}.".format(certs_dir))
+            else:
+                if certs_dir != default_certs_dir:
+                    # Case Scenario: When the certs directory is mentioned in the configs
+                    # file but the directory doesn't exist.
+                    # Example: When the user starts a secure cluster, then stops it.
+                    # Then due to some reason the certs directory that was being used has
+                    # been deleted. Now when the user tries to restart the node,
+                    # yugabyted will try to use the same dir as it was stored in the config file,
+                    # but the directory doesn't exist.
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": The directory mentioned in the --cert_dir value of the configs file " +
+                        "doen't exist. Please create the directory and copy the certs into that " +
+                        "directory.")
+                elif args.join:
+                    # Case Scenario: When the user is trying to start and join a node
+                    # to a secure cluster but the generated certs are neither present
+                    # in the default directory nor given through --certs_dir flag.
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Trying to start a secure node but couldn't find the certs at " +
+                        "default directory. Cannot create new certs as the --join flag " +
+                        "was used. Please generate the node certificates in 1 node and " +
+                        "copy them to other nodes.")
+                else:
+                    # Case Scenario: When the user is trying to start a secure node but
+                    # the generated certs are neither present in default directory nor
+                    # given through --certs_dir flag. Create new certs in this case.
+                    Output.log("Couldn't find the certs so creating new certificates.")
+                    if self.check_openssl():
+                        has_errors = True
+                        Output.print_out(Output.make_red("Error") + ": openssl " +
+                            "not installed. Can't create certificates.")
+
+                    if not has_errors:
+                        gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
+                        root_certs_dir = os.path.join(gen_certs_dir, "root-ca")
+
+                        if not self.generate_ca_certs(root_certs_dir=root_certs_dir):
+                            has_errors = True
+                            Output.print_out(Output.make_red("Error") +
+                                "Cert generation failed. Please check the logs.")
+
+                        hostnames = [args.advertise_address]
+                        generated_certs_hostnames = self.generate_node_server_certs(
+                                            hostnames=hostnames, gen_certs_dir=gen_certs_dir)
+                        if not has_errors and not len(generated_certs_hostnames):
+                            has_errors = True
+                            Output.print_out(Output.make_red("Error") +
+                                "Cert generation failed. Please check the logs.")
+
+                        if not has_errors:
+                            os.makedirs(certs_dir)
+
+                            for file in certs_files:
+                                shutil.copy2(os.path.join(gen_certs_dir, args.advertise_address,
+                                                            file), certs_dir)
+
+            args.certs_dir = certs_dir
+
+
+
+        if has_errors:
+            sys.exit(1)
+
+    # Find the correct security nature of the deployment of the node by checking
+    # secure or insecure flags passed by the user and secure and insecure options
+    # present in the config file
+    def find_security_nature_of_deployment(self, args):
+        if args.secure and not args.insecure:
+            # If --secure flag is passed in the CLI and --insecure is not. Node should be
+            # deployed in secure mode.
+            args.secure = True
+            args.insecure = False
+            return
+
+        if args.insecure and not args.secure:
+            # If --insecure flag is passed in the CLI and --secure is not. Node should be
+            # deployed in insecure mode.
+            args.secure = False
+            args.insecure = True
+            return
+
+        if args.secure and args.insecure:
+            # If both --secure and --insecure flags are passed in the CLI, show an error.
+            Output.log_error_and_exit(Output.make_red("ERROR") +
+                ": --secure flag can't be used together with --insecure flag")
+
+        if not self.configs.saved_data.get("secure"):
+            # If neither --secure nor --insecure flag is passed in the CLI and the value
+            # of --secure in conf file is False then start the node in insecure mode
+            args.secure = False
+            args.insecure = True
+            return
+
+        if not self.configs.saved_data.get("insecure"):
+            # If neither --secure nor --insecure flag is passed in the CLI and value of
+            # --insecure in conf file is False and --secure is True then start
+            # the node in secure mode
+            args.secure = True
+            args.insecure = False
+            return
+
+        # If neither --secure nor --insecure flag and both --secure and --insecure have
+        # values in conf file have value as True, show an error.
+        Output.log_error_and_exit(Output.make_red("ERROR") +
+            ": config file {} has both secure and ".format(self.conf_file) +
+            "insecure set to True. Please change one of them to False")
+
+    # Parse config file and input args. Validate them and save any new configs.
+    def validate_and_set_configs(self, args):
+
+        has_errors = False
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
@@ -2024,23 +2430,15 @@ class ControlScript(object):
             else:
                 self.configs.temp_data["replication_factor"] = str("3")
 
-        if args.parser == "start":
-            if args.data_dir is not None:
-                config_data_dir = self.configs.saved_data.get("data_dir")
-                if (config_data_dir and os.path.exists(config_data_dir) and
-                        config_data_dir != args.data_dir):
-                    has_errors = True
-                    # TODO: Gradefully handle this case... User should be able to override config.
-                    Output.print_out(
-                        "Data directory already exists at {}.".format(config_data_dir))
+        if args.parser == "generate_server_certs":
+            if args.hostnames is None:
+                has_errors = True
+                Output.print_and_log(Output.make_red("Error") + ": Please provide the " +
+                    "--hostnames along with \'yugabyted cert generate_server_certs\' command.")
 
-            if args.log_dir is not None:
-                config_log_dir = self.configs.saved_data.get("log_dir")
-                if (config_log_dir and os.path.exists(config_log_dir) and
-                        config_log_dir != args.log_dir):
-                    Output.print_out(
-                        "Old log directory already exists at {}. New logs will go to {}".format(
-                            config_log_dir, args.log_dir))
+            self.configs.temp_data["hostnames"] = args.hostnames
+
+        if args.parser == "start":
 
             if args.cloud_location is not None:
                 cloud_location = args.cloud_location.split(".")
@@ -2072,8 +2470,21 @@ class ControlScript(object):
                     has_errors = True
                 args.advertise_address = args.listen
 
-            if args.advertise_address is None and OS_NAME == "Linux":
-                args.advertise_address = self.find_ip_address_of_node()
+            if args.advertise_address is None:
+                if not self.configs.saved_data.get("advertise_address"):
+                    if OS_NAME == "Linux":
+                        # Case Scenario: When advertise_address has no value in conf file
+                        # and the OS is Linux, set the advertise address to the private IP
+                        # of the machine.
+                        args.advertise_address = self.find_ip_address_of_node()
+                    else:
+                        # Case Scenario: When advertise_address has no value in conf file
+                        # and the OS is Mac, set the advertise address to 127.0.0.1.
+                        args.advertise_address = IP_LOCALHOST
+                else:
+                    # Case Scenario: When advertise_address has a value in conf file and then
+                    # use that regardless of the OS.
+                    args.advertise_address = self.configs.saved_data.get("advertise_address")
 
             if args.daemon is not None:
                 if args.background is not None and \
@@ -2087,36 +2498,59 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
-            if args.secure and args.insecure:
+            if args.join is not None:
+                try:
+                    leaderMasterURL = "http://{}:7000/api/v1/varz".format(args.join)
+                    response = urlopen(Request(leaderMasterURL))
+                except HTTPError as http_err:
+                    Output.log("HTTP Error occured while hitting the api endpoint " +
+                        "http://{}:7000/api/v1/varz: {}".format(args.join, http_err))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
+                        "provided is not reachable.")
+                except Exception as err:
+                    Output.log("Error occured while hitting the api endpoint " +
+                        "http://{}:7000/api/v1/varz: {}".format(args.join, err))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
+                        "provided is not reachable.")
+
+
+            self.find_security_nature_of_deployment(args)
+
+            if (args.certs_dir is not None) and (not args.secure):
+                # Case Sceneario: When certs_dir flag is passed without secure flag.
                 has_errors = True
                 Output.print_out(Output.make_red("ERROR") +
-                    ": --secure flag can't be used together with --insecure flag")
-
-            if args.certs_dir is not None:
-                if not args.secure:
-                    has_errors = True
-                    Output.print_out(Output.make_red("ERROR") +
-                        ": --certs_dir flag needs to be accompanied with the --secure flag.")
+                    ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                args.secure=False
+                if args.join:
+                    master_hostport = "{}:7000".format(args.join)
+                    if self.is_leader_master_secure(master_hostport):
+                        # Case Scenario: When a User starts the 1st node in secure mode and tries
+                        # to start the second node in insecure mode
+                        has_errors = True
+                        Output.print_out(Output.make_red("ERROR") + ": The node whose " +
+                            "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
+                            "secure and an insecure node.")
             elif args.secure:
-                if args.certs_dir is None:
-                    has_errors = True
-                    Output.print_out(Output.make_red("ERROR") +
-                        ": --secure flag needs to be accompanied with the path " +
-                            "to the certificates using the --certs_dir")
-                elif not os.path.exists(args.certs_dir):
-                    has_errors = True
-                    Output.print_out(Output.make_red("ERROR") +
-                        ": certs directory provided does not exist.")
+                if args.join:
+                    master_hostport = "{}:7000".format(args.join)
+                    if not self.is_leader_master_secure(master_hostport):
+                        # Case Scenario: When the user starts the 1st node in insecure mode and
+                        # tries to start the second node in secure mode.
+                        has_errors = True
+                        Output.print_out(Output.make_red("ERROR") + ": The node whose " +
+                            "IP was provided --join flag does not have SSL/TLS enabled. Cannot " +
+                            "join a secure and an insecure node.")
 
-                args.insecure=False
-                args.ysql_enable_auth="true"
-                args.use_cassandra_authentication="true"
-                if args.certs_dir:
+                if not has_errors:
+                    self.validate_security_configs(args)
+
+                    args.ysql_enable_auth="true"
+                    args.use_cassandra_authentication="true"
+
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
-                                                                        "ca.crt")
+                                                                                    "ca.crt")
 
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
@@ -2164,23 +2598,12 @@ class ControlScript(object):
         if has_errors:
             sys.exit(1)
 
+        parent_flags = ["config", "log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
-            if (v is not None and k in self.configs.saved_data
+            if (v is not None and k not in parent_flags and k in self.configs.saved_data
                     and v != self.configs.saved_data.get(k)):
                 self.configs.saved_data[k] = v
-
-        data_dir = self.configs.saved_data["data_dir"]
-        log_dir = self.configs.saved_data["log_dir"]
-        if args.parser == "start":
-            self.configs.save_configs()
-
-            if not os.path.isdir(data_dir):
-                os.makedirs(data_dir)
-            if not os.path.isdir(log_dir):
-                os.makedirs(log_dir)
-
-        self.script = ScriptProcessManager(log_dir, data_dir)
 
 
     def parse_bool(self, config):
@@ -2200,6 +2623,8 @@ class ControlScript(object):
         common_parser.add_argument(
             "--base_dir", help="Directory under which {} will store data, conf and logs".format(
                 SCRIPT_NAME), metavar="")
+        common_parser.add_argument(
+            "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME), metavar="")
 
         start_msg = "To start YugabyteDB cluster, run '{}'.\n\n".format(
             Output.make_green("{} start".format(SCRIPT_NAME)))
@@ -2254,6 +2679,28 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
 
+        # Add cert generation options
+        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
+        cert_parser = subparsers.add_parser("cert", description=example,
+                                                help="Generate SSL cerificates")
+        all_parsers["cert"] = cert_parser
+        cert_subparsers = cert_parser.add_subparsers(dest="parser", metavar="")
+        cert_subparsers.required = True
+        for cmd, description in (
+                ("generate_server_certs", "Generate node server certificates."),):
+            subparser = cert_subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            parser_name = "cert_" + cmd
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Generate node server certs of given hostname
+        for cmd in ("cert_generate_server_certs",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--hostnames", help="Hostnames of the nodes to be added in the cluster. " +
+                "Mandatory flag.", metavar="")
+
         # Docker: Redirect the logs.tar.gz to stdout
         for cmd in ("collect_logs",):
             cur_parser = all_parsers[cmd]
@@ -2280,8 +2727,6 @@ class ControlScript(object):
         # Commands that can alter configuration file.
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
-            cur_parser.add_argument(
-                "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
                 "--ycql_port", help=argparse.SUPPRESS)
             cur_parser.add_argument(
@@ -2354,9 +2799,8 @@ class ControlScript(object):
             parser.print_help()
             return
 
-
         args = parser.parse_args()
-        self.validate_and_set_configs(args)
+        self.validate_and_set_parent_configs(args)
 
         log_dir = self.configs.saved_data.get("log_dir")
         if not os.path.exists(log_dir):
@@ -2371,9 +2815,17 @@ class ControlScript(object):
         Output.log("cmd = {} using config file: {} (args.config={})".format(
             args.parser, self.conf_file, args.config))
 
+        # Initialize the script path of gen_certs.sh
+        CertGenProxy.init()
+
+        # Initialize the binary path of ybadmin
+        YBAdminProxy.init()
+
+        self.validate_and_set_configs(args)
+
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.init(self.configs.saved_data.get("master_flags"), \
+        YBAdminProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         try:
@@ -2450,13 +2902,14 @@ class Configs(object):
         self.saved_data = {
             "data_dir": os.path.join(base_dir, "data"),
             "log_dir": os.path.join(base_dir, "logs"),
+            "gen_certs_dir": os.path.join(base_dir, "generated_certs"),
             "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
             "tserver_rpc_port": DEFAULT_TSERVER_RPC_PORT,
             "master_webserver_port": DEFAULT_MASTER_WEBSERVER_PORT,
             "tserver_webserver_port": DEFAULT_TSERVER_WEBSERVER_PORT,
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
-            "advertise_address": DEFAULT_BIND_IP,
+            "advertise_address": "",
             "webserver_port": DEFAULT_WEBSERVER_PORT,
             "yugabyted_ui_port": DEFAULT_YUGABYTED_UI_PORT,
             "universe_uuid": str(uuid.uuid4()),
@@ -2476,7 +2929,7 @@ class Configs(object):
             "fault_tolerance": DEFAULT_START_FAULT_TOLERANCE,
             "secure": False,
             "insecure": True,
-            "certs_dir": "",
+            "certs_dir": os.path.join(base_dir, "certs"),
             "ca_cert_file_path": "",
             "database_password": None,
         }
@@ -2490,6 +2943,7 @@ class Configs(object):
             "data_placement_constraint": "",
             "fault_tolerance": DEFAULT_FAULT_TOLERANCE,
             "replication_factor":"",
+            "hostnames": "",
         }
         self.config_file = config_file
 
@@ -2863,9 +3317,11 @@ class YBAdminProxy(object):
     cmd_args = []
 
     @staticmethod
-    def init(master_flags, secure, certs_dir):
+    def init():
         YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
 
+    @staticmethod
+    def set_certs_dir(master_flags, secure, certs_dir):
         # If the user is attempting to use TLS, let's point yb-admin to
         # the same certs dir as the master
         if secure:
@@ -3187,6 +3643,36 @@ class YcqlProxy(object):
         else:
             Output.log("YCQL Connection Info - {}".format(out))
             return True
+
+
+# Proxy for creating ssl certificates using openssl
+class CertGenProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init(path=None):
+        if path is None:
+            path = find_binary_location("gen_certs.sh")
+
+        CertGenProxy.cmd_args = [path]
+
+    # Generate root ca certificates
+    @staticmethod
+    def generate_root_ca_certs(root_certs_dir, timeout=60):
+        cmd = CertGenProxy.cmd_args + ['generate-ca', '-rcp', root_certs_dir]
+        out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
+
+        return (0 == ret)
+
+    # Generate node server certificates
+    @staticmethod
+    def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, timeout=60):
+        cmd = CertGenProxy.cmd_args + ['generate-server-cert', '-rcp', root_certs_dir,
+            '-scp', server_cert_dir, '-hn', hostname]
+        out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
+
+        return (0 == ret)
+
 
 # Currently unused. Useful for getting diagnostics that are available only through logs.
 class LogAnalyzer(object):
@@ -3588,8 +4074,14 @@ class PrettyHelpFormatter(argparse.RawTextHelpFormatter):
     # Add usage according to the command from which help is called
     def add_usage(self, usage, actions, groups, prefix=None):
         cmd = ('%(prog)s' % dict(prog=self._prog)).split()
-        if len(cmd) > 2 and cmd[1].isalpha() and cmd[-1].isalpha():
-            cmd = cmd[1] + " " +cmd[-1]
+        for cmds in ['[command]', '[flags]']:
+            if cmds in cmd:
+                cmd.remove(cmds)
+        if len(cmd) > 2:
+            temp = ""
+            for cmds in cmd[1:]:
+                temp += cmds + " "
+            cmd = temp.strip()
         else:
             cmd = cmd.pop()
         if prefix is None:

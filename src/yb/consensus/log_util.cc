@@ -112,7 +112,7 @@ TAG_FLAG(require_durable_wal_write, stable);
 // upgrade. Nodes that don't support log index embedded into WAL segments won't be able to do
 // local bootstrap based on data from nodes that has log index embedded into WAL segments.
 //
-// TODO(logindex): should be switched to DEFINE_AUTO_bool after
+// TODO(logindex): should be switched to DEFINE_RUNTIME_AUTO_bool after
 // https://github.com/yugabyte/yugabyte-db/issues/11912.
 DEFINE_bool(
     save_index_into_wal_segments, yb::IsDebug(), "Whether to save log index into WAL segments.");
@@ -125,6 +125,7 @@ namespace log {
 using env_util::ReadFully;
 using std::vector;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 

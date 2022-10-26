@@ -108,6 +108,10 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
+using std::vector;
+using std::min;
+using std::map;
+using std::ostream;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -167,9 +171,7 @@ DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 
-DEFINE_string(external_daemon_exe_suffix, "",
-              "Suffix to append to external daemon executable names, such as yb-master and "
-              "yb-tserver.");
+DECLARE_string(dynamically_linked_exe_suffix);
 
 namespace yb {
 
@@ -228,11 +230,11 @@ std::vector<std::string> FsDataDirs(const std::string& data_dir,
 }
 
 std::string GetMasterBinaryName() {
-  return kMasterBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
+  return kMasterBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
 std::string GetTServerBinaryName() {
-  return kTabletServerBinaryNamePrefix + FLAGS_external_daemon_exe_suffix;
+  return kTabletServerBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
 }  // anonymous namespace
@@ -719,10 +721,15 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   LOG(INFO) << "Master " << master->bound_rpc_hostport().ToString() << ", change type "
             << type << " to " << masters_.size() << " masters.";
 
-  if (type == consensus::ADD_SERVER) {
-    return AddMaster(master);
-  } else if (type == consensus::REMOVE_SERVER) {
-    return RemoveMaster(master);
+  if (type == consensus::ADD_SERVER || type == consensus::REMOVE_SERVER) {
+    if (type == consensus::ADD_SERVER) {
+      RETURN_NOT_OK(AddMaster(master));
+    } else if (type == consensus::REMOVE_SERVER) {
+      RETURN_NOT_OK(RemoveMaster(master));
+    }
+
+    UpdateMasterAddressesOnTserver();
+    return Status::OK();
   }
 
   string err_msg = Format("Should not reach here - change type $0", type);
@@ -1432,6 +1439,17 @@ Status ExternalMiniCluster::AddTabletServer(
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
+}
+
+void ExternalMiniCluster::UpdateMasterAddressesOnTserver() {
+  vector<HostPort> master_hostports;
+  for (size_t i = 0; i < num_masters(); i++) {
+    master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
+  }
+
+  for (size_t i = 0; i < num_tablet_servers(); i++) {
+    DCHECK_NOTNULL(tablet_server(i))->UpdateMasterAddress(master_hostports);
+  }
 }
 
 Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDelta& timeout) {
@@ -2675,6 +2693,10 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   RETURN_NOT_OK(s1);
   RETURN_NOT_OK(s2);
   return Status::OK();
+}
+
+void ExternalTabletServer::UpdateMasterAddress(const std::vector<HostPort>& master_addrs) {
+  master_addrs_ = HostPort::ToCommaSeparatedString(master_addrs);
 }
 
 Status ExternalTabletServer::Restart(

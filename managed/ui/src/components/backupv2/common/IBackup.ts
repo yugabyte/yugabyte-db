@@ -41,11 +41,27 @@ export interface Keyspace_Table {
   defaultLocation?: string;
 }
 
-export interface IBackup {
-  state: Backup_States;
+export interface ICommonBackupInfo {
   backupUUID: string;
-  backupType: TableType;
+  baseBackupUUID: string;
+  completionTime: number;
+  createTime: number;
+  responseList: Keyspace_Table[];
+  sse: boolean;
+  state: Backup_States;
   storageConfigUUID: string;
+  taskUUID: string;
+  totalBackupSizeInBytes?: number;
+  updateTime: number;
+  parallelism: number;
+}
+
+export interface IBackup {
+  commonBackupInfo: ICommonBackupInfo;
+  isFullBackup: boolean;
+  hasIncrementalBackups: boolean;
+  lastBackupState: Backup_States;
+  backupType: TableType;
   universeUUID: string;
   scheduleUUID: string;
   customerUUID: string;
@@ -53,13 +69,9 @@ export interface IBackup {
   isStorageConfigPresent: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  createTime: number;
   updateTime: number;
-  completionTime: number;
   expiryTime: number;
-  responseList: Keyspace_Table[];
-  sse: boolean;
-  totalBackupSizeInBytes?: number;
+  fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
 }
 

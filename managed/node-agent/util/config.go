@@ -16,7 +16,6 @@ import (
 
 var (
 	instance      Config
-	once          sync.Once
 	syncMap       *sync.Map
 	mutex         *sync.Mutex
 	currentConfig = DefaultConfig
@@ -155,11 +154,7 @@ func (config *Config) CompareAndUpdate(key, expected, val string) (bool, error) 
 func (config *Config) Remove(key string) error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	data := config.viperInstance.AllSettings()
-	delete(data, key)
-	for key, val := range data {
-		config.viperInstance.Set(key, val)
-	}
+	config.viperInstance.Set(key, nil)
 	return config.viperInstance.WriteConfig()
 }
 

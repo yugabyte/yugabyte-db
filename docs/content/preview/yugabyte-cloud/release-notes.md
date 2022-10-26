@@ -10,6 +10,24 @@ type: docs
 
 ## Releases
 
+### October 24, 2022
+
+**New Features**
+
+- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+
+### October 17, 2022
+
+**New Features**
+
+- Ability to set alerts for cluster memory use and YSQL connections. Get notified when memory use or the number of YSQL connections in a cluster exceeds the threshold. High memory use or number of YSQL connections can indicate problems with your workload, such as unoptimized queries or problems with your application connection code.
+
+### September 28, 2022
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.2. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
 ### September 19, 2022
 
 **Database**
@@ -26,7 +44,7 @@ type: docs
 
 **Database**
 
-- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Preview release updated to version 2.15.0. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### June 27, 2022
 
@@ -188,6 +206,8 @@ This release includes the following features:
 
 ## Cloud provider regions
 
+### GCP
+
 The following **GCP regions** are available:
 
 - Taiwan (asia-east1)
@@ -218,6 +238,8 @@ The following **GCP regions** are available:
 - Los Angeles (us-west2)
 - Salt Lake City (us-west3)
 - Las Vegas (us-west4)
+
+### AWS
 
 The following **AWS regions** are available:
 
@@ -253,8 +275,9 @@ The following **AWS regions** are available:
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
 
-### Known issues in [Cloud Shell](../cloud-connect/connect-cloud-shell/)
+### Known issues in Cloud Shell
 
-- If Cloud Shell stops responding, close the browser tab and restart Cloud Shell.
+- If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
 - Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected.
+- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
+- Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

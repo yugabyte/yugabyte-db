@@ -43,6 +43,8 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus_queue.h"
 
+#include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/universe_key_manager.h"
@@ -64,6 +66,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
@@ -74,6 +77,8 @@
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/tserver/server_main_util.h"
+
+using std::string;
 
 #if defined(YB_PROFGEN) && defined(__clang__)
 extern "C" int __llvm_profile_write_file(void);
@@ -122,7 +127,6 @@ DECLARE_string(cql_proxy_bind_address);
 DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_bool(start_pgsql_proxy);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
@@ -243,6 +247,7 @@ int TabletServerMain(int argc, char** argv) {
         tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
         server->GetSharedMemoryFd());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
     pg_process_conf.certs_dir = FLAGS_certs_dir.empty()

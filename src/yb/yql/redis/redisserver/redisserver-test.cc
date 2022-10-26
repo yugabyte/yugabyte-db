@@ -4743,7 +4743,7 @@ TEST_F(TestRedisService, TestTtlSortedSet) {
   TestTtlSortedSet(&collection_key, values, card);
 }
 
-TEST_F(TestRedisService, TestTtlHash) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlHash)) {
   std::string collection_key = "hash_browns";
   CollectionEntry values[10] = { std::make_tuple("eggs", "hyperloglog"),
                                  std::make_tuple("bagel", "bloom"),

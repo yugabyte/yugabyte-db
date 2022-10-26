@@ -94,6 +94,7 @@ DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_string(metric_node_name);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
 METRIC_DECLARE_counter(rows_inserted);
@@ -300,6 +301,58 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // only exists on Linux.
   ASSERT_STR_CONTAINS(buf.ToString(), "tablet_server-test");
 #endif
+
+  // Test URL parameter: reset_histograms.
+  // This parameter allow user to have percentile not to be reseted for every web page fetch.
+  // Here, handler_latency_yb_tserver_TabletServerService_Write's percentile is used for testing.
+  // In the begining, we expect it's value is zero.
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+                &buf));
+  // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
+  // string looks like: handler_latency_yb_tserver_TabletServerService_Write{quantile=p50.....} 0
+  std::string page_content = buf.ToString();
+  std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write"
+                                        "{quantile=\"p50\"");
+  std::size_t end = page_content.find("}", begin);
+  std::string metric_instance_with_zero_value = page_content.substr(begin, end-begin+1)+" 0";
+
+  ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
+
+  // Insert some data
+  auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  tablet.reset();
+  WriteRequestPB w_req;
+  w_req.set_tablet_id(kTabletId);
+  WriteResponsePB w_resp;
+  {
+    RpcController controller;
+    AddTestRowInsert(1234, 5678, "testing reset histograms via RPC", &w_req);
+    SCOPED_TRACE(w_req.DebugString());
+    ASSERT_OK(proxy_->Write(w_req, &w_resp, &controller));
+    SCOPED_TRACE(w_resp.DebugString());
+    ASSERT_FALSE(w_resp.has_error());
+    w_req.clear_ql_write_batch();
+  }
+
+  // Check that its percentile become none zero after inserting data
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+                &buf));
+  ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
+
+  // Check that percentile should not to be reseted to zero after refreshing the page
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=false", addr),
+                &buf));
+  ASSERT_STR_NOT_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
+
+  // Fetch the page again with reset_histograms=true to reset the percentile
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+                &buf));
+
+  // Verify that the percentile has been reseted back to zero
+  ASSERT_OK(c.FetchURL(Substitute("http://$0/prometheus-metrics?reset_histograms=true", addr),
+                &buf));
+  ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
+  tablet.reset();
 }
 
 TEST_F(TabletServerTest, TestInsert) {

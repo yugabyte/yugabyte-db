@@ -24,6 +24,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+using std::string;
+
 DEFINE_bool(consistent_restore, false, "Whether to enable consistent restoration of snapshots");
 
 DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
@@ -172,7 +174,8 @@ bool SnapshotOperation::ShouldAllowOpDuringRestore(consensus::OperationType op_t
     case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
     case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
-    case consensus::SPLIT_OP:
+    case consensus::SPLIT_OP: FALLTHROUGH_INTENDED;
+    case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
       return true;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
     case consensus::WRITE_OP:

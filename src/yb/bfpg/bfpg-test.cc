@@ -28,6 +28,7 @@ using std::shared_ptr;
 using std::make_shared;
 using std::to_string;
 using std::vector;
+using std::string;
 //--------------------------------------------------------------------------------------------------
 // BFTestValue is a data value to be used with builtin library for both phases - compilation and
 // execution. Note that the plan is to have two different data structures for two different.

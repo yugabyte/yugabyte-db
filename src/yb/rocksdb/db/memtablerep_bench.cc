@@ -57,7 +57,6 @@ int main() {
 #include "yb/rocksdb/util/testutil.h"
 
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_string(benchmarks, "fillrandom",

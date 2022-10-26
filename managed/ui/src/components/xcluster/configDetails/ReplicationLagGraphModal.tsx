@@ -28,11 +28,25 @@ export const ReplicationLagGraphModal: FC<Props> = ({
 }) => {
   return (
     <YBModal
-      title={`Replication Lag: ${tableDetails.pgSchemaName}.${tableDetails.tableName}`}
+      title={`Table Replication Lag`}
       dialogClassName={styles.modelDialog}
       visible={visible}
       onHide={onHide}
     >
+      <p>
+        {'Table: '}
+        <b>{tableDetails.tableName}</b>
+      </p>
+      {tableDetails.pgSchemaName && (
+        <p>
+          {'Schema: '}
+          <b>{tableDetails.pgSchemaName}</b>
+        </p>
+      )}
+      <p>
+        {'Keyspace: '}
+        <b>{tableDetails.keySpace}</b>
+      </p>
       <TableLagGraph
         tableDetails={tableDetails}
         replicationUUID={replicationUUID}

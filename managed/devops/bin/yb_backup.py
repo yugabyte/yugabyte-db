@@ -26,6 +26,8 @@ import sys
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
+from botocore.session import get_session
+from botocore.credentials import get_credentials
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
@@ -376,8 +378,12 @@ def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
     return apply_sed_edit_reg_exp_cmd(
-        dump_file, "s|DATABASE {0}|DATABASE {1}|;s|\\\\connect {0}|\\\\connect {1}|".format(
-                   old_name, new_name))
+        dump_file,
+        "s|DATABASE {0}|DATABASE {1}|;"
+        "s|\\\\connect {0}|\\\\connect {1}|;"
+        "s|\\\\connect {2}|\\\\connect {1}|;"
+        "s|\\\\connect -reuse-previous=on \\\"dbname=\\x27{2}\\x27\\\"|\\\\connect {1}|".format(
+                old_name, new_name, old_name.replace('"', "")))
 
 
 def get_table_names_str(keyspaces, tables, delimeter, space):
@@ -677,6 +683,14 @@ def get_instance_profile_credentials():
                 result = access_key, secret_key, token
             except KeyError as e:
                 logging.info("Could not find {} in instance metadata".format(e))
+    else:
+        # Get credentials using session token for IMDSv2
+        session = get_session()
+        credentials = get_credentials(session)
+        if isinstance(credentials, object):
+            result = credentials.access_key, credentials.secret_key, credentials.token
+        else:
+            raise BackupException("Failed to retrieve IAM role data from AWS")
 
     return result
 
@@ -1715,7 +1729,10 @@ class YBBackup:
             backup_size_cmd = self.storage.backup_obj_size_cmd(filepath)
             try:
                 resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
-                backup_size += int(resp.strip().split()[0])
+                # if using IMDSv2, s3cmd can return WARNINGs so check each line and ignore
+                for line in resp.splitlines():
+                    if 'WARNING' not in line:
+                        backup_size += int(resp.strip().split()[0])
             except Exception as ex:
                 logging.error(
                     'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
@@ -3195,7 +3212,8 @@ class YBBackup:
                 else:
                     logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
                                  old_db_name, new_db_name))
-                    cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+                    cmd = replace_db_name_cmd(dump_file_path, old_db_name,
+                                              '"{}"'.format(new_db_name))
 
                     if self.args.local_yb_admin_binary:
                         self.run_program(cmd)

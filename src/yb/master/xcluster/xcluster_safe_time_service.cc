@@ -24,9 +24,12 @@
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
+
+using std::min;
 
 using namespace std::chrono_literals;
 
@@ -37,7 +40,7 @@ TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
-DECLARE_bool(xcluster_consistent_reads);
+// TODO(jhe) METRIC_DEFINE for max/cur_safe_time
 
 namespace yb {
 using OK = Status::OK;
@@ -113,11 +116,6 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
     return;
   }
 
-  if (!GetAtomicFlag(&FLAGS_xcluster_consistent_reads)) {
-    VLOG_WITH_FUNC(1) << "Going into idle mode due to xcluster_consistent_reads flag";
-    return;
-  }
-
   auto wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
   if (wait_time <= 0) {
     // Can only happen in tests
@@ -125,17 +123,12 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
     return;
   }
 
-  int64_t leader_term = -1;
-  {
-    SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
-
-    if (!l.IsInitializedAndIsLeader()) {
-      VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
-      return;
-    }
-
-    leader_term = l.GetLeaderReadyTerm();
+  auto leader_term_result = GetLeaderTermFromCatalogManager();
+  if (!leader_term_result.ok()) {
+    VLOG_WITH_FUNC(1) << "Going into idle mode due to master leader change";
+    return;
   }
+  int64_t leader_term = leader_term_result.get();
 
   bool further_computation_needed = true;
   auto result = ComputeSafeTime(leader_term);
@@ -157,6 +150,45 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   }
 
   ScheduleTaskIfNeeded();
+}
+
+Result<std::unordered_map<NamespaceId, uint64_t>>
+XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
+  // Recompute safe times again before fetching maps.
+  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+
+  XClusterNamespaceToSafeTimeMap max_safe_time_map;
+  {
+    std::lock_guard lock(mutex_);
+    max_safe_time_map = VERIFY_RESULT(GetMaxNamespaceSafeTimeFromTable());
+  }
+
+  std::unordered_map<NamespaceId, uint64_t> safe_time_diff_map;
+  // current_safe_time_map is the source of truth, so loop over it to construct the final mapping.
+  for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
+    const auto it = max_safe_time_map.find(namespace_id);
+    if (safe_time.is_special() || it == max_safe_time_map.end() || it->second.is_special()) {
+      // Missing a valid safe time, so return an invalid value.
+      safe_time_diff_map[namespace_id] = UINT64_MAX;
+      continue;
+    }
+
+    const auto& max_safe_time = it->second;
+    if (max_safe_time < safe_time) {
+      // Very rare case that could happen since clocks are not synced.
+      safe_time_diff_map[namespace_id] = 0;
+    } else {
+      safe_time_diff_map[namespace_id] = max_safe_time.PhysicalDiff(safe_time);
+    }
+  }
+
+  return safe_time_diff_map;
+}
+
+Result<XClusterNamespaceToSafeTimeMap>
+XClusterSafeTimeService::RefreshAndGetXClusterNamespaceToSafeTimeMap() {
+  RETURN_NOT_OK(ComputeSafeTime(VERIFY_RESULT(GetLeaderTermFromCatalogManager())));
+  return GetXClusterNamespaceToSafeTimeMap();
 }
 
 Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
@@ -204,21 +236,45 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
 }
 
 namespace {
+HybridTime GetNewSafeTime(
+    const XClusterNamespaceToSafeTimeMap& previous_safe_time_map, const NamespaceId& namespace_id,
+    const HybridTime& safe_time) {
+  auto previous_safe_time =
+      HybridTime(FindWithDefault(previous_safe_time_map, namespace_id, HybridTime::kInvalid));
+
+  if (!safe_time.is_special() &&
+      (!previous_safe_time.is_valid() || safe_time > previous_safe_time)) {
+    return safe_time;
+  }
+
+  return previous_safe_time;
+}
+
 XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
     const XClusterNamespaceToSafeTimeMap& previous_safe_time_map,
-    const std::map<NamespaceId, HybridTime>& namespace_min_safe_time) {
+    const std::map<NamespaceId, HybridTime>& namespace_safe_time) {
   XClusterNamespaceToSafeTimeMap new_safe_time_map;
 
-  for (const auto& new_safe_time : namespace_min_safe_time) {
-    auto previous_safe_time = HybridTime(FindWithDefault(
-        previous_safe_time_map, new_safe_time.first, HybridTime::kInvalid));
+  // System tables like 'transactions' table affect the safe time of every user namespace. Compute
+  // that first and use it as min in every other namespace.
+  HybridTime sys_safe_time = HybridTime::kInvalid;
+  auto sys_namespace_it = FindOrNull(namespace_safe_time, kSystemNamespaceId);
+  if (sys_namespace_it) {
+    sys_safe_time = new_safe_time_map[kSystemNamespaceId] =
+        GetNewSafeTime(previous_safe_time_map, kSystemNamespaceId, *sys_namespace_it);
+  }
 
-    if (!new_safe_time.second.is_special() &&
-        (!previous_safe_time.is_valid() || new_safe_time.second > previous_safe_time)) {
-      new_safe_time_map[new_safe_time.first] = new_safe_time.second;
-    } else {
-      new_safe_time_map[new_safe_time.first] = previous_safe_time;
+  for (auto [namespace_id, safe_time] : namespace_safe_time) {
+    if (namespace_id == kSystemNamespaceId) {
+      continue;
     }
+
+    if (sys_namespace_it && (sys_safe_time.is_special() || sys_safe_time < safe_time)) {
+      safe_time = sys_safe_time;
+    }
+
+    new_safe_time_map[namespace_id] =
+        GetNewSafeTime(previous_safe_time_map, namespace_id, safe_time);
   }
 
   return new_safe_time_map;
@@ -233,38 +289,38 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(const int64_t leader_term)
   // changed and tservers may have already started populating new entires in it
   RETURN_NOT_OK(RefreshProducerTabletToNamespaceMap());
 
-  std::map<NamespaceId, HybridTime> namespace_min_safe_time;
+  std::map<NamespaceId, HybridTime> namespace_safe_time_map;
   std::vector<ProducerTabletInfo> table_entries_to_delete;
 
-  for (const auto& entry : producer_tablet_namespace_map_) {
-    namespace_min_safe_time[entry.second] = HybridTime::kMax;
+  for (const auto& [tablet_info, namespace_id] : producer_tablet_namespace_map_) {
+    namespace_safe_time_map[namespace_id] = HybridTime::kMax;
     // Add Invalid values for missing tablets
-    InsertIfNotPresent(&tablet_to_safe_time_map, entry.first, HybridTime::kInvalid);
+    InsertIfNotPresent(&tablet_to_safe_time_map, tablet_info, HybridTime::kInvalid);
   }
 
-  for (const auto& entry : tablet_to_safe_time_map) {
-    auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, entry.first);
+  for (const auto& [tablet_info, tablet_safe_time] : tablet_to_safe_time_map) {
+    auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, tablet_info);
     if (!namespace_id) {
       // Mark dropped tablets for cleanup
-      table_entries_to_delete.emplace_back(entry.first);
+      table_entries_to_delete.emplace_back(tablet_info);
       continue;
     }
 
     // Ignore values like Invalid, Min, Max and only consider a valid clock time.
-    if (entry.second.is_special()) {
-      namespace_min_safe_time[*namespace_id] = HybridTime::kInvalid;
+    if (tablet_safe_time.is_special()) {
+      namespace_safe_time_map[*namespace_id] = HybridTime::kInvalid;
       continue;
     }
 
-    auto& safe_time = FindOrDie(namespace_min_safe_time, *namespace_id);
+    auto& namespace_safe_time = FindOrDie(namespace_safe_time_map, *namespace_id);
 
-    if (safe_time.is_valid()) {
-      safe_time = min(safe_time, entry.second);
+    if (namespace_safe_time.is_valid()) {
+      namespace_safe_time = min(namespace_safe_time, tablet_safe_time);
     }
   }
 
   const auto previous_safe_time_map = VERIFY_RESULT(GetXClusterNamespaceToSafeTimeMap());
-  auto new_safe_time_map = ComputeSafeTimeMap(previous_safe_time_map, namespace_min_safe_time);
+  auto new_safe_time_map = ComputeSafeTimeMap(previous_safe_time_map, namespace_safe_time_map);
 
   // Use the leader term to ensure leader has not changed between the time we did our computation
   // and setting the new config. Its important to make sure that the config we persist is accurate
@@ -284,9 +340,9 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(const int64_t leader_term)
   return further_computation_needed;
 }
 
-Result<std::map<XClusterSafeTimeService::ProducerTabletInfo, HybridTime>>
+Result<XClusterSafeTimeService::ProducerTabletToSafeTimeMap>
 XClusterSafeTimeService::GetSafeTimeFromTable() {
-  std::map<ProducerTabletInfo, HybridTime> tablet_safe_time;
+  ProducerTabletToSafeTimeMap tablet_safe_time;
 
   auto* yb_client = master_->cdc_state_client_initializer().client();
   if (!yb_client) {
@@ -343,6 +399,27 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   return tablet_safe_time;
 }
 
+Result<XClusterNamespaceToSafeTimeMap> XClusterSafeTimeService::GetMaxNamespaceSafeTimeFromTable() {
+  XClusterNamespaceToSafeTimeMap max_safe_time_map;
+  ProducerTabletToSafeTimeMap tablet_safe_times = VERIFY_RESULT(GetSafeTimeFromTable());
+  for (const auto& [prod_tablet_info, safe_time] : tablet_safe_times) {
+    const auto* namespace_id = FindOrNull(producer_tablet_namespace_map_, prod_tablet_info);
+    if (!namespace_id) {
+      // Stale entry in the table, can skip this namespace.
+      continue;
+    }
+    if (!safe_time.is_special()) {
+      auto it = max_safe_time_map.find(*namespace_id);
+      if (it == max_safe_time_map.end() || (!it->second.is_special() && it->second < safe_time)) {
+        max_safe_time_map[*namespace_id] = safe_time;
+      }
+    } else {
+      max_safe_time_map[*namespace_id] = HybridTime::kInvalid;
+    }
+  }
+  return max_safe_time_map;
+}
+
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
 
@@ -350,7 +427,7 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     producer_tablet_namespace_map_.clear();
 
     auto consumer_registry = VERIFY_RESULT(catalog_manager_->GetConsumerRegistry());
-    if (consumer_registry) {
+    if (consumer_registry && consumer_registry->role() != cdc::XClusterRole::ACTIVE) {
       const auto& producer_map = consumer_registry->producer_map();
       for (const auto& cluster_entry : producer_map) {
         if (cluster_entry.second.disable_stream()) {
@@ -395,9 +472,9 @@ XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
 Status XClusterSafeTimeService::SetXClusterSafeTime(
     const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map) {
   if (VLOG_IS_ON(2)) {
-    for (auto& entry : new_safe_time_map) {
-      VLOG_WITH_FUNC(2) << "NamespaceId: " << entry.first
-                        << ", SafeTime: " << HybridTime(entry.second).ToDebugString();
+    for (auto& [namespace_id, safe_time] : new_safe_time_map) {
+      VLOG_WITH_FUNC(2) << "NamespaceId: " << namespace_id
+                        << ", SafeTime: " << HybridTime(safe_time).ToDebugString();
     }
   }
 
@@ -443,6 +520,16 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
       session->ApplyAndFlushSync(ops), "Failed to cleanup to XClusterSafeTime table");
 
   return OK();
+}
+
+Result<int64_t> XClusterSafeTimeService::GetLeaderTermFromCatalogManager() {
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+
+  if (!l.IsInitializedAndIsLeader()) {
+    return l.first_failed_status();
+  }
+
+  return l.GetLeaderReadyTerm();
 }
 
 }  // namespace master

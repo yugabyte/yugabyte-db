@@ -67,11 +67,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const CDCStreamId& id() const override { return stream_id_; }
 
-  const google::protobuf::RepeatedPtrField<std::string>& table_id() const;
+  const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
+
+  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
+  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
+  //  this object before accessing this member.
+  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
@@ -117,6 +122,24 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
 
+  void StoreReplicationError(
+    const TableId& consumer_table_id,
+    const CDCStreamId& stream_id,
+    ReplicationErrorPb error,
+    const std::string& error_detail);
+
+  void ClearReplicationError(
+    const TableId& consumer_table_id,
+    const CDCStreamId& stream_id,
+    ReplicationErrorPb error);
+
+  // Maps from a table id -> stream id -> replication error -> error detail.
+  typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
+  typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
+  typedef std::unordered_map<TableId, StreamReplicationErrorMap> TableReplicationErrorMap;
+
+  TableReplicationErrorMap GetReplicationErrors() const;
+
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   ~UniverseReplicationInfo() = default;
@@ -129,6 +152,8 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
   // constructed object, or if the SetupUniverseReplication was successful.
   Status setup_universe_replication_error_ = Status::OK();
+
+  TableReplicationErrorMap table_replication_error_map_;
 
   // Protects cdc_rpc_tasks_.
   mutable rw_spinlock lock_;
@@ -191,7 +216,7 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 
   SysSnapshotEntryPB::State state() const;
 
-  const std::string& state_name() const;
+  const std::string state_name() const;
 
   std::string ToString() const override;
 

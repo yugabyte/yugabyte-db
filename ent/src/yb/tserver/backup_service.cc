@@ -39,7 +39,6 @@ namespace tserver {
 using rpc::RpcContext;
 using tablet::SnapshotOperation;
 using tablet::OperationCompletionCallback;
-using tablet::Tablet;
 
 TabletServiceBackupImpl::TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                                                  const scoped_refptr<MetricEntity>& metric_entity)
@@ -88,13 +87,13 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     // "create snapshot" operation.
     // So history cutoff could be updated only after the "create snapshot" operation is applied.
     auto temp_read_operation_result = tablet::ScopedReadOperation::Create(
-        tablet.peer->tablet(), tablet::RequireLease::kTrue,
+        tablet.tablet.get(), tablet::RequireLease::kTrue,
         ReadHybridTime::SingleTime(snapshot_hybrid_time));
     Status status;
     if (temp_read_operation_result.ok()) {
       read_operation = std::move(*temp_read_operation_result);
-      if (tablet.peer->tablet()->transaction_participant()) {
-        status = tablet.peer->tablet()->transaction_participant()->ResolveIntents(
+      if (tablet.tablet->transaction_participant()) {
+        status = tablet.tablet->transaction_participant()->ResolveIntents(
             snapshot_hybrid_time, context.GetClientDeadline());
       }
     } else {
@@ -105,7 +104,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
-  auto operation = std::make_unique<SnapshotOperation>(tablet.peer->tablet(), req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet.tablet, req);
 
   auto clock = tablet_manager_->server()->Clock();
   operation->set_completion_callback(

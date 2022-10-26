@@ -84,7 +84,9 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
-using TabletIdStreamIdSet = std::set<pair<TabletId, CDCStreamId>>;
+using TabletIdStreamIdSet = std::set<std::pair<TabletId, CDCStreamId>>;
+using RollBackTabletIdCheckpointMap =
+    std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 
 class CDCServiceImpl : public CDCServiceIf {
  public:
@@ -133,13 +135,20 @@ class CDCServiceImpl : public CDCServiceIf {
                           rpc::RpcContext context) override;
 
   Status UpdateCdcReplicatedIndexEntry(
-      const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
-      const MonoDelta& cdc_sdk_op_id_expiration);
+      const std::string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
+      const MonoDelta& cdc_sdk_op_id_expiration,
+      RollBackTabletIdCheckpointMap* rollback_tablet_id_map);
 
-  void RollbackCdcReplicatedIndexEntry(const string& tablet_id);
+  void RollbackCdcReplicatedIndexEntry(
+      const std::string& tablet_id, const std::pair<int64_t, OpId>& rollback_checkpoint_info);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
+
+  void GetTabletListToPollForCDC(
+      const GetTabletListToPollForCDCRequestPB* req,
+      GetTabletListToPollForCDCResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req,
                            IsBootstrapRequiredResponsePB* resp,
@@ -154,20 +163,23 @@ class CDCServiceImpl : public CDCServiceIf {
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.
   // If the metrics object is not present, then create it if create == true (eg if we have just
   // moved leaders) and not else (used to not recreate deleted metrics).
-  std::shared_ptr<CDCTabletMetrics> GetCDCTabletMetrics(
+  std::shared_ptr<void> GetCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
+      CDCRequestSource source_type = XCLUSTER,
       CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
 
   void RemoveCDCTabletMetrics(
       const ProducerTabletInfo& producer,
       std::shared_ptr<tablet::TabletPeer> tablet_peer);
 
-  void UpdateCDCTabletMetrics(const GetChangesResponsePB* resp,
-                              const ProducerTabletInfo& producer_tablet,
-                              const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                              const OpId& op_id,
-                              int64_t last_readable_index);
+  void UpdateCDCTabletMetrics(
+      const GetChangesResponsePB* resp,
+      const ProducerTabletInfo& producer_tablet,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      const OpId& op_id,
+      const CDCRequestSource source_type,
+      int64_t last_readable_index );
 
   std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() {
     return server_metrics_;
@@ -200,7 +212,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(const ProducerTabletInfo& producer_tablet,
                                  const client::YBSessionPtr& session);
 
-  Result<std::vector<pair<std::string, std::string>>> GetDBStreamInfo(
+  Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
           const std::string& db_stream_id,
           const client::YBSessionPtr& session);
 
@@ -228,7 +240,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name);
 
-  Result<std::shared_ptr<StreamMetadata>> GetStream(const std::string& stream_id);
+  Result<std::shared_ptr<StreamMetadata>> GetStream(
+      const std::string& stream_id, bool ignore_cache = false);
 
   std::shared_ptr<StreamMetadata> GetStreamMetadataFromCache(const std::string& stream_id);
   void AddStreamMetadataToCache(const std::string& stream_id,
@@ -245,7 +258,15 @@ class CDCServiceImpl : public CDCServiceIf {
                                  GetCheckpointResponsePB* resp,
                                  rpc::RpcContext* context);
 
+  void UpdateTabletPeersWithMaxCheckpoint(
+      const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
+      std::unordered_set<TabletId>* failed_tablet_ids);
+
   void UpdateTabletPeersWithMinReplicatedIndex(TabletIdCDCCheckpointMap* tablet_min_checkpoint_map);
+
+  Status UpdateTabletPeerWithCheckpoint(
+      const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
+      bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
   Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
 
@@ -266,8 +287,8 @@ class CDCServiceImpl : public CDCServiceIf {
                                         const client::YBSessionPtr& session);
 
   Status UpdatePeersCdcMinReplicatedIndex(
-      const TabletId& tablet_id,
-      const TabletCDCCheckpointInfo& cdc_checkpoint_min);
+      const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
+      bool ignore_failures = true);
 
   // Used as a callback function for parallelizing async cdc rpc calls.
   // Given a finished tasks counter, and the number of total rpc calls
@@ -295,18 +316,27 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
-  void UpdateLagMetrics();
+  void UpdateCDCMetrics();
 
   // This method is used to read the cdc_state table to find the minimum replicated index for each
   // tablet and then update the peers' log objects. Also used to update lag metrics.
   void UpdatePeersAndMetrics();
 
+  Status GetTabletIdsToPoll(
+      const CDCStreamId stream_id,
+      const std::set<TabletId>& active_or_hidden_tablets,
+      const std::set<TabletId>& parent_tablets,
+      const std::map<TabletId, TabletId>& child_to_parent_mapping,
+      std::vector<std::pair<TabletId, OpId>>* result);
+
   // This method deletes entries from the cdc_state table that are contained in the set.
-  Status DeleteCDCStateTableMetadata(const TabletIdStreamIdSet& cdc_state_entries_to_delete);
+  Status DeleteCDCStateTableMetadata(
+      const TabletIdStreamIdSet& cdc_state_entries_to_delete,
+      const std::unordered_set<TabletId>& failed_tablet_ids);
 
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
-  bool ShouldUpdateLagMetrics(MonoTime time_since_update_metrics);
+  bool ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics);
 
   Result<std::shared_ptr<client::TableHandle>> GetCdcStateTable() EXCLUDES(mutex_);
 
@@ -321,20 +351,24 @@ class CDCServiceImpl : public CDCServiceIf {
       std::vector<ProducerTabletInfo>* producer_entries_modified,
       std::vector<client::YBOperationPtr>* ops,
       const CDCStreamId& stream_id,
-      const TableId& table_id,
-      const TabletId& tablet_id);
+      const TabletId& tablet_id,
+      const OpId& op_id = OpId::Invalid());
 
   Status CreateCDCStreamForNamespace(
       const CreateCDCStreamRequestPB* req,
       CreateCDCStreamResponsePB* resp,
       CoarseTimePoint deadline);
 
+  void FilterOutTabletsToBeDeletedByAllStreams(
+      TabletIdCDCCheckpointMap* tablet_checkpoint_map,
+      std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint);
+
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
       TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
 
   Status SetInitialCheckPoint(
-      const OpId& checkpoint, const string& tablet_id,
+      const OpId& checkpoint, const std::string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   Status UpdateChildrenTabletsOnSplitOp(
@@ -342,16 +376,28 @@ class CDCServiceImpl : public CDCServiceIf {
       std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
       const client::YBSessionPtr& session);
 
+  Status UpdateChildrenTabletsOnSplitOpForCDCSDK(
+      const ProducerTabletInfo& info, const OpId& split_op_id);
+
   // Get enum map from the cache.
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
 
   // Update enum map in cache if required and get it.
-  Result<EnumOidLabelMap> UpdateCacheAndGetEnumMap(const NamespaceName& ns_name);
+  Result<EnumOidLabelMap> UpdateEnumCacheAndGetMap(const NamespaceName& ns_name);
 
   // Update enum map in cache.
   Result<EnumOidLabelMap> UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
+  // Get composite attributes map from the cache.
+  Result<CompositeAttsMap> GetCompositeAttsMapFromCache(const NamespaceName& ns_name);
+
+  // Update composite attributes map in cache if required and get it.
+  Result<CompositeAttsMap> UpdateCompositeCacheAndGetMap(const NamespaceName& ns_name);
+
+  // Update composite map in cache.
+  Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
+      REQUIRES(mutex_);
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;
@@ -375,6 +421,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Map of namespace name to (map of enum oid to enumlabel).
   EnumLabelCache enumlabel_cache_ GUARDED_BY(mutex_);
+
+  // Map of namespace name to (map of type id to attributes).
+  CompositeTypeCache composite_type_cache_ GUARDED_BY(mutex_);
 
   // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
   // CDC service proxy.

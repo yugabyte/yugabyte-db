@@ -108,6 +108,7 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -543,6 +544,10 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 using std::vector;
+using std::set;
+using std::min;
+using std::map;
+using std::pair;
 
 using namespace std::placeholders;
 
@@ -890,6 +895,8 @@ Status CatalogManager::Init() {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
+  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
@@ -952,6 +959,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   Consensus* consensus = tablet_peer()->consensus();
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
@@ -962,7 +970,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   // Wait for all transactions to be committed.
   const CoarseTimePoint deadline = CoarseMonoClock::now() + timeout;
   {
-    tablet::HistoryCutoffPropagationDisabler disabler(tablet_peer()->tablet()->RetentionPolicy());
+    tablet::HistoryCutoffPropagationDisabler disabler(tablet->RetentionPolicy());
     RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
   }
 
@@ -1483,11 +1491,16 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
         master_addresses_str, "/tmp", master_->GetSharedMemoryFd());
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
-      Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
-          sys_catalog_->tablet_peer()->tablet(),
-          FLAGS_initial_sys_catalog_snapshot_path);
-      if (!write_snapshot_status.ok()) {
-        status = write_snapshot_status;
+      auto sys_catalog_tablet_result = sys_catalog_->tablet_peer()->shared_tablet_safe();
+      if (sys_catalog_tablet_result.ok()) {
+        Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
+            sys_catalog_tablet_result->get(),
+            FLAGS_initial_sys_catalog_snapshot_path);
+        if (!write_snapshot_status.ok()) {
+          status = write_snapshot_status;
+        }
+      } else {
+        status = sys_catalog_tablet_result.status();
       }
     }
     Status finish_status = InitDbFinished(status, term);
@@ -1572,6 +1585,8 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
 }
 
 Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->tablet_peer_->shared_tablet_safe());
+
   // Prepare sys catalog table info.
   auto sys_catalog_table_iter = table_ids_map_->find(kSysCatalogTableId);
   if (sys_catalog_table_iter == table_ids_map_->end()) {
@@ -1622,7 +1637,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  system_tablets_[kSysCatalogTabletId] = sys_catalog_->tablet_peer_->shared_tablet();
+  system_tablets_[kSysCatalogTabletId] = sys_catalog_tablet;
 
   return Status::OK();
 }
@@ -1921,7 +1936,7 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
-  xcluster_parent_tablet_deletion_task_.StartShutdown();
+  cdc_parent_tablet_deletion_task_.StartShutdown();
 
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
@@ -1934,7 +1949,7 @@ void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
-  xcluster_parent_tablet_deletion_task_.CompleteShutdown();
+  cdc_parent_tablet_deletion_task_.CompleteShutdown();
   xcluster_safe_time_service_->Shutdown();
 
   if (background_tasks_) {
@@ -3826,9 +3841,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
           return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
         }
         auto tablet = colocated_db_tablets_map_[ns->id()];
-        auto tablet_lock = tablet->LockForWrite();
+        auto tablet_lock = tablet->LockForRead();
 
-        std::set<ColocationId> colocation_ids;
+        std::unordered_set<ColocationId> colocation_ids;
+        colocation_ids.reserve(tablet_lock.data().pb.table_ids().size());
         if (!req.has_colocation_id()) {
           for (const TableId& table_id : tablet_lock.data().pb.table_ids()) {
             DCHECK(!table_id.empty());
@@ -3837,9 +3853,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
               // Needed because of #11129, should be replaced with DCHECK after the fix.
               continue;
             }
-            Schema colocated_table_schema;
-            RETURN_NOT_OK(colocated_table_info->GetSchema(&colocated_table_schema));
-            colocation_ids.insert(colocated_table_schema.colocation_id());
+            colocation_ids.insert(colocated_table_info->GetColocationId());
           }
         }
 
@@ -4041,6 +4055,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
             << ns->ToString() << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
+
+  // Add the new table's entry to the in-memory structure cdc_stream_map_.
+  // This will be used by the background task to determine if the table needs to associated to an
+  // active CDCSDK stream. We do not consider the dummy parent table created for tablegroups.
+  if (!colocated || joining_colocation_group) {
+    WARN_NOT_OK(
+        AddNewTableToCDCDKStreamsMetadata(table->id(), ns->id()),
+        "Could not add table: " + table->id() + ", details to required CDCSDK streams");
+  }
 
   if (FLAGS_master_enable_metrics_snapshotter &&
       !(req.table_type() == TableType::YQL_TABLE_TYPE &&
@@ -5127,7 +5150,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, table_oid);
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
@@ -7751,8 +7774,10 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Verify that the namespace does not already exist.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr && db_type != YQL_DATABASE_PGSQL) {
-      // PGSQL databases have name uniqueness handled at a different layer, so ignore overlaps.
+    if (ns == nullptr) {
+      // For PGSQL databases having name uniqueness handled at a different layer, we still need to
+      // verify it to avoid the race condition caused by multiple CreateNamespace requests with the
+      // same db name running in parallel.
       ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     }
     if (ns != nullptr) {
@@ -9077,6 +9102,11 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
   return Status::OK();
 }
 
+Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
+    const TableId& table_id, const NamespaceId& ns_id) {
+  return Status::OK();
+}
+
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;
 }
@@ -9136,11 +9166,18 @@ Status CatalogManager::IsInitDbDone(
 
 Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
+  return GetYsqlDBCatalogVersion(kTemplate1Oid, catalog_version, last_breaking_version);
+}
+
+Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
+                                               uint64_t* catalog_version,
+                                               uint64_t* last_breaking_version) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
-    RETURN_NOT_OK(sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
-                                                       catalog_version,
-                                                       last_breaking_version));
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(kPgYbCatalogVersionTableId,
+                                                         db_oid,
+                                                         catalog_version,
+                                                         last_breaking_version));
     // If the version is properly initialized, we're done.
     if ((!catalog_version || *catalog_version > 0) &&
         (!last_breaking_version || *last_breaking_version > 0)) {
@@ -9462,9 +9499,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
-
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+  cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
   return Status::OK();
 }
@@ -9754,21 +9789,25 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
           .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
         });
 
-        if (!tablets_data.back().hide_only && IsTableCdcProducer(*tablet->table())) {
-          // For xCluster, the only time we try to delete a tablet that is part of an active stream
-          // is during tablet splitting, where we need to keep the parent tablet around until we
-          // have replicated its SPLIT_OP record.
+        if (!tablets_data.back().hide_only &&
+            (IsTableCdcProducer(*tablet->table()) || IsTablePartOfCDCSDK(*tablet->table()))) {
+          // For xCluster and CDCSDK , the only time we try to delete a tablet that is part of an
+          // active stream is during tablet splitting, where we need to keep the parent tablet
+          // around until we have replicated its SPLIT_OP record.
 
           // There are a few cases to handle here:
           // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
-          //    the tablet and also add it to retained_by_xcluster_ so that it stays hidden.
-          // 2. The tablet is hidden and part of retained_by_xcluster_. Keep this tablet hidden.
-          // 3. This tablet is hidden but not part of retained_by_xcluster_. This means that the
-          //    bg task DoProcessXClusterParentTabletDeletion processed it and found that all
-          //    streams for this tablet have replicated the split record. We can now delete it as
-          //    long as it isn't being kept by a snapshot schedule.
+          //    the tablet and also add it to retained_by_xcluster_ or retained_by_cdcsdk_ so that
+          //    it stays hidden.
+          // 2. The tablet is hidden and part of retained_by_xcluster_ or retained_by_cdcsdk_. Keep
+          //    this tablet hidden.
+          // 3. This tablet is hidden but not part of retained_by_xcluster_ or retained_by_cdcsdk_.
+          //    This means that the bg task DoProcessCDCParentTabletDeletion processed it and found
+          //    that all streams for this tablet have replicated the split record. We can now delete
+          //    it as long as it isn't being kept by a snapshot schedule.
           if (!tablets_data.back().lock->ListedAsHidden() ||
-              retained_by_xcluster_.contains(tablet->id())) {
+              retained_by_xcluster_.contains(tablet->id()) ||
+              retained_by_cdcsdk_.contains(tablet->id())) {
             tablets_data.back().hide_only = HideOnly(true);
           }
         }
@@ -9832,7 +9871,9 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
     // Also keep track of all tablets that were hid due to xCluster.
     for (const auto& tablet : marked_as_hidden) {
-      if (IsTableCdcProducer(*tablet->table()) ) {
+      bool is_table_cdc_producer = IsTableCdcProducer(*tablet->table());
+      bool is_table_part_of_cdcsdk = IsTablePartOfCDCSDK(*tablet->table());
+      if (is_table_cdc_producer || is_table_part_of_cdcsdk) {
         auto tablet_lock = tablet->LockForRead();
         const auto& children = tablet_lock->pb.split_tablet_ids();
         if (children.size() < 2) {
@@ -9846,7 +9887,12 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
                              : "",
           .split_tablets_ = {children.Get(0), children.Get(1)}
         };
-        retained_by_xcluster_.emplace(tablet->id(), info);
+        if (is_table_cdc_producer) {
+          retained_by_xcluster_.emplace(tablet->id(), info);
+        }
+        if (is_table_part_of_cdcsdk) {
+          retained_by_cdcsdk_.emplace(tablet->id(), info);
+        }
       }
     }
   }
@@ -10297,6 +10343,33 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   return SendCreateTabletRequests(deferred.needs_create_rpc);
 }
 
+Status CatalogManager::SelectProtegeForTablet(
+    TabletInfo* tablet, consensus::RaftConfigPB* config, CMGlobalLoadState* global_state) {
+  // Find the tserver with the lowest pending protege load.
+  const std::string* ts_uuid = nullptr;
+  uint32_t min_protege_load = std::numeric_limits<uint32_t>::max();
+  for (const RaftPeerPB& peer : config->peers()) {
+    const uint32_t protege_load =
+        VERIFY_RESULT(global_state->GetGlobalProtegeLoad(peer.permanent_uuid()));
+    if (protege_load < min_protege_load) {
+      ts_uuid = &peer.permanent_uuid();
+      min_protege_load = protege_load;
+    }
+  }
+
+  if (ts_uuid == nullptr) {
+    DCHECK_EQ(config->peers_size(), 0);
+    DCHECK_EQ(min_protege_load, std::numeric_limits<uint32_t>::max());
+    return STATUS(NotFound, "Unable to locate protege for tablet", tablet->tablet_id());
+  }
+
+  tablet->SetInitiaLeaderElectionProtege(*ts_uuid);
+
+  ++global_state->per_ts_protege_load_[*ts_uuid];
+
+  return Status::OK();
+}
+
 Status CatalogManager::SelectReplicasForTablet(
     const TSDescriptorVector& ts_descs, TabletInfo* tablet,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
@@ -10317,7 +10390,7 @@ Status CatalogManager::SelectReplicasForTablet(
           ->pb.mutable_committed_consensus_state();
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   cstate->set_current_term(kMinimumTerm);
-  consensus::RaftConfigPB *config = cstate->mutable_config();
+  consensus::RaftConfigPB* config = cstate->mutable_config();
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
@@ -10329,6 +10402,14 @@ Status CatalogManager::SelectReplicasForTablet(
     out << peer.permanent_uuid() << " ";
   }
   VLOG(0) << out.str();
+
+  // Select a protege for the initial leader election. The selected protege is stored in 'tablet'
+  // but is not used until the master starts the initial leader election. The master will start the
+  // initial leader after it receives a quorum of reports from bootstrapped replicas.
+  RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
+
+  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+            << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -10571,7 +10652,17 @@ void CatalogManager::StartElectionIfReady(
     return;
   }
 
-  const auto& protege = RandomElement(possible_leaders);
+  // The table creation path may store a protege hint in the tablet info.
+  std::string protege = tablet->InitiaLeaderElectionProtege();
+
+  // The 'protege' may not exist in 'possible_leaders'. In this scenario, select a random protege
+  // from the list of possible leaders. This can happen when:
+  //   1) The 'protege' is unconfigured (e.g. unset/empty).
+  //   2) The 'protege' corresponds to a tserver that is no longer serving a replica.
+  //   3) The 'protege' corresponds to a tserver that is not accepting leader load.
+  if (std::count(possible_leaders.begin(), possible_leaders.end(), protege) == 0) {
+    protege = RandomElement(possible_leaders);
+  }
 
   LOG_WITH_PREFIX(INFO)
       << "Starting election at " << tablet->tablet_id() << " in favor of " << protege;
@@ -10587,7 +10678,7 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     set<TabletServerId>* excluded,
     CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
   shared_ptr<TSDescriptor> found_ts;
-  for (const auto& sorted_load : per_table_state->sorted_load_) {
+  for (const auto& sorted_load : per_table_state->sorted_replica_load_) {
     // Don't consider a tserver that has already been considered for this tablet.
     if (excluded->count(sorted_load)) {
       continue;
@@ -10617,8 +10708,8 @@ void CatalogManager::SelectReplicas(
         ts_descs, already_selected_ts, per_table_state, global_state);
     InsertOrDie(already_selected_ts, ts->permanent_uuid());
     // Update the load state at global and table level.
-    per_table_state->per_ts_load_[ts->permanent_uuid()]++;
-    global_state->per_ts_load_[ts->permanent_uuid()]++;
+    per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;
+    global_state->per_ts_replica_load_[ts->permanent_uuid()]++;
     per_table_state->SortLoad();
 
     // Increment the number of pending replicas so that we take this selection into
@@ -11796,9 +11887,9 @@ void CatalogManager::InitializeTableLoadState(
     const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_load_[ts->permanent_uuid()];
+    state->per_ts_replica_load_[ts->permanent_uuid()];
     // Insert into the sorted list.
-    state->sorted_load_.emplace_back(ts->permanent_uuid());
+    state->sorted_replica_load_.emplace_back(ts->permanent_uuid());
   }
 
   auto table_info = GetTableInfo(table_id);
@@ -11813,7 +11904,8 @@ void CatalogManager::InitializeGlobalLoadState(
     TSDescriptorVector ts_descs, CMGlobalLoadState* state) {
   for (const auto& ts : ts_descs) {
     // Touch every tserver with 0 load.
-    state->per_ts_load_[ts->permanent_uuid()];
+    state->per_ts_replica_load_[ts->permanent_uuid()];
+    state->per_ts_protege_load_[ts->permanent_uuid()];
   }
 
   SharedLock l(mutex_);
@@ -11958,6 +12050,40 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
+Status CatalogManager::GetXClusterEstimatedDataLoss(
+    const GetXClusterEstimatedDataLossRequestPB* req,
+    GetXClusterEstimatedDataLossResponsePB* resp) {
+  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
+  if (!result) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+  }
+
+  const auto per_namespace_data_loss_map = result.get();
+  for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
+    auto entry = resp->add_namespace_data_loss();
+    entry->set_namespace_id(namespace_id);
+    entry->set_data_loss_us(data_loss);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetXClusterSafeTime(
+    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
+  const auto ns_safe_time_map =
+      xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap();
+  if (!ns_safe_time_map) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, ns_safe_time_map.status());
+  }
+
+  for (const auto& [namespace_id, safe_time] : ns_safe_time_map.get()) {
+    auto entry = resp->add_namespace_safe_times();
+    entry->set_namespace_id(namespace_id);
+    entry->set_safe_time_ht(safe_time.ToUint64());
+  }
+  return Status::OK();
+}
+
 AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     const string& ts_uuid) {
 
@@ -11982,6 +12108,38 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
   }
 
   return delete_replica_task_throttler_per_ts_.at(ts_uuid).get();
+}
+
+Status CatalogManager::ProcessTabletReplicationStatus(
+    const TabletReplicationStatusPB& replication_state) {
+  // Only implemented on the enterprise catalog manager.
+  return Status::OK();
+}
+
+Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation) {
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  operation->SetTablet(tablet);
+  tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
+  return Status::OK();
+}
+
+Status CatalogManager::PromoteAutoFlags(
+    const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
+  bool non_runtime_flags_promoted = false;
+  uint32_t new_config_version = 0;
+
+  const auto max_class = VERIFY_RESULT_PREPEND(
+      ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
+      "Invalid value provided for flag class");
+
+  RETURN_NOT_OK(master::PromoteAutoFlags(
+      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
+      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+
+  return Status::OK();
 }
 
 }  // namespace master

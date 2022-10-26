@@ -13,13 +13,11 @@
 
 package org.yb.pgsql;
 
-import com.google.common.collect.Lists;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
@@ -29,11 +27,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.Calendar;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -3205,56 +3199,5 @@ public class TestPgAuthorization extends BasePgSQLTest {
         statement2.execute("DROP TABLE other_table");
       });
     }
-  }
-
-  private static void withRoles(
-      Statement statement,
-      Set<String> roles,
-      ThrowingRunnable runnable
-  ) throws Exception {
-    for (String role : roles) {
-      withRole(statement, role, runnable);
-    }
-  }
-
-  private static void withRole(
-      Statement statement,
-      String role,
-      ThrowingRunnable runnable
-  ) throws Exception {
-    String sessionUser = getSessionUser(statement);
-
-    statement.execute(String.format("SET SESSION AUTHORIZATION %s", role));
-    runnable.run();
-    statement.execute(String.format("SET SESSION AUTHORIZATION %s", sessionUser));
-  }
-
-  private static class RoleSet extends TreeSet<String> {
-    RoleSet(String... roles) {
-      super();
-      addAll(Lists.newArrayList(roles));
-    }
-
-    RoleSet(Set<String> roles) {
-      super(roles);
-    }
-
-    RoleSet excluding(String... roles) {
-      RoleSet newSet = new RoleSet(this);
-      newSet.removeAll(Lists.newArrayList(roles));
-      return newSet;
-    }
-  }
-
-  private static String getSessionUser(Statement statement) throws Exception {
-    ResultSet resultSet = statement.executeQuery("SELECT SESSION_USER");
-    resultSet.next();
-    return resultSet.getString(1);
-  }
-
-  private static String getCurrentUser(Statement statement) throws Exception {
-    ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
-    resultSet.next();
-    return resultSet.getString(1);
   }
 }

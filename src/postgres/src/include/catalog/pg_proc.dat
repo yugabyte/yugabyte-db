@@ -5182,7 +5182,7 @@
   proargmodes => '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn}',
   prosrc => 'pg_stat_get_activity' },
-{ oid => '8042',
+{ oid => '8041',
   descr => 'statistics: terminated queries for the given database',
   proname => 'yb_pg_stat_get_queries', prorows => '100', proisstrict => 'f',
   proretset => 't', provolatile => 's', proparallel => 'r',
@@ -10299,9 +10299,6 @@
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
   proargmodes => '{v}', prosrc => 'yb_hash_code' },
 
-# Yugabyte system calls use OIDS starting from YB_MIN_UNUSED_OID in "catalog.h".
-# Run `src/include/catalog/unused_oids` to seek available OID values.
-
 { oid => '8013', descr => 'system call getrusage from the current session',
   proname => 'yb_getrusage', provolatile => 'v',
   prorettype => 'record', proargtypes => '',
@@ -10366,4 +10363,19 @@
   proargmodes => '{i,o}',
   proargnames => '{table_oid,range_split_clause}',
   prosrc => 'yb_get_range_split_clause' },
+
+{ oid => '8042', descr => 'get the region of the currently connected node',
+  proname => 'yb_server_region', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_region' },
+
+{ oid => '8043', descr => 'get the cloud of the currently connected node',
+  proname => 'yb_server_cloud', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_cloud' },
+
+{ oid => '8044', descr => 'get the zone of the currently connected node',
+  proname => 'yb_server_zone', provolatile => 's',
+  prorettype => 'varchar', proargtypes => '',
+  prosrc => 'yb_server_zone' },
 ]

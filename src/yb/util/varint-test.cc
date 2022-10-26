@@ -16,6 +16,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"
 
+using std::string;
+
 namespace yb {
 namespace util {
 

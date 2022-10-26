@@ -33,15 +33,13 @@ type: docs
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
 
-## Quick start
-
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../../develop/build-apps/java/ysql-jdbc) in the Quick Start section.
-
 ## Download the driver dependency
 
-PostgreSQL JDBC Driver is available as a Maven dependency, and you can download the driver by adding the following dependency into the Java project.
+PostgreSQL JDBC Driver is available as a maven dependency, and you can download the driver by adding the following dependency into the Java project.
 
 ### Maven dependency
+
+To get the driver from Maven, add the following dependencies to the Maven project:
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
@@ -53,6 +51,8 @@ PostgreSQL JDBC Driver is available as a Maven dependency, and you can download 
 ```
 
 ### Gradle dependency
+
+To get the driver, add the following dependencies to the Gradle project:
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
@@ -210,10 +210,10 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 | SSL Mode | Client Driver Behavior | YugabyteDB Support |
 | :------- | :--------------------- | :----------------- |
-| disable  | SSL Disabled | supported
+| disable  | SSL Disabled | Supported
 | allow    | SSL enabled only if server requires SSL connection | Not supported
 | prefer | SSL enabled only if server requires SSL connection | Not supported
-| require | SSL enabled for data encryption and Server identity is not verified | supported
+| require | SSL enabled for data encryption and Server identity is not verified | Supported
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
@@ -221,35 +221,116 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 YugabyteDB cluster can be configured to authenticate the identity of the JDBC clients connecting to the cluster. In such cases, server certificate (`yugabytedb.crt`) and server key (`yugabytedb.key`) are required along with root certificate (`ca.crt`).
 
-Steps for Configuring the JDBC Client for Server authentication,
+#### Set up SSL certificates for Java applications
+
+Steps for configuring the JDBC client for server authentication are as follows:
 
 1. Download the certificate (`yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`) files (see [Copy configuration files to the nodes](../../../../secure/tls-encryption/server-certificates/#copy-configuration-files-to-the-nodes)).
 
-2. If you do not have access to the system `cacerts` Java truststore you can create your own truststore.
+1. If you do not have access to the system `cacerts` Java truststore you can create your own truststore.
 
     ```sh
     $ keytool -keystore ybtruststore -alias ybtruststore -import -file ca.crt
     ```
 
-3. Verify the `yugabytedb.crt` client certificate with `ybtruststore`.
+    Enter a password when you're prompted to enter one for your keystore.
+
+1. Export the truststore. In the following command, replace `<YOURSTOREPASS>` with your keystore password.
 
     ```sh
-    $ openssl verify -CAfile ca.crt -purpose sslclient tlstest.crt
+    $ keytool -exportcert -keystore ybtruststore -alias ybtruststore -storepass <YOURSTOREPASS> -file ybtruststore.crt
     ```
 
-4. Convert the client certificate to DER format.
+1. Convert and export to PEM format with `ybtruststore.pem`.
+
+   ```sh
+   $ openssl x509 -inform der -in ybtruststore.crt -out ybtruststore.pem
+   ```
+
+1. Verify the `yugabytedb.crt` client certificate with `ybtruststore`.
+
+    ```sh
+    $ openssl verify -CAfile ybtruststore.pem -purpose sslclient yugabytedb.crt
+    ```
+
+1. Convert the client certificate to DER format.
 
     ```sh
     $ openssl x509 –in yugabytedb.crt -out yugabytedb.crt.der -outform der
     ```
 
-5. Convert the client key to pk8 format.
+1. Convert the client key to pk8 format.
 
     ```sh
     $ openssl pkcs8 -topk8 -inform PEM -in yugabytedb.key -outform DER -nocrypt -out yugabytedb.key.pk8
     ```
 
-Create an `ssl` resource directory in your java application and copy over all the certificates. Update the connection string used by `DriverManager.getConnection` to include the ssl certificates.
+#### SSL certificates for a cluster in Kubernetes (Optional)
+
+Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
+
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../../quick-start/kubernetes/).
+
+   ```sh
+   $ kubectl create namespace yb-demo
+   $ helm install yb-demo yugabytedb/yugabyte \
+   --version {{<yb-version version="preview" format="short">}} \
+   --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+   resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+   replicas.master=1,replicas.tserver=1,tls.enabled=true --namespace yb-demo
+   ```
+
+1. Verify that SSL is enabled using `ysqlsh`.
+
+   ```sh
+    $ ysqlsh
+    ```
+
+    ```output
+    ysqlsh (11.2-YB-2.9.0.0-b0)
+    SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+    Type "help" for help.
+    ```
+
+1. Check for the key and certificate files in yb-tserver.
+
+   ```sh
+   $ kubectl exec -n yb-demo -it yb-tserver-0 -- bash
+   [root@yb-tserver-0 cores]# ls -al /root/.yugabytedb/
+   ```
+
+   ```output
+   total 4
+   drwxrwxrwt 3 root root  140 Oct 22 06:04 .
+   dr-xr-x--- 1 root root 4096 Oct 22 06:19 ..
+   drwxr-xr-x 2 root root  100 Oct 22 06:04 ..2021_10_22_06_04_46.596961191
+   lrwxrwxrwx 1 root root   31 Oct 22 06:04 ..data -> ..2021_10_22_06_04_46.596961191
+   lrwxrwxrwx 1 root root   15 Oct 22 06:04 root.crt -> ..data/root.crt
+   lrwxrwxrwx 1 root root   21 Oct 22 06:04 yugabytedb.crt -> ..data/yugabytedb.crt
+   lrwxrwxrwx 1 root root   21 Oct 22 06:04 yugabytedb.key -> ..data/yugabytedb.key
+   ```
+
+1. Download these files to your system and proceed to step 2 under [Set up SSL certificates](#set-up-ssl-certificates-for-java-applications).
+
+   ```sh
+   % mkdir YBClusterCerts; cd YBClusterCerts
+   % kubectl exec -n "yb-demo" "yb-tserver-0" -- tar -C "/root/.yugabytedb" -cf - . |tar xf -
+   Defaulted container "yb-tserver" out of: yb-tserver, yb-cleanup
+   % ls
+   root.crt yugabytedb.crt yugabytedb.key
+   ```
+
+#### Copy SSL certificates
+
+1. Create an `ssl` resource directory in your java application using the following command:
+
+   ```sh
+   $ mkdir -p src/main/resources/ssl
+   ```
+
+1. Copy the `yugabytedb.crt.der` and `yugabytedb.key.pk8` certificates into the `ssl` directory.
+
+Update the connection string used by `DriverManager.getConnection` to include the ssl certificates.
 
 The following is an example JDBC URL for connecting to a secure YugabyteDB cluster:
 

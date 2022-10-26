@@ -43,6 +43,8 @@
 
 #include "yb/util/test_macros.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 class TablePropertiesTest : public RocksDBTest,

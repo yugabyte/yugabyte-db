@@ -201,9 +201,19 @@ public class Commissioner {
     responseJson.put("status", taskInfo.getTaskState().toString());
     // Get the percentage of subtasks that ran and completed
     responseJson.put("percent", taskInfo.getPercentCompleted());
-    // Get subtask groups
-    UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
+    String correlationId = task.getCorrelationId();
+    if (!Strings.isNullOrEmpty(correlationId)) responseJson.put("correlationId", correlationId);
+
+    // Get subtask groups and add other details to it if applicable.
+    UserTaskDetails userTaskDetails;
+    RunnableTask runnable = runningTasks.get(taskInfo.getTaskUUID());
+    if (runnable != null) {
+      userTaskDetails = taskInfo.getUserTaskDetails(runnable.getTaskCache());
+    } else {
+      userTaskDetails = taskInfo.getUserTaskDetails();
+    }
     responseJson.set("details", Json.toJson(userTaskDetails));
+
     // Set abortable if eligible.
     responseJson.put("abortable", false);
     if (taskExecutor.isTaskRunning(task.getTaskUUID())) {

@@ -34,6 +34,7 @@
 
 #include <boost/container/static_vector.hpp>
 
+#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -350,6 +351,14 @@ rocksdb::UserFrontierPtr MemTableFrontierFromDb(
   return db->GetMutableMemTableFrontier(type);
 }
 
+
+Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
+  if (time) {
+    return time;
+  }
+  return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
+}
+
 } // namespace
 
 class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
@@ -488,6 +497,10 @@ Tablet::Tablet(const TabletInitData& data)
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
   external_txn_intents_state_ = std::make_unique<docdb::ExternalTxnIntentsState>();
+
+  if (is_sys_catalog_) {
+    auto_flags_manager_ = data.auto_flags_manager;
+  }
 }
 
 Tablet::~Tablet() {
@@ -1119,7 +1132,7 @@ Status Tablet::CompleteShutdownRocksDBs(
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection,
-    const ReadHybridTime read_hybrid_time,
+    const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
     AllowBootstrappingState allow_bootstrapping_state,
@@ -1407,7 +1420,7 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
 
-  ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), deadline, read_time);
   RETURN_NOT_OK(doc_op.Execute());
@@ -1534,8 +1547,7 @@ Status Tablet::HandlePgsqlReadRequest(
   TRACE(LogPrefix());
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
-  // TODO(neil) Work on metrics for PGSQL.
-  // ScopedTabletMetricsTracker metrics_tracker(metrics_->pgsql_read_latency);
+  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
@@ -1881,9 +1893,9 @@ Status Tablet::GetIntents(
   return Status::OK();
 }
 
-Result<HybridTime> Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
+HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
-  return SafeTime(RequireLease::kFalse, min_allowed, deadline);
+  return mvcc_.SafeTimeForFollower(min_allowed, deadline);
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
@@ -3166,7 +3178,7 @@ Status Tablet::TEST_SwitchMemtable() {
 Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   if (require_lease == RequireLease::kFalse) {
-    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+    return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
   }
   FixedHybridTimeLease ht_lease;
   if (ht_lease_provider_) {
@@ -3175,7 +3187,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     if (!ht_lease_result.ok()) {
       if (require_lease == RequireLease::kFallbackToFollower &&
           ht_lease_result.status().IsIllegalState()) {
-        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+        return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
       }
       return ht_lease_result.status();
     }
@@ -3193,7 +3205,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
         InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
         min_allowed, ht_lease);
   }
-  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
+  return CheckSafeTime(mvcc_.SafeTime(min_allowed, deadline, ht_lease), min_allowed);
 }
 
 ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
@@ -3931,6 +3943,19 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
   return result;
 }
 
+Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
+  if (!is_sys_catalog()) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags config change ignored on non-sys_catalog tablet";
+    return Status::OK();
+  }
+
+  if (!auto_flags_manager_) {
+    LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags manager not found";
+    return STATUS(InternalError, "AutoFlags manager not found");
+  }
+
+  return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+}
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(

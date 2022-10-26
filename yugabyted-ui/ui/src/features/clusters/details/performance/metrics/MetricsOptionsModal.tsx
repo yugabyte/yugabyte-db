@@ -6,7 +6,7 @@ import * as Yup from 'yup';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation } from 'react-i18next';
-import { useSegment, YBCheckboxField, YBModal } from '@app/components';
+import { YBCheckboxField, YBModal } from '@app/components';
 // import { useRuntimeConfig } from '@app/helpers';
 
 // SS: temp limitation for max number of metrics visible at a time, exceeding it could crash the apiserver; CLOUDGA-3613
@@ -52,7 +52,6 @@ export const MetricsOptionsModal: FC<MetricsOptionsModalProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
   // const { params } = useRouteMatch<App.RouteParams>();
-  const { segmentTrack } = useSegment();
 
   const getDefaultValues = () => {
     const values: Record<string, boolean> = {
@@ -208,7 +207,6 @@ export const MetricsOptionsModal: FC<MetricsOptionsModalProps> = ({
   }, [metricsQueryParams?.showGraph, setValue]);
 
   const applyMetricsOptions = handleSubmit((formData) => {
-    segmentTrack('Performance page - Changed options');
     onChange(Object.keys(formData).filter((key) => formData[key]));
     setOriginalValues(formData);
     setVisibility(false);

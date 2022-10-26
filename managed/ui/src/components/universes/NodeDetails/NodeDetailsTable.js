@@ -5,7 +5,6 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import pluralize from 'pluralize';
 
-import { YBLoadingCircleIcon } from '../../common/indicators';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   getPrimaryCluster,
@@ -30,7 +29,6 @@ export default class NodeDetailsTable extends Component {
       currentUniverse,
       providers
     } = this.props;
-    const loadingIcon = <YBLoadingCircleIcon size="inline" />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
@@ -49,32 +47,25 @@ export default class NodeDetailsTable extends Component {
         isMaster ? row.masterPort : row.tserverPort
       );
       const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
-      if (!row.isLoading) {
-        return (
-          <div>
-            {isAlive ? successIcon : warningIcon}&nbsp;
-            {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-              <a
-                href={href}
-                onClick={setCookiesFromLocalStorage}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {isMaster ? 'Master' : 'TServer'}
-              </a>
-            ) : (
-              <span>{isMaster ? 'Master' : 'TServer'}</span>
-            )}
-            {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
-          </div>
-        );
-      } else {
-        return (
-          <div>
-            {loadingIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
-          </div>
-        );
-      }
+      return (
+        <div>
+          {isAlive ? successIcon : warningIcon}&nbsp;
+          {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
+            <a
+              href={href}
+              onClick={setCookiesFromLocalStorage}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {isMaster ? 'Master' : 'TServer'}
+            </a>
+          ) : (
+            <span>{isMaster ? 'Master' : 'TServer'}</span>
+          )}
+          {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
+        </div>
+      );
+
     };
 
     const getIpPortLinks = (cell, row) => {

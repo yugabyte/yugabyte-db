@@ -59,6 +59,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/cdc_split_driver.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -71,7 +72,6 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/xcluster_split_driver.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
@@ -97,6 +97,8 @@ namespace yb {
 
 class Schema;
 class ThreadPool;
+class AddTransactionStatusTabletRequestPB;
+class AddTransactionStatusTabletResponsePB;
 
 template<class T>
 class AtomicGauge;
@@ -140,7 +142,7 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // Map[NamespaceId]:xClusterSafeTime
 typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
@@ -154,12 +156,11 @@ constexpr int32_t kInvalidClusterConfigVersion = 0;
 // the state of each tablet on a given tablet-server.
 //
 // Thread-safe.
-class CatalogManager :
-    public tserver::TabletPeerLookupIf,
-    public TabletSplitCandidateFilterIf,
-    public TabletSplitDriverIf,
-    public CatalogManagerIf,
-    public XClusterSplitDriverIf {
+class CatalogManager : public tserver::TabletPeerLookupIf,
+                       public TabletSplitCandidateFilterIf,
+                       public TabletSplitDriverIf,
+                       public CatalogManagerIf,
+                       public CDCSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -220,7 +221,7 @@ class CatalogManager :
 
   // Create a transaction status table with the given name.
   Status CreateTransactionStatusTableInternal(rpc::RpcContext* rpc,
-                                                      const string& table_name,
+                                                      const std::string& table_name,
                                                       const TablespaceId* tablespace_id,
                                                       const ReplicationInfoPB* replication_info);
 
@@ -519,13 +520,17 @@ class CatalogManager :
 
   // Delete CDC streams for a table.
   virtual Status DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
   // Delete CDC streams metadata for a table.
   virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
-  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+  virtual Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids)
       EXCLUDES(mutex_);
+
+  // Add new table metadata to all CDCSDK streams of required namespace.
+  virtual Status AddNewTableToCDCDKStreamsMetadata(
+      const TableId& table_id, const NamespaceId& ns_id) EXCLUDES(mutex_);
 
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
@@ -536,7 +541,7 @@ class CatalogManager :
     return Status::OK();
   }
 
-  Status UpdateXClusterProducerOnTabletSplit(
+  Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override {
     // Default value.
     return Status::OK();
@@ -555,6 +560,8 @@ class CatalogManager :
   Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
   Status GetYsqlAllDBCatalogVersions(DbOidToCatalogVersionMap* versions) override;
+  Status GetYsqlDBCatalogVersion(
+      uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
 
   Status InitializeTransactionTablesConfig(int64_t term);
 
@@ -720,7 +727,7 @@ class CatalogManager :
   // must be initialized before calling this method.
   PeerRole Role() const;
 
-  Status PeerStateDump(const vector<consensus::RaftPeerPB>& masters_raft,
+  Status PeerStateDump(const std::vector<consensus::RaftPeerPB>& masters_raft,
                                const DumpMasterStateRequestPB* req,
                                DumpMasterStateResponsePB* resp);
 
@@ -784,7 +791,7 @@ class CatalogManager :
                                            AreLeadersOnPreferredOnlyResponsePB* resp);
 
   // Return the placement uuid of the primary cluster containing this master.
-  Result<string> placement_uuid() const;
+  Result<std::string> placement_uuid() const;
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
@@ -846,7 +853,7 @@ class CatalogManager :
       const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
-      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids)
+      const scoped_refptr<NamespaceInfo>& namespace_info, std::vector<uint32_t>* type_oids)
       REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
@@ -956,13 +963,16 @@ class CatalogManager :
       const std::string& ts_uuid,
       const TabletDriveStorageMetadataPB& storage_metadata);
 
+  virtual Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) EXCLUDES(mutex_);
+
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
   Status ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const override;
 
-  Status GetAllAffinitizedZones(vector<AffinitizedZonesSet>* affinitized_zones) override;
-  Result<vector<BlacklistSet>> GetAffinitizedZoneSet();
+  Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
+  Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
   std::vector<std::string> GetMasterAddresses();
@@ -980,6 +990,17 @@ class CatalogManager :
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, XClusterNamespaceToSafeTimeMap safe_time_map);
+
+  Status GetXClusterEstimatedDataLoss(
+      const GetXClusterEstimatedDataLossRequestPB* req,
+      GetXClusterEstimatedDataLossResponsePB* resp);
+
+  Status GetXClusterSafeTime(
+      const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
+
+  Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
+
+  Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -1094,13 +1115,13 @@ class CatalogManager :
                                      const PartitionSchema& partition_schema,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
-                                     const vector<Partition>& partitions,
+                                     const std::vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
                                      TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
-  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+  Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
@@ -1216,6 +1237,11 @@ class CatalogManager :
       const TSDescriptorVector& ts_descs,
       std::set<TabletServerId>* excluded,
       CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
+
+  // Select and assign a tablet server as the protege 'config'. This protege is selected from the
+  // set of tservers in 'global_state' that have the lowest current protege load.
+  Status SelectProtegeForTablet(
+      TabletInfo* tablet, consensus::RaftConfigPB *config, CMGlobalLoadState* global_state);
 
   // Select N Replicas from online tablet servers (as specified by
   // 'ts_descs') for the specified tablet and populate the consensus configuration
@@ -1360,20 +1386,20 @@ class CatalogManager :
   // following the protocol's default mechanism.
   void SendLeaderStepDownRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid, bool should_remove,
-      const string& new_leader_ts_uuid = "");
+      const std::string& change_config_ts_uuid, bool should_remove,
+      const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
   void SendRemoveServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
-      const string& change_config_ts_uuid);
+      const std::string& change_config_ts_uuid);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
       const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
-      const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid);
+      const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid);
 
   void GetPendingServerTasksUnlocked(const TableId &table_uuid,
                                      TabletToTabletServerMap *add_replica_tasks_map,
@@ -1516,6 +1542,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsTablePartOfCDCSDK(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+    // Default value.
+    return false;
+  }
+
   virtual Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
       const {
     return Status::OK();
@@ -1590,11 +1621,13 @@ class CatalogManager :
   };
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_xcluster_
       GUARDED_BY(mutex_);
+  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
+      GUARDED_BY(mutex_);
 
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
-  rpc::ScheduledTaskTracker xcluster_parent_tablet_deletion_task_;
-  std::atomic<bool> xcluster_parent_tablet_deletion_task_running_{false};
+  std::atomic<bool> cdc_parent_tablet_deletion_task_running_{false};
+  rpc::ScheduledTaskTracker cdc_parent_tablet_deletion_task_;
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);

@@ -77,6 +77,9 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
+using std::make_shared;
+using std::string;
+using std::vector;
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
@@ -300,8 +303,6 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 }
 
 } // namespace
-
-using std::make_shared;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -975,6 +976,27 @@ Status PgApiImpl::SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_c
   return STATUS(InvalidArgument, "Invalid statement handle");
 }
 
+Status PgApiImpl::SetDBCatalogCacheVersion(PgStatement *handle,
+                                           uint32_t db_oid,
+                                           uint64_t catalog_cache_version) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_SELECT:
+    case StmtOp::STMT_INSERT:
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      down_cast<PgDml *>(handle)->SetDBCatalogCacheVersion(db_oid, catalog_cache_version);
+      return Status::OK();
+    default:
+      break;
+  }
+
+  return STATUS(InvalidArgument, "Invalid statement handle");
+}
+
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_session_->GetTableDiskSize(table_oid);
 }
@@ -1612,8 +1634,29 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion() {
   return pg_session_->GetSharedCatalogVersion();
 }
 
+Result<uint64_t> PgApiImpl::GetSharedDBCatalogVersion(int db_oid_shm_index) {
+  return pg_session_->GetSharedDBCatalogVersion(db_oid_shm_index);
+}
+
+Result<tserver::PgGetTserverCatalogVersionInfoResponsePB>
+PgApiImpl::GetTserverCatalogVersionInfo() {
+  return pg_session_->GetTserverCatalogVersionInfo();
+}
+
 Result<uint64_t> PgApiImpl::GetSharedAuthKey() {
   return pg_session_->GetSharedAuthKey();
+}
+
+void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
+                                        uint64_t* reads, uint64_t* read_wait,
+                                        uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
+  down_cast<PgDmlRead*>(handle)->GetAndResetReadRpcStats(reads, read_wait,
+                                                         tbl_reads, tbl_read_wait);
+}
+
+void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
+                                                  uint64_t* wait_time) {
+  pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
 }
 
 // Transaction Control -----------------------------------------------------------------------------

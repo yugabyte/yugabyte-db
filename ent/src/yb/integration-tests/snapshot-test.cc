@@ -69,6 +69,7 @@ using std::unique_ptr;
 using std::tuple;
 using std::set;
 using std::vector;
+using std::string;
 
 using google::protobuf::RepeatedPtrField;
 

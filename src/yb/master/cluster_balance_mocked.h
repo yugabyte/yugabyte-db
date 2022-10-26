@@ -36,7 +36,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info,
-      vector<AffinitizedZonesSet>* affinitized_zones) const override {
+      std::vector<AffinitizedZonesSet>* affinitized_zones) const override {
     *affinitized_zones = affinitized_zones_;
   }
 
@@ -101,7 +101,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(nullptr, nullptr);
   }
 
-  void SetOptions(ReplicaType type, const string& placement_uuid) {
+  void SetOptions(ReplicaType type, const std::string& placement_uuid) {
     state_->options_->type = type;
     state_->options_->placement_uuid = placement_uuid;
   }
@@ -109,15 +109,15 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   void ResetOptions() { SetOptions(LIVE, ""); }
 
   TSDescriptorVector ts_descs_;
-  vector<AffinitizedZonesSet> affinitized_zones_;
+  std::vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
   ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   BlacklistPB leader_blacklist_;
-  vector<TabletId> pending_add_replica_tasks_;
-  vector<TabletId> pending_remove_replica_tasks_;
-  vector<TabletId> pending_stepdown_leader_tasks_;
+  std::vector<TabletId> pending_add_replica_tasks_;
+  std::vector<TabletId> pending_remove_replica_tasks_;
+  std::vector<TabletId> pending_stepdown_leader_tasks_;
 
   friend class TestLoadBalancerEnterprise;
 };

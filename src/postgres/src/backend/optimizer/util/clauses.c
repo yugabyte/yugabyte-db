@@ -5415,3 +5415,37 @@ tlist_matches_coltypelist(List *tlist, List *coltypelist)
 
 	return true;
 }
+
+typedef struct replace_varnos_context
+{
+	Index oldvarno;
+	Index newvarno;
+} replace_varnos_context;
+
+static Node *yb_copy_replace_varnos_mutator(Node *node,
+							   replace_varnos_context *context)
+{
+	if (IsA(node, Var))
+	{
+		Var *var = (Var *) node;
+		if (var->varno == context->oldvarno)
+		{
+			Var *newvar = copyObject(var);
+			newvar->varno = context->newvarno;
+			return (Node *) newvar;
+		}
+	}
+
+	return expression_tree_mutator(node,
+								   yb_copy_replace_varnos_mutator,
+								   (void *) context);
+}
+
+Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno)
+{
+	replace_varnos_context ctx;
+	ctx.oldvarno = oldvarno;
+	ctx.newvarno = newvarno;
+	return (Expr *) yb_copy_replace_varnos_mutator((Node *) expr,
+								   			  	   (void *) &ctx);
+}

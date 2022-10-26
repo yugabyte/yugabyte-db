@@ -666,13 +666,13 @@ For information on other CDC configuration flags, see [YB-TServer's CDC flags](.
 
 ##### --cdc_state_table_num_tablets
 
-The number of tablets to use when creating the CDC state table.
+The number of tablets to use when creating the CDC state table. Used in both xCluster and CDCSDK.
 
 Default: `0` (Use the same default number of tablets as for regular tables.)
 
 ##### --cdc_wal_retention_time_secs
 
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. If you change the value, make sure that the corresponding flag is updated with the same value on YB-TServer.
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `14400` (4 hours)
 

@@ -17,7 +17,9 @@
 #include <string>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/util/compare_util.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 
@@ -33,6 +35,37 @@ constexpr IntraTxnWriteId kMaxWriteId = std::numeric_limits<IntraTxnWriteId>::ma
 // This could happen in the degenerate case when all three VarInts in encoded representation of a
 // DocHybridTime take 10 bytes (the maximum length for a VarInt-encoded int64_t).
 constexpr size_t kMaxBytesPerEncodedHybridTime = 30;
+
+class DocHybridTime;
+
+class EncodedDocHybridTime {
+ public:
+  EncodedDocHybridTime() : size_(0) {}
+  explicit EncodedDocHybridTime(const DocHybridTime& input);
+  EncodedDocHybridTime(HybridTime ht, IntraTxnWriteId write_id);
+
+  void Assign(const Slice& input);
+
+  Slice AsSlice() const {
+    return Slice(buffer_.data(), size_);
+  }
+
+  Result<DocHybridTime> Decode() const;
+
+  std::string ToString() const;
+
+ private:
+  std::array<char, kMaxBytesPerEncodedHybridTime> buffer_;
+  uint8_t size_;
+};
+
+inline std::strong_ordering operator<=>(
+    const EncodedDocHybridTime& lhs, const EncodedDocHybridTime& rhs) {
+  // Doc hybrid time is encoded in the reverse order.
+  // If doc_ht1 < doc_ht2, then doc_ht1.EncodedInDocDbFormat() > doc_ht2.EncodedInDocDbFormat().
+  // So to match the original order of doc hybrid time, we use reversed order here.
+  return rhs.AsSlice() <=> lhs.AsSlice();
+}
 
 // This is a point in time before any YugaByte clusters are in production that has a round enough
 // decimal representation when expressed as microseconds since the UNIX epoch.
@@ -90,6 +123,11 @@ class DocHybridTime {
   static Result<DocHybridTime> FullyDecodeFrom(const Slice& encoded);
   static Result<DocHybridTime> DecodeFromEnd(Slice encoded_key_with_ht);
 
+  // Since this method is frequently used in performance critical parts of the code.
+  // And EncodedDocHybridTime merely big struct, it is more effective to return
+  // Status and value separately, instead of wrapping it with Result.
+  static Status EncodedFromEnd(const Slice& slice, EncodedDocHybridTime* out);
+
   // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
   static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);
 
@@ -113,28 +151,20 @@ class DocHybridTime {
 
   std::string ToString() const;
 
-  // Stores the encoded size of the DocHybridTime from the end of the given DocDB-encoded
-  // key in *encoded_ht_size, and verifies that it is within the allowed limits.
-  static Status CheckAndGetEncodedSize(const Slice& encoded_key, size_t* encoded_ht_size);
+  // Returns the encoded size of the DocHybridTime from the end of the given DocDB-encoded.
+  // Returns failure in case of corruption.
+  static Result<size_t> GetEncodedSize(const Slice& encoded_key);
 
   bool is_valid() const { return hybrid_time_.is_valid(); }
 
   static std::string DebugSliceToString(Slice input);
 
+  static const EncodedDocHybridTime& EncodedMin();
+
  private:
   HybridTime hybrid_time_;
 
   IntraTxnWriteId write_id_ = kDefaultWriteId;
-
-  // Verifies that the given size of an encoded DocHybridTime (encoded_ht_size) is at least
-  // 1 and is strictly less than the size of the whole key (encoded_key_size). The latter strict
-  // inequality is because we must also leave room for a ValueType::kHybridTime. In practice,
-  // the preceding DocKey will also take a non-zero number of bytes.
-  static Status CheckEncodedSize(size_t encoded_ht_size, size_t encoded_key_size);
-
-  // Retrieves the size of the encode DocHybridTime from the end of the given DocDB-encoded
-  // RocksDB key. There is no error checking here. This returns 0 if the slice is empty.
-  static int GetEncodedSize(const Slice& encoded_key);
 };
 
 inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {

@@ -90,7 +90,6 @@ int main() {
 #include "yb/rocksdb/db/filename.h"
 
 using GFLAGS::ParseCommandLineFlags;
-using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
 DEFINE_int32(key_size, 10, "Key size");
