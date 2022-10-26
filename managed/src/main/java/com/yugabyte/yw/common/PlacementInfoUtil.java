@@ -1355,7 +1355,6 @@ public class PlacementInfoUtil {
       Cluster cluster, Collection<NodeDetails> nodes, boolean resetConfig) {
     PlacementInfo placementInfo = cluster.placementInfo;
     CloudType cloudType = cluster.userIntent.providerType;
-    String instanceType = cluster.userIntent.instanceType;
     // For on-prem we could choose nodes from other AZs if not enough provisioned.
     if (cloudType != CloudType.onprem) {
       Map<UUID, Integer> placementAZToNodeMap = getAzUuidToNumNodes(placementInfo);
@@ -1369,6 +1368,7 @@ public class PlacementInfoUtil {
 
     for (NodeDetails node : nodes) {
       String nodeType = node.cloudInfo.instance_type;
+      String instanceType = cluster.userIntent.getInstanceTypeForNode(node);
       if (node.state != NodeDetails.NodeState.ToBeRemoved && !instanceType.equals(nodeType)) {
         String msg =
             "Instance type "
