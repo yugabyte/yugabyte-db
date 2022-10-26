@@ -1446,6 +1446,31 @@ SchemaVersion RaftGroupMetadata::schema_version(
   return table_info->schema_version;
 }
 
+Result<SchemaVersion> RaftGroupMetadata::schema_version(ColocationId colocation_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  auto colocation_it = kv_store_.colocation_to_table.find(colocation_id);
+  if (colocation_it == kv_store_.colocation_to_table.end()) {
+    return STATUS_FORMAT(NotFound, "Cannot find table info for colocation: $0", colocation_id);
+  }
+  return colocation_it->second->schema_version;
+}
+
+Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (cotable_id.IsNil()) {
+    // Return the parent table schema version
+    return schema_version();
+  }
+
+  auto res = GetTableInfo(cotable_id.ToHexString());
+  if (!res.ok()) {
+    return STATUS_FORMAT(
+        NotFound, "Cannot find table info for: $0, raft group id: $1", cotable_id, raft_group_id_);
+  }
+
+  return res->get()->schema_version;
+}
+
 const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   static const std::string kEmptyString = "";

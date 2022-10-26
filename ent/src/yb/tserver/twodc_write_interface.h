@@ -36,6 +36,9 @@ struct ProcessRecordInfo {
   // Only used for intent records.
   bool enable_replicate_transaction_status_table;
   TabletId status_tablet_id;
+
+  // last compatible consumer schema version
+  SchemaVersion last_compatible_consumer_schema_version;
 };
 
 class TwoDCWriteInterface {
