@@ -57,6 +57,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
@@ -91,6 +92,7 @@
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 
@@ -151,6 +153,9 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+
+DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero")
+
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);
 
@@ -173,8 +178,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0),
-      tablet_server_service_(nullptr) {
+      master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
@@ -333,7 +337,11 @@ Status TabletServer::Init() {
 
   // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
   RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
-  shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+  if (PREDICT_FALSE(FLAGS_TEST_pg_auth_key != 0)) {
+    shared_object().SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
+  } else {
+    shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
+  }
 
   return Status::OK();
 }
@@ -349,6 +357,11 @@ Status TabletServer::InitAutoFlags() {
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
+}
+
+Status TabletServer::SetAutoFlagConfig(const AutoFlagsConfigPB new_config) {
+  return auto_flags_manager_->LoadFromConfig(
+      std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
 }
 
 AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
@@ -398,11 +411,11 @@ void TabletServer::AutoInitServiceFlags() {
 }
 
 Status TabletServer::RegisterServices() {
-  tablet_server_service_ = new TabletServiceImpl(this);
-  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service_;
-  std::unique_ptr<ServiceIf> ts_service(tablet_server_service_);
+  auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
+  tablet_server_service_ = tablet_server_service;
+  LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(ts_service)));
+                                                     std::move(tablet_server_service)));
 
   std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
@@ -424,15 +437,18 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
-
+  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
+      this /* tablet_server */,
+      tablet_manager_->client_future(),
+      clock(),
+      std::bind(&TabletServer::TransactionPool, this),
+      metric_entity(),
+      &messenger()->scheduler(),
+      &xcluster_safe_time_map_);
+  pg_client_service_ = pg_client_service;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length,
-      std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(),
-          clock(),
-          std::bind(&TabletServer::TransactionPool, this),
-          metric_entity(),
-          &messenger()->scheduler())));
+      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   return Status::OK();
 }
@@ -470,11 +486,6 @@ void TabletServer::Shutdown() {
 
     if (FLAGS_tserver_enable_metrics_snapshotter) {
       WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
-    }
-
-    {
-      std::lock_guard<simple_spinlock> l(lock_);
-      tablet_server_service_ = nullptr;
     }
     tablet_manager_->StartShutdown();
     RpcAndWebServerBase::Shutdown();
@@ -531,11 +542,6 @@ void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
 std::string TabletServer::cluster_uuid() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return cluster_uuid_;
-}
-
-TabletServiceImpl* TabletServer::tablet_server_service() {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return tablet_server_service_;
 }
 
 Status GetDynamicUrlTile(
@@ -611,24 +617,34 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     auto* entry = resp->add_entries();
     entry->set_db_oid(it.first);
     entry->set_shm_index(it.second.shm_index);
+    entry->set_current_version(it.second.current_version);
   }
   return Status::OK();
 }
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
 
-  if (new_version > ysql_catalog_version_) {
+    if (new_version == ysql_catalog_version_) {
+      return;
+    } else if (new_version < ysql_catalog_version_) {
+      LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
+                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+      return;
+    }
     ysql_catalog_version_ = new_version;
     shared_object().SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
-    if (FLAGS_log_ysql_catalog_versions) {
-      LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
-                          << new_breaking_version;
-    }
-  } else if (new_version < ysql_catalog_version_) {
-    LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
-                 << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+  if (FLAGS_log_ysql_catalog_versions) {
+    LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
+                        << new_breaking_version;
+  }
+  auto pg_client_service = pg_client_service_.lock();
+  if (pg_client_service) {
+    LOG(INFO) << "Invalidating PgTableCache cache since catalog version incremented";
+    pg_client_service->InvalidateTableCache();
   }
 }
 
@@ -779,31 +795,26 @@ void TabletServer::SetPublisher(rpc::Publisher service) {
   publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
-Result<HybridTime> TabletServer::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  HybridTime safe_ht = HybridTime::kInvalid;
-
-  {
-    SharedLock l(xcluster_safe_time_mutex_);
-    auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);
-    if (safe_time) {
-      safe_ht = *safe_time;
-    }
-  }
-
-  if (safe_ht.is_special()) {
-    return STATUS(NotFound, Format("XCluster safe time not found for namespace $0", namespace_id));
-  }
-
-  return safe_ht;
+const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
+  return xcluster_safe_time_map_;
 }
 
-void TabletServer::UpdateXClusterSafeTime(
-    const google::protobuf::Map<std::string, google::protobuf::uint64>& safe_time_map) {
-  std::lock_guard l(xcluster_safe_time_mutex_);
-  xcluster_safe_time_map_.clear();
-  for (auto& entry : safe_time_map) {
-    xcluster_safe_time_map_[entry.first] = HybridTime(entry.second);
+void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
+  xcluster_safe_time_map_.Update(safe_time_map);
+}
+
+Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
+    const NamespaceId& namespace_id, HybridTime commit_ht) const {
+  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
+}
+
+scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
+    TabletServerServiceRpcMethodIndexes metric) {
+  auto tablet_server_service = tablet_server_service_.lock();
+  if (tablet_server_service) {
+    return tablet_server_service->GetMetric(metric).handler_latency;
   }
+  return nullptr;
 }
 
 }  // namespace tserver

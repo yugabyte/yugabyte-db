@@ -246,6 +246,18 @@ message GetAutoFlagsConfigResponsePB {
   optional MasterErrorPB error = 3;
 }
 
+message PromoteAutoFlagsRequestPB {
+  required string max_flag_class = 1;
+  required bool promote_non_runtime_flags = 2;
+  required bool force = 3;
+}
+
+message PromoteAutoFlagsResponsePB {
+  optional uint32 new_config_version = 1;
+  optional bool non_runtime_flags_promoted = 2;
+  optional MasterErrorPB error = 3;
+}
+
 service MasterCluster {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -258,6 +270,7 @@ service MasterCluster {
   rpc GetMasterRegistration(GetMasterRegistrationRequestPB) returns
     (GetMasterRegistrationResponsePB);
   rpc GetAutoFlagsConfig(GetAutoFlagsConfigRequestPB) returns (GetAutoFlagsConfigResponsePB);
+  rpc PromoteAutoFlags(PromoteAutoFlagsRequestPB) returns (PromoteAutoFlagsResponsePB);
 
   // Get the ready status from the catalog manager for this master.
   // NOTE: Should be used only for unit testing purposes.

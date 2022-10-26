@@ -29,11 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_FLAGS_H
-#define YB_UTIL_FLAGS_H
+#pragma once
 
 #include <gflags/gflags.h>
 #include "yb/util/auto_flags.h"
+#include "yb/util/flag_tags.h"
+
+// Redefine the macro from gflags.h with an unused attribute.
+#ifdef DEFINE_validator
+#undef DEFINE_validator
+#endif
+#define DEFINE_validator(name, validator) \
+  static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
+      google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
 
 namespace yb {
 
@@ -55,6 +63,17 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);
 
-Status SetFlagDefaultAndCurrent(const string& flag_name, const string& value);
-} // namespace yb
-#endif /* YB_UTIL_FLAGS_H */
+Status SetFlagDefaultAndCurrent(const std::string& flag_name, const std::string& value);
+
+using PgConfigReloader = std::function<Status(void)>;
+void RegisterPgConfigReloader(const PgConfigReloader reloader);
+
+YB_STRONGLY_TYPED_BOOL(SetFlagForce);
+YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE)(PG_SET_FAILED));
+
+// Set the current value of the flag if it is runtime safe or if force is set. old_value is only
+// set on success.
+SetFlagResult SetFlag(
+    const std::string& flag_name, const std::string& new_value, const SetFlagForce force,
+    std::string* old_value, std::string* output_msg);
+}  // namespace yb

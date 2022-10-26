@@ -46,6 +46,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
@@ -952,7 +953,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 
     auto peers = ListTabletPeers(
         cluster_.get(), [](const std::shared_ptr<tablet::TabletPeer>& peer) {
-      if (peer->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
         return false;
       }
       return peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;

@@ -28,6 +28,8 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
+using std::string;
+
 DECLARE_bool(client_suppress_created_logs);
 
 namespace yb {

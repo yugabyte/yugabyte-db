@@ -208,13 +208,13 @@ public class UniverseInfoController extends AuthenticatedController {
       notes = "Trigger a universe health check and return the trigger time.",
       response = TriggerHealthCheckResult.class)
   public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.trigger_api.enabled")) {
       throw new PlatformServiceException(
           METHOD_NOT_ALLOWED, "Manual health check trigger is disabled.");
     }
-
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     OffsetDateTime dt = OffsetDateTime.now(ZoneOffset.UTC);
     universeInfoHandler.triggerHealthCheck(customer, universe);

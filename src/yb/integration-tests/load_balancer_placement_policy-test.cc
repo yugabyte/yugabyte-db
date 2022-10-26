@@ -28,10 +28,14 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+
+using std::string;
+using std::vector;
 
 using namespace std::literals;
 

@@ -82,6 +82,7 @@ class PgDml : public PgStatement {
   Result<bool> GetNextRow(PgTuple *pg_tuple);
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
+  virtual void SetDBCatalogCacheVersion(uint32_t db_oid, uint64_t catalog_cache_version) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
@@ -92,6 +93,12 @@ class PgDml : public PgStatement {
   bool has_doc_op() const {
     return doc_op_ != nullptr;
   }
+
+  // RPC stats for EXPLAIN ANALYZE
+  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait);
+
+  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
+                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
  protected:
   // Method members.

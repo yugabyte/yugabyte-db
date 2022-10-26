@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,8 @@ import com.google.common.collect.Sets;
 @RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYsqlDump extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
+
+  private static enum IncludeYbMetadata { ON, OFF }
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -82,7 +85,7 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
-  public void ysqlDump() throws Exception {
+  public void ysqlDumpWithYbMetadata() throws Exception {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "sql/yb_ysql_dump.sql" /* inputFileRelativePath */,
@@ -90,11 +93,12 @@ public class TestYsqlDump extends BasePgSQLTest {
         "data/yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
         "expected/yb_ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dump.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
+        "results/yb_ysql_dump_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
   }
 
   @Test
-  public void ysqlDumpAll() throws Exception {
+  public void ysqlDumpAllWithYbMetadata() throws Exception {
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
@@ -103,7 +107,23 @@ public class TestYsqlDump extends BasePgSQLTest {
         "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
         "expected/yb_ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
         "results/yb_ysql_dumpall.out" /* outputFileRelativePath */,
-        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */);
+        "results/yb_ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.ON);
+  }
+
+  @Test
+  public void ysqlDumpWithoutYbMetadata() throws Exception {
+    ysqlDumpTester(
+        "ysql_dump" /* binaryName */,
+        "sql/yb_ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
+        "sql/yb_ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+        "data/yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
+        "expected/yb_ysql_dump_without_ybmetadata_describe.out"
+        /* expectedDescribeFileRelativePath */,
+        "results/yb_ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
+        "results/yb_ysql_dump_without_ybmetadata_describe.out"
+        /* outputDescribeFileRelativePath */,
+        IncludeYbMetadata.OFF);
   }
 
   void ysqlDumpTester(final String binaryName,
@@ -112,7 +132,8 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final String expectedDumpRelativePath,
                       final String expectedDescribeFileRelativePath,
                       final String outputFileRelativePath,
-                      final String outputDescribeFileRelativePath) throws Exception {
+                      final String outputDescribeFileRelativePath,
+                      final IncludeYbMetadata includeYbMetadata) throws Exception {
     // Location of Postgres regression tests
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
@@ -136,14 +157,17 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     int tserverIndex = 0;
 
-    ProcessUtil.executeSimple(Arrays.asList(
+    List<String> args = new ArrayList<>(Arrays.asList(
       ysqlDumpExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", DEFAULT_PG_USER,
-      "-f", actual.toString(),
-      "--include-yb-metadata"
-    ), binaryName);
+      "-f", actual.toString()
+    ));
+    if (includeYbMetadata == IncludeYbMetadata.ON) {
+      args.add("--include-yb-metadata");
+    }
+    ProcessUtil.executeSimple(args, binaryName);
 
     assertOutputFile(expected, actual);
 

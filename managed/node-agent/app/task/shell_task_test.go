@@ -10,7 +10,6 @@ import (
 )
 
 func TestShellTaskProcess(t *testing.T) {
-	util.GetTestConfig()
 	testShellTask := NewShellTask("test_echo", "echo", []string{"test"})
 	ctx := context.Background()
 	result, err := testShellTask.Process(ctx)
@@ -24,11 +23,12 @@ func TestShellTaskProcess(t *testing.T) {
 }
 
 func TestPreflightCheckTask(t *testing.T) {
-	util.GetTestConfig()
+	providerData := util.GetTestProviderData()
+	accessKeyData := util.GetTestAccessKeyData()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	handler := HandlePreflightCheck(dummyInstanceType)
+	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
 	ctx := context.Background()
-	result, err := handler(ctx)
+	result, err := handler.Handle(ctx)
 	if err != nil {
 		t.Errorf("Error while running preflight checks test")
 	}
@@ -44,8 +44,11 @@ func TestPreflightCheckTask(t *testing.T) {
 }
 
 func TestGetOptions(t *testing.T) {
+	providerData := util.GetTestProviderData()
+	accessKeyData := util.GetTestAccessKeyData()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	result := getOptions("./dummy.sh", dummyInstanceType)
+	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
+	result := handler.getOptions("./dummy.sh")
 	check := false
 	for i, v := range result {
 		if v == "--ports_to_check" && result[i+1] == "54422" {

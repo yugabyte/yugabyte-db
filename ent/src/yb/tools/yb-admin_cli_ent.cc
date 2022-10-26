@@ -833,6 +833,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "change_xcluster_role", "(STANDBY|ACTIVE)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        auto xcluster_role = args[0];
+        if (xcluster_role == "STANDBY") {
+          return client->ChangeXClusterRole(cdc::XClusterRole::STANDBY);
+        }
+        if (xcluster_role == "ACTIVE") {
+          return client->ChangeXClusterRole(cdc::XClusterRole::ACTIVE);
+        }
+        return STATUS(InvalidArgument,
+                      Format("Expected one of STANDBY OR ACTIVE, found $0", args[0]));
+      });
+
+
+  Register(
       "set_universe_replication_enabled", " <producer_universe_uuid> (0|1)",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 2) {
@@ -893,12 +911,35 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         boost::split(producer_addresses, args[1], boost::is_any_of(","));
         TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
 
-        RETURN_NOT_OK_PREPEND(client->SetupNSUniverseReplication(producer_uuid,
-                                                                 producer_addresses,
-                                                                 producer_namespace),
-                              Substitute("Unable to setup namespace replication from universe $0",
-                                         producer_uuid));
+        RETURN_NOT_OK_PREPEND(
+            client->SetupNSUniverseReplication(
+                producer_uuid, producer_addresses, producer_namespace),
+            Substitute("Unable to setup namespace replication from universe $0", producer_uuid));
         return Status::OK();
+      });
+
+  Register(
+    "get_replication_status", " [<producer_universe_uuid>]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string producer_universe_uuid = args.size() == 1 ? args[0] : "";
+      RETURN_NOT_OK_PREPEND(client->GetReplicationInfo(producer_universe_uuid),
+                            "Unable to get replication status");
+      return Status::OK();
+    });
+
+  RegisterJson(
+      "get_xcluster_estimated_data_loss", "",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        return client->GetXClusterEstimatedDataLoss();
+      });
+
+  RegisterJson(
+      "get_xcluster_safe_time", "",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        return client->GetXClusterSafeTime();
       });
 }  // NOLINT -- a long function but that is OK
 

@@ -338,6 +338,7 @@ public class SimpleQueryTest extends CQLTester
     createTable("CREATE TABLE %s (k int, t int, v int, PRIMARY KEY ((k, t))) "+
                 "WITH transactions = { 'enabled' : true };");
     createIndex("CREATE INDEX %s ON %s((t));");
+    waitForReadPermsOnAllIndexes(keyspace(), currentTable());
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", 1, 1, 1);
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", 1, 2, 3);
     assertRows(execute("SELECT * FROM %s WHERE t = 1"),
@@ -352,6 +353,8 @@ public class SimpleQueryTest extends CQLTester
                 "WITH transactions = { 'enabled' : true };");
 
     createIndex("CREATE INDEX %s ON %s(v);");
+
+    waitForReadPermsOnAllIndexes(keyspace(), currentTable());
 
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 1, "foo");
     execute("INSERT INTO %s (k, t, v) values (?, ?, ?)", "key1", 2, "bar");
@@ -497,6 +500,8 @@ public class SimpleQueryTest extends CQLTester
                 "WITH transactions = { 'enabled' : true };");
 
     execute("CREATE INDEX v_idx ON %s(v)");
+
+    waitForReadPermsOnAllIndexes(keyspace(), currentTable());
 
     execute("INSERT INTO %s (k, c1, c2, v) VALUES (?, ?, ?, ?)", 0, 0, 0, 0);
     execute("INSERT INTO %s (k, c1, c2, v) VALUES (?, ?, ?, ?)", 0, 1, 0, 0);

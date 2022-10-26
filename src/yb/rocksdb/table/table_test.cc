@@ -69,6 +69,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
+using std::unique_ptr;
+
 using namespace std::literals;
 
 DECLARE_double(cache_single_touch_ratio);

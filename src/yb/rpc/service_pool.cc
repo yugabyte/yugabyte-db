@@ -69,6 +69,7 @@
 using namespace std::literals;
 using namespace std::placeholders;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 DEFINE_int64(max_time_in_queue_ms, 6000,
@@ -264,9 +265,8 @@ class ServicePoolImpl final : public InboundCallHandler {
     } else if (PREDICT_FALSE(ShouldDropRequestDuringHighLoad(incoming))) {
       error_message = "The server is overloaded. Call waited in the queue past max_time_in_queue.";
     } else {
-      TRACE_TO(incoming->trace(), "Handling call $0", yb::ToString(incoming->method_name()));
-
       if (incoming->TryStartProcessing()) {
+        TRACE_TO(incoming->trace(), "Handling call $0", AsString(incoming->method_name()));
         service_->Handle(std::move(incoming));
       }
       return;

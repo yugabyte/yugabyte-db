@@ -90,6 +90,9 @@
     LOG_THROTTLER.TooMany() ? BOOST_PP_CAT(google::GLOG_, severity2) \
                             : BOOST_PP_CAT(google::GLOG_, severity1)).stream()
 
+#define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
+    YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
+
 namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 } // namespace yb
@@ -335,7 +338,7 @@ void DisableCoreDumps();
 // trace). This is based on the --fatal_details_path_prefix flag and the
 // YB_FATAL_DETAILS_PATH_PREFIX environment variable. If neither of those are set, the result is
 // based on the FATAL log path.
-string GetFatalDetailsPathPrefix();
+std::string GetFatalDetailsPathPrefix();
 
 // Implements special handling for LOG(FATAL) and CHECK failures, such as disabling core dumps and
 // printing the failure stack trace into a separate file.

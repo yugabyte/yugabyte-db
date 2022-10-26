@@ -12,6 +12,16 @@ menu:
     parent: yugabytedb-managed
     weight: 1
 type: homepage
+resourcesIntro: Quick Links
+resources:
+  - title: What's New
+    url: /preview/yugabyte-cloud/release-notes/
+  - title: YugabyteDB Managed FAQ
+    url: /preview/faq/yugabytedb-managed-faq/
+  - title: Example Applications
+    url: /preview/develop/build-apps/
+  - title: Troubleshoot
+    url: /preview/yugabyte-cloud/cloud-troubleshoot/
 body_class: yb-page-style
 ---
 
@@ -20,12 +30,12 @@ body_class: yb-page-style
     <div class="border two-side">
       <div class="body">
         <div class="box-top">
-          <a class="button-style purple" target="_blank" href="https://cloud.yugabyte.com/signup"><span>Sign Up</span></a>
+          <a class="button-style purple" target="_blank" href="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"><span>Sign Up</span></a>
           <span>Create a <strong>Sandbox</strong> cluster</span>
         </div>
         <div class="body-content">Sign up, log in, and follow the built-in tutorial to create your first cluster and build a sample application. No credit card required.</div>
-        <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup" title="Sign Up">Sign up</a>
-        <a class="text-link" href="../quick-start-yugabytedb-managed/" title="Learn more">Learn more</a>
+        <a class="text-link" target="_blank" href="https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup" title="Sign Up">Sign up</a>
+        <a class="text-link" href="cloud-quickstart/" title="Learn more">Learn more</a>
       </div>
       <div class="image">
         <img class="icon" src="/images/homepage/yugabyte-in-cloud.png" title="Yugabyte cloud" aria-hidden="true">

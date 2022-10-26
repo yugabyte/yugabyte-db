@@ -30,7 +30,9 @@ class AsyncFlushTablets : public RetrySpecificTSRpcTask {
                     const FlushRequestId& flush_id,
                     bool is_compaction);
 
-  Type type() const override { return ASYNC_FLUSH_TABLETS; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kFlushTablets;
+  }
 
   std::string type_name() const override { return "Flush Tablets"; }
 

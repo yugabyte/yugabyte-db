@@ -121,6 +121,12 @@ struct TabletOnDiskSizeInfo {
   }
 };
 
+YB_DEFINE_ENUM(
+    TabletObjectState,
+    (kUninitialized)
+    (kAvailable)
+    (kDestroyed));
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -162,6 +168,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       ThreadPool* raft_pool,
       ThreadPool* tablet_prepare_pool,
       consensus::RetryableRequests* retryable_requests,
+      std::unique_ptr<consensus::ConsensusMetadata> consensus_meta,
       consensus::MultiRaftManager* multi_raft_manager);
 
   // Starts the TabletPeer, making it available for Write()s. If this
@@ -237,15 +244,27 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
   std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
 
-  Tablet* tablet() const EXCLUDES(lock_) {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return tablet_.get();
+  // ----------------------------------------------------------------------------------------------
+  // Functions for accessing the tablet. We need to gradually improve the safety so that all callers
+  // obtain the tablet as a shared pointer (TabletPtr) and hold a refcount to it throughout the
+  // entire time period they are using it. In the meantime, we provide functions that perform some
+  // checking and return a raw pointer.
+  // ----------------------------------------------------------------------------------------------
+
+  // Returns the tablet associated with this TabletPeer as a raw pointer.
+  [[deprecated]] Tablet* tablet() const {
+    return shared_tablet().get();
   }
 
   TabletPtr shared_tablet() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return tablet_;
+    auto tablet_result = shared_tablet_safe();
+    if (tablet_result.ok()) {
+      return *tablet_result;
+    }
+    return nullptr;
   }
+
+  Result<TabletPtr> shared_tablet_safe() const;
 
   RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
@@ -381,6 +400,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Status reset_cdc_min_replicated_index_if_stale();
 
+  int64_t get_cdc_min_replicated_index();
+
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 
   OpId cdc_sdk_min_checkpoint_op_id();
@@ -394,7 +415,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OpId GetLatestCheckPoint();
 
-  TableType table_type();
+  Result<NamespaceId> GetNamespaceId();
+
+  TableType TEST_table_type();
 
   // Returns the number of segments in log_.
   size_t GetNumLogSegments() const;
@@ -446,6 +469,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::atomic<log::Log*> log_atomic_{nullptr};
 
   TabletPtr tablet_;
+  TabletWeakPtr tablet_weak_;
+  std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
+
   rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   std::unique_ptr<TabletStatusListener> status_listener_;
@@ -508,7 +534,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
-
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 

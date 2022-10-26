@@ -86,6 +86,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
@@ -121,6 +122,7 @@ using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 using std::shared_ptr;
+using std::string;
 
 using client::YBSession;
 using client::YBTable;
@@ -1447,7 +1449,9 @@ int RaftConsensusITest::RestartAnyCrashedTabletServers() {
     if (!cluster_->tablet_server(i)->IsProcessAlive()) {
       LOG(INFO) << "TS " << i << " appears to have crashed. Restarting.";
       cluster_->tablet_server(i)->Shutdown();
-      CHECK_OK(cluster_->tablet_server(i)->Restart());
+      CHECK_OK(WaitFor([&]() {
+        return cluster_->tablet_server(i)->Restart().ok();
+      }, 20s * kTimeMultiplier, "restarting tablet server"));
       restarted++;
     }
   }
@@ -2615,7 +2619,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
       InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
       ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
           leader_tserver, tablet_id_,
-          MonoDelta::FromSeconds(10)));
+          15s * kTimeMultiplier));
     }
   }
 

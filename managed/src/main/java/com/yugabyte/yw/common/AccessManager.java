@@ -613,13 +613,17 @@ public class AccessManager extends DevopsBase {
         setOrValidate(formData.nodeExporterUser, keyInfo.nodeExporterUser, "nodeExporterUser");
     formData.nodeExporterPort =
         setOrValidate(formData.nodeExporterPort, keyInfo.nodeExporterPort, "nodeExporterPort");
-    checkEqual(formData.airGapInstall, keyInfo.airGapInstall, "airGapInstall");
-    checkEqual(formData.skipProvisioning, keyInfo.skipProvisioning, "skipProvisioning");
-    checkEqual(formData.setUpChrony, keyInfo.setUpChrony, "setUpChrony");
-    checkEqual(formData.showSetUpChrony, keyInfo.showSetUpChrony, "showSetUpChrony");
-    checkEqual(
-        formData.passwordlessSudoAccess, keyInfo.passwordlessSudoAccess, "passwordlessSudoAccess");
-    checkEqual(formData.installNodeExporter, keyInfo.installNodeExporter, "installNodeExporter");
+
+    // These fields are not required during creating a new access key. This information
+    // will be missing during rotation. Therefore, copying the information present in the latest
+    // access key(for the first access key creation information will be populated during provider
+    // creation, which will be passed on during subsequent creation).
+    formData.airGapInstall = keyInfo.airGapInstall;
+    formData.skipProvisioning = keyInfo.skipProvisioning;
+    formData.setUpChrony = keyInfo.setUpChrony;
+    formData.showSetUpChrony = keyInfo.showSetUpChrony;
+    formData.passwordlessSudoAccess = keyInfo.passwordlessSudoAccess;
+    formData.installNodeExporter = keyInfo.installNodeExporter;
     return formData;
   }
 

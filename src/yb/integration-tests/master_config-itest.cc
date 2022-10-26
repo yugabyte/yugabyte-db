@@ -35,6 +35,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
@@ -43,6 +44,7 @@
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using std::min;
 using strings::Substitute;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;

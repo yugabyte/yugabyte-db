@@ -28,6 +28,7 @@ using std::string;
 using std::unique_ptr;
 using std::shared_ptr;
 using std::numeric_limits;
+using std::vector;
 
 using strings::Substitute;
 using yb::util::Decimal;

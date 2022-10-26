@@ -2,39 +2,37 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
-import com.google.inject.Inject;
-import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Iterator;
-import java.util.Spliterator;
-import java.util.StringJoiner;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 
 @Singleton
@@ -69,6 +67,20 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+    // Buckets should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config bucket %s and backup location bucket %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
+  }
+
+  @Override
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception {
     String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
@@ -91,6 +103,7 @@ public class GCPUtil implements CloudUtil {
     }
   }
 
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
@@ -163,18 +176,58 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
+      throws Exception {
+    Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+    String[] splitLocation = getSplitLocationValue(cloudPath);
+    String bucketName = splitLocation[0];
+    String objectPrefix = splitLocation[1];
+    Blob blob = storage.get(bucketName, objectPrefix);
+    if (blob == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "No blob was found at the specified location: " + cloudPath);
+    }
+    return Channels.newInputStream(blob.reader());
+  }
+
+  @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
             ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
+    cloudDir = BackupUtil.appendSlash(cloudDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
+      log.info(previousCloudDir);
+    }
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
+    return YbcBackupUtil.buildCloudStoreSpec(
+        bucket, cloudDir, previousCloudDir, gcsCredsMap, Util.GCS);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    String[] splitValues = getSplitLocationValue(storageLocation);
+    String bucket = splitValues[0];
+    Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
+    if (isDsm) {
+      String location = BackupUtil.appendSlash(splitValues[1]);
+      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", gcsCredsMap, Util.GCS);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", gcsCredsMap, Util.GCS);
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData) {

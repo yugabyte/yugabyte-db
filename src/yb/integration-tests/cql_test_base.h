@@ -45,11 +45,11 @@ class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
   void ShutdownCluster();
   Status StartCluster();
 
-  string GetTempDir(const string& subdir) {
+  std::string GetTempDir(const std::string& subdir) {
     return tmp_dir_ / subdir;
   }
 
-  Status RunBackupCommand(const vector<string>& args);
+  Status RunBackupCommand(const std::vector<std::string>& args);
 
  protected:
   void DoTearDown() override;

@@ -260,6 +260,9 @@ function(YB_INCLUDE_EXTENSIONS)
 endfunction()
 
 function(yb_remember_dependency target)
+  if("${ARGN}" STREQUAL "")
+    message(FATAL_ERROR "yb_remember_dependency() called with no arguments")
+  endif()
   # We use \\n instead of a real newline as this is stored in the CMake cache, and some versions
   # of CMake can't parse their own cache in case some values have newlines.
   set(YB_ALL_DEPS "${YB_ALL_DEPS}\\n${target}: ${ARGN}" CACHE INTERNAL "All dependencies" FORCE)
@@ -320,6 +323,15 @@ function(add_executable name)
     add_dependencies(${name} latest_symlink)
   endif()
 
+  if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    # Link every executable with gperftools's tcmalloc static library.
+    # The other relevant library, libprofiler, will be linked by the libraries that need it.
+    #
+    # We need to ensure that all symbols from the tcmalloc library are retained. This is done
+    # differently depending on the OS.
+    target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+  endif()
+
   yb_process_pch(${name})
 endfunction()
 
@@ -335,7 +347,7 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  set(LIBCXX_DIR "${YB_THIRDPARTY_DIR}/installed/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
   if(NOT EXISTS "${LIBCXX_DIR}")
     message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
   endif()
@@ -358,7 +370,16 @@ macro(YB_SETUP_CLANG)
       # We get a directory like this:
       # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
       set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      set(CLANG_RUNTIME_LIB_DIR "${CMAKE_MATCH_1}/lib/linux")
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        set(CLANG_RUNTIME_LIB_DIR
+            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
+        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+          message(FATAL_ERROR
+                  "Failed to determine Clang runtime library directory inside of "
+                  "${CLANG_RUNTIME_LIB_DIR}/lib")
+        endif()
+      endif()
     else()
       message(FATAL_ERROR
               "Could not parse the output of 'clang -print-search-dirs': "
@@ -577,8 +598,9 @@ function(ADD_YB_LIBRARY LIB_NAME)
 
   add_library(${LIB_NAME} ${ARG_SRCS})
 
-  target_link_libraries(${LIB_NAME} ${ARG_DEPS})
-  yb_remember_dependency(${LIB_NAME} ${ARG_DEPS})
+  if(ARG_DEPS)
+    target_link_libraries(${LIB_NAME} ${ARG_DEPS})
+  endif()
   if(ARG_NONLINK_DEPS)
     add_dependencies(${LIB_NAME} ${ARG_NONLINK_DEPS})
   endif()
@@ -697,6 +719,73 @@ function(parse_build_root_basename)
   endif()
 endfunction()
 
+macro(configure_macos_sdk)
+  if(APPLE AND "${YB_COMPILER_TYPE}" MATCHES "^clang[0-9]+$")
+    if(NOT "${MACOS_SDK_DIR}" STREQUAL "" AND
+       NOT "${MACOS_SDK_VERSION}" STREQUAL "")
+      message("Using cached macOS SDK directory ${MACOS_SDK_DIR}, version ${MACOS_SDK_VERSION}")
+    else()
+      set(MACOS_SDK_BASE_DIR "/Library/Developer/CommandLineTools/SDKs")
+
+      file(GLOB MACOS_SDK_DIRS "${MACOS_SDK_BASE_DIR}/*")
+      set(MACOS_SDK_DIR "")
+      set(MACOS_SDK_VERSION "")
+      foreach(MACOS_SDK_CANDIDATE_DIR ${MACOS_SDK_DIRS})
+        get_filename_component(
+          MACOS_SDK_CANDIDATE_DIR_NAME "${MACOS_SDK_CANDIDATE_DIR}" NAME)
+        if("${MACOS_SDK_CANDIDATE_DIR_NAME}" MATCHES "^MacOSX([0-9.]+)[.]sdk$")
+          set(MACOS_SDK_CANDIDATE_VERSION "${CMAKE_MATCH_1}")
+          if ("${MACOS_SDK_VERSION}" STREQUAL "" OR
+              "${MACOS_SDK_CANDIDATE_VERSION}" VERSION_GREATER "${MACOS_SDK_VERSION}")
+            set(MACOS_SDK_DIR "${MACOS_SDK_CANDIDATE_DIR}")
+            set(MACOS_SDK_VERSION "${MACOS_SDK_CANDIDATE_VERSION}")
+          endif()
+        endif()
+      endforeach()
+      if("${MACOS_SDK_VERSION}" STREQUAL "")
+        message(FATAL_ERROR "Did not find a macOS SDK at ${MACOS_SDK_BASE_DIR}")
+      endif()
+      message("Using macOS SDK version ${MACOS_SDK_VERSION} at ${MACOS_SDK_DIR}")
+      # CMake's INTERNAL type of cache variables implies FORCE, overwriting existing entries.
+      # https://cmake.org/cmake/help/latest/command/set.html
+      set(MACOS_SDK_DIR "${MACOS_SDK_DIR}" CACHE INTERNAL "macOS SDK directory")
+      set(MACOS_SDK_VERSION "${MACOS_SDK_VERSION}" CACHE INTERNAL "macOS SDK version")
+    endif()
+    set(MACOS_SDK_INCLUDE_DIR "${MACOS_SDK_DIR}/usr/include")
+    INCLUDE_DIRECTORIES(SYSTEM "${MACOS_SDK_INCLUDE_DIR}")
+    ADD_LINKER_FLAGS("-L${MACOS_SDK_DIR}/usr/lib")
+  endif()
+endmacro()
+
+function(add_latest_symlink_target)
+  # Provide a 'latest' symlink to this build directory if the "blessed" multi-build layout is
+  # detected:
+  #
+  # build/
+  # build/<first build directory>
+  # build/<second build directory>
+  # ...
+  set(LATEST_BUILD_SYMLINK_PATH "${YB_BUILD_ROOT_PARENT}/latest")
+  if (NOT "$ENV{YB_DISABLE_LATEST_SYMLINK}" STREQUAL "1")
+    message("LATEST SYMLINK PATH: ${LATEST_BUILD_SYMLINK_PATH}")
+    if ("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${LATEST_BUILD_SYMLINK_PATH}")
+      message(FATAL_ERROR
+              "Should not run cmake inside the build/latest symlink. "
+              "First change directories into the destination of the symlink.")
+    endif()
+
+    add_custom_target(latest_symlink ALL
+      "${BUILD_SUPPORT_DIR}/create_latest_symlink.sh"
+      "${CMAKE_CURRENT_BINARY_DIR}"
+      "${LATEST_BUILD_SYMLINK_PATH}"
+      COMMENT "Recreating the 'latest' symlink at '${LATEST_BUILD_SYMLINK_PATH}'")
+  endif()
+endfunction()
+
+# -------------------------------------------------------------------------------------------------
+# LTO support
+# -------------------------------------------------------------------------------------------------
+
 macro(enable_lto_if_needed)
   if(NOT DEFINED COMPILER_FAMILY)
     message(FATAL_ERROR "COMPILER_FAMILY not defined")
@@ -708,9 +797,13 @@ macro(enable_lto_if_needed)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
 
-  if("${YB_LINKING_TYPE}" MATCHES "^(thin|full)-lto$")
+  set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
+  if("${YB_LINKING_TYPE}" MATCHES "^([a-z]+)-lto$")
     message("Enabling ${CMAKE_MATCH_1} LTO based on linking type: ${YB_LINKING_TYPE}")
     ADD_CXX_FLAGS("-flto=${CMAKE_MATCH_1} -fuse-ld=lld")
+    # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
+    # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
+    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic")
   else()
     message("Not enabling LTO: "
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
@@ -718,5 +811,78 @@ macro(enable_lto_if_needed)
             "COMPILER_FAMILY=${COMPILER_FAMILY}, "
             "USING_LINUXBREW=${USING_LINUXBREW}, "
             "APPLE=${APPLE}")
+    # In non-LTO builds, yb-master / yb-tserver executables themselves are dynamically linked to
+    # other YB libraries.
+    set(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "")
   endif()
+  set(YB_MASTER_DYNAMIC_EXE_NAME "yb-master${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  set(YB_TSERVER_DYNAMIC_EXE_NAME "yb-tserver${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
 endmacro()
+
+function(yb_add_lto_target exe_name)
+  if("${YB_LINKING_TYPE}" STREQUAL "")
+    message(FATAL_ERROR "YB_LINKING_TYPE is not set")
+  endif()
+  if("${YB_LINKING_TYPE}" STREQUAL "dynamic")
+    return()
+  endif()
+
+  if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
+    message("Skipping adding LTO target ${exe_name} because YB_SKIP_FINAL_LTO_LINK is set to 1")
+    return()
+  endif()
+  set(dynamic_exe_name "${exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  message("Adding LTO target: ${exe_name} "
+          "(the dynamically linked equivalent is ${dynamic_exe_name})")
+  set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${exe_name}")
+  add_custom_command(
+    OUTPUT "${output_executable_path}"
+    COMMAND "${BUILD_SUPPORT_DIR}/dependency_graph"
+            "--build-root=${YB_BUILD_ROOT}"
+            # Use $$ to escape $.
+            "--file-regex=^.*/${dynamic_exe_name}$$"
+            # Allow LTO linking in parallel with the rest of the build.
+            --incomplete-build
+            "--lto-output-path=${output_executable_path}"
+            "--never-run-build"
+            link-whole-program
+    DEPENDS "${exe_name}"
+  )
+
+  add_custom_target("${exe_name}" ALL DEPENDS "${output_executable_path}")
+
+  if("${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
+    message(FATAL_ERROR "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} is not set")
+  endif()
+  # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
+  add_dependencies("${exe_name}" "${dynamic_exe_name}")
+endfunction()
+
+# Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
+# arguments and stores the result back in the same variable. If the
+# YB_DEBUG_DUPLICATE_COMPILER_ARGS environment variable is set to 1, prints detailed debug output.
+function(yb_deduplicate_arguments args_var_name)
+  set(debug OFF)
+  if("$ENV{YB_DEBUG_DUPLICATE_COMPILER_ARGS}" STREQUAL "1")
+    set(debug ON)
+  endif()
+  separate_arguments(args_list UNIX_COMMAND "${${args_var_name}}")
+  if(debug)
+    message("Deduplicating ${args_var_name}:")
+  endif()
+  set(deduplicated_args "")
+  foreach(arg IN LISTS args_list)
+    if(arg IN_LIST deduplicated_args)
+      if(debug)
+        message("    DUPLICATE argument     : ${arg}")
+      endif()
+    else()
+      if(debug)
+        message("    Non-duplicate argument : ${arg}")
+      endif()
+      list(APPEND deduplicated_args "${arg}")
+    endif()
+  endforeach()
+  list(JOIN "${deduplicated_args}" " " joined_deduplicated_args)
+  set("${args_var_name}" PARENT_SCOPE "${joined_deduplicated_args}")
+endfunction()

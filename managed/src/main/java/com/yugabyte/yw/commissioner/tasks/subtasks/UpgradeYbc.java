@@ -56,7 +56,7 @@ public class UpgradeYbc extends AbstractTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       preChecks(universe, taskParams().ybcVersion);
-      ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion);
+      ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion, true);
       int numRetries = 0;
       while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
         numRetries++;

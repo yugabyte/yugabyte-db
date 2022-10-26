@@ -29,7 +29,7 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
 
-For a tutorial on building a sample C application with libpq, refer to [Build a C application](../../../develop/build-apps/c/ysql/).
+For a tutorial on building a sample C application with libpq, refer to [Connect an application](../../../drivers-orms/c/ysql/).
 
 #### Install the libpq client library
 
@@ -49,7 +49,7 @@ The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ c
 
 For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
 
-For a tutorial on building a sample C++ application with libpqxx, refer to [Build a C++ application](../../../develop/build-apps/cpp/ysql/).
+For a tutorial on building a sample C++ application with libpqxx, refer to [Connect an application](../../../drivers-orms/cpp/ysql/).
 
 #### Install the libpqxx driver
 
@@ -136,13 +136,13 @@ The YugabyteDB JDBC driver is a distributed JDBC driver for YSQL built on the Po
 
 For information on the YugabyteDB JDBC driver and its load balancing features, see [YugabyteDB JDBC Driver](../../../reference/drivers/java/yugabyte-jdbc-reference/).
 
-For a tutorial on building a sample Java application with the YugabyteDB JDBC driver, see [Build a Java application](../../../develop/build-apps/java/ysql-yb-jdbc/).
+For building a sample Java application with the YugabyteDB JDBC driver, see [Connect an application](../../../drivers-orms/java/yugabyte-jdbc/).
 
 ### PostgreSQL JDBC driver (PgJDBC)
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [libpq](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../develop/build-apps/java/ysql-jdbc/).
+For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../drivers-orms/java/postgres-jdbc/).
 
 #### Install the PostgreSQL JDBC driver
 
@@ -154,7 +154,7 @@ To get the latest versions for projects using [Apache Maven](https://maven.apach
 
 [Vert.x PG Client](https://vertx.io/docs/vertx-pg-client/java/) is the client for PostgreSQL with basic APIs to communicate with the database. It is a reactive and non-blocking client for handling the database connections with a single threaded API.
 
-For a tutorial on building a sample Java application with the Vert.x PG Client, see [Build a Java application](../../../develop/build-apps/java/ysql-vertx-pg-client/).
+For a tutorial on building a sample Java application with the Vert.x PG Client, see [Connect an application](../../../drivers-orms/java/ysql-vertx-pg-client/).
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository of Vert.x PG Client](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client).
 
@@ -184,7 +184,7 @@ The [php-pgsql](https://www.php.net/manual/en/book.pgsql.php) driver is a collec
 
 For details on installing and using php-pgsql, see the [php-pgsql documentation](https://www.php.net/manual/en/book.pgsql.php).
 
-For a tutorial on building a sample PHP application with php-pgsql, see [Build a PHP application](../../../develop/build-apps/php/ysql/).
+For a tutorial on building a sample PHP application with php-pgsql, see [Connect an application](../../../drivers-orms/php/ysql/).
 
 #### Install the php-pgsql driver
 
@@ -204,7 +204,7 @@ CentOS users can install the driver using the `sudo yum install php-pgsql` comma
 
 For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses psycopg2, see [Build a Python application](../../../develop/build-apps/python/ysql-psycopg2).
+For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../../../drivers-orms/python/postgres-psycopg2/).
 
 #### Install the psycopg2 binary
 
@@ -218,7 +218,7 @@ $ pip3 install psycopg2-binary
 
 [aiopg](https://aiopg.readthedocs.io/en/stable/) is a library for accessing a PostgreSQL database using the asyncio (PEP-3156/tulip) framework. It wraps asynchronous features of the [Psycopg](https://www.psycopg.org/) database driver. For details on using aiopg, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
 
-For a tutorial on building a sample Python application that uses aiopg, see [Build a Python application](../../../develop/build-apps/python/ysql-aiopg).
+For a tutorial on building a sample Python application that uses aiopg, see [YSQL Aiopg](../../../integrations/aiopg/).
 
 #### Install
 
@@ -234,7 +234,7 @@ pip3 install aiopg
 
 [pg](https://github.com/ged/ruby-pg) is the Ruby interface for PostgreSQL databases. pg is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with pg, see [Build a Ruby application](../../../develop/build-apps/ruby/ysql-pg).
+For a tutorial on building a sample Ruby application with pg, see [Connect an application](../../../drivers-orms/ruby/ysql-pg/).
 
 #### Install the pg driver
 

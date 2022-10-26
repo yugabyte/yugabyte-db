@@ -1702,9 +1702,6 @@ ybcBeginScan(Relation relation,
 
 	/* Set up YugaByte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	memset(ybScan->keys, 0, sizeof(ybScan->keys));
-	ybScan->nkeys = 0;
-	ybScan->nhash_keys = 0;
 	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = &keys[i];
@@ -1768,8 +1765,14 @@ ybcBeginScan(Relation relation,
 		* for system catalog tables.
 		*/
 		if (!IsSystemRelation(relation))
-			HandleYBStatus(YBCPgSetCatalogCacheVersion(
-				ybScan->handle, yb_catalog_cache_version));
+		{
+			if (YBIsDBCatalogVersionMode())
+				HandleYBStatus(YBCPgSetDBCatalogCacheVersion(
+					ybScan->handle, MyDatabaseId, yb_catalog_cache_version));
+			else
+				HandleYBStatus(YBCPgSetCatalogCacheVersion(
+					ybScan->handle, yb_catalog_cache_version));
+		}
 	} else
 		ybScan->quit_scan = true;
 
@@ -1952,6 +1955,13 @@ IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool 
 	return NULL;
 }
 
+void ybc_free_ybscan(YbScanDesc ybscan)
+{
+	Assert(PointerIsValid(ybscan));
+	YBCPgDeleteStatement(ybscan->handle);
+	pfree(ybscan);
+}
+
 SysScanDesc ybc_systable_beginscan(Relation relation,
                                    Oid indexId,
                                    bool indexOK,
@@ -2040,11 +2050,10 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 	return tuple;
 }
 
-
 void ybc_systable_endscan(SysScanDesc scan_desc)
 {
-	Assert(PointerIsValid(scan_desc->ybscan));
-	pfree(scan_desc->ybscan);
+	ybc_free_ybscan(scan_desc->ybscan);
+	pfree(scan_desc);
 }
 
 HeapScanDesc ybc_heap_beginscan(Relation relation,
@@ -2091,8 +2100,7 @@ HeapTuple ybc_heap_getnext(HeapScanDesc scan_desc)
 
 void ybc_heap_endscan(HeapScanDesc scan_desc)
 {
-	Assert(PointerIsValid(scan_desc->ybscan));
-	pfree(scan_desc->ybscan);
+	ybc_free_ybscan(scan_desc->ybscan);
 	if (scan_desc->rs_temp_snap)
 		UnregisterSnapshot(scan_desc->rs_snapshot);
 	pfree(scan_desc);
@@ -2281,6 +2289,7 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
 static double ybcIndexEvalClauseSelectivity(Relation index,
+											double reltuples,
 											Bitmapset *qual_cols,
 											bool is_unique_idx,
                                             Bitmapset *hash_key,
@@ -2302,8 +2311,11 @@ static double ybcIndexEvalClauseSelectivity(Relation index,
 	if (bms_is_subset(primary_key, qual_cols))
 	{
 		/* For unique indexes full key guarantees single row. */
-		return is_unique_idx ? YBC_SINGLE_ROW_SELECTIVITY
-						     : YBC_SINGLE_KEY_SELECTIVITY;
+		if (is_unique_idx)
+			return (reltuples == 0) ? YBC_SINGLE_ROW_SELECTIVITY :
+									 (double)(1.0 / reltuples);
+		else
+			return YBC_SINGLE_KEY_SELECTIVITY;
 	}
 
 	return YBC_HASH_SCAN_SELECTIVITY;
@@ -2401,6 +2413,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		else
 		{
 			*selectivity = ybcIndexEvalClauseSelectivity(index,
+														baserel->tuples,
 														scan_plan.sk_cols,
 														is_unique,
 														scan_plan.hash_key,
@@ -2435,6 +2448,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		 * So only use the t1.c1 = <const_value> quals (filtered above) for this.
 		 */
 		double const_qual_selectivity = ybcIndexEvalClauseSelectivity(index,
+																	  baserel->tuples,
 																	  const_quals,
 																	  is_unique,
 																	  scan_plan.hash_key,

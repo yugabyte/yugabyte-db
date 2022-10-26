@@ -85,6 +85,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -96,7 +97,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace itest {
@@ -195,6 +195,15 @@ Result<std::vector<OpId>> GetLastOpIdForEachReplica(
   return GetForEachReplica(
       replicas, timeout,
       Getter{.tablet_id = tablet_id, .opid_type = opid_type, .op_type = op_type});
+}
+
+vector<TServerDetails*> TServerDetailsVector(const TabletReplicaMap& tablet_servers) {
+  vector<TServerDetails*> result;
+  result.reserve(tablet_servers.size());
+  for (auto& pair : tablet_servers) {
+    result.push_back(pair.second);
+  }
+  return result;
 }
 
 vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers) {
@@ -1353,6 +1362,18 @@ Status WaitUntilTabletRunning(TServerDetails* ts,
                               const std::string& tablet_id,
                               const MonoDelta& timeout) {
   return WaitUntilTabletInState(ts, tablet_id, tablet::RUNNING, timeout);
+}
+
+Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tservers,
+                                         const std::string& tablet_id,
+                                         const MonoDelta& timeout) {
+  MonoTime deadline =  MonoTime::Now();
+  deadline.AddDelta(timeout);
+  for (TServerDetails* tserver : tservers) {
+    RETURN_NOT_OK(WaitUntilTabletRunning(tserver, tablet_id,
+                                         deadline.GetDeltaSince(MonoTime::Now())));
+  }
+  return Status::OK();
 }
 
 Status DeleteTablet(const TServerDetails* ts,

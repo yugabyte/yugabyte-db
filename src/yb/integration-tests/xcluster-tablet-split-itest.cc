@@ -20,8 +20,8 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/partition.h"
-
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -37,18 +37,21 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
+
+using std::string;
+using std::min;
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
-DECLARE_int32(xcluster_parent_tablet_deletion_task_retry_secs);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
@@ -184,7 +187,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
     FLAGS_cdc_state_table_num_tablets = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
     // Lowering to 5s here to speed up tests.
-    FLAGS_xcluster_parent_tablet_deletion_task_retry_secs = 5;
+    FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 5;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -229,6 +232,30 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
         table);
     return cluster;
   }
+
+  Status GetChangesWithRetries(
+      cdc::CDCServiceProxy* cdc_proxy, const cdc::GetChangesRequestPB& change_req,
+      cdc::GetChangesResponsePB* change_resp) {
+    // Retry on LeaderNotReadyToServe errors.
+    return WaitFor(
+        [&]() -> Result<bool> {
+          rpc::RpcController rpc;
+          auto status = cdc_proxy->GetChanges(change_req, change_resp, &rpc);
+
+          if (status.ok() && change_resp->has_error()) {
+            status = StatusFromPB(change_resp->error().status());
+          }
+
+          if (status.IsLeaderNotReadyToServe()) {
+            return false;
+          }
+
+          RETURN_NOT_OK(status);
+          return true;
+        },
+        60s * kTimeMultiplier,
+        "GetChanges timed out waiting for Leader to get ready");
+  }
 };
 
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
@@ -259,18 +286,15 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
-  rpc::RpcController rpc;
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
-  ASSERT_FALSE(change_resp.has_error());
+  // Might need to retry since we are performing stepdowns and thus could get LeaderNotReadyToServe.
+  ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
   // Test that if the tablet leadership of the parent tablet changes we can still call GetChanges.
   StepDownAllTablets(cluster_.get());
 
-  rpc.Reset();
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
-  ASSERT_FALSE(change_resp.has_error()) << change_resp.ShortDebugString();
+  ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
-  // Now let the table get deleted by the background task.
+  // Now let the parent tablet get deleted by the background task.
   // To do so, we need to issue a GetChanges to both children tablets.
   for (const auto& child_tablet_id : ListActiveTabletIdsForTable(cluster_.get(), table_->id())) {
     cdc::GetChangesRequestPB child_change_req;
@@ -281,17 +305,16 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
-    rpc::RpcController rpc;
-    ASSERT_OK(cdc_proxy->GetChanges(child_change_req, &child_change_resp, &rpc));
-    ASSERT_FALSE(child_change_resp.has_error());
+    ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), child_change_req, &child_change_resp));
   }
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));
 
-  // Try to do a GetChanges again, it should fail.
-  rpc.Reset();
-  ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
+  // Try to do a GetChanges again, it should fail due to not finding the deleted parent tablet.
+  rpc::RpcController rpc;
+  ASSERT_NOK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
   ASSERT_TRUE(change_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(change_resp.error().status()).IsNotFound());
 }
 
 // For testing xCluster setups. Since most test utility functions expect there to be only one
@@ -323,22 +346,6 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     DeleteReplication();
 
     SwitchToConsumer();
-
-    // Since delete_universe_replication is async, wait until consumers are empty before shutdown.
-    // TODO: remove this once #12068 is fixed.
-    ASSERT_OK(WaitFor([&]() {
-      for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
-        auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
-        tserver::enterprise::CDCConsumer* cdc_consumer;
-        if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
-          auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
-          if (!tablets_running.empty()) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }, 10s * kTimeMultiplier, "Wait for CDCConsumers to shutdown."));
 
     cluster_->Shutdown();
 
@@ -543,9 +550,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
   // Wait until the rows are all replicated on the consumer.
   ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
-  // Split the tablet on the producer. Note that parent tablet will only be HIDDEN and not deleted.
-  ASSERT_OK(SplitTabletAndValidate(
-      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+  // Split the tablet on the producer.
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
 
   // Write another set of rows, and make sure the consumer picks up on the changes.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));

@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import java.io.InputStream;
 import java.util.List;
 import org.yb.ybc.CloudStoreSpec;
 import play.api.Play;
@@ -19,13 +20,13 @@ public interface CloudUtil extends StorageUtil {
   public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception;
 
-  public boolean canCredentialListObjects(
-      CustomerConfigData configData, List<String> storageLocations);
-
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception;
 
   public <T> T listBuckets(CustomerConfigData configData);
+
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
+      throws Exception;
 
   // public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
   //     throws Exception;

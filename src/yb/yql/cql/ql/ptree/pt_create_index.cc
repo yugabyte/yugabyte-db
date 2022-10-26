@@ -23,6 +23,7 @@ namespace ql {
 
 using std::shared_ptr;
 using std::to_string;
+using std::string;
 using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBTableName;

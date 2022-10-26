@@ -2,19 +2,18 @@
 
 package com.yugabyte.yw.common;
 
-import com.amazonaws.SdkClientException;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.InstanceProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.services.ec2.model.AmazonEC2Exception;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient;
-import com.amazonaws.services.identitymanagement.model.AmazonIdentityManagementException;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
 import com.amazonaws.services.identitymanagement.model.Role;
 import com.amazonaws.services.s3.AmazonS3;
@@ -23,8 +22,11 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.Bucket;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
-import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.amazonaws.services.s3.model.GetBucketLocationRequest;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
@@ -33,14 +35,12 @@ import com.amazonaws.services.securitytoken.model.AssumeRoleResult;
 import com.amazonaws.services.securitytoken.model.Credentials;
 import com.amazonaws.util.EC2MetadataUtils;
 import com.amazonaws.util.EC2MetadataUtils.IAMSecurityCredential;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import java.io.InputStream;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
-import java.time.ZoneId;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -78,6 +78,7 @@ public class AWSUtil implements CloudUtil {
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
   // This method is a way to check if given S3 config can extract objects.
+  @Override
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
@@ -91,7 +92,8 @@ public class AWSUtil implements CloudUtil {
         if (bucketSplit.length == 1) {
           Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
           if (!doesBucketExist) {
-            log.error("No bucket exists with name {}", bucketName);
+            throw new RuntimeException(
+                String.format("No S3 bucket found with name %s", bucketName));
           }
         } else {
           ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, prefix);
@@ -102,12 +104,26 @@ public class AWSUtil implements CloudUtil {
       } catch (AmazonS3Exception e) {
         log.error(
             String.format(
-                "Credential cannot list objects in the specified backup location %s", location),
+                "Credential cannot list objects in the specified backup location %s: {}", location),
             e.getErrorMessage());
         return false;
       }
     }
     return true;
+  }
+
+  @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+    // Buckets should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config bucket %s and backup location bucket %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
   }
 
   @Override
@@ -331,6 +347,21 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
+  @Override
+  public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
+      throws Exception {
+    AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+    String[] splitLocation = getSplitLocationValue(cloudPath);
+    String bucketName = splitLocation[0];
+    String objectPrefix = splitLocation[1];
+    S3Object object = s3Client.getObject(bucketName, objectPrefix);
+    if (object == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
+    }
+    return object.getObjectContent();
+  }
+
   public void retrieveAndDeleteObjects(
       ListObjectsV2Result listObjectsResult, String bucketName, AmazonS3 s3Client)
       throws AmazonS3Exception {
@@ -347,17 +378,41 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String backupLocation, String commonDir, CustomerConfigData configData) {
+      String storageLocation,
+      String commonDir,
+      String previousBackupLocation,
+      CustomerConfigData configData) {
     CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-    String[] splitValues = getSplitLocationValue(backupLocation);
+    String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
             ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = cloudDir.endsWith("/") ? cloudDir : cloudDir + "/";
+    cloudDir = BackupUtil.appendSlash(cloudDir);
+    String previousCloudDir = "";
+    if (StringUtils.isNotBlank(previousBackupLocation)) {
+      splitValues = getSplitLocationValue(previousBackupLocation);
+      previousCloudDir =
+          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
+    }
     Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+    return YbcBackupUtil.buildCloudStoreSpec(
+        bucket, cloudDir, previousCloudDir, s3CredsMap, Util.S3);
+  }
+
+  @Override
+  public CloudStoreSpec createRestoreCloudStoreSpec(
+      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String[] splitValues = getSplitLocationValue(storageLocation);
+    String bucket = splitValues[0];
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, bucket);
+    if (isDsm) {
+      String location = BackupUtil.appendSlash(splitValues[1]);
+      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", s3CredsMap, Util.S3);
+    }
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", s3CredsMap, Util.S3);
   }
 
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData, String bucket) {

@@ -26,7 +26,7 @@ class LoginForm extends Component {
 
   componentDidMount = () => {
     this.props.getYugaWareVersion();
-  }
+  };
 
   submitLogin = (formValues) => {
     const { loginCustomer } = this.props;
@@ -53,10 +53,16 @@ class LoginForm extends Component {
   }
 
   runSSO() {
+    const searchParam = new URLSearchParams(window.location.search);
+    const pathToRedirect = searchParam.get('orig_url');
     if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
       localStorage.setItem('__yb_intro_dialog__', 'new');
     }
-    window.location.replace(`${ROOT_URL}/third_party_login`);
+    window.location.replace(
+      pathToRedirect
+        ? `${ROOT_URL}/third_party_login?orig_url=${pathToRedirect}`
+        : `${ROOT_URL}/third_party_login`
+    );
   }
 
   render() {
@@ -64,7 +70,8 @@ class LoginForm extends Component {
       customer: { authToken, yugawareVersion }
     } = this.props;
     const version = getPromiseState(yugawareVersion).isSuccess()
-      ? yugawareVersion.data?.version : null;
+      ? yugawareVersion.data?.version
+      : null;
 
     const validationSchema = Yup.object().shape({
       email: Yup.string().required('Enter Email or Username'),
@@ -131,8 +138,9 @@ class LoginForm extends Component {
                     </div>
                   )}
                   <div
-                    className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'
-                      }`}
+                    className={`alert alert-danger form-error-alert ${
+                      authToken.error ? '' : 'hide'
+                    }`}
                   >
                     {<strong>{JSON.stringify(authToken.error)}</strong>}
                   </div>
@@ -178,7 +186,9 @@ class LoginForm extends Component {
               )}
             </Formik>
           )}
-          {version && <span className="align-center yba-version"> Platform Version: {version}</span>}
+          {version && (
+            <span className="align-center yba-version"> Platform Version: {version}</span>
+          )}
         </div>
       </div>
     );

@@ -10,14 +10,23 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -25,14 +34,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
-import java.util.regex.Matcher;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import org.yb.ybc.BackupServiceTaskAbortRequest;
 import org.yb.ybc.BackupServiceTaskAbortResponse;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
@@ -62,6 +63,7 @@ public class YbcManager {
   private final NodeManager nodeManager;
 
   private static final int WAIT_EACH_ATTEMPT_MS = 5000;
+  private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
   private static final int MAX_RETRIES = 10;
 
   private static final String YBC_STABLE_RELEASE_PATH = "ybc.releases.stable_version";
@@ -95,7 +97,7 @@ public class YbcManager {
                   .getDataObject();
       String nfsDir = configData.backupLocation;
       for (String location : backupUtil.getBackupLocations(backup)) {
-        String cloudDir = BackupUtil.getBackupIdentifier(configData.backupLocation, location, true);
+        String cloudDir = BackupUtil.getBackupIdentifier(location, true);
         BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
             BackupServiceNfsDirDeleteRequest.newBuilder()
                 .setNfsDir(nfsDir)
@@ -197,6 +199,7 @@ public class YbcManager {
     }
   }
 
+  /** Returns the success marker for a particular backup, returns null if not found. */
   public String downloadSuccessMarker(
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
       UUID universeUUID,
@@ -220,16 +223,19 @@ public class YbcManager {
       while (numRetries < MAX_RETRIES) {
         downloadSuccessMarkerResultResponse =
             ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
-        if (!downloadSuccessMarkerResultResponse
-            .getTaskStatus()
-            .equals(ControllerStatus.IN_PROGRESS)) {
+        if (!(downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.IN_PROGRESS)
+            || downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.NOT_STARTED))) {
           break;
         }
-        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
         numRetries++;
       }
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
-        throw new Exception(
+        throw new RuntimeException(
             String.format(
                 "Failed to download success marker, failure status: {}",
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
@@ -262,7 +268,10 @@ public class YbcManager {
     Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
     String ybServerPackage =
-        nodeManager.getYbServerPackageName(ybSoftwareVersion, nodeCluster.getRegions().get(0));
+        nodeManager.getYbServerPackageName(
+            ybSoftwareVersion,
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -292,7 +301,8 @@ public class YbcManager {
             ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
     String ybcServerPackage =
         releaseMetadata.getFilePath(
-            Universe.getCluster(universe, node.nodeName).getRegions().get(0));
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
@@ -353,6 +363,9 @@ public class YbcManager {
                 YbcClient client = null;
                 try {
                   String nodeIp = n.cloudInfo.private_ip;
+                  if (nodeIp == null) {
+                    return;
+                  }
                   client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
                   BackupServiceTaskThrottleParametersSetResponse throttleParamsSetResponse =
                       client.backupServiceTaskThrottleParametersSet(throttleParametersSetRequest);
@@ -439,5 +452,12 @@ public class YbcManager {
         ybcClientService.closeClient(ybcClient);
       }
     }
+  }
+
+  private Region getFirstRegion(Universe universe, Cluster cluster) {
+    Customer customer = Customer.get(universe.customerId);
+    UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
+    UUID regionUuid = cluster.userIntent.regionList.get(0);
+    return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
   }
 }

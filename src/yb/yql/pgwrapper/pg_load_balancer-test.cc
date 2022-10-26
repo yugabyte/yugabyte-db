@@ -24,10 +24,10 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -90,7 +90,7 @@ TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningT
     auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       if (peer->tablet() &&
-          peer->table_type() == PGSQL_TABLE_TYPE &&
+          peer->TEST_table_type() == PGSQL_TABLE_TYPE &&
           peer->data_state() == tablet::TABLET_DATA_TOMBSTONED) {
         return false;
       }

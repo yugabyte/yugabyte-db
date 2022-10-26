@@ -16,9 +16,11 @@
 
 #include <string>
 
+#include "yb/util/net/net_util.h"
+
 namespace yb {
 
-std::string PgDeriveSocketDir(const std::string& host);
+std::string PgDeriveSocketDir(const HostPort& host_port);
 
 } // namespace yb
 

@@ -83,6 +83,15 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
 
+  @ApiModelProperty(value = "UUID of the parent backup")
+  public UUID baseBackupUUID = null;
+
+  @ApiModelProperty(value = "Frequency of incremental backups")
+  public long incrementalBackupFrequency = 0L;
+
+  @ApiModelProperty(value = "Time unit for user input incremental backup schedule frequency")
+  public TimeUnit incrementalBackupFrequencyTimeUnit;
+
   // The associated schedule UUID (if applicable)
   @ApiModelProperty(value = "Schedule UUID")
   public UUID scheduleUUID = null;
@@ -120,6 +129,10 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.scheduleName = backupRequestParams.scheduleName;
     this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
     this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
+    this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
+    this.incrementalBackupFrequencyTimeUnit =
+        backupRequestParams.incrementalBackupFrequencyTimeUnit;
 
     // Deep copy.
     if (backupRequestParams.keyspaceTableList == null) {

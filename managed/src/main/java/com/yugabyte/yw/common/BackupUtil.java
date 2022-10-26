@@ -2,44 +2,56 @@
 
 package com.yugabyte.yw.common;
 
+import static com.cronutils.model.CronType.UNIX;
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static java.lang.Math.abs;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.BackupResp;
+import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.CommonBackupInfo.CommonBackupInfoBuilder;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
-import java.io.IOException;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -48,15 +60,10 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes.RelationType;
-
-import static com.cronutils.model.CronType.UNIX;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static java.lang.Math.abs;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 @Singleton
 public class BackupUtil {
@@ -74,7 +81,6 @@ public class BackupUtil {
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
   public static final String BACKUP_SIZE_FIELD = "backup_size_in_bytes";
   public static final String YBC_BACKUP_IDENTIFIER = "ybc_backup";
-
   public static final String YB_CLOUD_COMMAND_TYPE = "table";
   public static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   public static final String VM_CERT_DIR = "/yugabyte-tls-config/";
@@ -82,13 +88,35 @@ public class BackupUtil {
   public static final String REGION_LOCATIONS = "REGION_LOCATIONS";
   public static final String REGION_NAME = "REGION";
   public static final String SNAPSHOT_URL_FIELD = "snapshot_url";
+  public static final String UNIVERSE_UUID_IDENTIFIER_STRING =
+      "(univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
+  public static final String BACKUP_IDENTIFIER_STRING =
+      "(.*?)" + "(yugabyte_backup/)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
-      "^(/?)univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
-          + "[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-          + "/"
-          + YBC_BACKUP_IDENTIFIER;
+      "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
       Pattern.compile(YBC_BACKUP_LOCATION_IDENTIFIER_STRING);
+  public static final List<TaskType> BACKUP_TASK_TYPES =
+      ImmutableList.of(TaskType.CreateBackup, TaskType.BackupUniverse, TaskType.MultiTableBackup);
+
+  public static Map<TableType, YQLDatabase> TABLE_TYPE_TO_YQL_DATABASE_MAP;
+
+  static {
+    TABLE_TYPE_TO_YQL_DATABASE_MAP = new HashMap<>();
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.YQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_CQL);
+    TABLE_TYPE_TO_YQL_DATABASE_MAP.put(TableType.PGSQL_TABLE_TYPE, YQLDatabase.YQL_DATABASE_PGSQL);
+  }
+
+  public static TableType getTableType(String tableType) {
+    switch (tableType) {
+      case "YSQL":
+        return TableType.PGSQL_TABLE_TYPE;
+      case "YCQL":
+        return TableType.YQL_TABLE_TYPE;
+      default:
+        throw new IllegalArgumentException("Unexpected table type " + tableType);
+    }
+  }
 
   /**
    * Use for cases apart from customer configs. Currently used in backup listing API, and fetching
@@ -102,6 +130,14 @@ public class BackupUtil {
 
   public static void validateBackupCronExpression(String cronExpression)
       throws PlatformServiceException {
+    if (getCronExpressionTimeInterval(cronExpression)
+        < BackupUtil.MIN_SCHEDULE_DURATION_IN_MILLIS) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Duration between the cron schedules cannot be less than 1 hour");
+    }
+  }
+
+  public static long getCronExpressionTimeInterval(String cronExpression) {
     Cron parsedUnixCronExpression;
     try {
       CronParser unixCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
@@ -117,13 +153,10 @@ public class BackupUtil {
         executionTime.timeFromLastExecution(Instant.now().atZone(ZoneId.of("UTC"))).get();
     Duration duration = Duration.ZERO;
     duration = duration.plus(timeToNextExecution).plus(timeFromLastExecution);
-    if (duration.getSeconds() < BackupUtil.MIN_SCHEDULE_DURATION_IN_SECS) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Duration between the cron schedules cannot be less than 1 hour");
-    }
+    return duration.getSeconds() * 1000;
   }
 
-  public static void validateBackupFrequency(Long frequency) throws PlatformServiceException {
+  public static void validateBackupFrequency(long frequency) throws PlatformServiceException {
     if (frequency < MIN_SCHEDULE_DURATION_IN_MILLIS) {
       throw new PlatformServiceException(BAD_REQUEST, "Minimum schedule duration is 1 hour");
     }
@@ -146,42 +179,63 @@ public class BackupUtil {
     Boolean isStorageConfigPresent = true;
     Boolean isUniversePresent = true;
     try {
-      CustomerConfig config =
-          customerConfigService.getOrBadRequest(
-              backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
+      customerConfigService.getOrBadRequest(
+          backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
     } catch (PlatformServiceException e) {
       isStorageConfigPresent = false;
     }
     try {
-      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
+      Universe.getOrBadRequest(backup.universeUUID);
     } catch (PlatformServiceException e) {
       isUniversePresent = false;
+    }
+    List<Backup> backupChain =
+        Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.baseBackupUUID);
+    Date lastIncrementDate = null;
+    boolean hasIncrements = false;
+    BackupState lastBackupState = BackupState.Completed;
+    if (CollectionUtils.isNotEmpty(backupChain)) {
+      lastIncrementDate = backupChain.get(0).getCreateTime();
+      lastBackupState = backupChain.get(0).state;
+      hasIncrements = backupChain.size() > 1;
     }
     Boolean onDemand = (backup.getScheduleUUID() == null);
     BackupRespBuilder builder =
         BackupResp.builder()
-            .createTime(backup.getCreateTime())
-            .updateTime(backup.getUpdateTime())
             .expiryTime(backup.getExpiry())
-            .completionTime(backup.getCompletionTime())
             .onDemand(onDemand)
-            .sse(backup.getBackupInfo().sse)
             .isFullBackup(backup.getBackupInfo().isFullBackup)
             .universeName(backup.universeName)
-            .backupUUID(backup.backupUUID)
-            .taskUUID(backup.taskUUID)
             .scheduleUUID(backup.getScheduleUUID())
             .customerUUID(backup.customerUUID)
             .universeUUID(backup.universeUUID)
             .category(backup.category)
-            .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
-            .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
-            .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
             .storageConfigType(backup.getBackupInfo().storageConfigType)
-            .state(backup.state);
+            .fullChainSizeInBytes(backup.getBackupInfo().fullChainSizeInBytes)
+            .commonBackupInfo(getCommonBackupInfo(backup))
+            .hasIncrementalBackups(hasIncrements)
+            .lastIncrementalBackupTime(lastIncrementDate)
+            .lastBackupState(lastBackupState);
+    return builder.build();
+  }
+
+  public static CommonBackupInfo getCommonBackupInfo(Backup backup) {
+    CommonBackupInfoBuilder builder = CommonBackupInfo.builder();
+    builder
+        .createTime(backup.getCreateTime())
+        .updateTime(backup.getUpdateTime())
+        .completionTime(backup.getCompletionTime())
+        .backupUUID(backup.backupUUID)
+        .baseBackupUUID(backup.baseBackupUUID)
+        .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
+        .state(backup.state)
+        .kmsConfigUUID(backup.getBackupInfo().kmsConfigUUID)
+        .storageConfigUUID(backup.storageConfigUUID)
+        .taskUUID(backup.taskUUID)
+        .sse(backup.getBackupInfo().sse);
     if (backup.getBackupInfo().backupList == null) {
       KeyspaceTablesList kTList =
           KeyspaceTablesList.builder()
@@ -212,6 +266,14 @@ public class BackupUtil {
       builder.responseList(kTLists);
     }
     return builder.build();
+  }
+
+  public List<CommonBackupInfo> getIncrementalBackupList(UUID baseBackupUUID, UUID customerUUID) {
+    List<Backup> backupChain = Backup.fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
+    if (CollectionUtils.isEmpty(backupChain)) {
+      return new ArrayList<>();
+    }
+    return backupChain.stream().map(BackupUtil::getCommonBackupInfo).collect(Collectors.toList());
   }
 
   // For creating new backup we would set the storage location based on
@@ -304,47 +366,27 @@ public class BackupUtil {
     }
   }
 
-  public void validateStorageConfigOnLocations(CustomerConfig config, List<String> locations) {
-    LOG.info(String.format("Validating storage config %s", config.configName));
-    boolean isValid = true;
-    switch (config.name) {
-      case Util.AZ:
-      case Util.GCS:
-      case Util.S3:
-        CloudUtil cloudUtil = CloudUtil.getCloudUtil(config.name);
-        isValid = cloudUtil.canCredentialListObjects(config.getDataObject(), locations);
-        break;
-      case Util.NFS:
-        isValid = true;
-        break;
-      default:
-        throw new PlatformServiceException(
-            BAD_REQUEST, String.format("Invalid config type: %s", config.name));
-    }
-    if (!isValid) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format("Storage config %s cannot access backup locations", config.configName));
+  public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
+    StorageUtil storageUtil = StorageUtil.getStorageUtil(config.name);
+    BackupTableParams params = backup.getBackupInfo();
+    if (CollectionUtils.isNotEmpty(params.backupList)) {
+      for (BackupTableParams tableParams : params.backupList) {
+        Map<String, String> keyspaceLocationMap = getKeyspaceLocationMap(tableParams);
+        storageUtil.validateStorageConfigOnLocations(config.getDataObject(), keyspaceLocationMap);
+      }
+    } else {
+      Map<String, String> keyspaceLocationMap = getKeyspaceLocationMap(params);
+      storageUtil.validateStorageConfigOnLocations(config.getDataObject(), keyspaceLocationMap);
     }
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
-    List<String> locations = new ArrayList<>();
-    if (config.name.equals(Util.NFS)) {
-      return;
-    }
+    LOG.info(String.format("Validating storage config %s", config.configName));
     CustomerConfigStorageData configData = (CustomerConfigStorageData) config.getDataObject();
     if (StringUtils.isBlank(configData.backupLocation)) {
       throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
     }
-    locations.add(configData.backupLocation);
-    Map<String, String> regionLocationsMap =
-        StorageUtil.getStorageUtil(config.name).getRegionLocationsMap(configData);
-    regionLocationsMap.forEach(
-        (r, bL) -> {
-          locations.add(bL);
-        });
-    validateStorageConfigOnLocations(config, locations);
+    StorageUtil.getStorageUtil(config.name).validateStorageConfigOnLocations(configData);
   }
 
   /**
@@ -355,9 +397,8 @@ public class BackupUtil {
    * @param configRegionLocation The regional location from the config
    * @return
    */
-  public static String getExactRegionLocation(
-      String backupLocation, String configDefaultLocation, String configRegionLocation) {
-    String backupIdentifier = getBackupIdentifier(configDefaultLocation, backupLocation, false);
+  public static String getExactRegionLocation(String backupLocation, String configRegionLocation) {
+    String backupIdentifier = getBackupIdentifier(backupLocation, false);
     String location = getCloudpathWithConfigSuffix(configRegionLocation, backupIdentifier);
     return location;
   }
@@ -365,36 +406,38 @@ public class BackupUtil {
   /**
    * Check whether backup is taken via YB-Controller.
    *
-   * @param configDefaultLocation
    * @param backupLocation
    * @return
    */
-  public boolean isYbcBackup(String configDefaultLocation, String backupLocation) {
-    String backupIdentifier = getBackupIdentifier(configDefaultLocation, backupLocation, true);
-    return PATTERN_FOR_YBC_BACKUP_LOCATION.matcher(backupIdentifier).find();
+  public boolean isYbcBackup(String backupLocation) {
+    return PATTERN_FOR_YBC_BACKUP_LOCATION.matcher(backupLocation).find();
   }
 
   /**
-   * Returns the univ-<>/backup-<>-<>/some_identifier extracted from the default backup location or
-   * yugabyte_backup/univ-<>/backup-<>-<>/something if YBC NFS backup and checkYbcNfs is false. If
+   * Returns the univ-<>/backup-<>-<>/some_value extracted from the default backup location or
+   * yugabyte_backup/univ-<>/backup-<>-<>/some_value if YBC NFS backup and checkYbcNfs is false. If
    * checkYbcNfs is set to true, it additionally checks for yugabyte_bucket/ in the location and
    * removes it.
    *
    * @param checkYbcNfs Remove default nfs bucket name if true
-   * @param configDefaultLocation The default config location
    * @param defaultbackupLocation The default location of the backup, containing the md/success file
    */
-  public static String getBackupIdentifier(
-      String configDefaultLocation, String defaultBackupLocation, boolean checkYbcNfs) {
-    String backupIdentifier =
-        StringUtils.removeStart(
-            defaultBackupLocation,
-            configDefaultLocation + (configDefaultLocation.endsWith("/") ? "" : "/"));
-    if (checkYbcNfs) {
-      backupIdentifier =
-          StringUtils.removeStart(backupIdentifier, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET + "/");
+  public static String getBackupIdentifier(String defaultBackupLocation, boolean checkYbcNfs) {
+    // Group 1: config prefix
+    // Group 2: yugabyte_backup/ NFS bucket
+    // Group 3: univ-<uuid>/
+    // Group 4: suffix after universe
+    // Group 5: ybc_ identifier
+    Matcher m = Pattern.compile(BACKUP_IDENTIFIER_STRING).matcher(defaultBackupLocation);
+    m.matches();
+    String backupIdentifier = m.group(3).concat(m.group(4));
+    if (checkYbcNfs || StringUtils.isBlank(m.group(2)) || StringUtils.isBlank(m.group(5))) {
+      return backupIdentifier;
     }
-    return backupIdentifier;
+    // If NFS backup and checkYbcNfs disabled append
+    return StringUtils.startsWith(m.group(1), "/")
+        ? m.group(2).concat(backupIdentifier)
+        : backupIdentifier;
   }
 
   public void validateRestoreOverwrites(
@@ -511,25 +554,24 @@ public class BackupUtil {
     }
   }
 
+  /**
+   * Returns a list of locations in the backup.
+   *
+   * @param backup The backup to get all locations of.
+   * @return List of locations( defaul and regional) for the backup.
+   */
   public List<String> getBackupLocations(Backup backup) {
     BackupTableParams backupParams = backup.getBackupInfo();
     List<String> backupLocations = new ArrayList<>();
+    Map<String, String> keyspaceLocations = new HashMap<>();
     if (backupParams.backupList != null) {
       for (BackupTableParams params : backupParams.backupList) {
-        backupLocations.add(params.storageLocation);
-        if (CollectionUtils.isNotEmpty(params.regionLocations)) {
-          for (RegionLocations regionLocation : params.regionLocations) {
-            backupLocations.add(regionLocation.LOCATION);
-          }
-        }
+        keyspaceLocations = getKeyspaceLocationMap(params);
+        keyspaceLocations.values().forEach(l -> backupLocations.add(l));
       }
     } else {
-      backupLocations.add(backupParams.storageLocation);
-      if (CollectionUtils.isNotEmpty(backupParams.regionLocations)) {
-        for (RegionLocations regionLocation : backupParams.regionLocations) {
-          backupLocations.add(regionLocation.LOCATION);
-        }
-      }
+      keyspaceLocations = getKeyspaceLocationMap(backupParams);
+      keyspaceLocations.values().forEach(l -> backupLocations.add(l));
     }
     return backupLocations;
   }
@@ -542,6 +584,41 @@ public class BackupUtil {
    */
   public static String getCloudpathWithConfigSuffix(String storageConfigSuffix, String commonDir) {
     return String.format(
-        (storageConfigSuffix.endsWith("/") ? "%s%s" : "%s/%s"), storageConfigSuffix, commonDir);
+        ((StringUtils.isBlank(storageConfigSuffix) || storageConfigSuffix.endsWith("/"))
+            ? "%s%s"
+            : "%s/%s"),
+        storageConfigSuffix,
+        commonDir);
+  }
+
+  public static String appendSlash(String l) {
+    return l.concat(l.endsWith("/") ? "" : "/");
+  }
+
+  /**
+   * Return the region-location mapping of a given keyspace/table backup. The default location is
+   * mapped to "default_region" as key in map.
+   *
+   * @param tableParams
+   * @return The mapping
+   */
+  public Map<String, String> getKeyspaceLocationMap(BackupTableParams tableParams) {
+    Map<String, String> keyspaceRegionLocations = new HashMap<>();
+    if (tableParams != null) {
+      keyspaceRegionLocations.put(YbcBackupUtil.DEFAULT_REGION_STRING, tableParams.storageLocation);
+      if (CollectionUtils.isNotEmpty(tableParams.regionLocations)) {
+        tableParams.regionLocations.forEach(
+            rL -> {
+              keyspaceRegionLocations.put(rL.REGION, rL.LOCATION);
+            });
+      }
+    }
+    return keyspaceRegionLocations;
+  }
+
+  public static boolean checkInProgressIncrementalBackup(Backup backup) {
+    return Backup.fetchAllBackupsByBaseBackupUUID(backup.customerUUID, backup.backupUUID)
+        .stream()
+        .anyMatch((b) -> (b.state.equals(BackupState.InProgress)));
   }
 }

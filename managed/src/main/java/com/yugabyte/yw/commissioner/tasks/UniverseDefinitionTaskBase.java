@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
@@ -28,6 +30,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -51,12 +54,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -66,11 +70,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import play.Configuration;
 import play.libs.Json;
 
@@ -116,6 +120,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public static final String NODE_NAME_KEY = "Name";
 
   private static class TemplatedTags {
+
     private static final String DOLLAR = "$";
     private static final String LBRACE = "{";
     private static final String PREFIX = DOLLAR + LBRACE;
@@ -145,10 +150,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * are not saved to the DB in this method.
    *
    * @param universe
-   * @param isReadOnlyCreate
+   * @param taskParams
+   * @param isNonPrimaryCreate
    */
   public static void setUserIntentToUniverse(
-      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isReadOnlyCreate) {
+      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isNonPrimaryCreate) {
     // Persist the updated information about the universe.
     // It should have been marked as being edited in lockUniverseForUpdate().
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -157,7 +163,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    if (!isReadOnlyCreate) {
+    if (!isNonPrimaryCreate) {
       universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
       universeDetails.nodePrefix = taskParams.nodePrefix;
       universeDetails.useNewHelmNamingStyle = taskParams.useNewHelmNamingStyle;
@@ -176,23 +182,34 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
-      } // else read only cluster edit mode.
+      } // else non-primary (read-only / add-on) cluster edit mode.
     } else {
-      // Combine the existing nodes with new read only cluster nodes.
+      // Combine the existing nodes with new non-primary (read-only / add-on) cluster nodes.
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
-    taskParams
-        .getReadOnlyClusters()
-        .forEach(
-            async -> {
-              // Update read replica cluster TLS params to be same as primary cluster
-              async.userIntent.enableNodeToNodeEncrypt =
-                  universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-              async.userIntent.enableClientToNodeEncrypt =
-                  universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-              universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
-            });
+
+    setEncryptionIntentForNonPrimaryClusters(
+        taskParams.getClusterByType(ClusterType.ASYNC), taskParams, universeDetails);
+    setEncryptionIntentForNonPrimaryClusters(
+        taskParams.getClusterByType(ClusterType.ADDON), taskParams, universeDetails);
+
     universe.setUniverseDetails(universeDetails);
+  }
+
+  private static void setEncryptionIntentForNonPrimaryClusters(
+      List<Cluster> clusters,
+      UniverseDefinitionTaskParams taskParams,
+      UniverseDefinitionTaskParams universeDetails) {
+    clusters.forEach(
+        cluster -> {
+          // Update read replica cluster TLS params to be same as primary cluster
+          cluster.userIntent.enableNodeToNodeEncrypt =
+              taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+          cluster.userIntent.enableClientToNodeEncrypt =
+              taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+          universeDetails.upsertCluster(
+              cluster.userIntent, cluster.placementInfo, cluster.uuid, cluster.clusterType);
+        });
   }
 
   /**
@@ -322,30 +339,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodeIdx index to be used in node name.
    * @param region region in which this node is present.
    * @param az zone in which this node is present.
-   * @param dedicatedTo process type that node is reserved for.
    * @return a string which can be used as the node name.
    */
   public static String getNodeName(
-      Cluster cluster,
-      String tagValue,
-      String prefix,
-      int nodeIdx,
-      String region,
-      String az,
-      @Nullable ServerType dedicatedTo) {
+      Cluster cluster, String tagValue, String prefix, int nodeIdx, String region, String az) {
     if (!tagValue.isEmpty()) {
       checkTagPattern(tagValue);
     }
 
     String newName = "";
-    if (cluster.clusterType == ClusterType.ASYNC) {
+    if (cluster.clusterType == ClusterType.ASYNC || cluster.clusterType == ClusterType.ADDON) {
+      String discriminator;
+      switch (cluster.clusterType) {
+        case ASYNC:
+          discriminator = Universe.READONLY;
+          break;
+        case ADDON:
+          discriminator = Universe.ADDON;
+          break;
+        default:
+          throw new IllegalArgumentException("Invalid cluster type " + cluster.clusterType);
+      }
+
       if (tagValue.isEmpty()) {
-        newName = prefix + Universe.READONLY + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
+        newName = prefix + discriminator + cluster.index + Universe.NODEIDX_PREFIX + nodeIdx;
       } else {
         newName =
-            getTagBasedName(tagValue, cluster, nodeIdx, region, az)
-                + Universe.READONLY
-                + cluster.index;
+            getTagBasedName(tagValue, cluster, nodeIdx, region, az) + discriminator + cluster.index;
       }
     } else {
       if (tagValue.isEmpty()) {
@@ -353,9 +373,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       } else {
         newName = getTagBasedName(tagValue, cluster, nodeIdx, region, az);
       }
-    }
-    if (dedicatedTo != null) {
-      newName += "-" + dedicatedTo.name().toLowerCase();
     }
 
     log.info("Node name " + newName + " at index " + nodeIdx);
@@ -412,8 +429,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   taskParams().nodePrefix,
                   node.nodeIdx,
                   node.cloudInfo.region,
-                  node.cloudInfo.az,
-                  node.dedicatedTo);
+                  node.cloudInfo.az);
           iter++;
         }
         node.isYsqlServer = isYSQL;
@@ -1164,7 +1180,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException(getName() + ": nodePrefix not set");
     }
     if (opType == UniverseOpType.CREATE
-        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0) {
+        && PlacementInfoUtil.getNumMasters(taskParams().nodeDetailsSet) > 0
+        && !taskParams().clusters.get(0).userIntent.dedicatedNodes) {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
@@ -1174,18 +1191,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
-      if (opType == UniverseOpType.EDIT
-          && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        if (univCluster == null) {
-          throw new IllegalStateException(
-              "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
+      if (opType == UniverseOpType.EDIT) {
+        if (cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
+          if (univCluster == null) {
+            throw new IllegalStateException(
+                "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
+          }
+          if (!univCluster
+              .userIntent
+              .instanceTags
+              .get(NODE_NAME_KEY)
+              .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
+            throw new IllegalArgumentException("'Name' tag value cannot be changed.");
+          }
         }
-        if (!univCluster
-            .userIntent
-            .instanceTags
-            .get(NODE_NAME_KEY)
-            .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
-          throw new IllegalArgumentException("'Name' tag value cannot be changed.");
+        if (cluster.userIntent.deviceInfo != null
+            && cluster.userIntent.deviceInfo.volumeSize != null
+            && cluster.userIntent.deviceInfo.volumeSize
+                < univCluster.userIntent.deviceInfo.volumeSize) {
+          String errMsg =
+              String.format(
+                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                  univCluster.userIntent.deviceInfo.volumeSize,
+                  cluster.userIntent.deviceInfo.volumeSize);
+          throw new IllegalStateException(errMsg);
         }
       }
       PlacementInfoUtil.verifyNodesAndRF(
@@ -1196,7 +1225,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-              || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+              || cluster.userIntent.azOverrides != null
+                  && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
         } else { // During edit universe, overrides can't be changed.
@@ -1204,29 +1234,213 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
-            Map<String, String> curAZOverrides =
-                HelmUtils.flattenMap(
-                    HelmUtils.convertYamlToMap(univCluster.userIntent.azOverrides));
+            Map<String, String> curAZsOverrides = univCluster.userIntent.azOverrides;
+            Map<String, String> newAZsOverrides = cluster.userIntent.azOverrides;
+            if (curAZsOverrides == null) {
+              curAZsOverrides = new HashMap<>();
+            }
+            if (newAZsOverrides == null) {
+              newAZsOverrides = new HashMap<>();
+            }
+            if (curAZsOverrides.size() != newAZsOverrides.size()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
+            if (!Sets.difference(curAZsOverrides.keySet(), newAZsOverrides.keySet()).isEmpty()
+                || !Sets.difference(newAZsOverrides.keySet(), curAZsOverrides.keySet()).isEmpty()) {
+              throw new IllegalArgumentException(
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+
             Map<String, String> newUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(cluster.userIntent.universeOverrides));
-            Map<String, String> newAZOverrides =
-                HelmUtils.flattenMap(HelmUtils.convertYamlToMap(cluster.userIntent.azOverrides));
-            if (!(curUnivOverrides.equals(newUnivOverrides)
-                && curAZOverrides.equals(newAZOverrides))) {
+            if (!curUnivOverrides.equals(newUnivOverrides)) {
               throw new IllegalArgumentException(
-                  "Universe overrides can't be modified during the edit operation.");
+                  "Kubernetes overrides can't be modified during the edit operation.");
+            }
+            for (String az : curAZsOverrides.keySet()) {
+              String curAZOverridesStr = curAZsOverrides.get(az);
+              Map<String, Object> curAZOverrides = HelmUtils.convertYamlToMap(curAZOverridesStr);
+              String newAZOverridesStr = newAZsOverrides.get(az);
+              Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
+              if (!curAZOverrides.equals(newAZOverrides)) {
+                throw new IllegalArgumentException(
+                    String.format(
+                        "Kubernetes overrides can't be modified during the edit operation. "
+                            + "For AZ %s, previous overrides: %s, new overrides: %s",
+                        az, curAZOverridesStr, newAZOverridesStr));
+              }
             }
           }
         }
       } else {
         // Non k8s universes should not have kubernetes overrides.
         if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
-            || StringUtils.isNotBlank(cluster.userIntent.azOverrides)) {
+            || cluster.userIntent.azOverrides != null
+                && cluster.userIntent.azOverrides.size() != 0) {
           throw new IllegalArgumentException(
               "Non kubernetes universe can't have kubernetes overrides defined");
         }
       }
+    }
+  }
+
+  protected AnsibleConfigureServers.Params createCertUpdateParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      NodeManager.CertRotateAction certRotateAction,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            node,
+            ServerType.TSERVER,
+            UpgradeTaskParams.UpgradeTaskType.Certs,
+            UpgradeTaskParams.UpgradeTaskSubType.None);
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    params.rootCARotationType = rootCARotationType;
+    params.clientRootCARotationType = clientRootCARotationType;
+    params.certRotateAction = certRotateAction;
+    return params;
+  }
+
+  protected void createCertUpdateTasks(
+      Collection<NodeDetails> nodes,
+      NodeManager.CertRotateAction certRotateAction,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    UserIntent userIntent = getUserIntent();
+
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          createCertUpdateParams(
+              userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createYbcUpdateCertDirsTask(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    UserIntent userIntent = getUserIntent();
+
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          createUpdateCertDirParams(userIntent, node, ServerType.CONTROLLER);
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUpdateCertDirsTask(
+      Collection<NodeDetails> nodes, ServerType serverType, SubTaskGroupType subTaskGroupType) {
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    UserIntent userIntent = getUserIntent();
+
+    for (NodeDetails node : nodes) {
+      AnsibleConfigureServers.Params params =
+          createUpdateCertDirParams(userIntent, node, serverType);
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected AnsibleConfigureServers.Params createUpdateCertDirParams(
+      UserIntent userIntent, NodeDetails node, ServerType serverType) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(
+            node,
+            serverType,
+            UpgradeTaskParams.UpgradeTaskType.Certs,
+            UpgradeTaskParams.UpgradeTaskSubType.None);
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    params.certRotateAction = NodeManager.CertRotateAction.UPDATE_CERT_DIRS;
+    return params;
+  }
+
+  protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
+    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+    params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
+    params.rootCA = taskParams().rootCA;
+    params.clientRootCA = taskParams().clientRootCA;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    return params;
+  }
+
+  protected void createUniverseSetTlsParamsTask(SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    UniverseSetTlsParams.Params params = createSetTlsParams(subTaskGroupType);
+
+    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected LinkedHashSet<NodeDetails> toOrderedSet(
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes) {
+    LinkedHashSet<NodeDetails> nodeSet = new LinkedHashSet<>();
+    nodeSet.addAll(nodes.getLeft());
+    nodeSet.addAll(nodes.getRight());
+    return nodeSet;
+  }
+
+  protected void createCertUpdateTasks(
+      List<NodeDetails> masters,
+      List<NodeDetails> tservers,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType) {
+    // Copy new server certs to all nodes
+    createCertUpdateTasks(
+        toOrderedSet(Pair.of(masters, tservers)),
+        NodeManager.CertRotateAction.ROTATE_CERTS,
+        subTaskGroupType,
+        rootCARotationType,
+        clientRootCARotationType);
+    // Update gflags of cert directories
+    createUpdateCertDirsTask(masters, ServerType.MASTER, subTaskGroupType);
+    createUpdateCertDirsTask(tservers, ServerType.TSERVER, subTaskGroupType);
+
+    if (taskParams().ybcInstalled) {
+      createYbcUpdateCertDirsTask(tservers, subTaskGroupType);
     }
   }
 
@@ -1689,15 +1903,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public boolean createProvisionNodeTasks(
       Universe universe,
-      Set<NodeDetails> nodesToBeProvisioned,
+      Set<NodeDetails> nodesToBeCreated,
       boolean isShellMode,
       boolean ignoreNodeStatus,
       boolean ignoreUseCustomImageConfig) {
     boolean isFallThrough =
         createCreateNodeTasks(
-            universe, nodesToBeProvisioned, ignoreNodeStatus, ignoreUseCustomImageConfig);
+            universe, nodesToBeCreated, ignoreNodeStatus, ignoreUseCustomImageConfig);
+
     return createConfigureNodeTasks(
-        universe, nodesToBeProvisioned, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
+        universe, nodesToBeCreated, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
   }
 
   /**

@@ -37,14 +37,13 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
 2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
 
-3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:
 
-    ![Restore backup](/images/yp/restore-entire-backup.png)<br><br><br>
+    ![Restore backup](/images/yp/restore-entire-backup.png)
 
 4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
-    <br/><br/>
-    ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql.png)<br><br><br>
+    ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql.png)
 
     - Select the name of the universe to which you want to restore the backup.
 
@@ -54,11 +53,9 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
     - Select **Rename databases in this backup before restoring** and then click **Next: Rename Database/Keyspaces**.
 
-    - Specify the new name for a keyspace or database in the backup and click **Restore**, as per the following illustration:<br><br>
+    - Specify the new name for a keyspace or database in the backup and click **Restore**, as per the following illustration:
 
-      ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql-2.png)<br>
-
-      <br>For information about keyspaces in YugabyteDB, see [Create keyspaces and tables](../../../../explore/multi-region-deployments/asynchronous-replication-ycql/#2-create-keyspace-and-tables).<br>
+      ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql-2.png)
 
       The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
 
@@ -70,11 +67,11 @@ In addition to the basic restore, an advanced option is available if you have mo
 
 To perform this type of restore, click **... > Advanced Restore**, as per the following illustration:
 
-![Restore advanced](/images/yp/restore-advanced.png)<br>
+![Restore advanced](/images/yp/restore-advanced.png)
 
 To proceed, complete the fields of the **Advanced Restore** dialog shown in the following illustration:
 
-![Restore advanced](/images/yp/restore-advanced-ycql.png)<br>
+![Restore advanced](/images/yp/restore-advanced-ycql.png)
 
 - Select YCQL as the type of API.
 
@@ -88,10 +85,10 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
 - Optionally, if the backup involved universes that had [encryption at rest enabled](/preview/yugabyte-platform/security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-- If you do not select **Rename databases in this backup before restoring**, then click **Restore** to start the restore process immediately.<br>
+- If you do not select **Rename databases in this backup before restoring**, then click **Restore** to start the restore process immediately.
 
   If you select **Rename databases in this backup before restoring**, then click **Next: Rename Database/Keyspaces**, specify the new name for a keyspace or database in the backup and click **Restore**.
 
 You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
-![Backups - YSQL](/images/yp/backups.png)<br>
+![Backups - YSQL](/images/yp/backups.png)

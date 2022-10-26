@@ -256,10 +256,11 @@ public class TaskExecutor {
     this.taskOwner = Util.getHostname();
     this.skipSubTaskAbortableCheck = true;
     shutdownHookHandler.addShutdownHook(
-        100 /* weight */,
-        () -> {
-          TaskExecutor.this.shutdown(Duration.ofMinutes(5));
-        });
+        TaskExecutor.this,
+        (taskExecutor) -> {
+          taskExecutor.shutdown(Duration.ofMinutes(5));
+        },
+        100 /* weight */);
   }
 
   // Shuts down the task executor.
@@ -709,6 +710,35 @@ public class TaskExecutor {
     }
   }
 
+  /** A simple cache for caching task runtime data. */
+  public static class TaskCache {
+    private final Map<String, JsonNode> data = new ConcurrentHashMap<>();
+
+    public void put(String key, JsonNode value) {
+      data.put(key, value);
+    }
+
+    public JsonNode get(String key) {
+      return data.get(key);
+    }
+
+    public Set<String> keys() {
+      return data.keySet();
+    }
+
+    public JsonNode delete(String key) {
+      return data.remove(key);
+    }
+
+    public void clear() {
+      data.clear();
+    }
+
+    public int size() {
+      return data.size();
+    }
+  }
+
   /**
    * Abstract implementation of a task runnable which handles the state update after the task has
    * started running. Synchronization is on the this object for taskInfo.
@@ -771,7 +801,7 @@ public class TaskExecutor {
       try {
         if (log.isDebugEnabled()) {
           log.debug(
-              "Task {} waited for {}ms",
+              "Task {} waited for {}s",
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
@@ -782,6 +812,7 @@ public class TaskExecutor {
         }
         setTaskState(TaskInfo.State.Running);
         log.debug("Invoking run() of task {}", task.getName());
+        task.setTaskUUID(getTaskUUID());
         task.run();
         setTaskState(TaskInfo.State.Success);
       } catch (CancellationException e) {
@@ -796,7 +827,7 @@ public class TaskExecutor {
         taskCompletionTime = Instant.now();
         if (log.isDebugEnabled()) {
           log.debug(
-              "Completed task {} in {}ms",
+              "Completed task {} in {}s",
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
@@ -937,6 +968,8 @@ public class TaskExecutor {
     private final Queue<SubTaskGroup> subTaskGroups = new ConcurrentLinkedQueue<>();
     // Latch for timed wait for this task.
     private final CountDownLatch waiterLatch = new CountDownLatch(1);
+    // Cache for caching any runtime data when the task is being run.
+    private final TaskCache taskCache = new TaskCache();
     // Current execution position of subtasks.
     private int subTaskPosition = 0;
     private AtomicReference<TaskExecutionListener> taskExecutionListenerRef =
@@ -958,6 +991,15 @@ public class TaskExecutor {
       taskExecutionListenerRef.set(taskExecutionListener);
     }
 
+    /**
+     * Get the task cache for caching any runtime data.
+     *
+     * @return the cache instance.
+     */
+    public TaskCache getTaskCache() {
+      return taskCache;
+    }
+
     /** Invoked by the ExecutorService. Do not invoke this directly. */
     @Override
     public void run() {
@@ -970,6 +1012,8 @@ public class TaskExecutor {
       } finally {
         // Remove the task.
         runnableTasks.remove(taskUUID);
+        // Empty the cache.
+        taskCache.clear();
         // Update the customer task to a completed state.
         CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
         if (customerTask != null) {

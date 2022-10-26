@@ -28,15 +28,14 @@ To run the docs site locally and edit the docs, you'll need:
 
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
 
-* **Node.js** v16.x, installable in several ways:
+* **[Node.js](https://nodejs.org/en/download/)** LTS (16) or current (18):
 
-  * From the [node.js website](https://nodejs.org/en/download/)
-  * Using Homebrew: `brew install node@16`
-  * Using NVM: `nvm use 16`
+  * Using Homebrew: `brew install node` for current, or `brew install node@16` for LTS
+  * Using NVM: `nvm install 18` for current, or `nvm install --lts` for LTS
 
-* **Hugo**: `brew install hugo` gets you the latest version.
+* **Hugo**: `brew install hugo` installs the latest version.
 
-* **Go**: `brew install go` gets you the latest version.
+* **Go**: `brew install go` installs the latest version.
 
 * **A GitHub account**.
 
@@ -56,13 +55,15 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 
 ## Fork the repository
 
-1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username.
+1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username. (Replace `your-github-id` here with your own GitHub ID.)
 
     ```sh
     export GITHUB_ID=your-github-id
     ```
 
-1. Fork the `yugabyte-db` GitHub repository and create a local clone of your fork with a command like this:
+1. Fork the [`yugabyte-db` GitHub repository](https://github.com/yugabyte/yugabyte-db/).
+
+1. Create a local clone of your fork:
 
     ```sh
     git clone https://github.com/$GITHUB_ID/yugabyte-db.git

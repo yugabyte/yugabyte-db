@@ -56,7 +56,13 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/backoff_waiter.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
+
+using std::vector;
+using std::string;
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int64(db_block_size_bytes);
@@ -67,6 +73,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_string(vmodule);
 DECLARE_bool(TEST_do_not_start_election_test_only);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
@@ -285,11 +292,17 @@ Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
 
 Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
   for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-    RETURN_NOT_OK(WaitFor(
-        [&]() {
-          return peer->shared_tablet()->transaction_participant()->TEST_CountIntents().first == 0;
-        },
-        30s, "Did not apply write transactions from intents db in time."));
+      RETURN_NOT_OK(WaitFor([&]() {
+        // This tablet might has been shut down or in the process of shutting down.
+        // Thus, we need to check whether shared_tablet is nullptr or not
+        // TEST_CountIntent return non ok status also means shutdown has started.
+        const auto shared_tablet = peer->shared_tablet();
+        if (!shared_tablet) {
+          return true;
+        }
+        auto result = shared_tablet->transaction_participant()->TEST_CountIntents();
+        return !result.ok() || result->first == 0;
+      }, 30s, "Did not apply write transactions from intents db in time."));
   }
   return Status::OK();
 }
@@ -400,6 +413,7 @@ TabletSplitITest::TabletSplitITest() = default;
 TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
+  EnableVerboseLoggingForModule("tablet_split_manager", 2);
   FLAGS_cleanup_split_tablets_interval_sec = 1;
   FLAGS_enable_automatic_tablet_splitting = false;
   FLAGS_TEST_validate_all_tablet_candidates = true;
@@ -577,6 +591,8 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
     size_t num_rows,
     bool parent_tablet_protected_from_deletion) {
   auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_code));
+  RETURN_NOT_OK(this->cluster_->WaitForLoadBalancerToStabilize(
+      RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
 
   // If the parent tablet will not be deleted, then we will expect another tablet at the end.
   const auto expected_split_tablets =
@@ -634,29 +650,38 @@ Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tabl
       rpc::RpcController controller;
       controller.set_timeout(kRpcTimeout);
       tserver::WriteResponsePB resp;
-      RETURN_NOT_OK(ts_service_proxy->Write(req, &resp, &controller));
+      while (true) {
+        RETURN_NOT_OK(ts_service_proxy->Write(req, &resp, &controller));
 
-      SCHECK(resp.has_error(), InternalError, "Expected error on write to split tablet");
-      LOG(INFO) << "Error: " << AsString(resp.error());
-      switch (resp.error().code()) {
-        case tserver::TabletServerErrorPB::TABLET_SPLIT:
-          SCHECK_EQ(
-              resp.error().status().code(),
-              AppStatusPB::ILLEGAL_STATE,
-              InternalError,
-              "tserver::TabletServerErrorPB::TABLET_SPLIT error should have "
-              "AppStatusPB::ILLEGAL_STATE on write to split tablet");
-          tablet_split_insert_error_count++;
-          break;
-        case tserver::TabletServerErrorPB::NOT_THE_LEADER:
-          not_the_leader_insert_error_count++;
-          break;
-        case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
-          // In the case that the source tablet was just hidden instead of deleted.
-          tablet_split_insert_error_count++;
-          break;
-        default:
-          return STATUS_FORMAT(InternalError, "Unexpected error: $0", resp.error());
+        SCHECK(resp.has_error(), InternalError, "Expected error on write to split tablet");
+        LOG(INFO) << "Error: " << AsString(resp.error());
+        switch (resp.error().code()) {
+          case tserver::TabletServerErrorPB::TABLET_SPLIT:
+            SCHECK_EQ(
+                resp.error().status().code(),
+                AppStatusPB::ILLEGAL_STATE,
+                InternalError,
+                "tserver::TabletServerErrorPB::TABLET_SPLIT error should have "
+                "AppStatusPB::ILLEGAL_STATE on write to split tablet");
+            tablet_split_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::NOT_THE_LEADER:
+            not_the_leader_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::TABLET_NOT_FOUND:
+            // In the case that the source tablet was just hidden instead of deleted.
+            tablet_split_insert_error_count++;
+            break;
+          case tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE:
+            // If the leader was newly elected (e.g. because of load balancing caused by the tablet
+            // split), retry after a small delay until we get one of the above errors.
+            SleepFor(MonoDelta::FromMilliseconds(100));
+            controller.Reset();
+            continue;
+          default:
+            return STATUS_FORMAT(InternalError, "Unexpected error: $0", resp.error());
+        }
+        break;
       }
     }
   }
@@ -728,9 +753,10 @@ Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::
   }
   uint64_t min_file_size = std::numeric_limits<uint64_t>::max();
   for (const auto& peer : peers) {
-    min_file_size = std::min(
-        min_file_size,
-        peer->shared_tablet()->GetCurrentVersionSstFilesSize());
+    auto tablet = peer->shared_tablet();
+    if (tablet) {
+      min_file_size = std::min(min_file_size, tablet->GetCurrentVersionSstFilesSize());
+    }
   }
   return min_file_size;
 }
@@ -770,7 +796,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
-    const auto shared_tablet = peer->shared_tablet();
+    const auto shared_tablet = VERIFY_RESULT(peer->shared_tablet_safe());
     const SchemaPtr schema = shared_tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
     auto iter = VERIFY_RESULT(shared_tablet->NewRowIterator(client_schema));
@@ -803,6 +829,17 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     }
   }
   return Status::OK();
+}
+
+Status TabletSplitITest::WaitForTableNumActiveLeadersPeers(size_t expected_leaders) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+        LOG(INFO) << "Check number of leaders: " << peers.size();
+        return peers.size() == expected_leaders;
+      },
+      20s * kTimeMultiplier,
+      Format("Waiting table $0 to have $1 leaders ...", table_->id(), expected_leaders));
 }
 
 //

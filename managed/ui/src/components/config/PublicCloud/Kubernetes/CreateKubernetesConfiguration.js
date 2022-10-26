@@ -20,6 +20,7 @@ import { specialChars } from '../../constants';
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
 const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
 const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+const podAddrFQDNTemplate = '{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}';
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -62,17 +63,25 @@ class CreateKubernetesConfiguration extends Component {
         code,
         latitude,
         longitude,
-        zoneList: region.zoneList.map((zone) => ({
-          code: convertStrToCode(zone.zoneLabel),
-          name: zone.zoneLabel,
-          config: {
+        zoneList: region.zoneList.map((zone) => {
+          const config = {
             STORAGE_CLASS: zone.storageClasses || undefined,
             KUBENAMESPACE: zone.namespace || undefined,
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined
-          }
-        }))
+          };
+
+          //Add cert manager issuer
+          if (zone.issuerType === 'ISSUER') config['CERT-MANAGER-ISSUER'] = zone.issuerName;
+          if (zone.issuerType === 'CLUSTER') config['CERT-MANAGER-CLUSTERISSUER'] = zone.issuerName;
+
+          return {
+            code: convertStrToCode(zone.zoneLabel),
+            name: zone.zoneLabel,
+            config
+          };
+        })
       };
     });
 
@@ -83,10 +92,11 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_PROVIDER: vals.providerType
             ? vals.providerType.value
             : providerTypeMetadata
-              ? providerTypeMetadata.code
-              : 'gke',
+            ? providerTypeMetadata.code
+            : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry,
+	  KUBE_POD_ADDRESS_TEMPLATE: vals.podAddressTemplate || podAddrFQDNTemplate
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
@@ -135,8 +145,10 @@ class CreateKubernetesConfiguration extends Component {
     } else {
       providerTypeOptions = KUBERNETES_PROVIDERS
         // skip providers with dedicated tab
-        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks'
-                && provider.code !== 'openshift')
+        .filter(
+          (provider) =>
+            provider.code !== 'tanzu' && provider.code !== 'pks' && provider.code !== 'openshift'
+        )
         .map((provider) => ({ value: provider.code, label: provider.name }));
     }
 
@@ -153,7 +165,8 @@ class CreateKubernetesConfiguration extends Component {
       storageClasses: '',
       kubeDomain: '',
       regionList: [],
-      zoneOverrides: ''
+      zoneOverrides: '',
+      podAddressTemplate: ''
     };
 
     Yup.addMethod(Yup.array, 'unique', function (message, mapper = (a) => a) {
@@ -163,8 +176,9 @@ class CreateKubernetesConfiguration extends Component {
     });
 
     const validationSchema = Yup.object().shape({
-      accountName: Yup.string().required('Config name is Required').matches(
-        specialChars, 'Config Name cannot contain special characters except - and _'),
+      accountName: Yup.string()
+        .required('Config name is Required')
+        .matches(specialChars, 'Config Name cannot contain special characters except - and _'),
 
       serviceAccount: Yup.string().required('Service Account name is Required'),
 
@@ -182,7 +196,17 @@ class CreateKubernetesConfiguration extends Component {
             .of(
               Yup.object()
                 .shape({
-                  zoneLabel: Yup.string().required('Zone label is required')
+                  zoneLabel: Yup.string().required('Zone label is required'),
+                  namespace: Yup.string().when('issuerType', {
+                    is: 'ISSUER',
+                    then: Yup.string().required('Namespace is Required')
+                  }),
+                  issuerName: Yup.string().when('issuerType', (issuerType) => {
+                    if (issuerType === 'CLUSTER')
+                      return Yup.string().required('Cluster Issuer Name is Required');
+                    if (issuerType === 'ISSUER')
+                      return Yup.string().required('Issuer Name is Required');
+                  })
                 })
                 .required()
             )
@@ -214,7 +238,11 @@ class CreateKubernetesConfiguration extends Component {
                 <div className="editor-container">
                   <Row>
                     <Col lg={8}>
-                      <Row className={clsx('config-provider-row', { 'hidden': providerTypeOptions.length === 1 })}>
+                      <Row
+                        className={clsx('config-provider-row', {
+                          hidden: providerTypeOptions.length === 1
+                        })}
+                      >
                         <Col lg={3}>
                           <div className="form-item-custom-label">Type</div>
                         </Col>
@@ -281,8 +309,12 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="imageRegistry"
-                            placeholder={ providerTypeOptions.length === 1 && providerTypeOptions[0].value === 'openshift'
-                                          ? redhatImageRegistry : quayImageRegistry }
+                            placeholder={
+                              providerTypeOptions.length === 1 &&
+                              providerTypeOptions[0].value === 'openshift'
+                                ? redhatImageRegistry
+                                : quayImageRegistry
+                            }
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />
@@ -298,6 +330,28 @@ class CreateKubernetesConfiguration extends Component {
                             component={YBFormDropZone}
                             className="upload-file-button"
                             title={'Upload Pull Secret file'}
+                          />
+                        </Col>
+                      </Row>
+                      <Row className="config-provider-row">
+                        <Col lg={3}>
+                          <div className="form-item-custom-label">Pod Address Template</div>
+                        </Col>
+                        <Col lg={7}>
+                          <Field
+                            name="podAddressTemplate"
+                            placeholder={podAddrFQDNTemplate}
+                            component={YBFormInput}
+                            className={'kube-provider-input-field'}
+                          />
+                        </Col>
+                        <Col lg={1} className="config-provider-tooltip">
+                          <YBInfoTip
+                            title="Pod Address Template (optional)"
+                            content={
+                              'Use this setting for multi-cluster setups like Istio or MCS to generate the correct pod addresses. ' +
+			      'Supported fields are {pod_name}, {service_name}, {namespace}, and {cluster_domain}.'
+                            }
                           />
                         </Col>
                       </Row>

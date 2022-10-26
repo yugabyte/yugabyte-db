@@ -231,7 +231,7 @@ class DocWriteBatch {
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
-      std::vector<string>* results = nullptr,
+      std::vector<std::string>* results = nullptr,
       MonoDelta default_ttl = ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = ValueControlFields::kMaxTtl);
 

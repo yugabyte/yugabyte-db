@@ -1700,7 +1700,7 @@ YbAllowNegativeCacheEntries(int cache_id, Oid namespace_id)
 		case NAMESPACENAME:
 			return true;
 		case RELNAMENSP:
-			return namespace_id == PG_CATALOG_NAMESPACE && !YBIsPreparingTemplates();
+			return namespace_id == PG_CATALOG_NAMESPACE && !YBCIsInitDbModeEnvVarSet();
 	}
 	return isTempOrTempToastNamespace(namespace_id);
 }

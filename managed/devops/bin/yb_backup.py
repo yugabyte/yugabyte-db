@@ -26,6 +26,8 @@ import sys
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
+from botocore.session import get_session
+from botocore.credentials import get_credentials
 from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
@@ -376,8 +378,12 @@ def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
     return apply_sed_edit_reg_exp_cmd(
-        dump_file, "s|DATABASE {0}|DATABASE {1}|;s|\\\\connect {0}|\\\\connect {1}|".format(
-                   old_name, new_name))
+        dump_file,
+        "s|DATABASE {0}|DATABASE {1}|;"
+        "s|\\\\connect {0}|\\\\connect {1}|;"
+        "s|\\\\connect {2}|\\\\connect {1}|;"
+        "s|\\\\connect -reuse-previous=on \\\"dbname=\\x27{2}\\x27\\\"|\\\\connect {1}|".format(
+                old_name, new_name, old_name.replace('"', "")))
 
 
 def get_table_names_str(keyspaces, tables, delimeter, space):
@@ -652,15 +658,15 @@ BACKUP_STORAGE_ABSTRACTIONS = {
 
 
 class KubernetesDetails():
-    def __init__(self, server_fqdn, config_map):
-        self.namespace = server_fqdn.split('.')[2]
-        self.pod_name = server_fqdn.split('.')[0]
+    def __init__(self, server_ip, config_map):
+        self.pod_name = config_map[server_ip]["podName"]
+        self.namespace = config_map[server_ip]["namespace"]
         # The pod names are <helm fullname>yb-<master|tserver>-n where
         # n is the pod number. <helm fullname> can be blank. And
         # yb-master/yb-tserver are the container names.
         self.container = "yb-master" if self.pod_name.find("master") > 0 else "yb-tserver"
         self.env_config = os.environ.copy()
-        self.env_config["KUBECONFIG"] = config_map[server_fqdn]
+        self.env_config["KUBECONFIG"] = config_map[server_ip]["KUBECONFIG"]
 
 
 def get_instance_profile_credentials():
@@ -677,6 +683,14 @@ def get_instance_profile_credentials():
                 result = access_key, secret_key, token
             except KeyError as e:
                 logging.info("Could not find {} in instance metadata".format(e))
+    else:
+        # Get credentials using session token for IMDSv2
+        session = get_session()
+        credentials = get_credentials(session)
+        if isinstance(credentials, object):
+            result = credentials.access_key, credentials.secret_key, credentials.token
+        else:
+            raise BackupException("Failed to retrieve IAM role data from AWS")
 
     return result
 
@@ -992,7 +1006,7 @@ class YBBackup:
         self.live_tserver_ip = ''
         self.tmp_dir_name = ''
         self.server_ips_with_uploaded_cloud_cfg = {}
-        self.k8s_pod_fqdn_to_cfg = {}
+        self.k8s_pod_addr_to_cfg = {}
         self.timer = BackupTimer()
         self.ts_cfgs = {}
         self.ip_to_ssh_key_map = {}
@@ -1287,8 +1301,8 @@ class YBBackup:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
         if self.is_k8s():
-            self.k8s_pod_fqdn_to_cfg = json.loads(self.args.k8s_config)
-            if self.k8s_pod_fqdn_to_cfg is None:
+            self.k8s_pod_addr_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_pod_addr_to_cfg is None:
                 raise BackupException("Couldn't load k8s configs")
 
         if self.args.storage_type == 'nfs':
@@ -1391,6 +1405,9 @@ class YBBackup:
         if self.args.mac:
             XXH64HASH_TOOL_PATH = '/usr/bin/xxhsum'
             SHA_TOOL_PATH = '/usr/bin/shasum'
+
+        if self.args.disable_checksums:
+            self.use_xxhash_checksum = False
 
     def table_names_str(self, delimeter='.', space=' '):
         return get_table_names_str(self.args.keyspace, self.args.table, delimeter, space)
@@ -1712,7 +1729,10 @@ class YBBackup:
             backup_size_cmd = self.storage.backup_obj_size_cmd(filepath)
             try:
                 resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
-                backup_size += int(resp.strip().split()[0])
+                # if using IMDSv2, s3cmd can return WARNINGs so check each line and ignore
+                for line in resp.splitlines():
+                    if 'WARNING' not in line:
+                        backup_size += int(resp.strip().split()[0])
             except Exception as ex:
                 logging.error(
                     'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
@@ -1800,9 +1820,15 @@ class YBBackup:
                             if data['database_type'] == 'YQL_DATABASE_PGSQL' else ''
                         keyspaces[object_id] = keyspace_prefix + data['name']
                     elif object_type == 'TABLE':
-                        snapshot_keyspaces.append(keyspaces[data['namespace_id']])
-                        snapshot_tables.append(data['name'])
-                        snapshot_table_uuids.append(object_id)
+                        # If a table is colocated, it will share its backing tablets with other
+                        # tables.  To avoid repeated work in getting the list of backing tablets for
+                        # all tables just add a single table from each colocation group to the table
+                        # list.
+                        if (not data.get('colocated', False)
+                                or is_parent_colocated_table_name(data['name'])):
+                            snapshot_keyspaces.append(keyspaces[data['namespace_id']])
+                            snapshot_tables.append(data['name'])
+                            snapshot_table_uuids.append(object_id)
 
             if not snapshot_done:
                 logging.info('Waiting for snapshot %s to complete...' % (op))
@@ -1842,10 +1868,6 @@ class YBBackup:
             tablet_leaders = []
 
             for i in range(0, len(self.args.table)):
-                # Don't call list_tablets on a parent colocated table.
-                if is_parent_colocated_table_name(self.args.table[i]):
-                    continue
-
                 if self.args.table_uuid:
                     yb_admin_args = ['list_tablets', 'tableid.' + self.args.table_uuid[i], '0']
                 else:
@@ -1940,7 +1962,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(dest_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -1990,7 +2012,7 @@ class YBBackup:
         if self.args.ssh2_enabled:
             ssh_key_flag = '-K'
         if self.is_k8s():
-            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(src_ip, self.k8s_pod_addr_to_cfg)
             output += self.run_program([
                 'kubectl',
                 'cp',
@@ -2061,7 +2083,7 @@ class YBBackup:
             cmd = "{} {}".format(bash_env_args, cmd)
 
         if self.is_k8s():
-            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_fqdn_to_cfg)
+            k8s_details = KubernetesDetails(server_ip, self.k8s_pod_addr_to_cfg)
             return self.run_program([
                 'kubectl',
                 'exec',
@@ -2374,7 +2396,7 @@ class YBBackup:
             try:
                 host_ip = self.get_main_host_ip()
                 if self.is_k8s():
-                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_fqdn_to_cfg)
+                    k8s_details = KubernetesDetails(host_ip, self.k8s_pod_addr_to_cfg)
                     return self.run_program([
                         'kubectl',
                         'exec',
@@ -3190,7 +3212,8 @@ class YBBackup:
                 else:
                     logging.info("[app] Renaming YSQL DB from '{}' into '{}'".format(
                                  old_db_name, new_db_name))
-                    cmd = replace_db_name_cmd(dump_file_path, old_db_name, new_db_name)
+                    cmd = replace_db_name_cmd(dump_file_path, old_db_name,
+                                              '"{}"'.format(new_db_name))
 
                     if self.args.local_yb_admin_binary:
                         self.run_program(cmd)

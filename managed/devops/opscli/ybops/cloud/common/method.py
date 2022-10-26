@@ -101,6 +101,7 @@ class AbstractMethod(object):
         try:
             self.callback(args)
         except BaseException as e:
+            logging.exception(e)
             if self.error_handler:
                 self.error_handler(e, args)
             raise e
@@ -255,7 +256,7 @@ class AbstractInstancesMethod(AbstractMethod):
         host_info = None
 
         while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
-            if not host_info or not host_info.is_running:
+            if not host_info or not host_info.get("is_running"):
                 host_info = self.cloud.get_host_info(args)
 
             if host_info:
@@ -279,7 +280,9 @@ class AbstractInstancesMethod(AbstractMethod):
     # Find the open ssh port and update the dictionary.
     def update_open_ssh_port(self, args):
         ssh_port_updated = False
-        ssh_ports = [self.extra_vars["ssh_port"], args.custom_ssh_port]
+        ssh_ports = [self.extra_vars["ssh_port"]]
+        if int(args.custom_ssh_port) != self.extra_vars["ssh_port"]:
+            ssh_ports.append(int(args.custom_ssh_port))
         ssh_port = self.cloud.wait_for_ssh_ports(
             self.extra_vars["ssh_host"], args.search_pattern, ssh_ports)
         if self.extra_vars["ssh_port"] != ssh_port:
@@ -585,11 +588,17 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.update_open_ssh_port(args)
         self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
         # Port is already open. Wait for ssh to succeed.
-        wait_for_ssh(self.extra_vars["ssh_host"],
-                     self.extra_vars["ssh_port"],
-                     self.extra_vars["ssh_user"],
-                     args.private_key_file,
-                     ssh2_enabled=args.ssh2_enabled)
+        connected = wait_for_ssh(self.extra_vars["ssh_host"],
+                                 self.extra_vars["ssh_port"],
+                                 self.extra_vars["ssh_user"],
+                                 args.private_key_file,
+                                 ssh2_enabled=args.ssh2_enabled)
+        if not connected:
+            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
+                                    .format(self.extra_vars["ssh_host"],
+                                            self.extra_vars["ssh_user"],
+                                            self.extra_vars["ssh_port"]))
+
         if args.boot_script:
             logging.info(
                 'Waiting for the startup script to finish on {}'.format(args.search_pattern))
@@ -600,7 +609,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
 
             # For clusters with secondary subnets, the start-up script is expected to fail.
             if not args.cloud_subnet_secondary:
-                self.cloud.verify_startup_script(args, host_info)
+                self.cloud.verify_startup_script(args, self.extra_vars)
 
             logging.info('Startup script finished on {}'.format(args.search_pattern))
         if create_output is not None:
@@ -720,6 +729,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                         args.private_key_file, ssh2_enabled=args.ssh2_enabled):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
                                                self.extra_vars, host_info)
+        else:
+            raise YBOpsRecoverableError("Could not ssh into node {}:{} using username {}"
+                                        .format(self.extra_vars["ssh_host"],
+                                        self.extra_vars["ssh_port"], self.extra_vars["ssh_user"]))
 
     def update_ansible_vars(self, args):
         for arg_name in ["cloud_subnet",
@@ -1628,6 +1641,9 @@ class RebootInstancesMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Could not find host {} to reboot".format(
                 args.search_pattern))
+        if not host_info['is_running']:
+            raise YBOpsRuntimeError("Host must be running to be rebooted, currently in '{}' state"
+                                    .format(host_info['instance_state']))
         logging.info("Rebooting instance {}".format(args.search_pattern))
 
         # Get Sudo SSH User
@@ -1636,23 +1652,50 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             ssh_user = DEFAULT_SSH_USER
 
         if args.use_ssh:
-            use_default_port = not self.update_open_ssh_port(args)
             self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
-                                                     default_port=use_default_port))
+                                                     default_port=True))
             self.extra_vars.update({"ssh_user": ssh_user})
-            rc, stdout, stderr = remote_exec_command(
+            self.update_open_ssh_port(args)
+            _, _, stderr = remote_exec_command(
                                     self.extra_vars["ssh_host"],
                                     self.extra_vars["ssh_port"],
                                     self.extra_vars["ssh_user"],
                                     args.private_key_file,
                                     'sudo reboot', ssh2_enabled=args.ssh2_enabled)
-            if rc:
+            # Cannot rely on rc, as for reboot script won't exit gracefully,
+            # & we will be returned -1.
+            if (isinstance(stderr, list) and len(stderr) > 0):
                 raise YBOpsRecoverableError(f"Failed to connect to {args.search_pattern}")
 
             self.wait_for_host(args, False)
         else:
             extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
-            self.cloud.reboot_instance(args, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+            self.cloud.reboot_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
+
+
+class HardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(HardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super().add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        if not host_info['is_running']:
+            raise YBOpsRuntimeError(
+                "Host must be running to be hard rebooted, currently in '{}' state"
+                .format(host_info['instance_state']))
+        logging.info("Hard rebooting instance {}".format(args.search_pattern))
+
+        self.cloud.stop_instance(host_info)
+        extra_vars = get_ssh_host_port(host_info, args.custom_ssh_port)
+        self.cloud.start_instance(host_info, [DEFAULT_SSH_PORT, extra_vars["ssh_port"]])
 
 
 class RunHooks(AbstractInstancesMethod):
@@ -1769,7 +1812,7 @@ class WaitForSSHConnection(AbstractInstancesMethod):
                                  args.private_key_file,
                                  ssh2_enabled=args.ssh2_enabled)
         if not connected:
-            raise YBOpsRuntimeError("SSH connection to {} at {}:{} failed"
+            raise YBOpsRuntimeError("SSH connection to host {} by user {} failed at port {}"
                                     .format(self.extra_vars["ssh_host"],
                                             self.extra_vars["ssh_user"],
                                             self.extra_vars["ssh_port"]))

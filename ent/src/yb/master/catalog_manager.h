@@ -80,13 +80,18 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       EditSnapshotScheduleResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  Status RestoreSnapshotSchedule(
+      const RestoreSnapshotScheduleRequestPB* req,
+      RestoreSnapshotScheduleResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                               ChangeEncryptionInfoResponsePB* resp) override;
 
   Status UpdateXClusterConsumerOnTabletSplit(
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
-  Status UpdateXClusterProducerOnTabletSplit(
+  Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
   Status InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
@@ -119,6 +124,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  CreateCDCStreamResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Get the Table schema from system catalog table.
+  Status GetTableSchemaFromSysCatalog(
+      const GetTableSchemaFromSysCatalogRequestPB* req,
+      GetTableSchemaFromSysCatalogResponsePB* resp, rpc::RpcContext* rpc);
+
   // Delete the specified CDCStream.
   Status DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
                          DeleteCDCStreamResponsePB* resp,
@@ -149,11 +159,14 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Delete CDC streams for a table.
   Status DeleteCDCStreamsForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsForTables(const std::vector<TableId>& table_ids) override;
 
   // Clean CDC streams for a table.
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
-  Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
+  Status DeleteCDCStreamsMetadataForTables(const std::vector<TableId>& table_ids) override;
+
+  Status AddNewTableToCDCDKStreamsMetadata(
+      const TableId& table_id, const NamespaceId& ns_id) override;
 
   // Get metadata required to decode UDTs in CDCSDK.
   Status GetUDTypeMetadata(
@@ -180,6 +193,10 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                            const AlterUniverseReplicationRequestPB* req,
                                            AlterUniverseReplicationResponsePB* resp,
                                            rpc::RpcContext* rpc);
+
+  Status ChangeXClusterRole(const ChangeXClusterRoleRequestPB* req,
+                            ChangeXClusterRoleResponsePB* resp,
+                            rpc::RpcContext* rpc);
 
   // Enable/Disable an Existing Universe Replication.
   Status SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
@@ -218,6 +235,27 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                     SetupNSUniverseReplicationResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
+  // Returns the replication status.
+  Status GetReplicationStatus(const GetReplicationStatusRequestPB* req,
+                                      GetReplicationStatusResponsePB* resp,
+                                      rpc::RpcContext* rpc);
+
+  typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+
+  // Find all CDCSDK streams which do not have metadata for the newly added tables.
+  Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
+
+  // This method scans the metadata of a CDCSDK streams and compares all tables in the namespace,
+  // to find tables which are not yet processed by CDCSDK streams.
+  void FindAllTablesMissingInCDCSDKStream(
+      scoped_refptr<CDCStreamInfo> stream_info,
+      yb::master::MetadataCowWrapper<yb::master::PersistentCDCStreamInfo>::WriteLock* stream_lock)
+      REQUIRES(mutex_);
+
+  // Add missing table details to the relevant CDCSDK streams.
+  Status AddTabletEntriesToCDCSDKStreamsForNewTables(
+      const TableStreamIdsMap& table_to_unprocessed_streams_map);
+
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
 
@@ -242,7 +280,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
-  using StreamTablesMap = std::unordered_map<CDCStreamId, set<TableId>>;
+  using StreamTablesMap = std::unordered_map<CDCStreamId, std::set<TableId>>;
 
   Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
 
@@ -251,6 +289,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
+
+  bool IsCdcSdkEnabled(const TableInfo& table_info) override;
 
   bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
 
@@ -273,17 +313,23 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void EnableTabletSplitting(const std::string& feature) override;
 
-  void StartXClusterParentTabletDeletionTaskIfStopped();
+  Status RunXClusterBgTasks();
 
-  void ScheduleXClusterParentTabletDeletionTask();
+  void StartCDCParentTabletDeletionTaskIfStopped();
+
+  void ScheduleCDCParentTabletDeletionTask();
 
   void ScheduleXClusterNSReplicationAddTableTask();
+
   Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
 
   void AddPendingBackFill(const TableId& id) override {
     std::lock_guard<MutexType> lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
+
+  Status ProcessTabletReplicationStatus(
+      const TabletReplicationStatusPB& replication_state) override EXCLUDES(mutex_);
 
  private:
   friend class SnapshotLoader;
@@ -470,8 +516,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(const TableId& table_id)
-      const REQUIRES_SHARED(mutex_);
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(
+      const TableId& table_id, const cdc::CDCRequestSource cdc_request_source) const
+      REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
@@ -547,6 +594,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableCdcConsumer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
+  // Checks if table has at least one cdcsdk stream.
+  bool IsTablePartOfCDCSDK(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
+
   // Maps producer universe id to the corresponding cdc stream for that table.
   typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
 
@@ -570,6 +620,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
   std::unordered_set<CDCStreamId> GetCdcStreamsForProducerTable(const TableId& table_id) const;
+
+  std::unordered_set<CDCStreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
@@ -607,7 +659,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
       google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
           tablet_snapshot_info = nullptr,
-      vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
+      std::vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 
@@ -616,11 +668,41 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
     const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
-  void ProcessXClusterParentTabletDeletionPeriodically();
+  void ProcessCDCParentTabletDeletionPeriodically();
 
-  Status DoProcessXClusterParentTabletDeletion();
+  Status DoProcessCDCClusterTabletDeletion(const cdc::CDCRequestSource request_source);
 
-  void LoadXClusterRetainedParentTabletsSet() REQUIRES(mutex_);
+  void LoadCDCRetainedTabletsSet() REQUIRES(mutex_);
+
+  void PopulateUniverseReplicationStatus(
+    const UniverseReplicationInfo& universe,
+    GetReplicationStatusResponsePB* resp) const REQUIRES_SHARED(mutex_);
+
+  Status StoreReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      EXCLUDES(mutex_);
+
+  Status StoreReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
+      REQUIRES_SHARED(mutex_);
+
+  Status ClearReplicationErrors(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
+
+  Status ClearReplicationErrorsUnlocked(
+    const std::string& universe_id,
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
@@ -644,6 +726,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>
       xcluster_consumer_tables_to_stream_map_ GUARDED_BY(mutex_);
+
+  std::unordered_map<TableId, std::unordered_set<CDCStreamId>> cdcsdk_tables_to_stream_map_
+      GUARDED_BY(mutex_);
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
@@ -672,7 +757,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   };
   std::unordered_map<std::string, NSReplicationInfo> namespace_replication_map_ GUARDED_BY(mutex_);
 
-  void XClusterAddTableToNSReplication(string universe_id, CoarseTimePoint deadline);
+  void XClusterAddTableToNSReplication(std::string universe_id, CoarseTimePoint deadline);
 
   // Find the list of producer table IDs that can be added to the current NS-level replication.
   Status XClusterNSReplicationSyncWithProducer(scoped_refptr<UniverseReplicationInfo> universe,
@@ -689,8 +774,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
 
-  Status WaitForSetupUniverseReplicationToFinish(const string& producer_uuid,
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid,
                                                  CoarseTimePoint deadline);
+
+  void RemoveTableFromCDCSDKUnprocessedSet(
+      const TableId& table_id, const std::list<scoped_refptr<CDCStreamInfo>>& streams);
+  void RemoveTableFromCDCSDKUnprocessedSet(
+      const TableId& table_id, const scoped_refptr<CDCStreamInfo>& stream);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

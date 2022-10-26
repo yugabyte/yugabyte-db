@@ -225,6 +225,8 @@ class MiniCluster : public MiniClusterBase {
     return port_picker_.AllocateFreePort();
   }
 
+  Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
+
  private:
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
@@ -366,6 +368,10 @@ Status WaitAllReplicasSynchronizedWithLeader(
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
+
+// Activate compaction time logging on existing cluster tablet server.
+// Multiple calls will result in duplicate logging.
+void ActivateCompactionTimeLogging(MiniCluster* cluster);
 
 }  // namespace yb
 

@@ -3,8 +3,6 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
-import static com.yugabyte.yw.models.helpers.CommonUtils.encryptProviderConfig;
-import static com.yugabyte.yw.models.helpers.CommonUtils.decryptProviderConfig;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -405,5 +403,16 @@ public class Provider extends Model {
       newParams.perRegionMetadata.put(r.code, regionData);
     }
     return newParams;
+  }
+
+  // Specific to Kubernetes providers. This template is used to
+  // calculate per pod address. The default value is the Kubernetes
+  // FQDN, it can be changed for multi-cluster setups like Istio.
+  @JsonIgnore
+  public String getK8sPodAddrTemplate() {
+    return this.getUnmaskedConfig()
+        .getOrDefault(
+            "KUBE_POD_ADDRESS_TEMPLATE",
+            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}");
   }
 }

@@ -65,6 +65,41 @@ import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.concurrent.FutureListener;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.Charset;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManagerFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
@@ -467,6 +502,36 @@ public class AsyncYBClient implements AutoCloseable {
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
       tabletId, term, index, initialCheckpoint);
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<GetTabletListToPollForCDCResponse> getTabletListToPollForCdc(YBTable table,
+                                                                               String streamId,
+                                                                               String tableId) {
+    checkIsClosed();
+    GetTabletListToPollForCDCRequest rpc = new GetTabletListToPollForCDCRequest(table, streamId,
+      tableId);
+    Deferred<GetTabletListToPollForCDCResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<SplitTabletResponse> splitTablet(String tabletId) {
+    checkIsClosed();
+    SplitTabletRequest rpc = new SplitTabletRequest(this.masterTable, tabletId);
+    Deferred<SplitTabletResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  public Deferred<FlushTableResponse> flushTable(String tableId) {
+    checkIsClosed();
+    FlushTableRequest rpc = new FlushTableRequest(this.masterTable, tableId);
+    Deferred<FlushTableResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1174,6 +1239,54 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(this.masterTable, databaseType, keyspaceName,
+                                          retentionInSecs, timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
+      UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    DeleteSnapshotScheduleRequest request =
+        new DeleteSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotSchedulesResponse> listSnapshotSchedules(UUID snapshotScheduleUUID) {
+    checkIsClosed();
+    ListSnapshotSchedulesRequest request =
+        new ListSnapshotSchedulesRequest(this.masterTable, snapshotScheduleUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<RestoreSnapshotResponse> restoreSnapshot(UUID snapshotUUID,
+                                                           long restoreHybridTime) {
+    checkIsClosed();
+    RestoreSnapshotRequest request =
+        new RestoreSnapshotRequest(this.masterTable, snapshotUUID, restoreHybridTime);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotsResponse> listSnapshots(UUID snapshotUUID,
+                                                       boolean listDeletedSnapshots) {
+    checkIsClosed();
+    ListSnapshotsRequest request =
+        new ListSnapshotsRequest(this.masterTable, snapshotUUID, listDeletedSnapshots);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   /**
    * Change Master Configuration request handler.
    *
@@ -1356,6 +1469,33 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Reload certificates that are in the currently present in the configured
+   * folder
+   *
+   * @param server address of a node
+   *
+   * @return deferred object for the server host & port passed
+   * @throws IllegalArgumentException when server address is syntactically invalid
+   * @throws InterruptedException
+   */
+  public Deferred<ReloadCertificateResponse> reloadCertificates(HostAndPort hostPort)
+      throws IllegalArgumentException {
+
+    if (hostPort == null || hostPort.getHost() == null || "".equals(hostPort.getHost())) {
+      throw new IllegalArgumentException("Server address cannot be empty");
+    }
+    LOG.debug("server to be contacted = {}", hostPort);
+    ReloadCertificateRequest req = new ReloadCertificateRequest(this.masterTable, hostPort);
+    req.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+
+    TabletClient client = newSimpleClient(hostPort);
+    client.sendRpc(req);
+
+    LOG.debug("servers {} are directed to reload their certs ...", hostPort);
+    return req.getDeferred();
+  }
+
+  /**
    * An RPC that we're never going to send, but can be used to keep track of timeouts and to access
    * its Deferred. Specifically created for the openTable functions. If the table was just created,
    * the Deferred will only get returned when all the tablets have been successfully created.
@@ -1517,6 +1657,11 @@ public class AsyncYBClient implements AutoCloseable {
     if (request instanceof SetCheckpointRequest) {
       String tabletId = ((SetCheckpointRequest)request).getTabletId();
       tablet = getTablet(tableId, tabletId);
+    }
+    if (request instanceof GetTabletListToPollForCDCRequest ||
+        request instanceof SplitTabletRequest ||
+        request instanceof FlushTableRequest) {
+      tablet = getFirstTablet(tableId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

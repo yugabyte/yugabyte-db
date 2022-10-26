@@ -35,6 +35,7 @@
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -224,6 +225,11 @@ void TabletInfo::UpdateReplicaDriveInfo(const std::string& ts_uuid,
   it->second.UpdateDriveInfo(drive_info);
 }
 
+std::unordered_map<CDCStreamId, uint64_t>  TabletInfo::GetReplicationStatus() {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return replication_stream_to_status_bitmask_;
+}
+
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
   std::lock_guard<simple_spinlock> l(lock_);
   last_update_time_ = ts;
@@ -250,6 +256,16 @@ uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
     return 0;
   }
   return reported_schema_version_[table_id];
+}
+
+void TabletInfo::SetInitiaLeaderElectionProtege(const std::string& protege_uuid) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  initial_leader_election_protege_ = protege_uuid;
+}
+
+std::string TabletInfo::InitiaLeaderElectionProtege() {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return initial_leader_election_protege_;
 }
 
 bool TabletInfo::colocated() const {
@@ -329,6 +345,10 @@ const NamespaceName TableInfo::namespace_name() const {
   return LockForRead()->namespace_name();
 }
 
+ColocationId TableInfo::GetColocationId() const {
+  return LockForRead()->schema().colocated_table_id().colocation_id();
+}
+
 const Status TableInfo::GetSchema(Schema* schema) const {
   return SchemaFromPB(LockForRead()->schema(), schema);
 }
@@ -337,7 +357,7 @@ bool TableInfo::has_pgschema_name() const {
   return LockForRead()->schema().has_pgschema_name();
 }
 
-const string& TableInfo::pgschema_name() const {
+const string TableInfo::pgschema_name() const {
   return LockForRead()->schema().pgschema_name();
 }
 
@@ -409,6 +429,45 @@ void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
   partitions_.clear();
   if (!deactivate_only) {
     tablets_.clear();
+  }
+}
+
+Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
+  std::lock_guard<decltype(lock_)> l(lock_);
+
+  for (const auto& entry : partitions_) {
+    const auto& tablet = entry.second;
+    const auto& metadata = tablet->LockForRead();
+    Partition partition;
+    Partition::FromPB(metadata->pb.partition(), &partition);
+    auto result = PartitionSchema::SplitHashPartitionForStatusTablet(partition);
+    if (result) {
+      return TabletWithSplitPartitions{tablet, result->first, result->second};
+    }
+  }
+
+  return STATUS_FORMAT(NotFound, "Table $0 has no splittable hash partition", table_id_);
+}
+
+void TableInfo::AddStatusTabletViaSplitPartition(
+    TabletInfoPtr old_tablet, const Partition& partition, const TabletInfoPtr& new_tablet) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+
+  const auto& new_dirty = new_tablet->metadata().dirty();
+  if (new_dirty.is_deleted()) {
+    return;
+  }
+
+  auto old_lock = old_tablet->LockForWrite();
+  auto old_partition = old_lock.mutable_data()->pb.mutable_partition();
+  partition.ToPB(old_partition);
+  old_lock.Commit();
+
+  tablets_.emplace(new_tablet->id(), new_tablet.get());
+
+  if (!new_dirty.is_hidden()) {
+    const auto& new_partition_key = new_dirty.pb.partition().partition_key_end();
+    partitions_.emplace(new_partition_key, new_tablet.get());
   }
 }
 
@@ -646,7 +705,7 @@ bool TableInfo::HasTasks() const {
   return !pending_tasks_.empty();
 }
 
-bool TableInfo::HasTasks(server::MonitoredTask::Type type) const {
+bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
   SharedLock<decltype(lock_)> l(lock_);
   for (auto task : pending_tasks_) {
     if (task->type() == type) {
@@ -954,7 +1013,7 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 
 NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
 
-const NamespaceName& NamespaceInfo::name() const {
+const NamespaceName NamespaceInfo::name() const {
   return LockForRead()->pb.name();
 }
 
@@ -980,11 +1039,11 @@ string NamespaceInfo::ToString() const {
 
 UDTypeInfo::UDTypeInfo(UDTypeId udtype_id) : udtype_id_(std::move(udtype_id)) { }
 
-const UDTypeName& UDTypeInfo::name() const {
+const UDTypeName UDTypeInfo::name() const {
   return LockForRead()->pb.name();
 }
 
-const NamespaceName& UDTypeInfo::namespace_id() const {
+const NamespaceId UDTypeInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
@@ -992,7 +1051,7 @@ int UDTypeInfo::field_names_size() const {
   return LockForRead()->pb.field_names_size();
 }
 
-const string& UDTypeInfo::field_names(int index) const {
+const string UDTypeInfo::field_names(int index) const {
   return LockForRead()->pb.field_names(index);
 }
 
@@ -1000,7 +1059,7 @@ int UDTypeInfo::field_types_size() const {
   return LockForRead()->pb.field_types_size();
 }
 
-const QLTypePB& UDTypeInfo::field_types(int index) const {
+const QLTypePB UDTypeInfo::field_types(int index) const {
   return LockForRead()->pb.field_types(index);
 }
 

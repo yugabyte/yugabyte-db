@@ -208,7 +208,8 @@ class UniverseForm extends Component {
         enableExposingService: formValues[clusterType].enableExposingService,
         enableYEDIS: formValues[clusterType].enableYEDIS,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
-        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
+        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        dedicatedNodes: formValues[clusterType].dedicatedNodes
       };
       if (isDefinedNotNull(formValues[clusterType].mountPoints)) {
         intent.deviceInfo['mountPoints'] = formValues[clusterType].mountPoints;
@@ -245,8 +246,9 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    universeTaskParams.enableYbc = this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc']
-    universeTaskParams.ybcSoftwareVersion = ""
+    universeTaskParams.enableYbc =
+      this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+    universeTaskParams.ybcSoftwareVersion = '';
   };
 
   createUniverse = () => {
@@ -389,44 +391,45 @@ class UniverseForm extends Component {
   };
 
   getCurrentCluster = () => {
-    const {
-      universe
-    } = this.props;
+    const { universe } = this.props;
     return this.state.currentView === 'Primary'
       ? getPrimaryCluster(universe.currentUniverse.data.universeDetails.clusters)
       : getReadOnlyCluster(universe.currentUniverse.data.universeDetails.clusters);
-  }
+  };
 
   getNewCluster = () => {
     const {
-      universe: { universeConfigTemplate },
+      universe: { universeConfigTemplate }
     } = this.props;
     return this.state.currentView === 'Primary'
-           ? getPrimaryCluster(universeConfigTemplate.data.clusters)
-           : getReadOnlyCluster(universeConfigTemplate.data.clusters);
-  }
+      ? getPrimaryCluster(universeConfigTemplate.data.clusters)
+      : getReadOnlyCluster(universeConfigTemplate.data.clusters);
+  };
 
   isResizePossible = () => {
     const {
-      universe: { universeConfigTemplate },
+      universe: { universeConfigTemplate }
     } = this.props;
-    if (getPromiseState(universeConfigTemplate).isSuccess() &&
-        this.state.currentView === 'Primary' &&
-        universeConfigTemplate.data.nodesResizeAvailable) {
+    if (
+      getPromiseState(universeConfigTemplate).isSuccess() &&
+      this.state.currentView === 'Primary' &&
+      universeConfigTemplate.data.nodesResizeAvailable
+    ) {
       const currentCluster = this.getCurrentCluster();
       const newCluster = this.getNewCluster();
       if (currentCluster && newCluster) {
         const oldVolumeSize = currentCluster.userIntent.deviceInfo.volumeSize;
         const newVolumeSize = newCluster.userIntent.deviceInfo.volumeSize;
-        const instanceChanged = newCluster.userIntent.instanceType !== currentCluster.userIntent
-            .instanceType;
-        return newVolumeSize > oldVolumeSize
-               || (instanceChanged && oldVolumeSize === newVolumeSize);
+        const instanceChanged =
+          newCluster.userIntent.instanceType !== currentCluster.userIntent.instanceType;
+        return (
+          newVolumeSize > oldVolumeSize || (instanceChanged && oldVolumeSize === newVolumeSize)
+        );
       }
       return false;
     }
     return false;
-  }
+  };
 
   getYEDISstate = (clusterType) => {
     const { formValues, universe } = this.props;
@@ -494,6 +497,7 @@ class UniverseForm extends Component {
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
         useSystemd: formValues[clusterType].useSystemd,
+        dedicatedNodes: formValues[clusterType].dedicatedNodes,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
           numVolumes: formValues[clusterType].numVolumes,
@@ -584,7 +588,8 @@ class UniverseForm extends Component {
             yqlServerHttpPort: formValues['primary'].yqlHttpPort,
             yqlServerRpcPort: formValues['primary'].yqlRpcPort,
             ysqlServerHttpPort: formValues['primary'].ysqlHttpPort,
-            ysqlServerRpcPort: formValues['primary'].ysqlRpcPort
+            ysqlServerRpcPort: formValues['primary'].ysqlRpcPort,
+            nodeExporterPort: formValues['primary'].nodeExporterPort
           };
 
           // Ensure a configuration was actually selected
@@ -647,7 +652,7 @@ class UniverseForm extends Component {
 
     if (!isDefinedNotNull(submitPayload.enableYbc))
       submitPayload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
-    
+
     return submitPayload;
   };
 
@@ -852,10 +857,14 @@ class UniverseForm extends Component {
       submitAction = SUBMIT_ACTIONS.FullMove;
     }
 
+    const clusterInfo =
+      isDefinedNotNull(universe?.currentUniverse?.data?.universeDetails?.clusters) &&
+      this.getCurrentCluster();
     const validateVolumeSizeUnchanged =
       type === 'Edit' &&
       this.state.currentView === 'Primary' &&
-      submitAction === SUBMIT_ACTIONS.Update;
+      submitAction === SUBMIT_ACTIONS.Update &&
+      clusterInfo.userIntent.providerType !== 'kubernetes';
 
     const clusterProps = {
       universe,
@@ -1020,6 +1029,15 @@ class UniverseForm extends Component {
         newConfig.azConfig = generateAZConfig(newNodes);
       }
 
+      const isK8sCluster = currentCluster.userIntent.providerType === 'kubernetes';
+      const nodeLabel = isK8sCluster ? 'pods' : 'nodes';
+      const isInstanceChanged = oldConfig.instanceType !== newConfig.instanceType;
+      const isVolumeChanged = oldConfig.numVolumes !== newConfig.numVolumes;
+      const upgradeMsg =
+        isK8sCluster && !isInstanceChanged && isVolumeChanged
+          ? `This operation will resize the disks in place for this universe without restart of pods.`
+          : `This operation will migrate this universe and all its data to a completely new set of ${nodeLabel}.`;
+
       submitControl = (
         <Fragment>
           <YBButton
@@ -1035,11 +1053,10 @@ class UniverseForm extends Component {
               submitLabel={'Proceed'}
               cancelLabel={'Cancel'}
               showCancelButton={true}
-              title={'Confirm Full Move Update'}
+              title={isK8sCluster ? 'Confirm Upgrade' : 'Confirm Full Move Update'}
               onFormSubmit={handleSubmit(this.handleSubmitButtonClick)}
             >
-              This operation will migrate this universe and all its data to a completely new set of
-              nodes.
+              {upgradeMsg}
               <div className={'full-move-config'}>
                 <div className={'text-lightgray full-move-config--general'}>
                   <h5>Current:</h5>
@@ -1069,23 +1086,26 @@ class UniverseForm extends Component {
             <YBModal
               visible={showModal && visibleModal === 'smartResizeModal'}
               onHide={closeModal}
-              submitLabel={'Do full move'}
+              submitLabel={isK8sCluster ? 'Proceed' : 'Do full move'}
               cancelLabel={'Cancel'}
               showCancelButton={true}
-              title={'Confirm Full Move Update'}
+              title={isK8sCluster ? 'Confirm Upgrade' : 'Confirm Full Move Update'}
               onFormSubmit={handleSubmit(this.handleSubmitButtonClick)}
               footerAccessory={
-                <YBButton
-                  btnClass="btn btn-orange pull-right"
-                  btnText="Do smart resize"
-                  onClick={showUpgradeNodesModal}
-                />
+                isK8sCluster ? null : (
+                  <YBButton
+                    btnClass="btn btn-orange pull-right"
+                    btnText="Do smart resize"
+                    onClick={showUpgradeNodesModal}
+                  />
+                )
               }
             >
-              This operation will migrate this universe and all its data to a completely new set of
-              nodes. Or alternatively you could try smart resize (This will change VM image{' '}
-              {oldConfig.volumeSize !== newConfig.volumeSize ? 'and volume size' : ''} for existing
-              nodes).
+              {upgradeMsg}{' '}
+              {!isK8sCluster &&
+                `Or alternatively you could try smart resize (This will change VM image
+              ${oldConfig.volumeSize !== newConfig.volumeSize ? 'and volume size' : ''} for existing
+              ${nodeLabel}).`}
               <div className={'full-move-config'}>
                 <div className={'text-lightgray full-move-config--general'}>
                   <h5>Current:</h5>
@@ -1203,7 +1223,8 @@ class PrimaryClusterFields extends Component {
           'primary.enableNodeToNodeEncrypt',
           'primary.enableClientToNodeEncrypt',
           'primary.enableEncryptionAtRest',
-          'primary.selectEncryptionAtRestConfig'
+          'primary.selectEncryptionAtRestConfig',
+          'primary.dedicatedNodes'
         ]}
         component={ClusterFields}
         {...this.props}
@@ -1242,7 +1263,8 @@ class ReadOnlyClusterFields extends Component {
           'async.enableExposingService',
           'async.enableYEDIS',
           'async.enableNodeToNodeEncrypt',
-          'async.enableClientToNodeEncrypt'
+          'async.enableClientToNodeEncrypt',
+          'async.dedicatedNodes'
         ]}
         component={ClusterFields}
         {...this.props}

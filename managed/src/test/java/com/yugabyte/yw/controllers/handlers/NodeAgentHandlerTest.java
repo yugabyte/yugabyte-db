@@ -8,7 +8,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,10 +19,12 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
@@ -29,6 +34,8 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.time.Duration;
+import java.util.Date;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.junit.Before;
@@ -42,20 +49,24 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
   @Mock private Config mockAppConfig;
   @Mock private ConfigHelper mockConfigHelper;
   @Mock private PlatformScheduler mockPlatformScheduler;
+  @Mock private NodeAgentClient nodeAgentClient;
   private NodeAgentHandler nodeAgentHandler;
   private Customer customer;
 
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, mockConfigHelper, mockPlatformScheduler);
+    nodeAgentHandler =
+        new NodeAgentHandler(
+            mockAppConfig, mockConfigHelper, mockPlatformScheduler, nodeAgentClient);
+    nodeAgentHandler.enableConnectionValidation(false);
     when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private void verifyKeys(UUID nodeAgentUuid) {
     // sign using the private key
-    PublicKey publicKey = nodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
-    PrivateKey privateKey = nodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
+    PublicKey publicKey = NodeAgentHandler.getNodeAgentPublicKey(nodeAgentUuid);
+    PrivateKey privateKey = NodeAgentHandler.getNodeAgentPrivateKey(nodeAgentUuid);
 
     try {
       Signature sig = Signature.getInstance("SHA256withRSA");
@@ -127,7 +138,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
     assertThrows(
         "Invalid current state LIVE, expected state UPGRADING",
-        IllegalStateException.class,
+        PlatformServiceException.class,
         () -> nodeAgentHandler.updateRegistration(customer.uuid, nodeAgentUuid));
     // Initiate upgrade.
     nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
@@ -195,5 +206,47 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     nodeAgentHandler.updaterService();
     nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
     assertEquals(State.LIVE, nodeAgent.state);
+  }
+
+  @Test
+  public void testCleanerService() throws InterruptedException {
+    when(mockAppConfig.getDuration(eq(NodeAgentHandler.CLEANER_RETENTION_DURATION_PROPERTY)))
+        .thenReturn(Duration.ofMinutes(10))
+        .thenReturn(Duration.ofMillis(100));
+    doThrow(new RuntimeException("No connection"))
+        .when(nodeAgentClient)
+        .validateConnection(any(), anyBoolean());
+    NodeAgentForm payload = new NodeAgentForm();
+    payload.version = "2.12.0";
+    payload.name = "node1";
+    payload.ip = "10.20.30.40";
+    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
+    assertNotNull(nodeAgent.uuid);
+    UUID nodeAgentUuid = nodeAgent.uuid;
+    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
+    assertEquals(State.REGISTERING, nodeAgent.state);
+    // With a real agent, the files are saved locally and ack is sent to the platform.
+    // Complete registration.
+    payload.state = State.LIVE;
+    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    Thread.sleep(1000);
+    nodeAgentHandler.cleanerService();
+    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
+    Date time1 = nodeAgent.updatedAt;
+    assertEquals(State.LIVE, nodeAgent.state);
+    // Update state again like heartbeating.
+    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
+    Date time2 = nodeAgent.updatedAt;
+    assertEquals(State.LIVE, nodeAgent.state);
+    // Make sure time is updated.
+    assertTrue("Time is not updated", time2.after(time1));
+    // Delay because the time has just been updated.
+    Thread.sleep(1000);
+    nodeAgentHandler.cleanerService();
+    assertThrows(
+        "Cannot find node agent",
+        PlatformServiceException.class,
+        () -> NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid));
   }
 }

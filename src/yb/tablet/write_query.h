@@ -35,7 +35,7 @@ class WriteQuery {
   WriteQuery(int64_t term,
              CoarseTimePoint deadline,
              WriteQueryContext* context,
-             Tablet* tablet,
+             TabletPtr tablet,
              tserver::WriteResponsePB *response = nullptr,
              docdb::OperationKind kind = docdb::OperationKind::kWrite);
 

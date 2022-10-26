@@ -1,13 +1,13 @@
 import React, { FC } from 'react';
 import { YBModal } from '../../common/forms/fields';
 
-import { ReplicationTable } from '../XClusterTypes';
+import { YBTable } from '../XClusterTypes';
 import { TableLagGraph } from './TableLagGraph';
 
 import styles from './ReplicationLagGraphModal.module.scss';
 
 interface Props {
-  tableDetails: ReplicationTable;
+  tableDetails: YBTable;
   replicationUUID: string;
   queryEnabled: boolean;
   universeUUID: string;
@@ -28,11 +28,25 @@ export const ReplicationLagGraphModal: FC<Props> = ({
 }) => {
   return (
     <YBModal
-      title={`Replication Lag: ${tableDetails.pgSchemaName}.${tableDetails.tableName}`}
+      title={`Table Replication Lag`}
       dialogClassName={styles.modelDialog}
       visible={visible}
       onHide={onHide}
     >
+      <p>
+        {'Table: '}
+        <b>{tableDetails.tableName}</b>
+      </p>
+      {tableDetails.pgSchemaName && (
+        <p>
+          {'Schema: '}
+          <b>{tableDetails.pgSchemaName}</b>
+        </p>
+      )}
+      <p>
+        {'Keyspace: '}
+        <b>{tableDetails.keySpace}</b>
+      </p>
       <TableLagGraph
         tableDetails={tableDetails}
         replicationUUID={replicationUUID}

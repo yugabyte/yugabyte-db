@@ -98,6 +98,13 @@ message TabletDriveStorageMetadataPB {
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
+message TabletReplicationStatusPB {
+  required bytes tablet_id = 1;
+
+  // Maps a stream id -> replication status.
+  map<string, StreamReplicationStatusPB> stream_replication_statuses = 2;
+}
+
 message ReportedTabletUpdatesPB {
   required bytes tablet_id = 1;
   optional string state_msg = 2;
@@ -189,10 +196,16 @@ message TSHeartbeatRequestPB {
 
   reserved 13;
 
+  // Drive metadata. Only set in the metrics heartbeat.
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 
   // Tablet server has at least one faulty drive.
   optional bool faulty_drive = 15;
+
+  // Replication status. Only set in the metrics heartbeat.
+  repeated TabletReplicationStatusPB replication_state = 16;
+
+  optional uint32 auto_flags_config_version = 17;
 }
 
 message TSHeartbeatResponsePB {
@@ -256,6 +269,8 @@ message TSHeartbeatResponsePB {
 
   // Map[Local NamespaceId]: xCluester safe read HybridTime
   map<string, fixed64> xcluster_namespace_to_safe_time = 21;
+
+  optional AutoFlagsConfigPB auto_flags_config = 22;
 }
 
 service MasterHeartbeat {

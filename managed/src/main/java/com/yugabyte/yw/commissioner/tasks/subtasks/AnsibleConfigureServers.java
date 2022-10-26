@@ -75,8 +75,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // > 0 => node-to-node encryption is enabled
     // < 0 => node-to-node encryption is disabled
     public int nodeToNodeChange = 0;
-    // Systemd vs Cron Option (Default: Cron)
-    public boolean useSystemd = false;
     // Cert rotation related params
     public CertRotationType rootCARotationType = CertRotationType.None;
     public CertRotationType clientRootCARotationType = CertRotationType.None;

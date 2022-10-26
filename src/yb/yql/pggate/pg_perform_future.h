@@ -30,11 +30,15 @@ class PgSession;
 class PerformFuture {
  public:
   PerformFuture() = default;
-  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds relations);
+  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations);
+  PerformFuture(PerformFuture&&) = default;
+  PerformFuture& operator=(PerformFuture&&) = default;
+  ~PerformFuture();
 
   bool Valid() const;
   bool Ready() const;
   Result<rpc::CallResponsePtr> Get();
+  Result<rpc::CallResponsePtr> Get(MonoDelta* wait_time);
 
  private:
   std::future<PerformResult> future_;

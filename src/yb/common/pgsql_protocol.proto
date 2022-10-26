@@ -238,7 +238,16 @@ message PgsqlWriteRequestPB {
   optional PgsqlColumnRefsPB column_refs = 15;
 
   // The version of the ysql system catalog this query was prepared against.
+  // Used when per-db catalog version mode is disabled.
   optional uint64 ysql_catalog_version = 16;
+
+  // The version of the ysql per-db system catalog this query was prepared against.
+  // Used when per-db catalog version mode is enabled.
+  optional uint64 ysql_db_catalog_version = 23;
+
+  // The oid of the database of the Postgres session where this query was issued.
+  // Used when per-db catalog version mode is enabled.
+  optional uint32 ysql_db_oid = 24;
 
   // True only if this changes a system catalog table (or index).
   optional bool is_ysql_catalog_change = 17 [default = false];
@@ -417,7 +426,16 @@ message PgsqlReadRequestPB {
   optional uint32 max_hash_code = 17;
 
   // The version of the ysql system catalog this query was prepared against.
+  // Used when per-db catalog version mode is disabled.
   optional uint64 ysql_catalog_version = 16;
+
+  // The version of the ysql per-db system catalog this query was prepared against.
+  // Used when per-db catalog version mode is enabled.
+  optional uint64 ysql_db_catalog_version = 36;
+
+  // The oid of the database of the Postgres session where this query was issued.
+  // Used when per-db catalog version mode is enabled.
+  optional uint32 ysql_db_oid = 37;
 
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;

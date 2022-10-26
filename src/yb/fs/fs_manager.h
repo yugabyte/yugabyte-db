@@ -156,6 +156,8 @@ class FsManager {
   // has not been called, this will crash.
   const std::string& uuid() const;
 
+  bool initdb_done_set_after_sys_catalog_restore() const;
+
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
@@ -185,7 +187,7 @@ class FsManager {
   static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
   void SetTabletPathByDataPath(const std::string& tablet_id, const std::string& path);
-  Result<std::string> GetTabletPath(const string& tablet_id) const;
+  Result<std::string> GetTabletPath(const std::string& tablet_id) const;
   bool LookupTablet(const std::string& tablet_id);
 
   // Return the path for a specific Raft group's superblock.

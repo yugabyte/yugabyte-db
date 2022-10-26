@@ -79,6 +79,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
@@ -107,6 +108,10 @@ using std::shared_ptr;
 using std::string;
 using std::thread;
 using std::unique_ptr;
+using std::vector;
+using std::min;
+using std::map;
+using std::ostream;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::IsInitDbDoneRequestPB;
@@ -166,10 +171,12 @@ DEFINE_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 
+DECLARE_string(dynamically_linked_exe_suffix);
+
 namespace yb {
 
-static const char* const kMasterBinaryName = "yb-master";
-static const char* const kTabletServerBinaryName = "yb-tserver";
+static const char* const kMasterBinaryNamePrefix = "yb-master";
+static const char* const kTabletServerBinaryNamePrefix = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 60.0;
 static MonoDelta kTabletServerRegistrationTimeout = 60s;
 
@@ -220,6 +227,14 @@ std::vector<std::string> FsDataDirs(const std::string& data_dir,
                           JoinPathSegments(data_dir, Format("d-$0", drive)), server_type));
   }
   return data_dirs;
+}
+
+std::string GetMasterBinaryName() {
+  return kMasterBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
+}
+
+std::string GetTServerBinaryName() {
+  return kTabletServerBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
 }  // anonymous namespace
@@ -482,7 +497,7 @@ Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string&
             << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
 
   string addr = MasterAddressForPort(rpc_port);
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   ExternalMaster* master =
       new ExternalMaster(add_new_master_at_, messenger_, proxy_cache_.get(), exe,
@@ -507,7 +522,7 @@ void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
 
   string addr = MasterAddressForPort(rpc_port);
 
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   ExternalMaster* master = new ExternalMaster(
       add_new_master_at_,
@@ -706,10 +721,15 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
   LOG(INFO) << "Master " << master->bound_rpc_hostport().ToString() << ", change type "
             << type << " to " << masters_.size() << " masters.";
 
-  if (type == consensus::ADD_SERVER) {
-    return AddMaster(master);
-  } else if (type == consensus::REMOVE_SERVER) {
-    return RemoveMaster(master);
+  if (type == consensus::ADD_SERVER || type == consensus::REMOVE_SERVER) {
+    if (type == consensus::ADD_SERVER) {
+      RETURN_NOT_OK(AddMaster(master));
+    } else if (type == consensus::REMOVE_SERVER) {
+      RETURN_NOT_OK(RemoveMaster(master));
+    }
+
+    UpdateMasterAddressesOnTserver();
+    return Status::OK();
   }
 
   string err_msg = Format("Should not reach here - change type $0", type);
@@ -1208,7 +1228,7 @@ Status ExternalMiniCluster::StartMasters() {
   } else {
     flags.push_back("--enable_ysql=false");
   }
-  string exe = GetBinaryPath(kMasterBinaryName);
+  string exe = GetBinaryPath(GetMasterBinaryName());
 
   // Start the masters.
   for (size_t i = 0; i < num_masters; i++) {
@@ -1363,7 +1383,7 @@ Status ExternalMiniCluster::AddTabletServer(
 
   size_t idx = tablet_servers_.size();
 
-  string exe = GetBinaryPath(kTabletServerBinaryName);
+  string exe = GetBinaryPath(GetTServerBinaryName());
   vector<HostPort> master_hostports;
   for (size_t i = 0; i < num_masters(); i++) {
     master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
@@ -1419,6 +1439,17 @@ Status ExternalMiniCluster::AddTabletServer(
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
   return Status::OK();
+}
+
+void ExternalMiniCluster::UpdateMasterAddressesOnTserver() {
+  vector<HostPort> master_hostports;
+  for (size_t i = 0; i < num_masters(); i++) {
+    master_hostports.push_back(DCHECK_NOTNULL(master(i))->bound_rpc_hostport());
+  }
+
+  for (size_t i = 0; i < num_tablet_servers(); i++) {
+    DCHECK_NOTNULL(tablet_server(i))->UpdateMasterAddress(master_hostports);
+  }
 }
 
 Status ExternalMiniCluster::WaitForTabletServerCount(size_t count, const MonoDelta& timeout) {
@@ -2662,6 +2693,10 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   RETURN_NOT_OK(s1);
   RETURN_NOT_OK(s2);
   return Status::OK();
+}
+
+void ExternalTabletServer::UpdateMasterAddress(const std::vector<HostPort>& master_addrs) {
+  master_addrs_ = HostPort::ToCommaSeparatedString(master_addrs);
 }
 
 Status ExternalTabletServer::Restart(

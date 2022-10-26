@@ -627,7 +627,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->inhTargetKind = INHKIND_NONE;
 	root->hasRecursion = hasRecursion;
 	root->yb_curbatchedrelids = parent_root ? parent_root->yb_curbatchedrelids
-											: false;
+											: NULL;
 	root->yb_cur_batch_no = -1;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);

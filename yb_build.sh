@@ -174,7 +174,9 @@ Build options:
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --skip-test-log-rewrite
     Skip rewriting the test log.
-
+  --skip-final-lto-link
+    For LTO builds, skip the final linking step for server executables, which could take many
+    minutes.
 Linting options:
 
   --shellcheck
@@ -441,8 +443,12 @@ run_cxx_build() {
   expect_vars_to_be_set make_file
 
   # shellcheck disable=SC2154
-  if ( "$force_run_cmake" || "$cmake_only" || [[ ! -f $make_file ]] ) && \
-     ! "$force_no_run_cmake"; then
+  if [[ (
+          ${force_run_cmake} == "true" ||
+          ${cmake_only} == "true" ||
+          ! -f ${make_file}
+        ) && ${force_no_run_cmake} == "false" ]]
+  then
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
     fi
@@ -466,7 +472,7 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
     )
     capture_sec_timestamp "cmake_end"
   fi
@@ -474,6 +480,11 @@ run_cxx_build() {
   if [[ ${cmake_only} == "true" ]]; then
     log "CMake has been invoked, stopping here (--cmake-only specified)."
     exit
+  fi
+
+  if [[ ${build_cxx} == "false" ]]; then
+    log "Skipping C++ build after invoking CMake."
+    return
   fi
 
   if [[ ${#object_files_to_delete[@]} -gt 0 ]]; then
@@ -776,6 +787,9 @@ while [[ $# -gt 0 ]]; do
     repeat_unit_test_inherited_args+=( "$1" )
     shift
     continue
+  fi
+  if [[ $1 =~ ^(--[a-z_-]+)=(.*)$ ]]; then
+    set -- "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${@:2}"
   fi
 
   case ${1//_/-} in
@@ -1223,6 +1237,9 @@ while [[ $# -gt 0 ]]; do
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
     ;;
+    --skip-final-lto-link)
+      export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
         env_var_name=${BASH_REMATCH[1]}
@@ -1371,7 +1388,7 @@ if [[ -z $reduce_log_output ]]; then
   fi
 fi
 
-if ! "$build_java" && "$resolve_java_dependencies"; then
+if [[ ${build_java} != "true" && ${resolve_java_dependencies} == "true" ]]; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 
@@ -1522,10 +1539,6 @@ if [[ ${verbose} == "true" ]]; then
   export YB_SHOW_COMPILER_COMMAND_LINE=1
 fi
 
-# -------------------------------------------------------------------------------------------------
-# End of cleaning
-# -------------------------------------------------------------------------------------------------
-
 mkdir_safe "$BUILD_ROOT"
 cd "$BUILD_ROOT"
 
@@ -1674,6 +1687,8 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
 fi
 
 if [[ ${should_build_clangd_index} == "true" ]]; then
+  "${YB_BUILD_SUPPORT_DIR}/create_latest_symlink.sh" \
+    "${BUILD_ROOT}" "${YB_BUILD_PARENT_DIR}/latest-for-clangd"
   build_clangd_index "${clangd_index_format}"
 fi
 

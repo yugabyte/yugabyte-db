@@ -32,10 +32,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
     RootCert
   }
 
-  // If null, no upgrade will be performed on rootCA
-  public UUID rootCA = null;
-  // If null, no upgrade will be performed on clientRootCA
-  public UUID clientRootCA = null;
   // if null, existing value will be used
   public Boolean rootAndClientRootCASame = null;
   // If true, rotates server cert of rootCA

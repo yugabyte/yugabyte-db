@@ -89,12 +89,12 @@ To import data that was previously exported into CSV files, use the `COPY FROM` 
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK);
 ```
 
-In the command above, the `ROWS_PER_TRANSACTION` parameter splits the load into smaller transactions (1000 rows each in this example), instead of running a single transaction spawning across all the data in the file. Additionally, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process.
+In the command above, the `DISABLE_FK_CHECK` parameter skips the foreign key checks for the duration of the import process. Providing `DISABLE_FK_CHECK` parameter is recommended for the initial import of the data, especially for large tables, because it reduces the total time required to import the data.
 
-Both `ROWS_PER_TRANSACTION` and `DISABLE_FK_CHECK` parameters are recommended for the initial import of the data, especially for large tables, because they significantly reduce the total time required to import the data. You can import multiple files in a single `COPY` command to further speed up the process. Following is a sample example:
+To further speed up the process, you can import multiple files in a single COPY command. Following is a sample example:
 
 ```sql
 yugabyte=# \! ls t*.txt
@@ -132,7 +132,7 @@ yugabyte=# SELECT * FROM t;
 ```
 
 ```sql
-yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK);
+yugabyte=# COPY t FROM PROGRAM 'cat /home/yugabyte/t*.txt' WITH (FORMAT CSV, DELIMITER ',', DISABLE_FK_CHECK);
 COPY 3
 ```
 
@@ -160,7 +160,7 @@ For example, to skip the first 5000 rows in a file, run the command as follows:
 ```sql
 COPY <table_name>
     FROM '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',', HEADER, ROWS_PER_TRANSACTION 1000, DISABLE_FK_CHECK, SKIP 5000);
+    WITH (FORMAT CSV DELIMITER ',', HEADER, DISABLE_FK_CHECK, SKIP 5000);
 ```
 
 ### Import data from SQL script
@@ -188,9 +188,13 @@ Following are some steps that can be verified to ensure that the migration was s
 
 ### Verify row counts for tables
 
-Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB. This can be done as shown below using a PLPGSQL function.
+Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB.
 
-**Step 1.** Create the following function to print the number of rows in a single table.
+#### Run count query in YSQL
+
+Use a PLPGSQL function to do the following:
+
+**Step 1.** Create the following function to print the number of rows in a single table:
 
 ```sql
 create function
@@ -250,3 +254,55 @@ example=# SELECT cnt_rows(table_schema, table_name)
  public       | customer_demographics  |        0
 (14 rows)
 ```
+
+The `COUNT(*)` query may time out in case of large tables. The following two options are recommended for such use cases:
+
+**Option 1.** : Create a function and execute the query using the function which uses an implicit cursor.
+
+```sql
+CREATE OR REPLACE FUNCTION row_count(tbl regclass)
+    RETURNS setof int AS
+$func$
+DECLARE
+    _id int;
+BEGIN
+    FOR _id IN
+        EXECUTE 'SELECT 1 FROM ' || tbl
+    LOOP
+        RETURN NEXT _id;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+```
+
+In this case, the query would be:
+
+```sql
+select count(*) from row_count('tablename');
+```
+
+Note that this query may take some time to complete. You can also increase the client-side timeout to something higher, maybe 10 minutes using the YB-TServer gflag: `--client_read_write_timeout_ms=600000`.
+
+The following example is another workaround for running `COUNT(*)` in ysqlsh:
+
+```sql
+create table test (id int primary key, fname text);
+insert into test select i, 'jon' || i from generate_series(1, 1000000) as i;
+create table dual (test int);
+insert into dual values (1);
+explain select count(*) from test cross join dual;
+```
+
+```output
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Aggregate  (cost=15202.50..15202.51 rows=1 width=8)
+   ->  Nested Loop  (cost=0.00..12702.50 rows=1000000 width=0)
+         ->  Seq Scan on test  (cost=0.00..100.00 rows=1000 width=0)
+         ->  Materialize  (cost=0.00..105.00 rows=1000 width=0)
+               ->  Seq Scan on dual  (cost=0.00..100.00 rows=1000 width=0)
+```
+
+**Option 2.** : Use [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table and control the parallelism at the application level.
+
+Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running `COUNT(*)` on tables using `yb_hash_code()`.

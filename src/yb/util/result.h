@@ -339,9 +339,9 @@ TValue ResultToValue(Result<TValue>&& result, TValue&& value_for_error) {
  * GNU statement expression extension forces to return value and not rvalue reference.
  * As a result VERIFY_RESULT or similar helpers will call move or copy constructor of T even
  * for Result<T&>/Result<const T&>
- * To void this undesirable behavior for Result<T&>/Result<const T&> the std::reference_wrapper<T>
+ * To avoid this undesirable behavior for Result<T&>/Result<const T&>, the std::reference_wrapper<T>
  * is returned from statement.
- * Next functions are the helps to implement this strategy
+ * The following functions help implement this strategy.
  */
 template<class T>
 T&& WrapMove(Result<T>&& result) {
@@ -364,15 +364,11 @@ struct IsNonConstResultRvalue : std::false_type {};
 template<class T>
 struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 
-// TODO(dmitry): Subsitute __static_assert array with real static_assert when
-//               old compilers (gcc 5.5) will not be used.
-//               static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value,
-//                             "only non const Result<T> rvalue reference is allowed");
 #define RESULT_CHECKER_HELPER(expr, checker) \
   __extension__ ({ \
     auto&& __result = (expr); \
-    __attribute__((unused)) constexpr char __static_assert[ \
-        ::yb::IsNonConstResultRvalue<decltype(__result)>::value ? 1 : -1] = {0}; \
+    static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value, \
+                  "only non-const Result<T> rvalue reference is allowed"); \
     checker; \
     WrapMove(std::move(__result)); })
 

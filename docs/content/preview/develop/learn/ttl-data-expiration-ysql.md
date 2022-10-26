@@ -33,4 +33,4 @@ type: docs
 
 </ul>
 
-YSQL content coming soon.
+YSQL content is pending.

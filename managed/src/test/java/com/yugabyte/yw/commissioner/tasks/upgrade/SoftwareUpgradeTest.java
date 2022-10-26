@@ -7,11 +7,12 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
@@ -31,6 +33,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -42,6 +45,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -115,6 +119,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.SetNodeState);
 
   private ArgumentCaptor<String> ybAdminFuncName;
+  private ArgumentCaptor<List<String>> ybAdminArgs;
 
   @Override
   @Before
@@ -128,6 +133,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     successResponse.message = "YSQL successfully upgraded to the latest version";
 
     ybAdminFuncName = ArgumentCaptor.forClass(String.class);
+    ybAdminArgs = ArgumentCaptor.forClass(List.class);
 
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "Command output:\n2989898";
@@ -135,12 +141,17 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(shellResponse);
 
-    try {
-      when(mockNodeUniverseManager.runYbAdminCommand(
-              any(), any(), ybAdminFuncName.capture(), anyLong()))
-          .thenReturn(successResponse);
-    } catch (Exception ignored) {
-    }
+    when(mockNodeUniverseManager.runYbAdminCommand(
+            ArgumentCaptor.forClass(NodeDetails.class).capture(),
+            eq(defaultUniverse),
+            ybAdminFuncName.capture(),
+            ybAdminArgs.capture(),
+            eq(1800L)))
+        .thenReturn(successResponse);
+
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(RunYsqlUpgrade.USE_SINGLE_CONNECTION_PARAM, "true");
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -416,11 +427,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     if (enableYSQL) {
       verify(mockNodeUniverseManager, times(1))
-          .runYbAdminCommand(any(), any(), ybAdminFuncName.capture(), anyLong());
+          .runYbAdminCommand(
+              any(), any(), ybAdminFuncName.capture(), ybAdminArgs.capture(), anyLong());
       assertEquals("upgrade_ysql", ybAdminFuncName.getValue());
+      assertThat(ybAdminArgs.getValue(), Matchers.contains("use_single_connection"));
     } else {
       verify(mockNodeUniverseManager, never())
-          .runYbAdminCommand(any(), any(), ybAdminFuncName.capture(), anyLong());
+          .runYbAdminCommand(
+              any(), any(), ybAdminFuncName.capture(), ybAdminArgs.capture(), anyLong());
     }
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

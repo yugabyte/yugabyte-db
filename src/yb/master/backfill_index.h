@@ -168,7 +168,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
       const std::unordered_set<TableId>& indexes, const std::string& message);
   Status MarkIndexesAsDesired(
       const std::unordered_set<TableId>& index_ids, BackfillJobPB_State state,
-      const string message);
+      const std::string message);
 
   Status AlterTableStateToAbort();
   Status AlterTableStateToSuccess();
@@ -219,7 +219,9 @@ class BackfillTableJob : public server::MonitoredTask {
         backfill_table_(backfill_table),
         requested_index_names_(backfill_table_->requested_index_names()) {}
 
-  Type type() const override { return BACKFILL_TABLE; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTable;
+  }
 
   std::string type_name() const override { return "Backfill Table"; }
 
@@ -263,7 +265,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   Status LaunchNextChunkOrDone();
   Status Done(
       const Status& status,
-      const boost::optional<string>& backfilled_until,
+      const boost::optional<std::string>& backfilled_until,
       const uint64_t number_rows_processed,
       const std::unordered_set<TableId>& failed_indexes);
 
@@ -297,7 +299,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   Status UpdateBackfilledUntil(
-      const string& backfilled_until, const uint64_t number_rows_processed);
+      const std::string& backfilled_until, const uint64_t number_rows_processed);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
@@ -329,7 +331,9 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 
   Status Launch();
 
-  Type type() const override { return ASYNC_GET_SAFE_TIME; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kGetSafeTime;
+  }
 
   std::string type_name() const override { return "Get SafeTime for Tablet"; }
 
@@ -364,7 +368,9 @@ class BackfillChunk : public RetryingTSRpcTask {
 
   Status Launch();
 
-  Type type() const override { return ASYNC_BACKFILL_TABLET_CHUNK; }
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kBackfillTabletChunk;
+  }
 
   std::string type_name() const override { return "Backfill Index Table"; }
 

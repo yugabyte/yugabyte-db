@@ -19,6 +19,8 @@
 #include "yb/util/size_literals.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+using std::string;
+
 using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);

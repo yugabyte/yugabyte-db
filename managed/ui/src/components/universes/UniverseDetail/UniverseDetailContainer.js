@@ -234,7 +234,8 @@ function mapStateToProps(state, ownProps) {
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state),
     featureFlags: state.featureFlags,
-    accessKeys: state.cloud.accessKeys
+    accessKeys: state.cloud.accessKeys,
+    graph: state.graph
   };
 }
 

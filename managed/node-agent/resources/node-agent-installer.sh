@@ -240,12 +240,12 @@ if [ "$TYPE" = "install-service" ]; then
 fi
 
 
-#Trim leading and trailing whitespaces
+#Trim leading and trailing whitespaces.
 PLATFORM_URL=$(echo $PLATFORM_URL | xargs)
 API_TOKEN=$(echo $API_TOKEN | xargs)
 JWT=$(echo $JWT | xargs)
 
-#Return error if type is not passed
+#Return error if type is not passed.
 if [ -z "$PLATFORM_URL" ]; then
   show_usage >&2
   exit 1
@@ -268,7 +268,7 @@ else
   run_yb_node_agent_installer
   #Call the yb_node_agent.sh script to complete the registration/upgrade flow.
   source $NODE_AGENT_RELEASE_DIR/$VERSION/bin/$NODE_AGENT_RUNNER_FILE $TYPE $VERSION $PLATFORM_URL $API_TOKEN
-  echo "You can install a systemd service on linux machines \
-  by running node-agent-installer.sh -t install-service \
-  (Requires sudo access)"
+  echo "You can install a systemd service on linux machines\
+ by running node-agent-installer.sh -t install-service\
+ (Requires sudo access)."
 fi

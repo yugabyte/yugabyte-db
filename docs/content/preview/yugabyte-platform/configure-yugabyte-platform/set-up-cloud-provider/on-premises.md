@@ -293,12 +293,11 @@ This public key should correspond to the private key entered into the YugabyteDB
     *          soft    nproc     12000
     ```
 
-1. Install the rsync, OpenSSL, and xxHash packages (if not already included with your Linux distribution) using the following commands:
+1. Install the rsync and OpenSSL packages (if not already included with your Linux distribution) using the following commands:
 
     ```sh
     sudo yum install openssl
     sudo yum install rsync
-    sudo yum install xxhash
     ```
     
 

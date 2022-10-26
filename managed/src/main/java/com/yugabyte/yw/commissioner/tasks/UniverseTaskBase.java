@@ -42,11 +42,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTablesFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
@@ -1084,12 +1086,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTask(
-      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      NodeDetails node,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
-    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+    subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0, paramsCustomizer));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createServerControlTask(
+      NodeDetails node, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTask(node, processType, command, params -> {});
   }
 
   /**
@@ -1147,22 +1157,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return SubTaskGroup
    */
   public SubTaskGroup createServerControlTasks(
-      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+      List<NodeDetails> nodes,
+      UniverseDefinitionTaskBase.ServerType processType,
+      String command,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
-      subTaskGroup.addSubTask(getServerControlTask(node, processType, command, 0));
+      subTaskGroup.addSubTask(
+          getServerControlTask(node, processType, command, 0, paramsCustomizer));
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public SubTaskGroup createServerControlTasks(
+      List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType, String command) {
+    return createServerControlTasks(nodes, processType, command, params -> {});
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
       NodeDetails node,
       UniverseDefinitionTaskBase.ServerType processType,
       String command,
-      int sleepAfterCmdMillis) {
+      int sleepAfterCmdMillis,
+      Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    UserIntent userIntent = getUserIntent(true);
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
@@ -1182,6 +1203,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.checkVolumesAttached = processType == ServerType.TSERVER && command.equals("start");
+    params.useSystemd = userIntent.useSystemd;
+    paramsCustomizer.accept(params);
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1332,9 +1355,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void checkAndCreateReadWriteTestTableTask(Cluster primaryCluster) {
+    boolean isWriteReadTableRelease =
+        CommonUtils.isReleaseEqualOrAfter(
+            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion);
+    boolean isWriteReadTableEnabled =
+        runtimeConfigFactory
+            .forUniverse(getUniverse())
+            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
     if (primaryCluster.userIntent.enableYSQL
-        && CommonUtils.isReleaseEqualOrAfter(
-            MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
+        && isWriteReadTableRelease
+        && isWriteReadTableEnabled) {
       // Create read-write test table
       List<NodeDetails> tserverLiveNodes =
           getUniverse()
@@ -1539,6 +1569,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+    UserIntent userIntent = getUserIntent(true);
     // Add the node name.
     params.nodeName = currentNode.nodeName;
     // Add the universe uuid.
@@ -1550,6 +1581,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.command = taskType;
     // Set the InstanceType
     params.instanceType = currentNode.cloudInfo.instance_type;
+    params.useSystemd = userIntent.useSystemd;
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1640,6 +1672,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = getUserIntent(true);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1652,6 +1685,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
+      // Start universe with systemd
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -1691,6 +1726,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = getUserIntent(true);
       // Add the node name.
       params.nodeName = node.nodeName;
       // Add the universe uuid.
@@ -1703,6 +1739,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.isForceDelete = isForceDelete;
+      // Set the systemd parameter.
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -1911,7 +1949,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             Backup.BackupVersion.V2);
     backup.setTaskUUID(userTaskUUID);
     backupTableParams.backupUuid = backup.backupUUID;
-
+    backupTableParams.baseBackupUUID = backup.baseBackupUUID;
     for (BackupTableParams backupParams : backupTableParams.backupList) {
       createEncryptedUniverseKeyBackupTask(backupParams).setSubTaskGroupType(subTaskGroupType);
     }
@@ -2815,16 +2853,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("RebootServer", executor);
+  protected SubTaskGroup createRebootTasks(List<NodeDetails> nodes, boolean isHardReboot) {
+    Class<? extends NodeTaskBase> taskClass =
+        isHardReboot ? HardRebootServer.class : RebootServer.class;
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(taskClass.getSimpleName(), executor);
     for (NodeDetails node : nodes) {
-
-      RebootServer.Params params = new RebootServer.Params();
+      NodeTaskParams params = isHardReboot ? new NodeTaskParams() : new RebootServer.Params();
       params.nodeName = node.nodeName;
       params.universeUUID = taskParams().universeUUID;
       params.azUuid = node.azUuid;
 
-      RebootServer task = createTask(RebootServer.class);
+      NodeTaskBase task = createTask(taskClass);
       task.initialize(params);
 
       subTaskGroup.addSubTask(task);
@@ -2939,14 +2979,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createDeleteXClusterConfigSubtasks(
-      XClusterConfig xClusterConfig, boolean keepEntry) {
+      XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
     // Delete the replication CDC streams on the target universe.
-    createDeleteReplicationTask(xClusterConfig, true /* ignoreErrors */)
+    createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // Delete bootstrap IDs created by bootstrap universe subtask.
     // forceDelete is true to prevent errors until the user can choose if they want forceDelete.
-    createDeleteBootstrapIdsTask(xClusterConfig, true /* forceDelete */)
+    createDeleteBootstrapIdsTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // If target universe is destroyed, ignore creating this subtask.
@@ -2960,7 +3000,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 sourceRootCertDirPath,
-                xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+                forceDelete
+                    || xClusterConfig.status
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
     }
@@ -2975,8 +3017,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
-    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */);
+  protected void createDeleteXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig, boolean forceDelete) {
+    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */, forceDelete);
   }
 
   /**

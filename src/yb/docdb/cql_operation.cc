@@ -668,10 +668,8 @@ Status QLWriteOperation::ApplyForJsonOperators(
           return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
             column_value.ShortDebugString());
         }
-        common::Jsonb empty_jsonb;
-        RETURN_NOT_OK(empty_jsonb.FromString("{}"));
         QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
-        column.value.set_jsonb_value(empty_jsonb.MoveSerializedJsonb());
+        column.value.set_jsonb_value(common::Jsonb::kSerializedJsonbEmpty);
 
         Jsonb jsonb(column.value.jsonb_value());
         RETURN_NOT_OK(jsonb.ToRapidJson(&document));
@@ -1277,6 +1275,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       RETURN_NOT_OK(EvalCondition(
         index->where_predicate_spec()->where_expr().condition(), existing_row,
         &index_pred_existing_row));
+    } else {
+      VLOG(3) << "No where predicate for index " << index->table_id();
     }
 
     if (is_row_deleted) {
@@ -1458,6 +1458,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
     RETURN_NOT_OK(expr_executor->EvalCondition(
       index->where_predicate_spec()->where_expr().condition(), new_row,
       &new_row_satisfies_idx_pred));
+    VLOG(2) << "Eval condition on partial index " << new_row_satisfies_idx_pred;
     if (index_pred_new_row) {
       *index_pred_new_row = new_row_satisfies_idx_pred;
     }
@@ -1470,6 +1471,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
           index->table_id();
       update_this_index = true;
     }
+  } else {
+    VLOG(3) << "No where predicate for index " << index->table_id();
   }
 
   if (index_has_write_permission &&

@@ -133,18 +133,26 @@ void YsqlTransactionDdl::TransactionReceived(
 Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid,
                                                TableId relfilenode_oid) {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  if (!tablet_peer || !tablet_peer->tablet()) {
+  if (!tablet_peer) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
-  const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
+  auto shared_tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  const tablet::Tablet* catalog_tablet = shared_tablet.get();
   const Schema& pg_database_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
 
   bool is_matview = relfilenode_oid.empty() ? false : true;
+  std::vector<GStringPiece> col_names;
+
+  if (is_matview) {
+    col_names = {"oid", "relfilenode"};
+  } else {
+    col_names = {"oid"};
+  }
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;
-  RETURN_NOT_OK(pg_database_schema.CreateProjectionByNames({"oid"}, &projection,
+  RETURN_NOT_OK(pg_database_schema.CreateProjectionByNames(col_names, &projection,
                 pg_database_schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(

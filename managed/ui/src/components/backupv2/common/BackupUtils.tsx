@@ -11,8 +11,9 @@ import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
 import { keyBy, mapValues } from 'lodash';
-import { IUniverse } from './IBackup';
+import { Backup_Options_Type, IBackup, IStorageConfig, IUniverse } from './IBackup';
 import { Backup_States } from '../common/IBackup';
+import { TableType } from '../../../redesign/helpers/dtos';
 import './BackupUtils.scss';
 
 /**
@@ -130,4 +131,59 @@ export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: st
 export const PARALLEL_THREADS_RANGE = {
   MIN: 1,
   MAX: 100
+};
+
+export const convertBackupToFormValues = (backup: IBackup, storage_config: IStorageConfig) => {
+  const formValues = {
+    use_cron_expression: false,
+    cron_expression: '',
+    api_type: {
+      value: backup.backupType,
+      label: backup.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
+    },
+    selected_ycql_tables: [] as any[],
+    parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+    storage_config: null as any,
+    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID
+  };
+  if (backup.isFullBackup) {
+    formValues['db_to_backup'] = {
+      value: null,
+      label: `All ${backup.backupType === TableType.PGSQL_TABLE_TYPE ? 'Databases' : 'Keyspaces'}`
+    };
+  } else {
+    formValues['db_to_backup'] = backup.commonBackupInfo.responseList.map((k) => {
+      return { value: k.keyspace, label: k.keyspace };
+    })[0];
+
+    if (backup.backupType === TableType.YQL_TABLE_TYPE) {
+      formValues['backup_tables'] =
+        backup.commonBackupInfo.responseList.length > 0 &&
+        backup.commonBackupInfo.responseList[0].tablesList.length > 0
+          ? Backup_Options_Type.CUSTOM
+          : Backup_Options_Type.ALL;
+
+      if (formValues['backup_tables'] === Backup_Options_Type.CUSTOM) {
+        backup.commonBackupInfo.responseList.forEach((k: any) => {
+          k.tablesList.forEach((table: string, index: number) => {
+            formValues['selected_ycql_tables'].push({
+              tableName: table,
+              keySpace: k.keyspace,
+              isIndexTable: k.isIndexTable
+            });
+          });
+        });
+      }
+    }
+  }
+
+  if (storage_config) {
+    formValues['storage_config'] = {
+      label: storage_config.configName,
+      value: storage_config.configUUID,
+      name: storage_config.name
+    };
+  }
+
+  return formValues;
 };

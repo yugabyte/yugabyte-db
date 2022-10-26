@@ -7,7 +7,10 @@ import java.util.HashSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -17,6 +20,9 @@ import static java.util.stream.Collectors.toList;
 
 @Slf4j
 public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
+
+  @Inject private ReleaseManager releaseManager;
+  @Inject private YbcManager ybcManager;
 
   @Inject
   protected InstallYbcSoftware(BaseTaskDependencies baseTaskDependencies) {
@@ -36,6 +42,26 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
       lockUniverse(-1 /* expectedUniverseVersion */);
 
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+
+      // Check whether the target ybc version is present in YB-Anywhere for each node.
+      universe
+          .getNodes()
+          .forEach(
+              (node) -> {
+                Pair<String, String> ybcPackageDetails =
+                    ybcManager.getYbcPackageDetailsForNode(universe, node);
+                if (releaseManager.getYbcReleaseByVersion(
+                        taskParams().ybcSoftwareVersion,
+                        ybcPackageDetails.getFirst(),
+                        ybcPackageDetails.getSecond())
+                    == null) {
+                  throw new RuntimeException(
+                      "Target ybc package "
+                          + taskParams().ybcSoftwareVersion
+                          + " does not exists for node"
+                          + node.nodeName);
+                }
+              });
 
       // We will need to setup server again in case of systemd to register yb-controller service.
       if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {

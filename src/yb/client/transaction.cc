@@ -52,6 +52,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
+using std::vector;
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -92,6 +94,8 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       "Number of transactions being promoted to global transactions",
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
+
+DECLARE_bool(enable_wait_queue_based_pessimistic_locking);
 
 namespace yb {
 namespace client {
@@ -598,7 +602,14 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return false;
     }
 
-    if (!FLAGS_auto_promote_nonlocal_transactions_to_global) {
+    if (!FLAGS_auto_promote_nonlocal_transactions_to_global ||
+        FLAGS_enable_wait_queue_based_pessimistic_locking) {
+      if (FLAGS_auto_promote_nonlocal_transactions_to_global) {
+        YB_LOG_EVERY_N_SECS(WARNING, 100)
+            << "Cross-region transactions are disabled in clusters with pessimistic locking "
+            << "enabled. This will be supported in a future release. "
+            << "See: https://github.com/yugabyte/yugabyte-db/issues/13585";
+      }
       auto tablet_id = op->tablet->tablet_id();
       auto status = STATUS_FORMAT(
             IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
@@ -1368,6 +1379,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -1728,6 +1740,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         tablet_id,
         /* table =*/ nullptr,
         master::IncludeInactive::kFalse,
+        master::IncludeDeleted::kFalse,
         TransactionRpcDeadline(),
         std::bind(
             &Impl::LookupTabletForTransactionStatusLocationUpdateDone, this, _1, weak_transaction,

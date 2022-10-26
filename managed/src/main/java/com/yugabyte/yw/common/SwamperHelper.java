@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.AlertTemplateSettings;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -72,6 +73,8 @@ public class SwamperHelper {
   private static final String TARGET_PATH_PARAM = "yb.swamper.targetPath";
   private static final String RULES_PATH_PARAM = "yb.swamper.rulesPath";
   public static final String COLLECTION_LEVEL_PARAM = "yb.metrics.collection_level";
+  public static final String SCRAPE_INTERVAL_SECS_PARAM = "yb.metrics.scrape_interval_secs";
+  public static final String RANGE_PLACEHOLDER = "\\{\\{ range \\}\\}";
 
   private static final String PARAMETER_LABEL_PREFIX = "__param_";
 
@@ -305,6 +308,10 @@ public class SwamperHelper {
     String fileContent;
     try (InputStream templateStream = environment.resourceAsStream("metric/recording_rules.yml")) {
       fileContent = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      long scrapeInterval =
+          runtimeConfigFactory.staticApplicationConf().getLong(SCRAPE_INTERVAL_SECS_PARAM);
+      fileContent =
+          fileContent.replaceAll(RANGE_PLACEHOLDER, String.format("%ds", (scrapeInterval * 2)));
     } catch (IOException e) {
       throw new RuntimeException("Failed to read alert definition header template", e);
     }
@@ -312,7 +319,10 @@ public class SwamperHelper {
     writeFile(rulesFile, fileContent);
   }
 
-  public void writeAlertDefinition(AlertConfiguration configuration, AlertDefinition definition) {
+  public void writeAlertDefinition(
+      AlertConfiguration configuration,
+      AlertDefinition definition,
+      AlertTemplateSettings templateSettings) {
     String swamperFile = getAlertRuleFile(definition.getUuid());
     if (swamperFile == null) {
       return;
@@ -342,7 +352,8 @@ public class SwamperHelper {
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
-                      new AlertRuleTemplateSubstitutor(configuration, definition, severity);
+                      new AlertRuleTemplateSubstitutor(
+                          configuration, definition, severity, templateSettings);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());

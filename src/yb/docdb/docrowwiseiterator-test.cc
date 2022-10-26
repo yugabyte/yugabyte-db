@@ -34,6 +34,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+using std::string;
+
 DECLARE_bool(TEST_docdb_sort_weak_intents);
 DECLARE_bool(disable_hybrid_scan);
 
@@ -1880,6 +1882,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
       TransactionId::GenerateRandom(), &txn_status_manager);
   DocReadContext doc_read_context(schema, 1);
 
+  LOG(INFO) << "=============================================== ReadTime-2000";
   {
     DocRowwiseIterator iter(
         projection, doc_read_context, txn_context, doc_db(),
@@ -1923,7 +1926,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
 
   // Scan at a later hybrid_time.
 
-  LOG(INFO) << "===============================================";
+  LOG(INFO) << "=============================================== ReadTime-5000";
   {
     DocRowwiseIterator iter(
         projection, doc_read_context, txn_context, doc_db(),
@@ -1965,7 +1968,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
   }
 
   // Scan at a later hybrid_time.
-
+  LOG(INFO) << "=============================================== ReadTime-6000";
   {
     DocRowwiseIterator iter(
         projection, doc_read_context, txn_context, doc_db(),

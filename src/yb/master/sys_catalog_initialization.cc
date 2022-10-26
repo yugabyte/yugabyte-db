@@ -30,6 +30,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 
+using std::string;
+
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
@@ -51,6 +53,9 @@ DEFINE_bool(create_initial_sys_catalog_snapshot, false,
 
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
+
+DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
+                 "Kill the master process after successfully restoring the sys catalog snapshot.");
 
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
@@ -127,8 +132,8 @@ Status RestoreInitialSysCatalogSnapshot(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto operation = std::make_unique<SnapshotOperation>(
-      sys_catalog_tablet_peer->tablet(), &tablet_snapshot_req);
+  auto tablet = VERIFY_RESULT(sys_catalog_tablet_peer->shared_tablet_safe());
+  auto operation = std::make_unique<SnapshotOperation>(tablet, &tablet_snapshot_req);
 
   CountDownLatch latch(1);
   operation->set_completion_callback(
@@ -136,6 +141,12 @@ Status RestoreInitialSysCatalogSnapshot(
 
   sys_catalog_tablet_peer->Submit(std::move(operation), term);
 
+  if (FLAGS_TEST_fail_initdb_after_snapshot_restore && term == 1) {
+    // Only on term 1 (the first master leader), wait until the snapshot operation is complete
+    // before killing the process.
+    latch.Wait();
+    LOG(FATAL) << "Simulate failover during initdb";
+  }
   // Now restore tablet metadata.
   tserver::ExportedTabletMetadataChanges tablet_metadata_changes;
   RETURN_NOT_OK(ReadPBContainerFromPath(

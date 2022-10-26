@@ -238,11 +238,6 @@ typedef struct YbPgMemTracker
 	 */
 	Size pg_cur_mem_bytes;
 	/*
-	 * The maximum memory since this backend connection is established including
-	 * PG and pggate
-	 */
-	Size backend_max_mem_bytes;
-	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
 	 */
@@ -264,13 +259,6 @@ typedef struct YbPgMemTracker
 } YbPgMemTracker;
 
 extern YbPgMemTracker PgMemTracker;
-
-/*
- * Update current memory usage in MemTracker, when there is no PG
- * memory allocation activities. This is currently supposed to be
- * used by the MemTracker in pggate as a callback.
- */
-extern void YbPgMemUpdateMax();
 
 /*
  * Add memory consumption to PgMemTracker in bytes.

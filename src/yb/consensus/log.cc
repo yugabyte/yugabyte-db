@@ -43,7 +43,6 @@
 #include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -72,7 +71,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -185,6 +184,8 @@ DEFINE_test_flag(bool, pause_before_wal_sync, false, "Pause before doing work in
 
 DEFINE_test_flag(bool, set_pause_before_wal_sync, false,
                  "Set pause_before_wal_sync to true in Log::Sync.");
+DEFINE_test_flag(bool, disable_wal_retention_time, false,
+                 "If true, disables time-based wal retention.");
 
 // TaskStream flags.
 // We have to make the queue length really long.
@@ -218,8 +219,7 @@ static bool ValidateLogsToRetain(const char* flagname, int value) {
                                     flagname, value);
   return false;
 }
-static bool dummy = google::RegisterFlagValidator(
-    &FLAGS_log_min_segments_to_retain, &ValidateLogsToRetain);
+DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
@@ -231,6 +231,7 @@ using env_util::OpenFileForRandom;
 using std::shared_ptr;
 using std::shared_lock;
 using std::unique_ptr;
+using std::string;
 using strings::Substitute;
 
 namespace {
@@ -427,7 +428,7 @@ Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
           MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))) {
-  DCHECK(dummy);
+  DCHECK(log_min_segments_to_retain_validator_registered);
 }
 
 Status Log::Appender::Init() {
@@ -1112,11 +1113,9 @@ SyncType Log::FindSyncType() {
 Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
 
-  if (PREDICT_FALSE(FLAGS_TEST_pause_before_wal_sync)) {
-    TEST_PAUSE_IF_FLAG(TEST_pause_before_wal_sync);
-    if (FLAGS_TEST_set_pause_before_wal_sync) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
-    }
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_wal_sync);
+  if (PREDICT_FALSE(FLAGS_TEST_set_pause_before_wal_sync)) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_wal_sync) = true;
   }
 
   if (sync_disabled_) {
@@ -1200,6 +1199,14 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
+  if PREDICT_TRUE(!FLAGS_TEST_disable_wal_retention_time) {
+    ApplyTimeRetentionPolicy(segments_to_gc);
+  }
+
+  return Status::OK();
+}
+
+void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
 
@@ -1221,8 +1228,6 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
       break;
     }
   }
-
-  return Status::OK();
 }
 
 Status Log::Append(LogEntryPB* phys_entry,
@@ -1377,6 +1382,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       log_index_->GC(min_remaining_op_idx);
     }
   }
+
   return Status::OK();
 }
 

@@ -16,7 +16,10 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/date_time.h"
+#include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
+
+using std::string;
 
 DEFINE_string(csv_delimiter, ",", "The character used to separate different columns.");
 DEFINE_string(
@@ -33,9 +36,7 @@ static bool CSVSeparatorValidator(const char* flagname, const string& value) {
 }
 }
 
-__attribute__((unused))
 DEFINE_validator(csv_delimiter, &CSVSeparatorValidator);
-__attribute__((unused))
 DEFINE_validator(csv_quote_character, &CSVSeparatorValidator);
 
 namespace yb {

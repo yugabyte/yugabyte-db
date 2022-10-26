@@ -36,6 +36,7 @@
 #ifndef YB_UTIL_SLICE_H_
 #define YB_UTIL_SLICE_H_
 
+#include <compare>
 #include <string>
 #include <string_view>
 
@@ -394,6 +395,10 @@ inline bool operator>(const Slice& lhs, const Slice& rhs) {
 
 inline bool operator>=(const Slice& lhs, const Slice& rhs) {
   return lhs.compare(rhs) >= 0;
+}
+
+inline std::strong_ordering operator<=>(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) <=> 0;
 }
 
 }  // namespace yb

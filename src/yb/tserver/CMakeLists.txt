@@ -167,6 +167,8 @@ add_dependencies(tserver_util gen_proto)
 # tserver
 #########################################
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+
 set(TSERVER_SRCS
   db_server_base.cc
   heartbeater.cc
@@ -192,6 +194,7 @@ set(TSERVER_SRCS
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
+  xcluster_safe_time_map.cc
   ${TSERVER_SRCS_EXTENSIONS})
 
 set(TSERVER_DEPS
@@ -236,8 +239,8 @@ ADD_YB_LIBRARY(yb-tserver_util
 # yb-tserver
 #########################################
 
-add_executable(yb-tserver tablet_server_main.cc)
-target_link_libraries(yb-tserver
+add_executable("${YB_TSERVER_DYNAMIC_EXE_NAME}" tablet_server_main.cc)
+target_link_libraries("${YB_TSERVER_DYNAMIC_EXE_NAME}"
   tserver
   yb-tserver_util
   yb-cql
@@ -249,9 +252,10 @@ target_link_libraries(yb-tserver
 # Generate tserver_flags.xml
 #########################################
 set(TSERVER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/tserver_flags.xml)
-add_custom_command(TARGET yb-tserver POST_BUILD
+add_custom_command(TARGET "${YB_TSERVER_DYNAMIC_EXE_NAME}" POST_BUILD
   COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "yb-tserver"
+    "--program_name" "${YB_TSERVER_DYNAMIC_EXE_NAME}"
+    "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
     "--output_file_path" "${TSERVER_FLAGS_METADATA_FILE}"
   BYPRODUCTS "${TSERVER_FLAGS_METADATA_FILE}")
 

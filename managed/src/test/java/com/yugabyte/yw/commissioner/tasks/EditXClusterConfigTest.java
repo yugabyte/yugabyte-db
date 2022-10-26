@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AlertTemplate.REPLICATION_LAG;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.testCustomer;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
@@ -13,14 +14,18 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -30,12 +35,16 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -49,9 +58,12 @@ import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.ListTablesResponse;
 import org.yb.client.SetUniverseReplicationEnabledResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
@@ -65,17 +77,20 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
-  private String namespace1Name;
-  private String namespace1Id;
   private String exampleTableID1;
   private String exampleTableID2;
   private String exampleTableID3;
   private String exampleStreamID1;
   private String exampleStreamID2;
   private String exampleStreamID3;
+  private String exampleTable1Name;
+  private String exampleTable2Name;
+  private String exampleTable3Name;
+  private String namespace1Name;
+  private String namespace1Id;
   private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
-  private YBClient mockClient;
+  private YBClient mockTargetClient;
 
   List<TaskType> RENAME_FAILURE_TASK_SEQUENCE =
       ImmutableList.of(
@@ -88,7 +103,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
   List<TaskType> ADD_TABLE_IS_ALTER_DONE_FAILURE =
       ImmutableList.of(
           TaskType.XClusterConfigSetStatus,
+          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigModifyTables,
+          TaskType.XClusterConfigModifyTables,
+          TaskType.XClusterConfigSetStatusForTables,
           TaskType.XClusterConfigSetStatus,
           TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
@@ -116,6 +134,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     exampleTableID2 = "000030af000030008000000000004001";
     exampleTableID3 = "000030af000030008000000000004002";
 
+    exampleTable1Name = "exampleTable1";
+    exampleTable2Name = "exampleTable2";
+    exampleTable3Name = "exampleTable3";
+
     exampleStreamID1 = "ec10532900ef42a29a6899c82dd7404f";
     exampleStreamID2 = "ec10532900ef42a29a6899c82dd7404d";
     exampleStreamID3 = "fea203ffca1f48349901e0de2b52c416";
@@ -132,9 +154,9 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    mockClient = mock(YBClient.class);
+    mockTargetClient = mock(YBClient.class);
     when(mockYBClient.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
-        .thenReturn(mockClient);
+        .thenReturn(mockTargetClient);
 
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -142,7 +164,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             "",
             new Schema(Collections.emptyList()),
             namespace1Name,
-            "exampleTableID1",
+            exampleTable1Name,
             exampleTableID1,
             null,
             true,
@@ -154,7 +176,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             "",
             new Schema(Collections.emptyList()),
             namespace1Name,
-            "exampleTableID2",
+            exampleTable2Name,
             exampleTableID2,
             null,
             true,
@@ -166,7 +188,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             "",
             new Schema(Collections.emptyList()),
             namespace1Name,
-            "exampleTableID3",
+            exampleTable3Name,
             exampleTableID3,
             null,
             true,
@@ -174,22 +196,31 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             Collections.emptyList());
     try {
       lenient()
-          .when(mockClient.getTableSchemaByUUID(exampleTableID1))
+          .when(mockTargetClient.getTableSchemaByUUID(exampleTableID1))
           .thenReturn(mockTableSchemaResponseTable1);
       lenient()
-          .when(mockClient.getTableSchemaByUUID(exampleTableID2))
+          .when(mockTargetClient.getTableSchemaByUUID(exampleTableID2))
           .thenReturn(mockTableSchemaResponseTable2);
       lenient()
-          .when(mockClient.getTableSchemaByUUID(exampleTableID3))
+          .when(mockTargetClient.getTableSchemaByUUID(exampleTableID3))
           .thenReturn(mockTableSchemaResponseTable3);
     } catch (Exception ignored) {
     }
   }
 
   private TaskInfo submitTask(
-      XClusterConfig xClusterConfig, XClusterConfigEditFormData editFormData) {
+      XClusterConfig xClusterConfig,
+      XClusterConfigEditFormData editFormData,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList,
+      Set<String> tableIdsToRemove) {
     XClusterConfigTaskParams taskParams =
-        new XClusterConfigTaskParams(xClusterConfig, editFormData);
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            editFormData,
+            requestedTableToAddInfoList,
+            Collections.emptyMap(),
+            XClusterConfigTaskBase.getTableIds(requestedTableToAddInfoList),
+            tableIdsToRemove);
     try {
       UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, taskParams);
       CustomerTask.create(
@@ -206,6 +237,96 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     return null;
   }
 
+  public void initClientGetTablesList() {
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
+    // Adding table 1.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table1TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table1TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID1));
+    table1TableInfoBuilder.setName(exampleTable1Name);
+    table1TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table1TableInfoBuilder.build());
+    // Adding table 2.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table2TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table2TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table2TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID2));
+    table2TableInfoBuilder.setName(exampleTable2Name);
+    table2TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table2TableInfoBuilder.build());
+    // Adding table 3.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table3TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table3TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table3TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID3));
+    table3TableInfoBuilder.setName(exampleTable3Name);
+    table3TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName(namespace1Name)
+            .setId(ByteString.copyFromUtf8(namespace1Id))
+            .build());
+    tableInfoList.add(table3TableInfoBuilder.build());
+
+    try {
+      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+      when(mockTargetClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  public void setupAlertConfigurations() {
+    AlertConfiguration alertConfiguration =
+        alertConfigurationService
+            .createConfigurationTemplate(defaultCustomer, REPLICATION_LAG)
+            .getDefaultConfiguration();
+    alertConfiguration.setDefaultDestination(true);
+    alertConfiguration.setCreateTime(new Date());
+    alertConfiguration.generateUUID();
+    alertConfiguration.save();
+
+    lenient()
+        .doReturn(Collections.singletonList(alertConfiguration))
+        .when(alertConfigurationService)
+        .list(any());
+  }
+
+  public void setupMetricValues() {
+    ArrayList<MetricQueryResponse.Entry> metricValues = new ArrayList<>();
+    MetricQueryResponse.Entry entryExampleTableID1 = new MetricQueryResponse.Entry();
+    entryExampleTableID1.labels = new HashMap<>();
+    entryExampleTableID1.labels.put("table_id", exampleTableID1);
+    entryExampleTableID1.values = new ArrayList<>();
+    entryExampleTableID1.values.add(ImmutablePair.of(10.0, 0.0));
+    metricValues.add(entryExampleTableID1);
+
+    MetricQueryResponse.Entry entryExampleTableID2 = new MetricQueryResponse.Entry();
+    entryExampleTableID2.labels = new HashMap<>();
+    entryExampleTableID2.labels.put("table_id", exampleTableID2);
+    entryExampleTableID2.values = new ArrayList<>();
+    entryExampleTableID2.values.add(ImmutablePair.of(10.0, 0.0));
+    metricValues.add(entryExampleTableID2);
+
+    MetricQueryResponse.Entry entryExampleTableID3 = new MetricQueryResponse.Entry();
+    entryExampleTableID3.labels = new HashMap<>();
+    entryExampleTableID3.labels.put("table_id", exampleTableID3);
+    entryExampleTableID3.values = new ArrayList<>();
+    entryExampleTableID3.values.add(ImmutablePair.of(10.0, 0.0));
+    metricValues.add(entryExampleTableID3);
+
+    when(mockMetricQueryHelper.queryDirect(any())).thenReturn(metricValues);
+  }
+
   @Test
   public void testRename() {
     XClusterConfig xClusterConfig =
@@ -217,15 +338,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationName(
+      when(mockTargetClient.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(), newFullName))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.name = newName;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -254,15 +376,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationName(
+      when(mockTargetClient.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(), newFullName))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.name = newName;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -295,15 +418,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.alterUniverseReplicationName(
+      when(mockTargetClient.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(), newFullName))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.name = newName;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
@@ -318,7 +442,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     String expectedErrMsg =
         String.format("Failed to rename XClusterConfig(%s): %s", xClusterConfig.uuid, renameErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
@@ -336,15 +460,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetUniverseReplicationEnabledResponse mockEditResponse =
           new SetUniverseReplicationEnabledResponse(0, "", null);
-      when(mockClient.setUniverseReplicationEnabled(
+      when(mockTargetClient.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), false))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = "Paused";
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -370,15 +495,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetUniverseReplicationEnabledResponse mockEditResponse =
           new SetUniverseReplicationEnabledResponse(0, "", null);
-      when(mockClient.setUniverseReplicationEnabled(
+      when(mockTargetClient.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), false))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = "Paused";
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -402,14 +528,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetUniverseReplicationEnabledResponse mockEditResponse =
           new SetUniverseReplicationEnabledResponse(0, "", null);
-      when(mockClient.setUniverseReplicationEnabled(xClusterConfig.getReplicationGroupName(), true))
+      when(mockTargetClient.setUniverseReplicationEnabled(
+              xClusterConfig.getReplicationGroupName(), true))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = "Running";
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -435,14 +563,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       SetUniverseReplicationEnabledResponse mockEditResponse =
           new SetUniverseReplicationEnabledResponse(0, "", null);
-      when(mockClient.setUniverseReplicationEnabled(xClusterConfig.getReplicationGroupName(), true))
+      when(mockTargetClient.setUniverseReplicationEnabled(
+              xClusterConfig.getReplicationGroupName(), true))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = "Running";
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -473,15 +603,16 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       SetUniverseReplicationEnabledResponse mockEditResponse =
           new SetUniverseReplicationEnabledResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.setUniverseReplicationEnabled(
+      when(mockTargetClient.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), false))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = "Paused";
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(xClusterConfig, editFormData, Collections.emptyList(), Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
@@ -489,7 +620,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString("Failed to pause/enable XClusterConfig"));
     assertThat(taskErrMsg, containsString(pauseResumeErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
@@ -532,8 +663,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
 
     try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
+      when(mockTargetClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
     }
   }
 
@@ -542,21 +673,23 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initClientGetTablesList();
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 3);
 
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockEditResponse);
 
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+      when(mockTargetClient.isAlterUniverseReplicationDone(
+              xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsAlterReplicationDoneResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -564,9 +697,21 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     newTables.add(exampleTableID2);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -588,21 +733,23 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     HighAvailabilityConfig.create("test-cluster-key");
+    initClientGetTablesList();
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 3);
 
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockEditResponse);
 
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+      when(mockTargetClient.isAlterUniverseReplicationDone(
+              xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsAlterReplicationDoneResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -610,9 +757,21 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     newTables.add(exampleTableID2);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -633,8 +792,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initClientGetTablesList();
     String alterErrMsg = "failed to modify tables";
-
     try {
       AppStatusPB.Builder appStatusBuilder =
           AppStatusPB.newBuilder().setMessage(alterErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
@@ -644,11 +803,11 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -656,9 +815,21 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     newTables.add(exampleTableID2);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
@@ -669,12 +840,12 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to add tables to XClusterConfig(%s): %s", xClusterConfig.uuid, alterErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
     assertEquals(newTables, xClusterConfig.getTables());
     Optional<XClusterTableConfig> table3Config = xClusterConfig.maybeGetTableById(exampleTableID3);
     assertTrue(table3Config.isPresent());
@@ -693,12 +864,13 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
-    String alterErrMsg = "failed to modify tables";
+    initClientGetTablesList();
 
+    String alterErrMsg = "failed to modify tables";
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockEditResponse);
@@ -707,9 +879,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           AppStatusPB.newBuilder().setMessage(alterErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, appStatusBuilder.build());
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+      when(mockTargetClient.isAlterUniverseReplicationDone(
+              xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsAlterReplicationDoneResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -717,9 +890,21 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     newTables.add(exampleTableID2);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig, editFormData, requestedTableToAddInfoList, Collections.emptySet());
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
@@ -730,13 +915,13 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
             xClusterConfig.uuid, ErrorCode.UNKNOWN_ERROR, alterErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
     assertEquals(newTables, xClusterConfig.getTables());
     Optional<XClusterTableConfig> table3Config = xClusterConfig.maybeGetTableById(exampleTableID3);
     assertTrue(table3Config.isPresent());
@@ -760,10 +945,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationRemoveTables(
+      when(mockTargetClient.alterUniverseReplicationRemoveTables(
               xClusterConfig.getReplicationGroupName(), Collections.singleton(exampleTableID2)))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -771,7 +956,12 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig,
+            editFormData,
+            Collections.emptyList(),
+            Collections.singleton(exampleTableID2));
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -797,10 +987,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     try {
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationRemoveTables(
+      when(mockTargetClient.alterUniverseReplicationRemoveTables(
               xClusterConfig.getReplicationGroupName(), Collections.singleton(exampleTableID2)))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -808,7 +998,12 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig,
+            editFormData,
+            Collections.emptyList(),
+            Collections.singleton(exampleTableID2));
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -840,10 +1035,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .setCode(Code.UNKNOWN_ERROR);
       AlterUniverseReplicationResponse mockEditResponse =
           new AlterUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.alterUniverseReplicationRemoveTables(
+      when(mockTargetClient.alterUniverseReplicationRemoveTables(
               xClusterConfig.getReplicationGroupName(), Collections.singleton(exampleTableID2)))
           .thenReturn(mockEditResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
@@ -851,18 +1046,23 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
 
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig,
+            editFormData,
+            Collections.emptyList(),
+            Collections.singleton(exampleTableID2));
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(1).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(1).getTaskDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(2).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "Failed to remove tables from XClusterConfig(%s): %s",
             xClusterConfig.uuid, alterErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
     assertEquals(exampleTables, xClusterConfig.getTables());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
@@ -878,36 +1078,53 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
+    initClientGetTablesList();
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 3);
 
     try {
       AlterUniverseReplicationResponse mockAddResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockAddResponse);
 
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+      when(mockTargetClient.isAlterUniverseReplicationDone(
+              xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsAlterReplicationDoneResponse);
 
       AlterUniverseReplicationResponse mockRemoveResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationRemoveTables(
+      when(mockTargetClient.alterUniverseReplicationRemoveTables(
               xClusterConfig.getReplicationGroupName(), Collections.singleton(exampleTableID2)))
           .thenReturn(mockRemoveResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
     newTables.add(exampleTableID1);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig,
+            editFormData,
+            requestedTableToAddInfoList,
+            Collections.singleton(exampleTableID2));
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
@@ -929,36 +1146,53 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
 
     HighAvailabilityConfig.create("test-cluster-key");
+    initClientGetTablesList();
     initTargetUniverseClusterConfig(xClusterConfig.getReplicationGroupName(), 3);
 
     try {
       AlterUniverseReplicationResponse mockAddResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationAddTables(
+      when(mockTargetClient.alterUniverseReplicationAddTables(
               xClusterConfig.getReplicationGroupName(),
               Collections.singletonMap(exampleTableID3, null)))
           .thenReturn(mockAddResponse);
 
       IsSetupUniverseReplicationDoneResponse mockIsAlterReplicationDoneResponse =
           new IsSetupUniverseReplicationDoneResponse(0, "", null, true, null);
-      when(mockClient.isAlterUniverseReplicationDone(xClusterConfig.getReplicationGroupName()))
+      when(mockTargetClient.isAlterUniverseReplicationDone(
+              xClusterConfig.getReplicationGroupName()))
           .thenReturn(mockIsAlterReplicationDoneResponse);
 
       AlterUniverseReplicationResponse mockRemoveResponse =
           new AlterUniverseReplicationResponse(0, "", null);
-      when(mockClient.alterUniverseReplicationRemoveTables(
+      when(mockTargetClient.alterUniverseReplicationRemoveTables(
               xClusterConfig.getReplicationGroupName(), Collections.singleton(exampleTableID2)))
           .thenReturn(mockRemoveResponse);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
     }
 
     Set<String> newTables = new HashSet<>();
     newTables.add(exampleTableID1);
     newTables.add(exampleTableID3);
 
+    xClusterConfig.addTables(Collections.singleton(exampleTableID3));
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList =
+        XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
+            mockYBClient,
+            Collections.singleton(exampleTableID3),
+            null,
+            sourceUniverse,
+            targetUniverse);
+
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = newTables;
-    TaskInfo taskInfo = submitTask(xClusterConfig, editFormData);
+    TaskInfo taskInfo =
+        submitTask(
+            xClusterConfig,
+            editFormData,
+            requestedTableToAddInfoList,
+            Collections.singleton(exampleTableID2));
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);

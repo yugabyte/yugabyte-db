@@ -48,6 +48,8 @@ DEFINE_int32(alloc_size, 4, "number of bytes in each allocation");
 namespace yb {
 
 using std::shared_ptr;
+using std::string;
+using std::vector;
 
 namespace {
 
@@ -206,7 +208,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
   // component is not cleared. In either case, after Reset()
   // consumption() should equal the size of the last component which
   // is 512 bytes.
-  arena.Reset();
+  arena.Reset(ResetMode::kKeepLast);
   ASSERT_EQ(512, mem_tracker->consumption());
 
   // Allocate beyond allowed consumption. This should still go

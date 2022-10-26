@@ -847,7 +847,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 VERIFY_RESULT(DecodeIntentValue(intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock)) {
+            if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
               continue;
             }
 
@@ -855,18 +855,26 @@ Result<ApplyTransactionState> GetIntentsBatch(
                 intent.doc_path,
             }};
             std::array<Slice, 1> value_parts = {{
-                decoded_value.body,
+                  decoded_value.body,
             }};
+            std::array<Slice, 1> ht_parts = {{
+                intent.doc_ht,
+            }};
+
+            auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(intent.doc_ht));
 
             IntentKeyValueForCDC intent_metadata;
             intent_metadata.key = Slice(key_parts, &(intent_metadata.key_buf));
             intent_metadata.value = Slice(value_parts, &(intent_metadata.value_buf));
             intent_metadata.reverse_index_key = key_slice.ToBuffer();
             intent_metadata.write_id = write_id;
+            intent_metadata.intent_ht = doc_ht;
+            intent_metadata.ht = Slice(ht_parts, &intent_metadata.ht_buf);
+
             (*key_value_intents).push_back(intent_metadata);
 
             VLOG(4) << "The size of intentKeyValues in GetIntentList "
-                      << (*key_value_intents).size();
+                    << (*key_value_intents).size();
             ++write_id;
           }
         }

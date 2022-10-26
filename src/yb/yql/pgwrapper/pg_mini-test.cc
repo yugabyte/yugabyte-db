@@ -43,17 +43,19 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
+using std::string;
 
 using namespace std::literals;
 
@@ -70,6 +72,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -896,7 +899,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
   LOG(INFO) << "Restarting cluster";
   ASSERT_OK(RestartCluster());
 
-  ASSERT_OK(WaitFor([this, &conn, &key, &kTableName] {
+  ASSERT_OK(WaitFor([this, &key, &kTableName] {
     auto intents_count = CountIntents(cluster_.get());
     LOG(INFO) << "Intents count: " << intents_count;
 
@@ -908,10 +911,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallW
     // happens.
     // So we could get into situation when intents of the last transactions are not cleaned.
     // To avoid such scenario in this test we write one more row to allow cleanup.
-    EXPECT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 VALUES ($1, '$2')", kTableName, ++key,
-        RandomHumanReadableString(kValueSize)));
-
+    // As the previous connection might have been dead (from the cluster restart), do the insert
+    // from a new connection.
+    auto new_conn = EXPECT_RESULT(Connect());
+    EXPECT_OK(new_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, '$2')",
+              kTableName, ++key, RandomHumanReadableString(kValueSize)));
     return false;
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
@@ -1314,12 +1318,17 @@ class PgMiniTestTxnHelperSerializable
     : public PgMiniTestTxnHelper<IsolationLevel::SERIALIZABLE_ISOLATION> {
  protected:
   // Check two SERIALIZABLE txns has no conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2, 3)"));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(StartTxn(&conn));
     ASSERT_OK(conn.Execute("UPDATE t SET v1 = 20 WHERE k = 1"));
@@ -1349,9 +1358,14 @@ class PgMiniTestTxnHelperSnapshot
     : public PgMiniTestTxnHelper<IsolationLevel::SNAPSHOT_ISOLATION> {
  protected:
   // Check two SNAPSHOT txns has a conflict in case of updating same column in same row.
-  void TestSameColumnUpdate() {
+  void TestSameColumnUpdate(bool enable_expression_pushdown) {
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+    if (enable_expression_pushdown) {
+      ASSERT_OK(conn.Execute("SET yb_enable_expression_pushdown TO true"));
+      ASSERT_OK(extra_conn.Execute("SET yb_enable_expression_pushdown TO true"));
+    }
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 2)"));
@@ -1429,15 +1443,27 @@ TEST_F_EX(PgMiniTest,
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializable),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
           PgMiniTestTxnHelperSerializable) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshot),
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
           PgMiniTestTxnHelperSnapshot) {
-  TestSameColumnUpdate();
+  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          PgMiniTestTxnHelperSerializable) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+}
+
+TEST_F_EX(PgMiniTest,
+          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          PgMiniTestTxnHelperSnapshot) {
+  TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgMiniTest,
@@ -1810,7 +1836,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     PgMiniTest::SetUp();
   }
 
-  void Run(int rows, int block_size, int reads, bool compact = false) {
+  void Run(int rows, int block_size, int reads, bool compact = false, bool select = false) {
     auto conn = ASSERT_RESULT(Connect());
 
     ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1826,7 +1852,9 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     for (const auto& peer : peers) {
       auto tp = peer->tablet()->transaction_participant();
       if (tp) {
-        LOG(INFO) << peer->LogPrefix() << "Intents: " << tp->TEST_CountIntents().first;
+        const auto count_intents_result = tp->TEST_CountIntents();
+        const auto count_intents = count_intents_result.ok() ? count_intents_result->first : 0;
+        LOG(INFO) << peer->LogPrefix() << "Intents: " << count_intents;
       }
     }
 
@@ -1834,7 +1862,7 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
       FlushAndCompactTablets();
     }
 
-    LOG(INFO) << "Perform read";
+    LOG(INFO) << "Perform read. Row count: " << rows;
 
     if (VLOG_IS_ON(4)) {
       google::SetVLOGLevel("intent_aware_iterator", 4);
@@ -1843,8 +1871,14 @@ class PgMiniBigPrefetchTest : public PgMiniSingleTServerTest {
     }
 
     for (int i = 0; i != reads; ++i) {
+      int64_t fetched_rows;
       auto start = MonoTime::Now();
-      auto fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      if(!select) {
+        fetched_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT count(*) FROM t"));
+      } else {
+        auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+        fetched_rows = PQntuples(res.get());
+      }
       auto finish = MonoTime::Now();
       ASSERT_EQ(rows, fetched_rows);
       LOG(INFO) << i << ") Full Time: " << finish - start;
@@ -1874,6 +1908,22 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SmallRead), PgMiniBigPrefetchTest)
   constexpr int kReads = 1;
 
   Run(kRows, kBlockSize, kReads);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ false, /*select*/ true);
+}
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
+  constexpr int kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
+  constexpr int kBlockSize = 1000;
+  constexpr int kReads = 3;
+
+  Run(kRows, kBlockSize, kReads, /* compact= */ true, /*select*/ true);
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
@@ -2851,6 +2901,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
 
   FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 
   ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact());
@@ -2932,7 +2983,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
   const auto termination_duration =
       (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
   ASSERT_GT(termination_duration, 0);
-  ASSERT_LT(termination_duration, 2000);
+  ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
 } // namespace pgwrapper

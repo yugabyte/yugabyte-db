@@ -92,8 +92,8 @@ DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
 DEFINE_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 
-DEFINE_int32(rpc_queue_limit, 10000, "Queue limit for rpc server");
-DEFINE_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
+DEFINE_NON_RUNTIME_int32(rpc_queue_limit, 10000, "Queue limit for rpc server");
+DEFINE_NON_RUNTIME_int32(rpc_workers_limit, 1024, "Workers limit for rpc server");
 
 DEFINE_int32(socket_receive_buffer_size, 0, "Socket receive buffer size, 0 to use default");
 

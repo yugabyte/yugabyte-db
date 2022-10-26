@@ -33,6 +33,8 @@
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/xfunc.h"
 
+using std::unique_ptr;
+
 namespace rocksdb {
 
 namespace {

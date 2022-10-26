@@ -18,6 +18,7 @@ linux_packages:
 
 aarch64_packages:
   - libatomic
+  - glibc-langpack-en
 
 debian_aarch64_packages:
   - libatomic1

@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static com.yugabyte.yw.common.SwamperHelper.SCRAPE_INTERVAL_SECS_PARAM;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -71,6 +72,9 @@ public class MetricQueryHelper {
   private static final String NODE_PREFIX = "node_prefix";
   private static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
+  public static final String TABLE_ID = "table_id";
+  public static final String TABLE_NAME = "table_name";
+  public static final String NAMESPACE_NAME = "namespace_name";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
@@ -227,17 +231,8 @@ public class MetricQueryHelper {
           Set<String> pvcNames = new HashSet<>();
           Set<String> namespaces = new HashSet<>();
           for (NodeDetails node : nodesToFilter) {
-            String podFQDN = node.cloudInfo.private_ip;
-            if (StringUtils.isBlank(podFQDN)) {
-              throw new PlatformServiceException(
-                  INTERNAL_SERVER_ERROR, node.getNodeName() + " has a blank FQDN");
-            }
-
-            String podName = podFQDN.split("\\.")[0];
-            String namespace = podFQDN.split("\\.")[2];
-            // The pod name is of the format
-            // <helm_prefix>-yb-<server>-<replica_num> and we just need
-            // the container, which is yb-<server>.
+            String podName = node.getK8sPodName();
+            String namespace = node.getK8sNamespace();
             String containerName = podName.contains("yb-master") ? "yb-master" : "yb-tserver";
             String pvcName = String.format("(.*)-%s", podName);
             podNames.add(podName);
@@ -308,6 +303,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
+    long scrapeInterval = appConfig.getLong(SCRAPE_INTERVAL_SECS_PARAM);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -319,7 +315,8 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    params.put("range", Long.toString(timeDifference));
+    long range = Math.max(scrapeInterval * 2, timeDifference);
+    params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
@@ -327,7 +324,7 @@ public class MetricQueryHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
       }
-      int resolution = Math.round(timeDifference / STEP_SIZE);
+      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {

@@ -30,9 +30,13 @@
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
+
+using std::string;
+using std::max;
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(heartbeat_interval_ms);

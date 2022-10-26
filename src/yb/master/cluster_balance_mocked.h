@@ -36,7 +36,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
 
   void GetAllAffinitizedZones(
       const ReplicationInfoPB& replication_info,
-      vector<AffinitizedZonesSet>* affinitized_zones) const override {
+      std::vector<AffinitizedZonesSet>* affinitized_zones) const override {
     *affinitized_zones = affinitized_zones_;
   }
 
@@ -53,12 +53,14 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return replication_info_;
   }
 
-  void SetBlacklist() const override {
-    // Set the blacklist so we can also mark the tablet servers as we add them up.
-    global_state_->SetBlacklist(blacklist_);
-
-    // Set the leader blacklist so we can also mark the tablet servers as we add them up.
-    global_state_->SetLeaderBlacklist(leader_blacklist_);
+  void SetBlacklistAndPendingDeleteTS() override {
+    for (const auto& ts_desc : global_state_->ts_descs_) {
+      AddTSIfBlacklisted(ts_desc, blacklist_, false);
+      AddTSIfBlacklisted(ts_desc, leader_blacklist_, true);
+      if (ts_desc->HasTabletDeletePending()) {
+        global_state_->servers_with_pending_deletes_.insert(ts_desc->permanent_uuid());
+      }
+    }
   }
 
   Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
@@ -99,7 +101,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     tablespace_manager_ = std::make_shared<YsqlTablespaceManager>(nullptr, nullptr);
   }
 
-  void SetOptions(ReplicaType type, const string& placement_uuid) {
+  void SetOptions(ReplicaType type, const std::string& placement_uuid) {
     state_->options_->type = type;
     state_->options_->placement_uuid = placement_uuid;
   }
@@ -107,15 +109,15 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   void ResetOptions() { SetOptions(LIVE, ""); }
 
   TSDescriptorVector ts_descs_;
-  vector<AffinitizedZonesSet> affinitized_zones_;
+  std::vector<AffinitizedZonesSet> affinitized_zones_;
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
   ReplicationInfoPB replication_info_;
   BlacklistPB blacklist_;
   BlacklistPB leader_blacklist_;
-  vector<TabletId> pending_add_replica_tasks_;
-  vector<TabletId> pending_remove_replica_tasks_;
-  vector<TabletId> pending_stepdown_leader_tasks_;
+  std::vector<TabletId> pending_add_replica_tasks_;
+  std::vector<TabletId> pending_remove_replica_tasks_;
+  std::vector<TabletId> pending_stepdown_leader_tasks_;
 
   friend class TestLoadBalancerEnterprise;
 };

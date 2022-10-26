@@ -14,7 +14,6 @@ import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -71,7 +70,8 @@ public class AllowedActionsHelper {
   private String nodeActionErrOrNull(NodeActionType action) {
     if (action == NodeActionType.STOP
         || action == NodeActionType.REMOVE
-        || action == NodeActionType.REBOOT) {
+        || action == NodeActionType.REBOOT
+        || action == NodeActionType.HARD_REBOOT) {
       String errorMsg = removeMasterErrOrNull(action);
       if (errorMsg != null) {
         return errorMsg;
@@ -98,7 +98,9 @@ public class AllowedActionsHelper {
       // TODO: Clean this up as this null is probably test artifact
       return errorMsg(action, "It is in null state");
     }
-    if (!node.state.allowedActions().contains(action)) {
+    try {
+      node.validateActionOnState(action);
+    } catch (RuntimeException ex) {
       return errorMsg(action, "It is in " + node.state + " state");
     }
     return null;
@@ -178,8 +180,8 @@ public class AllowedActionsHelper {
     if (!Util.areMastersUnderReplicated(node, universe)) {
       return errorMsg(START_MASTER, "There are already enough masters");
     }
-    if (node.dedicatedTo == UniverseDefinitionTaskBase.ServerType.TSERVER) {
-      return errorMsg(START_MASTER, "Node is dedicated to tserver");
+    if (node.dedicatedTo != null) {
+      return errorMsg(START_MASTER, "Node is dedicated, use START instead");
     }
     return null;
   }

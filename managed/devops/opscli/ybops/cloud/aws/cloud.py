@@ -476,21 +476,10 @@ class AwsCloud(AbstractCloud):
         instance.terminate()
         instance.wait_until_terminated()
 
-    def reboot_instance(self, args, ssh_ports):
-        host_info = self.get_host_info_specific_args(
-            args.region,
-            args.search_pattern,
-            get_all=False
-        )
-
-        if not host_info:
-            logging.error("Host {} does not exist.".format(args.search_pattern))
-            return
-
-        boto3.client('ec2', region_name=args.region).reboot_instances(
+    def reboot_instance(self, host_info, ssh_ports):
+        boto3.client('ec2', region_name=host_info['region']).reboot_instances(
           InstanceIds=[host_info["id"]]
         )
-
         self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
 
     def mount_disk(self, host_info, vol_id, label):
@@ -579,7 +568,12 @@ class AwsCloud(AbstractCloud):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             instance = ec2.Instance(id=host_info["id"])
             instance.start()
-            instance.wait_until_running()
+            # Default is 15, 40, double it to work around failures in provisioning instances.
+            wait_config = {
+                'Delay': 15,
+                'MaxAttempts': 80
+            }
+            instance.wait_until_running(WaiterConfig=wait_config)
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
             self.wait_for_ssh_ports(host_info["private_ip"], host_info["id"], ssh_ports)
