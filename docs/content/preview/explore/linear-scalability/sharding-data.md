@@ -32,7 +32,7 @@ type: docs
 </ul>
 -->
 
-YugabyteDB automatically splits user tables into multiple shards, called *tablets*, using either a [hash](#hash-sharding)- or [range](#range-sharding)- based strategy.
+YugabyteDB automatically splits user tables into multiple shards, called _tablets_, using either a [hash](#hash-sharding)- or [range](#range-sharding)- based strategy.
 
 The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the following figure.
 
@@ -42,7 +42,7 @@ By default, YugabyteDB creates eight tablets per node in the cluster for each ta
 
 ## Sharding strategies
 
-Sharding is the process of breaking up large tables into smaller chunks called _shards_ that are spread across multiple servers. Essentially, a shard is a _horizontal data partition_ that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes.
+Sharding is the process of breaking up large tables into smaller chunks called _shards_ that are spread across multiple servers. Essentially, a shard is a _horizontal data partition_ that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can't fit on a single node onto a cluster of database nodes.
 
 Sharding is also referred to as _horizontal partitioning_. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically&mdash;storing different table columns in a separate database, or horizontally&mdash;storing rows of the same table in multiple database nodes.
 
@@ -83,7 +83,7 @@ CREATE TABLE customers (
 );
 ```
 
-**In YCQL**, you can only create tables with hash sharding, so an explict syntax for setting hash sharding is not necessary.
+**In YCQL**, you can only create tables with hash sharding, so an explicit syntax for setting hash sharding is not necessary.
 
 ```sql
 CREATE TABLE items (
@@ -105,12 +105,10 @@ This type of sharding allows efficiently querying a range of rows by the primary
 
 * Starting out with a single shard means that _a single node is handling all user queries_.
 
-    <br/><br/>
-    This often results in a database “warming” problem, where all queries are handled by a single node even if there are multiple nodes in the cluster. The user would have to wait for enough splits to happen and these shards to get redistributed before all nodes in the cluster are being utilized. This can be a big issue in production workloads. This can be mitigated in some cases where the distribution is keys is known ahead of time by presplitting the table into multiple shards, however this is hard in practice.
+    This often results in a database "warming" problem, where all queries are handled by a single node even if there are multiple nodes in the cluster. The user would have to wait for enough splits to happen and these shards to get redistributed before all nodes in the cluster are being utilized. This can be a big issue in production workloads. This can be mitigated in some cases where the distribution is keys is known ahead of time by pre-splitting the table into multiple shards, however this is hard in practice.
 
 * Globally ordering keys across all the shards often generates hot spots, in which some shards get much more activity than others.
 
-    <br/><br/>
     Nodes hosting hot spots are overloaded relative to others. You can mitigate this to some extent with active load balancing, but this does not always work well in practice: by the time hot shards are redistributed across nodes, the workload may have changed and introduced new hot spots.
 
 #### Range sharding example
@@ -142,7 +140,7 @@ This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) 
 
 To create a universe, do the following:
 
-1. Let’s begin by creating a single node cluster. Run the following command.
+1. Begin by creating a single node cluster. Run the following command.
 
    ```sh
    $ ./bin/yugabyted start \
@@ -177,7 +175,7 @@ Setting `memstore_size` to such a low value is not recommended in production, an
 
 ### Create a table
 
-Once you've got your nodes set up, you can create a YCQL table. Since you'll be using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, **create the keyspace and table name below exactly as shown**.
+After you've got your nodes set up, you can create a YCQL table. Because you'll be using a workload application in the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) to write data into this table, **create the keyspace and table name below exactly as shown**.
 
 ```sh
 $ ./bin/ycqlsh
@@ -220,28 +218,28 @@ By default, [yugabyted](../../../reference/configuration/yugabyted/) creates one
     ```
 
     ```output
-    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
     ```
 
     There are nine entries, one corresponding to each tablet with 28K bytes as the size.
 
 ### Insert and query a table
 
-In this section, you'll use a sample app to insert a key-value entry with the value size around 10MB. Since the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
+In this section, you'll use a sample app to insert a key-value entry with the value size around 10MB. Because the memstores are configured to be 1MB, this causes the data to flush to disk immediately.
 
 The key flags you pass to the sample app are:
 
 * `--num_unique_keys 1` to write exactly one key. Keys are numbers converted to text, and typically start from 0.
 * `--num_threads_read 0` to not perform any reads (hence 0 read threads).
-* `--num_threads_write 1` creates one writer thread. Since you're not writing a lot of data, a single writer thread is sufficient.
+* `--num_threads_write 1` creates one writer thread. Because you're not writing a lot of data, a single writer thread is sufficient.
 * `--value_size 10000000` to generate the value being written as a random byte string of around 10MB size.
 * `--nouuid` to not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
@@ -302,15 +300,15 @@ Let's get started:
     ```
 
     ```output
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    9.6M    /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    9.6M    /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
-    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
-    9.6M    /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
-    28K	/tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K   /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M  /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K   /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K   /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M  /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K   /tmp/ybd2/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
+    28K   /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0149071638294c5d9328c4121ad33d23
+    9.6M  /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-0df2c7cd87a844c99172ea1ebcd0a3ee
+    28K   /tmp/ybd3/data/yb-data/tserver/data/rocksdb/table-769f533fbde9425a8520b9cd59efc8b8/tablet-59b7d53724944725a1e3edfe9c5a1440
     ```
 
 You can see that the key was successfully inserted in one of the tablets leading to a proliferation of size to 9.6 MB. Because this tablet has 3 copies distributed across the 3 nodes, you can see 3 entries of this size.

@@ -31,13 +31,13 @@ type: docs
 -->
 </ul>
 
-On this page, you'll observe horizontal scale-out and scale-in in action. In particular, you’ll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+On this page, you'll observe horizontal scale-out and scale-in in action. In particular, you'll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
 ## 1. Create universe
 
-Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
+Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
 
 Create the first node:
 
@@ -69,8 +69,9 @@ $ ./bin/yugabyted start \
                   --tserver_flags "ysql_num_shards_per_tserver=4,follower_unavailable_considered_failed_sec=30"
 ```
 
-* `ysql_num_shards_per_tserver` defines the number of shards of a table that one node will have. This means that for our example above, a table will have a total of 12 shards across all the 3 nodes combined.
-* `follower_unavailable_considered_failed_sec` sets the time after which other nodes consider an inactive node to be unavailable and remove it from the cluster.
+`ysql_num_shards_per_tserver` defines the number of shards of a table that one node will have. This means that for the preceding example, a table will have a total of 12 shards across all the 3 nodes combined.
+
+`follower_unavailable_considered_failed_sec` sets the time after which other nodes consider an inactive node to be unavailable and remove it from the cluster.
 
 Each table now has four tablet-leaders in each YB-TServer and with a replication factor (RF) of `3`; there are two tablet-followers for each tablet-leader distributed in the two other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
 
@@ -91,7 +92,7 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                  --num_threads_read 4
 ```
 
-The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The workload application prints some statistics while running, an example is shown here. For more details about the output of the sample applications, refer to the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
 
 ```output
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ...
