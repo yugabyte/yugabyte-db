@@ -3284,4 +3284,47 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(4, (int) azUuidToNumNodes.get(z2.uuid));
     assertEquals(1, (int) azUuidToNumNodes.get(z1.uuid));
   }
+
+  @Test
+  public void testPassingDefaultRegionForRREdit() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.regionList = Collections.singletonList(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.providerType = provider.getCloudCode();
+    userIntent.preferredRegion = null;
+
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY, userIntent, 3, region.uuid, Collections.emptyList());
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, placementInfo);
+
+    // RR replica has different region
+    Region region2 = getOrCreate(provider, "r2");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region2, "z2", "z2", "subnet-2");
+    UserIntent rrIntent = userIntent.clone();
+    rrIntent.regionList = Collections.singletonList(region2.uuid);
+    params.upsertCluster(rrIntent, null, UUID.randomUUID());
+    params.currentClusterType = ClusterType.ASYNC;
+
+    assertNull(params.getReadOnlyClusters().get(0).placementInfo);
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getReadOnlyClusters().get(0).uuid, CREATE);
+
+    assertNotNull(params.getReadOnlyClusters().get(0).placementInfo);
+  }
 }
