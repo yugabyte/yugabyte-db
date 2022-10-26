@@ -7,7 +7,7 @@
  *	  of the API of the memory management subsystem.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memutils.h
@@ -20,7 +20,7 @@
 #include "c.h"
 #include "nodes/memnodes.h"
 
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 /*
  * MaxAllocSize, MaxAllocHugeSize
@@ -80,15 +80,17 @@ extern void MemoryContextResetChildren(MemoryContext context);
 extern void MemoryContextDeleteChildren(MemoryContext context);
 extern void MemoryContextSetIdentifier(MemoryContext context, const char *id);
 extern void MemoryContextSetParent(MemoryContext context,
-					   MemoryContext new_parent);
+								   MemoryContext new_parent);
 extern Size GetMemoryChunkSpace(void *pointer);
 extern MemoryContext MemoryContextGetParent(MemoryContext context);
 extern bool MemoryContextIsEmpty(MemoryContext context);
+extern Size MemoryContextMemAllocated(MemoryContext context, bool recurse);
 extern void MemoryContextStats(MemoryContext context);
-extern void MemoryContextStatsDetail(MemoryContext context, int max_children);
-extern int64 MemoryContextStatsUsage(MemoryContext context, int max_children);
+extern void MemoryContextStatsDetail(MemoryContext context, int max_children,
+									 bool print_to_stderr);
 extern void MemoryContextAllowInCriticalSection(MemoryContext context,
-									bool allow);
+												bool allow);
+extern int64 MemoryContextStatsUsage(MemoryContext context, int max_children);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 extern void MemoryContextCheck(MemoryContext context);
@@ -144,48 +146,50 @@ GetMemoryChunkContext(void *pointer)
  * specific creation routines, and noplace else.
  */
 extern void MemoryContextCreate(MemoryContext node,
-					NodeTag tag,
-					const MemoryContextMethods *methods,
-					MemoryContext parent,
-					const char *name);
+								NodeTag tag,
+								const MemoryContextMethods *methods,
+								MemoryContext parent,
+								const char *name);
 
+extern void HandleLogMemoryContextInterrupt(void);
+extern void ProcessLogMemoryContextInterrupt(void);
 
 /*
  * Memory-context-type-specific functions
  */
 
 /* aset.c */
-extern MemoryContext AllocSetContextCreateExtended(MemoryContext parent,
-							  const char *name,
-							  Size minContextSize,
-							  Size initBlockSize,
-							  Size maxBlockSize);
+extern MemoryContext AllocSetContextCreateInternal(MemoryContext parent,
+												   const char *name,
+												   Size minContextSize,
+												   Size initBlockSize,
+												   Size maxBlockSize);
 
 /*
  * This wrapper macro exists to check for non-constant strings used as context
  * names; that's no longer supported.  (Use MemoryContextSetIdentifier if you
  * want to provide a variable identifier.)
  */
-#if defined(HAVE__BUILTIN_CONSTANT_P) && defined(HAVE__VA_ARGS)
+#ifdef HAVE__BUILTIN_CONSTANT_P
 #define AllocSetContextCreate(parent, name, ...) \
 	(StaticAssertExpr(__builtin_constant_p(name), \
 					  "memory context names must be constant strings"), \
-	 AllocSetContextCreateExtended(parent, name, __VA_ARGS__))
+	 AllocSetContextCreateInternal(parent, name, __VA_ARGS__))
 #else
 #define AllocSetContextCreate \
-	AllocSetContextCreateExtended
+	AllocSetContextCreateInternal
 #endif
 
 /* slab.c */
 extern MemoryContext SlabContextCreate(MemoryContext parent,
-				  const char *name,
-				  Size blockSize,
-				  Size chunkSize);
+									   const char *name,
+									   Size blockSize,
+									   Size chunkSize);
 
 /* generation.c */
 extern MemoryContext GenerationContextCreate(MemoryContext parent,
-						const char *name,
-						Size blockSize);
+											 const char *name,
+											 Size blockSize);
 
 /*
  * Recommended default alloc parameters, suitable for "ordinary" contexts
@@ -238,10 +242,6 @@ typedef struct YbPgMemTracker
 	 */
 	Size pg_cur_mem_bytes;
 	/*
-	 * The current allocated memory including PG, pggate and cached memory.
-	 */
-	int64_t backend_cur_allocated_mem_bytes;
-	/*
 	 * The maximum memory ever allocated by current statement including PG and
 	 * pggate
 	 */
@@ -282,11 +282,5 @@ extern void YbPgMemSubConsumption(const Size sz);
  * track peak memory usage for a new statement.
  */
 extern void YbPgMemResetStmtConsumption();
-
-/*
- * Returns the resident set size (physical memory use) of a process
- * measured in bytes, or -1 if the value cannot be determined on this OS.
- */
-extern int64_t YbPgGetCurRSSMemUsage(int pid);
 
 #endif							/* MEMUTILS_H */

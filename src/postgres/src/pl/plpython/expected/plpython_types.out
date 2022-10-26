@@ -400,7 +400,7 @@ CREATE FUNCTION test_type_unmarshal(x bytea) RETURNS text AS $$
 import marshal
 try:
     return marshal.loads(x)
-except ValueError, e:
+except ValueError as e:
     return 'FAILED: ' + str(e)
 $$ LANGUAGE plpythonu;
 SELECT test_type_unmarshal(x) FROM test_type_marshal() x;
@@ -684,7 +684,7 @@ CREATE FUNCTION test_type_conversion_array_mixed2() RETURNS int[] AS $$
 return [123, 'abc']
 $$ LANGUAGE plpythonu;
 SELECT * FROM test_type_conversion_array_mixed2();
-ERROR:  invalid input syntax for integer: "abc"
+ERROR:  invalid input syntax for type integer: "abc"
 CONTEXT:  while creating return value
 PL/Python function "test_type_conversion_array_mixed2"
 CREATE FUNCTION test_type_conversion_mdarray_malformed() RETURNS int[] AS $$

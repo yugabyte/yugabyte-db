@@ -14,7 +14,7 @@
  * only one ID number.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/pg_shmem.h
@@ -44,6 +44,7 @@ typedef struct PGShmemHeader	/* standard header for all Postgres shmem */
 /* GUC variables */
 extern int	shared_memory_type;
 extern int	huge_pages;
+extern int	huge_page_size;
 
 /* Possible values for huge_pages */
 typedef enum
@@ -65,6 +66,7 @@ typedef enum
 extern unsigned long UsedShmemSegID;
 #else
 extern HANDLE UsedShmemSegID;
+extern void *ShmemProtectiveRegion;
 #endif
 extern void *UsedShmemSegAddr;
 
@@ -81,9 +83,10 @@ extern void PGSharedMemoryReAttach(void);
 extern void PGSharedMemoryNoReAttach(void);
 #endif
 
-extern PGShmemHeader *PGSharedMemoryCreate(Size size, int port,
-					 PGShmemHeader **shim);
+extern PGShmemHeader *PGSharedMemoryCreate(Size size,
+										   PGShmemHeader **shim);
 extern bool PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2);
 extern void PGSharedMemoryDetach(void);
+extern void GetHugePageSize(Size *hugepagesize, int *mmap_flags);
 
 #endif							/* PG_SHMEM_H */

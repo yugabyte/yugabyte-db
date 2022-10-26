@@ -32,8 +32,10 @@ test: preproc/whenever
 test: preproc/whenever_do_continue
 test: sql/array
 test: sql/binary
+test: sql/bytea
 test: sql/code100
 test: sql/copystdout
+test: sql/createtableas
 test: sql/define
 test: sql/desc
 test: sql/sqlda
@@ -50,6 +52,8 @@ test: sql/quote
 test: sql/show
 test: sql/insupd
 test: sql/parser
+test: sql/prepareas
+test: sql/declare
 test: thread/thread
 test: thread/thread_implicit
 test: thread/prep

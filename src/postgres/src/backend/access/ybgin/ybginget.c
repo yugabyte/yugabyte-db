@@ -34,6 +34,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/builtins.h"
 #include "utils/elog.h"
@@ -286,7 +287,16 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 		elog(ERROR, "no < operator for opfamily %u", opfamily);
 	fmgr_info(get_opcode(oproid), &ltproc);
 	prefix_const = text_to_const(prefix, colloid);
+#ifdef YB_TODO
+	/* YB_TODO(jasonk@yugabyte)
+	 * Postgres has stopped calling make_greater_string() in all backend executions. Need to
+	 * investigate if this call is the right thing to do.
+	 */
 	return make_greater_string(prefix_const, &ltproc, colloid);
+#else
+	/* This code is only for the compilation to proceed without errors */
+	return prefix_const;
+#endif
 }
 
 static void
@@ -447,6 +457,56 @@ ybginSetupBinds(IndexScanDesc scan)
 }
 
 /*
+ * Add a system column as target to the given statement handle.
+ *
+ * See related ybcAddTargetColumn.
+ */
+static void
+addTargetSystemColumn(int attnum, YBCPgStatement handle)
+{
+	Assert(attnum < 0);
+
+	YBCPgExpr	expr;
+	YBCPgTypeAttrs type_attrs;
+
+	/* System columns don't use typmod. */
+	type_attrs.typmod = -1;
+
+	expr = YBCNewColumnRef(handle,
+						   attnum,
+						   InvalidOid /* attr_typid */,
+						   InvalidOid /* attr_collation */,
+						   &type_attrs);
+	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+}
+
+/*
+ * Add a regular column as target to the given statement handle.  Assume
+ * tupdesc's relation is the same as handle's target relation.
+ *
+ * See related ybcAddTargetColumn.
+ */
+static void
+addTargetRegularColumn(TupleDesc tupdesc, int attnum, YBCPgStatement handle)
+{
+	/* This can possibly be >= 0. */
+	Assert(attnum >= 1);
+
+	Form_pg_attribute att;
+	YBCPgExpr	expr;
+	YBCPgTypeAttrs type_attrs;
+
+	att = TupleDescAttr(tupdesc, attnum - 1);
+	type_attrs.typmod = att->atttypmod;
+	expr = YBCNewColumnRef(handle,
+						   attnum,
+						   att->atttypid,
+						   att->attcollation,
+						   &type_attrs);
+	HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+}
+
+/*
  * Add targets for the select.
  */
 static void
@@ -466,25 +526,22 @@ ybginSetupTargets(IndexScanDesc scan)
 	 * IndexScan needs to get base ctids from the index table to pass as binds
 	 * to the base table.  This is handled in the pggate layer.
 	 */
-	YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber, ybso->handle);
+	addTargetSystemColumn(YBIdxBaseTupleIdAttributeNumber, ybso->handle);
 	/*
 	 * For scans that touch the base table, we seem to always query for the
 	 * ybctid, even if the table may have explicit primary keys.  A lower layer
 	 * probably filters this out when not applicable.
 	 */
-	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybso->handle);
+	addTargetSystemColumn(YBTupleIdAttributeNumber, ybso->handle);
 	/*
 	 * For now, target all non-system columns of the base table.  This can be
 	 * very inefficient.  The lsm index access method avoids this using
-	 * filtering (see YbAddTargetColumnIfRequired).
+	 * filtering (see ybcAddTargetColumnIfRequired).
 	 *
 	 * TODO(jason): don't target unnecessary columns.
 	 */
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
-	{
-		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
-			YbDmlAppendTargetRegular(tupdesc, attnum, ybso->handle);
-	}
+		addTargetRegularColumn(tupdesc, attnum, ybso->handle);
 }
 
 /*
@@ -516,19 +573,16 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 	ybginSetupBinds(scan);
 
 	/* targets */
-	if (scan->yb_aggrefs != NIL)
-		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.
-		 */
-		YbDmlAppendTargetsAggregate(scan->yb_aggrefs,
-									RelationGetDescr(scan->indexRelation),
-									scan->indexRelation,
-									ybso->handle);
-	else
-		ybginSetupTargets(scan);
+	ybginSetupTargets(scan);
 
-	YbSetCatalogCacheVersion(ybso->handle, YbGetCatalogCacheVersion());
+	/* syscatalog version */
+	if (YBIsDBCatalogVersionMode())
+		HandleYBStatus(YBCPgSetDBCatalogCacheVersion(ybso->handle,
+													 MyDatabaseId,
+													 yb_catalog_cache_version));
+	else
+		HandleYBStatus(YBCPgSetCatalogCacheVersion(ybso->handle,
+												   yb_catalog_cache_version));
 
 	/* execute select */
 	ybginExecSelect(scan, dir);
@@ -570,9 +624,12 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+#ifdef YB_TODO
+		/* YB_TODO(jasonk@yugabyte) Set & get OID is no longer valid */
 		if (syscols.oid != InvalidOid)
 			HeapTupleSetOid(tuple, syscols.oid);
+#endif
 	}
 	pfree(values);
 	pfree(nulls);
@@ -597,42 +654,12 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	/* fetch */
-	scan->xs_ctup.t_ybctid = 0;
-	if (scan->yb_aggrefs)
-	{
-		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.  Also, this codepath is not exercised
-		 * because such queries hit error "non-default search mode" when
-		 * setting up binds.
-		 */
-		Assert(scan->xs_want_itup);
-
-		/*
-		 * TODO(jason): don't assume that recheck is needed.
-		 */
-		scan->xs_recheck = true;
-
-		/*
-		 * Aggregate pushdown directly modifies the scan slot rather than
-		 * passing it through xs_hitup or xs_itup.
-		 *
-		 * The index id passed into ybFetchNext is likely not going to be used
-		 * as it is only used for system table scans, which have oid, and there
-		 * shouldn't exist any system table secondary indexes that index the
-		 * oid column.
-		 * TODO(jason): deduplicate with ybcingettuple.
-		 */
-		scan->yb_agg_slot =
-			ybFetchNext(ybso->handle, scan->yb_agg_slot,
-						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
-	}
+	YbItemPointerSetInvalid(&scan->xs_heaptid);
 	while (HeapTupleIsValid(tup = ybginFetchNextHeapTuple(scan)))
 	{
 		if (true)				/* TODO(jason): don't assume a match. */
 		{
-			scan->xs_ctup.t_ybctid = tup->t_ybctid;
+			YbItemPointerYbctid(&scan->xs_heaptid) = HEAPTUPLE_YBCTID(tup);
 			scan->xs_hitup = tup;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 
@@ -644,5 +671,5 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 		heap_freetuple(tup);
 	}
 
-	return scan->xs_ctup.t_ybctid != 0;
+	return YbItemPointerYbctid(&scan->xs_heaptid) != 0;
 }

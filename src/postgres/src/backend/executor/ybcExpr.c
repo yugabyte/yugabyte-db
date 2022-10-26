@@ -47,7 +47,7 @@
 #include "catalog/yb_type.h"
 
 Node *yb_expr_instantiate_params_mutator(Node *node, EState *estate);
-bool yb_pushdown_walker(Node *node, List **colrefs);
+bool yb_pushdown_walker(Node *node, List **params);
 bool yb_can_pushdown_func(Oid funcid);
 
 YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
@@ -81,15 +81,6 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
 	YBCPgExpr expr = NULL;
 	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
 	HandleYBStatus(YBCPgNewConstantVirtual(ybc_stmt, type_entity, kind, &expr));
-	return expr;
-}
-
-YBCPgExpr YBCNewTupleExpr(YBCPgStatement ybc_stmt,
-						  const YBCPgTypeAttrs *type_attrs, int num_elems, YBCPgExpr *elems) {
-	YBCPgExpr expr = NULL;
-	const YBCPgTypeEntity *tuple_type_entity = YBCPgFindTypeEntity(RECORDOID);
-	HandleYBStatus(
-		YBCPgNewTupleExpr(ybc_stmt, tuple_type_entity, type_attrs, num_elems, elems, &expr));
 	return expr;
 }
 
@@ -183,26 +174,26 @@ Expr *YbExprInstantiateParams(Expr* expr, EState *estate)
 }
 
 /*
- * YbInstantiatePushdownParams
+ * YbInstantiateRemoteParams
  *	  Replace the Param nodes of the expression trees with Const nodes carrying
  *	  current parameter values before pushing the expression down to DocDB.
  */
 PushdownExprs *
-YbInstantiatePushdownParams(PushdownExprs *pushdown, EState *estate)
+YbInstantiateRemoteParams(PushdownExprs *remote, EState *estate)
 {
 	PushdownExprs *result;
-	if (pushdown->quals == NIL)
+	if (remote->qual == NIL)
 		return NULL;
 	/* Make new instance for the scan state. */
 	result = (PushdownExprs *) palloc(sizeof(PushdownExprs));
 	/* Store mutated list of expressions. */
-	result->quals = (List *)
-		YbExprInstantiateParams((Expr *) pushdown->quals, estate);
+	result->qual = (List *)
+		YbExprInstantiateParams((Expr *) remote->qual, estate);
 	/*
 	 * Column references are not modified by the executor, so it is OK to copy
 	 * the reference.
 	 */
-	result->colrefs = pushdown->colrefs;
+	result->colrefs = remote->colrefs;
 	return result;
 }
 
@@ -280,7 +271,7 @@ bool yb_can_pushdown_func(Oid funcid)
  *
  *	  Expression walker used internally by YbCanPushdownExpr
  */
-bool yb_pushdown_walker(Node *node, List **colrefs)
+bool yb_pushdown_walker(Node *node, List **params)
 {
 	if (node == NULL)
 		return false;
@@ -301,15 +292,15 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 				return true;
 			}
 			/* Collect column reference */
-			if (colrefs)
+			if (params)
 			{
 				ListCell   *lc;
 				bool		found = false;
 
 				/* Check if the column reference has already been collected */
-				foreach(lc, *colrefs)
+				foreach(lc, *params)
 				{
-					YbExprColrefDesc *param = (YbExprColrefDesc *) lfirst(lc);
+					YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
 					if (param->attno == attno)
 					{
 						found = true;
@@ -320,12 +311,12 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 				if (!found)
 				{
 					/* Add new column reference to the list */
-					YbExprColrefDesc *new_param = makeNode(YbExprColrefDesc);
+					YbExprParamDesc *new_param = makeNode(YbExprParamDesc);
 					new_param->attno = attno;
 					new_param->typid = var_expr->vartype;
 					new_param->typmod = var_expr->vartypmod;
 					new_param->collid = var_expr->varcollid;
-					*colrefs = lappend(*colrefs, new_param);
+					*params = lappend(*params, new_param);
 				}
 			}
 			break;
@@ -411,7 +402,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 		default:
 			return true;
 	}
-	return expression_tree_walker(node, yb_pushdown_walker, (void *) colrefs);
+	return expression_tree_walker(node, yb_pushdown_walker, (void *) params);
 }
 
 /*
@@ -425,26 +416,26 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
  *	  references are replaced with constants by YbExprInstantiateParams before
  *	  the DocDB request is sent.
  *
- *	  If the colrefs parameter is provided, function also collects column
- *	  references represented by Var nodes in the expression tree. The colrefs
- *	  list may be initially empty (NIL) or already contain some YbExprColrefDesc
+ *	  If the params parameter is provided, function also collects column
+ *	  references represented by Var nodes in the expression tree. The params
+ *	  list may be initially empty (NIL) or already contain some YbExprParamDesc
  *	  entries. That allows to collect column references from multiple
  *	  expressions into single list. The function avoids adding duplicate
  *	  references, however it does not remove duplecates if they are already
- *	  present in the colrefs list.
+ *	  present in the params list.
  *
  *	  To add support for another expression node type it should be added to the
  *	  yb_pushdown_walker where it should check node attributes that may affect
  *	  pushability, and implement evaluation of that node type instance in the
  *	  evalExpr() function.
  */
-bool YbCanPushdownExpr(Expr *pg_expr, List **colrefs)
+bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 {
 	/* respond with false if pushdown disabled in GUC */
 	if (!yb_enable_expression_pushdown)
 		return false;
 
-	return !yb_pushdown_walker((Node *) pg_expr, colrefs);
+	return !yb_pushdown_walker((Node *) pg_expr, params);
 }
 
 /*

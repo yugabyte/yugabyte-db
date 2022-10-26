@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # Test logical replication behavior with heap rewrites
 use strict;
 use warnings;
@@ -5,11 +8,11 @@ use PostgresNode;
 use TestLib;
 use Test::More tests => 2;
 
-my $node_publisher = get_new_node('publisher');
+my $node_publisher = PostgresNode->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
-my $node_subscriber = get_new_node('subscriber');
+my $node_subscriber = PostgresNode->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->start;
 
@@ -18,15 +21,14 @@ $node_publisher->safe_psql('postgres', $ddl);
 $node_subscriber->safe_psql('postgres', $ddl);
 
 my $publisher_connstr = $node_publisher->connstr . ' dbname=postgres';
-my $appname           = 'encoding_test';
 
 $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION mypub FOR ALL TABLES;");
 $node_subscriber->safe_psql('postgres',
-	"CREATE SUBSCRIPTION mysub CONNECTION '$publisher_connstr application_name=$appname' PUBLICATION mypub;"
+	"CREATE SUBSCRIPTION mysub CONNECTION '$publisher_connstr' PUBLICATION mypub;"
 );
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('mysub');
 
 # Wait for initial sync to finish as well
 my $synced_query =
@@ -37,7 +39,7 @@ $node_subscriber->poll_query_until('postgres', $synced_query)
 $node_publisher->safe_psql('postgres',
 	q{INSERT INTO test1 (a, b) VALUES (1, 'one'), (2, 'two');});
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('mysub');
 
 is( $node_subscriber->safe_psql('postgres', q{SELECT a, b FROM test1}),
 	qq(1|one
@@ -49,12 +51,12 @@ my $ddl2 = "ALTER TABLE test1 ADD c int NOT NULL DEFAULT 0;";
 $node_subscriber->safe_psql('postgres', $ddl2);
 $node_publisher->safe_psql('postgres', $ddl2);
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('mysub');
 
 $node_publisher->safe_psql('postgres',
 	q{INSERT INTO test1 (a, b, c) VALUES (3, 'three', 33);});
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('mysub');
 
 is( $node_subscriber->safe_psql('postgres', q{SELECT a, b, c FROM test1}),
 	qq(1|one|0

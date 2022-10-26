@@ -31,9 +31,7 @@ PostgreSQL documentation
 
 
  <refsect1 id="r1-app-createdb-1">
-  <title>
-   Description
-  </title>
+  <title>Description</title>
   <para>
    <application>createdb</application> creates a new <productname>PostgreSQL</productname>
    database.
@@ -48,7 +46,7 @@ PostgreSQL documentation
 
   <para>
    <application>createdb</application> is a wrapper around the
-   <acronym>SQL</acronym> command <xref linkend="sql-createdatabase"/>.
+   <acronym>SQL</acronym> command <link linkend="sql-createdatabase"><command>CREATE DATABASE</command></link>.
    There is no effective difference between creating databases via
    this utility and via other methods for accessing the server.
   </para>
@@ -199,7 +197,7 @@ PostgreSQL documentation
     The options <option>-D</option>, <option>-l</option>, <option>-E</option>,
     <option>-O</option>, and
     <option>-T</option> correspond to options of the underlying
-    SQL command <xref linkend="sql-createdatabase"/>; see there for more information
+    SQL command <link linkend="sql-createdatabase"><command>CREATE DATABASE</command></link>; see there for more information
     about them.
    </para>
 
@@ -322,6 +320,17 @@ PostgreSQL documentation
       Default connection parameters.  <envar>PGUSER</envar> also
       determines the name of the database to create, if it is not
       specified on the command line or by <envar>PGDATABASE</envar>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

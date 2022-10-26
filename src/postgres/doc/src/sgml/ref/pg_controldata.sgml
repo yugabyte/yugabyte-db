@@ -25,10 +25,10 @@ PostgreSQL documentation
    <arg choice="opt"><replaceable class="parameter">option</replaceable></arg>
    <group choice="opt">
     <group choice="opt">
-     <arg choice="plain"><option>--pgdata</option></arg>
      <arg choice="plain"><option>-D</option></arg>
+     <arg choice="plain"><option>--pgdata</option></arg>
     </group>
-    <replaceable class="parameter"> datadir</replaceable>
+    <replaceable class="parameter">datadir</replaceable>
    </group>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -65,6 +65,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default data directory location
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

@@ -2,7 +2,7 @@
  * llvmjit.h
  *	  LLVM JIT provider.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2021, PostgreSQL Global Development Group
  *
  * src/include/jit/llvmjit.h
  *
@@ -30,12 +30,10 @@ extern "C"
 {
 #endif
 
-
+#include "access/tupdesc.h"
 #include "fmgr.h"
 #include "jit/jit.h"
 #include "nodes/pg_list.h"
-#include "access/tupdesc.h"
-
 
 typedef struct LLVMJitContext
 {
@@ -57,6 +55,8 @@ typedef struct LLVMJitContext
 	List	   *handles;
 } LLVMJitContext;
 
+/* llvm module containing information about types */
+extern LLVMModuleRef llvm_types_module;
 
 /* type and struct definitions */
 extern LLVMTypeRef TypeParamBool;
@@ -64,9 +64,12 @@ extern LLVMTypeRef TypePGFunction;
 extern LLVMTypeRef TypeSizeT;
 extern LLVMTypeRef TypeStorageBool;
 
-extern LLVMTypeRef StructtupleDesc;
+extern LLVMTypeRef StructNullableDatum;
+extern LLVMTypeRef StructTupleDescData;
 extern LLVMTypeRef StructHeapTupleData;
 extern LLVMTypeRef StructTupleTableSlot;
+extern LLVMTypeRef StructHeapTupleTableSlot;
+extern LLVMTypeRef StructMinimalTupleTableSlot;
 extern LLVMTypeRef StructMemoryContextData;
 extern LLVMTypeRef StructFunctionCallInfoData;
 extern LLVMTypeRef StructExprContext;
@@ -77,15 +80,6 @@ extern LLVMTypeRef StructAggStatePerTransData;
 extern LLVMTypeRef StructAggStatePerGroupData;
 
 extern LLVMValueRef AttributeTemplate;
-extern LLVMValueRef FuncStrlen;
-extern LLVMValueRef FuncVarsizeAny;
-extern LLVMValueRef FuncSlotGetsomeattrs;
-extern LLVMValueRef FuncSlotGetmissingattrs;
-extern LLVMValueRef FuncHeapGetsysattr;
-extern LLVMValueRef FuncMakeExpandedObjectReadOnlyInternal;
-extern LLVMValueRef FuncExecEvalArrayRefSubscript;
-extern LLVMValueRef FuncExecAggTransReparent;
-extern LLVMValueRef FuncExecAggInitGroup;
 
 
 extern void llvm_enter_fatal_on_oom(void);
@@ -99,7 +93,9 @@ extern LLVMModuleRef llvm_mutable_module(LLVMJitContext *context);
 extern char *llvm_expand_funcname(LLVMJitContext *context, const char *basename);
 extern void *llvm_get_function(LLVMJitContext *context, const char *funcname);
 extern void llvm_split_symbol_name(const char *name, char **modname, char **funcname);
-extern LLVMValueRef llvm_get_decl(LLVMModuleRef mod, LLVMValueRef f);
+extern LLVMTypeRef llvm_pg_var_type(const char *varname);
+extern LLVMTypeRef llvm_pg_var_func_type(const char *varname);
+extern LLVMValueRef llvm_pg_func(LLVMModuleRef mod, const char *funcname);
 extern void llvm_copy_attributes(LLVMValueRef from, LLVMValueRef to);
 extern LLVMValueRef llvm_function_reference(LLVMJitContext *context,
 						LLVMBuilderRef builder,
@@ -114,7 +110,9 @@ extern void llvm_inline(LLVMModuleRef mod);
  ****************************************************************************
  */
 extern bool llvm_compile_expr(struct ExprState *state);
-extern LLVMValueRef slot_compile_deform(struct LLVMJitContext *context, TupleDesc desc, int natts);
+struct TupleTableSlotOps;
+extern LLVMValueRef slot_compile_deform(struct LLVMJitContext *context, TupleDesc desc,
+										const struct TupleTableSlotOps *ops, int natts);
 
 /*
  ****************************************************************************
@@ -133,6 +131,8 @@ extern char *LLVMGetHostCPUName(void);
   with LLVMDisposeMessage. */
 extern char *LLVMGetHostCPUFeatures(void);
 #endif
+
+extern unsigned LLVMGetAttributeCountAtIndexPG(LLVMValueRef F, uint32 Idx);
 
 #ifdef __cplusplus
 } /* extern "C" */

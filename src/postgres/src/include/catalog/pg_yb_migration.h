@@ -28,7 +28,7 @@
  *		typedef struct FormData_pg_yb_migration
  * ----------------
  */
-CATALOG(pg_yb_migration,8027,YBMigrationRelationId) BKI_WITHOUT_OIDS BKI_ROWTYPE_OID(8028,YBMigrationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
+CATALOG(pg_yb_migration,8027,YBMigrationRelationId) BKI_ROWTYPE_OID(8028,YBMigrationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* Major version of the applied migration. */
 	int32		major;

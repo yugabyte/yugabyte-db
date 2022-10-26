@@ -326,7 +326,7 @@ SELECT lo_lseek(fd, 0, 2) FROM lotest_stash_values;
    670800
 (1 row)
 
--- with the default BLKSZ, LOBLKSZ = 2048, so this positions us for a block
+-- with the default BLCKSZ, LOBLKSIZE = 2048, so this positions us for a block
 -- edge case
 SELECT lo_lseek(fd, 2030, 0) FROM lotest_stash_values;
  lo_lseek 
@@ -385,10 +385,10 @@ SELECT lo_export(loid, '@abs_builddir@/results/lotest.txt') FROM lotest_stash_va
          1
 (1 row)
 
-\lo_import 'results/lotest.txt'
+\lo_import '@abs_builddir@/results/lotest.txt'
 \set newloid :LASTOID
 -- just make sure \lo_export does not barf
-\lo_export :newloid 'results/lotest2.txt'
+\lo_export :newloid '@abs_builddir@/results/lotest2.txt'
 -- This is a hack to test that export/import are reversible
 -- This uses knowledge about the inner workings of large object mechanism
 -- which should not be used outside it.  This makes it a HACK
@@ -407,7 +407,7 @@ SELECT lo_unlink(loid) FROM lotest_stash_values;
 
 TRUNCATE lotest_stash_values;
 \lo_unlink :newloid
-\lo_import 'results/lotest.txt'
+\lo_import '@abs_builddir@/results/lotest.txt'
 \set newloid_1 :LASTOID
 SELECT lo_from_bytea(0, lo_get(:newloid_1)) AS newloid_2
 \gset
@@ -469,13 +469,13 @@ SELECT lo_get(:newloid);
 
 -- Create one more object that we leave behind for testing pg_dump/pg_upgrade;
 -- this one intentionally has an OID in the system range
-SELECT lo_create(3001);
+SELECT lo_create(2121);
  lo_create 
 -----------
-      3001
+      2121
 (1 row)
 
-COMMENT ON LARGE OBJECT 3001 IS 'testing comments';
+COMMENT ON LARGE OBJECT 2121 IS 'testing comments';
 -- Clean up
 DROP TABLE lotest_stash_values;
 DROP ROLE regress_lo_user;

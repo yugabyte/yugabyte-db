@@ -3,7 +3,7 @@
  * ts_typanalyze.c
  *	  functions for gathering statistics from tsvector columns
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -13,9 +13,10 @@
  */
 #include "postgres.h"
 
-#include "access/hash.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "commands/vacuum.h"
+#include "common/hashfn.h"
 #include "tsearch/ts_type.h"
 #include "utils/builtins.h"
 
@@ -36,9 +37,9 @@ typedef struct
 } TrackItem;
 
 static void compute_tsvector_stats(VacAttrStats *stats,
-					   AnalyzeAttrFetchFunc fetchfunc,
-					   int samplerows,
-					   double totalrows);
+								   AnalyzeAttrFetchFunc fetchfunc,
+								   int samplerows,
+								   double totalrows);
 static void prune_lexemes_hashtable(HTAB *lexemes_tab, int b_current);
 static uint32 lexeme_hash(const void *key, Size keysize);
 static int	lexeme_match(const void *key1, const void *key2, Size keysize);
@@ -179,7 +180,6 @@ compute_tsvector_stats(VacAttrStats *stats,
 	 * worry about overflowing the initial size. Also we don't need to pay any
 	 * attention to locking and memory management.
 	 */
-	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(LexemeHashKey);
 	hash_ctl.entrysize = sizeof(TrackItem);
 	hash_ctl.hash = lexeme_hash;
@@ -415,6 +415,7 @@ compute_tsvector_stats(VacAttrStats *stats,
 
 			stats->stakind[0] = STATISTIC_KIND_MCELEM;
 			stats->staop[0] = TextEqualOperator;
+			stats->stacoll[0] = DEFAULT_COLLATION_OID;
 			stats->stanumbers[0] = mcelem_freqs;
 			/* See above comment about two extra frequency fields */
 			stats->numnumbers[0] = num_mcelem + 2;

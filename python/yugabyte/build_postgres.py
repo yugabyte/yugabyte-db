@@ -726,9 +726,10 @@ class PostgresBuilder(YbBuildToolBase):
 
         third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
         work_dirs = [
-            self.pg_build_root,
-            os.path.join(self.pg_build_root, 'contrib'),
-            third_party_extensions_dir
+            self.pg_build_root
+            # self.pg_build_root,
+            # os.path.join(self.pg_build_root, 'contrib'),
+            # third_party_extensions_dir
         ]
 
         for work_dir in work_dirs:

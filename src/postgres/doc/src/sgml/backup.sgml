@@ -177,8 +177,8 @@ pg_dump -h <replaceable>host1</replaceable> <replaceable>dbname</replaceable> | 
    </important>
 
    <para>
-    After restoring a backup, it is wise to run <xref
-    linkend="sql-analyze"/> on each
+    After restoring a backup, it is wise to run <link
+    linkend="sql-analyze"><command>ANALYZE</command></link> on each
     database so the query optimizer has useful statistics;
     see <xref linkend="vacuum-for-statistics"/>
     and <xref linkend="autovacuum"/> for more information.
@@ -273,10 +273,10 @@ cat <replaceable class="parameter">filename</replaceable>.gz | gunzip | psql <re
      The <command>split</command> command
      allows you to split the output into smaller files that are
      acceptable in size to the underlying file system. For example, to
-     make chunks of 1 megabyte:
+     make 2 gigabyte chunks:
 
 <programlisting>
-pg_dump <replaceable class="parameter">dbname</replaceable> | split -b 1m - <replaceable class="parameter">filename</replaceable>
+pg_dump <replaceable class="parameter">dbname</replaceable> | split -b 2G - <replaceable class="parameter">filename</replaceable>
 </programlisting>
 
      Reload with:
@@ -284,6 +284,15 @@ pg_dump <replaceable class="parameter">dbname</replaceable> | split -b 1m - <rep
 <programlisting>
 cat <replaceable class="parameter">filename</replaceable>* | psql <replaceable class="parameter">dbname</replaceable>
 </programlisting>
+
+     If using GNU <application>split</application>, it is possible to
+     use it and <application>gzip</application> together:
+
+<programlisting>
+pg_dump <replaceable class="parameter">dbname</replaceable> | split -b 2G --filter='gzip > $FILE.gz'
+</programlisting>
+
+     It can be restored using <command>zcat</command>.
     </para>
    </formalpara>
 
@@ -640,6 +649,15 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
    </para>
 
    <para>
+    When the archive command is terminated by a signal (other than
+    <systemitem>SIGTERM</systemitem> that is used as part of a server
+    shutdown) or an error by the shell with an exit status greater than
+    125 (such as command not found), the archiver process aborts and gets
+    restarted by the postmaster. In such cases, the failure is
+    not reported in <xref linkend="pg-stat-archiver-view"/>.
+   </para>
+
+   <para>
     The archive command should generally be designed to refuse to overwrite
     any pre-existing archive file.  This is an important safety feature to
     preserve the integrity of your archive in case of administrator error
@@ -824,8 +842,9 @@ test ! -f /mnt/server/archivedir/00000001000000A900000065 &amp;&amp; cp pg_wal/0
     way. The non-exclusive method is recommended and the exclusive one is
     deprecated and will eventually be removed.
    </para>
+
    <sect3 id="backup-lowlevel-base-backup-nonexclusive">
-    <title>Making a non-exclusive low level backup</title>
+    <title>Making a Non-Exclusive Low-Level Backup</title>
     <para>
      A non-exclusive low level backup is one that allows other
      concurrent backups to be running (both those started using
@@ -903,7 +922,8 @@ SELECT * FROM pg_stop_backup(false, true);
      <filename>backup_label</filename> in the root directory of the backup. The
      third field should be written to a file named
      <filename>tablespace_map</filename> unless the field is empty. These files are
-     vital to the backup working, and must be written without modification.
+     vital to the backup working and must be written byte for byte without 
+     modification, which may require opening the file in binary mode.
     </para>
    </listitem>
    <listitem>
@@ -947,14 +967,27 @@ SELECT * FROM pg_stop_backup(false, true);
     </para>
    </sect3>
    <sect3 id="backup-lowlevel-base-backup-exclusive">
-    <title>Making an exclusive low level backup</title>
+    <title>Making an Exclusive Low-Level Backup</title>
+
+    <note>
+     <para>
+      The exclusive backup method is deprecated and should be avoided.
+      Prior to <productname>PostgreSQL</productname> 9.6, this was the only
+      low-level method available, but it is now recommended that all users
+      upgrade their scripts to use non-exclusive backups.
+     </para>
+    </note>
+
     <para>
      The process for an exclusive backup is mostly the same as for a
-     non-exclusive one, but it differs in a few key steps. This type of backup
-     can only be taken on a primary and does not allow concurrent backups.
-     Prior to <productname>PostgreSQL</productname> 9.6, this
-     was the only low-level method available, but it is now recommended that
-     all users upgrade their scripts to use non-exclusive backups if possible.
+     non-exclusive one, but it differs in a few key steps. This type of
+     backup can only be taken on a primary and does not allow concurrent
+     backups.  Moreover, because it creates a backup label file, as
+     described below, it can block automatic restart of the primary server
+     after a crash.  On the other hand, the erroneous removal of this
+     file from a backup or standby is a common mistake, which can result
+     in serious data corruption.  If it is necessary to use this method,
+     the following steps may be used.
     </para>
     <para>
   <orderedlist>
@@ -1011,9 +1044,17 @@ SELECT pg_start_backup('label', true);
      consider during this backup.
     </para>
     <para>
-      Note that if the server crashes during the backup it may not be
-      possible to restart until the <literal>backup_label</literal> file has been
-      manually deleted from the <envar>PGDATA</envar> directory.
+     As noted above, if the server crashes during the backup it may not be
+     possible to restart until the <filename>backup_label</filename> file has
+     been manually deleted from the <envar>PGDATA</envar> directory.  Note
+     that it is very important to never remove the
+     <filename>backup_label</filename> file when restoring a backup, because
+     this will result in corruption.  Confusion about when it is appropriate
+     to remove this file is a common cause of data corruption when using this
+     method; be very certain that you remove the file only on an existing
+     primary and never when building a standby or restoring a backup, even if
+     you are building a standby that will subsequently be promoted to a new
+     primary.
     </para>
    </listitem>
    <listitem>
@@ -1045,18 +1086,23 @@ SELECT pg_stop_backup();
      If the archive process has fallen behind
      because of failures of the archive command, it will keep retrying
      until the archive succeeds and the backup is complete.
-     If you wish to place a time limit on the execution of
-     <function>pg_stop_backup</function>, set an appropriate
-     <varname>statement_timeout</varname> value, but make note that if
-     <function>pg_stop_backup</function> terminates because of this your backup
-     may not be valid.
+    </para>
+
+    <para>
+     When using exclusive backup mode, it is absolutely imperative to ensure
+     that <function>pg_stop_backup</function> completes successfully at the
+     end of the backup.  Even if the backup itself fails, for example due to
+     lack of disk space, failure to call <function>pg_stop_backup</function>
+     will leave the server in backup mode indefinitely, causing future backups
+     to fail and increasing the risk of a restart failure during the time that
+     <filename>backup_label</filename> exists.
     </para>
    </listitem>
   </orderedlist>
     </para>
    </sect3>
    <sect3 id="backup-lowlevel-base-backup-data">
-   <title>Backing up the data directory</title>
+   <title>Backing Up the Data Directory</title>
    <para>
     Some file system backup tools emit warnings or errors
     if the files they are trying to copy change while the copy proceeds.
@@ -1101,16 +1147,16 @@ SELECT pg_stop_backup();
    <para>
     It is often a good idea to also omit from the backup the files
     within the cluster's <filename>pg_replslot/</filename> directory, so that
-    replication slots that exist on the master do not become part of the
+    replication slots that exist on the primary do not become part of the
     backup.  Otherwise, the subsequent use of the backup to create a standby
     may result in indefinite retention of WAL files on the standby, and
-    possibly bloat on the master if hot standby feedback is enabled, because
+    possibly bloat on the primary if hot standby feedback is enabled, because
     the clients that are using those replication slots will still be connecting
-    to and updating the slots on the master, not the standby.  Even if the
-    backup is only intended for use in creating a new master, copying the
+    to and updating the slots on the primary, not the standby.  Even if the
+    backup is only intended for use in creating a new primary, copying the
     replication slots isn't expected to be particularly useful, since the
     contents of those slots will likely be badly out of date by the time
-    the new master comes on line.
+    the new primary comes on line.
    </para>
 
    <para>
@@ -1220,8 +1266,11 @@ SELECT pg_stop_backup();
    </listitem>
    <listitem>
     <para>
-     Create a recovery command file <filename>recovery.conf</filename> in the cluster
-     data directory (see <xref linkend="recovery-config"/>). You might
+     Set recovery configuration settings in
+     <filename>postgresql.conf</filename> (see <xref
+     linkend="runtime-config-wal-archive-recovery"/>) and create a file
+     <filename>recovery.signal</filename> in the cluster
+     data directory. You might
      also want to temporarily modify <filename>pg_hba.conf</filename> to prevent
      ordinary users from connecting until you are sure the recovery was successful.
     </para>
@@ -1232,8 +1281,8 @@ SELECT pg_stop_backup();
      proceed to read through the archived WAL files it needs.  Should the
      recovery be terminated because of an external error, the server can
      simply be restarted and it will continue recovery.  Upon completion
-     of the recovery process, the server will rename
-     <filename>recovery.conf</filename> to <filename>recovery.done</filename> (to prevent
+     of the recovery process, the server will remove
+     <filename>recovery.signal</filename> (to prevent
      accidentally re-entering recovery mode later) and then
      commence normal database operations.
     </para>
@@ -1249,12 +1298,9 @@ SELECT pg_stop_backup();
    </para>
 
    <para>
-    The key part of all this is to set up a recovery configuration file that
+    The key part of all this is to set up a recovery configuration that
     describes how you want to recover and how far the recovery should
-    run.  You can use <filename>recovery.conf.sample</filename> (normally
-    located in the installation's <filename>share/</filename> directory) as a
-    prototype.  The one thing that you absolutely must specify in
-    <filename>recovery.conf</filename> is the <varname>restore_command</varname>,
+    run.  The one thing that you absolutely must specify is the <varname>restore_command</varname>,
     which tells <productname>PostgreSQL</productname> how to retrieve archived
     WAL file segments.  Like the <varname>archive_command</varname>, this is
     a shell command string.  It can contain <literal>%f</literal>, which is
@@ -1316,7 +1362,7 @@ restore_command = 'cp /mnt/server/archivedir/%f %p'
    <para>
     If you want to recover to some previous point in time (say, right before
     the junior DBA dropped your main transaction table), just specify the
-    required <link linkend="recovery-target-settings">stopping point</link> in <filename>recovery.conf</filename>.  You can specify
+    required <link linkend="runtime-config-wal-recovery-target">stopping point</link>.  You can specify
     the stop point, known as the <quote>recovery target</quote>, either by
     date/time, named restore point or by completion of a specific transaction
     ID.  As of this writing only the date/time and named restore point options
@@ -1410,12 +1456,13 @@ restore_command = 'cp /mnt/server/archivedir/%f %p'
    </para>
 
    <para>
-    The default behavior of recovery is to recover along the same timeline
-    that was current when the base backup was taken.  If you wish to recover
-    into some child timeline (that is, you want to return to some state that
-    was itself generated after a recovery attempt), you need to specify the
-    target timeline ID in <filename>recovery.conf</filename>.  You cannot recover into
-    timelines that branched off earlier than the base backup.
+    The default behavior of recovery is to recover to the latest timeline found
+    in the archive. If you wish to recover to the timeline that was current
+    when the base backup was taken or into a specific child timeline (that
+    is, you want to return to some state that was itself generated after a
+    recovery attempt), you need to specify <literal>current</literal> or the
+    target timeline ID in <xref linkend="guc-recovery-target-timeline"/>. You
+    cannot recover into timelines that branched off earlier than the base backup.
    </para>
   </sect2>
 
@@ -1492,11 +1539,11 @@ tar -rf /var/lib/pgsql/backup.tar /var/lib/pgsql/archive/
       If archive storage size is a concern, you can use
       <application>gzip</application> to compress the archive files:
 <programlisting>
-archive_command = 'gzip &lt; %p &gt; /var/lib/pgsql/archive/%f'
+archive_command = 'gzip &lt; %p &gt; /mnt/server/archivedir/%f.gz'
 </programlisting>
       You will then need to use <application>gunzip</application> during recovery:
 <programlisting>
-restore_command = 'gunzip &lt; /mnt/server/archivedir/%f &gt; %p'
+restore_command = 'gunzip &lt; /mnt/server/archivedir/%f.gz &gt; %p'
 </programlisting>
      </para>
     </sect3>
@@ -1567,7 +1614,7 @@ archive_command = 'local_backup_script.sh "%p" "%f"'
   <itemizedlist>
    <listitem>
     <para>
-     If a <xref linkend="sql-createdatabase"/>
+     If a <link linkend="sql-createdatabase"><command>CREATE DATABASE</command></link>
      command is executed while a base backup is being taken, and then
      the template database that the <command>CREATE DATABASE</command> copied
      is modified while the base backup is still in progress, it is
@@ -1580,7 +1627,7 @@ archive_command = 'local_backup_script.sh "%p" "%f"'
 
    <listitem>
     <para>
-     <xref linkend="sql-createtablespace"/>
+     <link linkend="sql-createtablespace"><command>CREATE TABLESPACE</command></link>
      commands are WAL-logged with the literal absolute path, and will
      therefore be replayed as tablespace creations with the same
      absolute path.  This might be undesirable if the log is being

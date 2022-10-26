@@ -8,7 +8,7 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,7 +21,6 @@
 
 #include <signal.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include <sys/stat.h>
 
 #include "miscadmin.h"
@@ -39,12 +38,12 @@
  * so that an ereport() from an on_proc_exit routine cannot get us out
  * of the exit procedure.  We do NOT want to go back to the idle loop...
  */
-atomic_bool		proc_exit_inprogress = false;
+bool		proc_exit_inprogress = false;
 
 /*
  * Set when shmem_exit() is in progress.
  */
-atomic_bool		shmem_exit_inprogress = false;
+bool		shmem_exit_inprogress = false;
 
 /*
  * This flag tracks whether we've called atexit() in the current process
@@ -386,9 +385,9 @@ on_shmem_exit(pg_on_exit_callback function, Datum arg)
  *		cancel_before_shmem_exit
  *
  *		this function removes a previously-registered before_shmem_exit
- *		callback.  For simplicity, only the latest entry can be
- *		removed.  (We could work harder but there is no need for
- *		current uses.)
+ *		callback.  We only look at the latest entry for removal, as we
+ * 		expect callers to add and remove temporary before_shmem_exit
+ * 		callbacks in strict LIFO order.
  * ----------------------------------------------------------------
  */
 void
@@ -399,6 +398,9 @@ cancel_before_shmem_exit(pg_on_exit_callback function, Datum arg)
 		== function &&
 		before_shmem_exit_list[before_shmem_exit_index - 1].arg == arg)
 		--before_shmem_exit_index;
+	else
+		elog(ERROR, "before_shmem_exit callback (%p,0x%llx) is not the latest entry",
+			 function, (long long) arg);
 }
 
 /* ----------------------------------------------------------------
@@ -417,4 +419,21 @@ on_exit_reset(void)
 	on_shmem_exit_index = 0;
 	on_proc_exit_index = 0;
 	reset_on_dsm_detach();
+}
+
+/* ----------------------------------------------------------------
+ *		check_on_shmem_exit_lists_are_empty
+ *
+ *		Debugging check that no shmem cleanup handlers have been registered
+ *		prematurely in the current process.
+ * ----------------------------------------------------------------
+ */
+void
+check_on_shmem_exit_lists_are_empty(void)
+{
+	if (before_shmem_exit_index)
+		elog(FATAL, "before_shmem_exit has been called prematurely");
+	if (on_shmem_exit_index)
+		elog(FATAL, "on_shmem_exit has been called prematurely");
+	/* Checking DSM detach state seems unnecessary given the above */
 }

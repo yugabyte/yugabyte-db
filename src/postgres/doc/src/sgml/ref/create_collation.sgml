@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/create_collation.sgml -->
+<!--
+doc/src/sgml/ref/create_collation.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="sql-createcollation">
  <indexterm zone="sql-createcollation">
@@ -23,6 +26,7 @@ CREATE COLLATION [ IF NOT EXISTS ] <replaceable>name</replaceable> (
     [ LC_COLLATE = <replaceable>lc_collate</replaceable>, ]
     [ LC_CTYPE = <replaceable>lc_ctype</replaceable>, ]
     [ PROVIDER = <replaceable>provider</replaceable>, ]
+    [ DETERMINISTIC = <replaceable>boolean</replaceable>, ]
     [ VERSION = <replaceable>version</replaceable> ]
 )
 CREATE COLLATION [ IF NOT EXISTS ] <replaceable>name</replaceable> FROM <replaceable>existing_collation</replaceable>
@@ -125,6 +129,27 @@ CREATE COLLATION [ IF NOT EXISTS ] <replaceable>name</replaceable> FROM <replace
     </varlistentry>
 
     <varlistentry>
+     <term><literal>DETERMINISTIC</literal></term>
+
+     <listitem>
+      <para>
+       Specifies whether the collation should use deterministic comparisons.
+       The default is true.  A deterministic comparison considers strings that
+       are not byte-wise equal to be unequal even if they are considered
+       logically equal by the comparison.  PostgreSQL breaks ties using a
+       byte-wise comparison.  Comparison that is not deterministic can make the
+       collation be, say, case- or accent-insensitive.  For that, you need to
+       choose an appropriate <literal>LC_COLLATE</literal> setting
+       <emphasis>and</emphasis> set the collation to not deterministic here.
+      </para>
+
+      <para>
+       Nondeterministic collations are only supported with the ICU provider.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><replaceable>version</replaceable></term>
 
      <listitem>
@@ -161,6 +186,13 @@ CREATE COLLATION [ IF NOT EXISTS ] <replaceable>name</replaceable> FROM <replace
 
  <refsect1 id="sql-createcollation-notes">
   <title>Notes</title>
+
+  <para>
+   <command>CREATE COLLATION</command> takes a <literal>SHARE ROW
+   EXCLUSIVE</literal> lock, which is self-conflicting, on the
+   <structname>pg_collation</structname> system catalog, so only one
+   <command>CREATE COLLATION</command> command can run at a time.
+  </para>
 
   <para>
    Use <command>DROP COLLATION</command> to remove user-defined collations.

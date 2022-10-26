@@ -1,0 +1,2 @@
+test: yb-pessimistic-locking-single-shard-waiter-unlocks
+test: yb-pessimistic-locking-single-shard-waiters-same-tablet

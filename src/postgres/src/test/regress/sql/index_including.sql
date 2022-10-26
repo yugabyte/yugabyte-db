@@ -72,11 +72,17 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 -- ensure that constraint works
 INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 INSERT INTO tbl SELECT 1, NULL, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
-INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,300) AS x;
 explain (costs off)
 select * from tbl where (c1,c2,c3) < (2,5,1);
 select * from tbl where (c1,c2,c3) < (2,5,1);
+-- row comparison that compares high key at page boundary
+SET enable_seqscan = off;
+explain (costs off)
+select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
+select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
 DROP TABLE tbl;
+RESET enable_seqscan;
 
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				UNIQUE(c1,c2) INCLUDE(c3,c4));
@@ -176,15 +182,15 @@ SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
 DROP TABLE tbl;
 
 /*
- * 7. Check various AMs. All but btree must fail.
+ * 7. Check various AMs. All but btree, gist and spgist must fail.
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 box, c4 box);
 CREATE INDEX on tbl USING brin(c1, c2) INCLUDE (c3, c4);
-CREATE INDEX on tbl USING gist(c3) INCLUDE (c4);
+CREATE INDEX on tbl USING gist(c3) INCLUDE (c1, c4);
 CREATE INDEX on tbl USING spgist(c3) INCLUDE (c4);
 CREATE INDEX on tbl USING gin(c1, c2) INCLUDE (c3, c4);
 CREATE INDEX on tbl USING hash(c1, c2) INCLUDE (c3, c4);
-CREATE INDEX on tbl USING rtree(c1, c2) INCLUDE (c3, c4);
+CREATE INDEX on tbl USING rtree(c3) INCLUDE (c1, c4);
 CREATE INDEX on tbl USING btree(c1, c2) INCLUDE (c3, c4);
 DROP TABLE tbl;
 

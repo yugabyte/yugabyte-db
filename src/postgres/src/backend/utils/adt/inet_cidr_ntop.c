@@ -38,13 +38,13 @@ static const char rcsid[] = "Id: inet_net_ntop.c,v 1.1.2.2 2004/03/09 09:17:27 m
 #endif
 
 static char *inet_cidr_ntop_ipv4(const u_char *src, int bits,
-					char *dst, size_t size);
+								 char *dst, size_t size);
 static char *inet_cidr_ntop_ipv6(const u_char *src, int bits,
-					char *dst, size_t size);
+								 char *dst, size_t size);
 
 /*
  * char *
- * inet_cidr_ntop(af, src, bits, dst, size)
+ * pg_inet_cidr_ntop(af, src, bits, dst, size)
  *	convert network number from network to presentation format.
  *	generates CIDR style result always.
  * return:
@@ -53,7 +53,7 @@ static char *inet_cidr_ntop_ipv6(const u_char *src, int bits,
  *	Paul Vixie (ISC), July 1996
  */
 char *
-inet_cidr_ntop(int af, const void *src, int bits, char *dst, size_t size)
+pg_inet_cidr_ntop(int af, const void *src, int bits, char *dst, size_t size)
 {
 	switch (af)
 	{
@@ -146,7 +146,7 @@ emsgsize:
 
 /*
  * static char *
- * inet_cidr_ntop_ipv6(src, bits, fakebits, dst, size)
+ * inet_cidr_ntop_ipv6(src, bits, dst, size)
  *	convert IPv6 network number from network to presentation format.
  *	generates CIDR style result always. Picks the shortest representation
  *	unless the IP is really IPv4.

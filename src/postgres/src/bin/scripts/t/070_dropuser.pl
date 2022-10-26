@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 use strict;
 use warnings;
 
@@ -9,7 +12,7 @@ program_help_ok('dropuser');
 program_version_ok('dropuser');
 program_options_handling_ok('dropuser');
 
-my $node = get_new_node('main');
+my $node = PostgresNode->new('main');
 $node->init;
 $node->start;
 

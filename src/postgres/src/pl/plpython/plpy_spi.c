@@ -14,24 +14,20 @@
 #include "executor/spi.h"
 #include "mb/pg_wchar.h"
 #include "parser/parse_type.h"
-#include "utils/memutils.h"
-#include "utils/syscache.h"
-
-#include "plpython.h"
-
-#include "plpy_spi.h"
-
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
 #include "plpy_plpymodule.h"
 #include "plpy_procedure.h"
 #include "plpy_resultobject.h"
-
+#include "plpy_spi.h"
+#include "plpython.h"
+#include "utils/memutils.h"
+#include "utils/syscache.h"
 
 static PyObject *PLy_spi_execute_query(char *query, long limit);
 static PyObject *PLy_spi_execute_fetch_result(SPITupleTable *tuptable,
-							 uint64 rows, int status);
+											  uint64 rows, int status);
 static void PLy_spi_exception_set(PyObject *excclass, ErrorData *edata);
 
 
@@ -249,13 +245,11 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 				plan->values[j] = PLy_output_convert(arg, elem, &isnull);
 				nulls[j] = isnull ? 'n' : ' ';
 			}
-			PG_CATCH();
+			PG_FINALLY();
 			{
 				Py_DECREF(elem);
-				PG_RE_THROW();
 			}
 			PG_END_TRY();
-			Py_DECREF(elem);
 		}
 
 		rv = SPI_execute_plan(plan->plan, plan->values, nulls,
@@ -419,7 +413,8 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 					{
 						PyObject   *row = PLy_input_from_tuple(&ininfo,
 															   tuptable->vals[i],
-															   tuptable->tupdesc);
+															   tuptable->tupdesc,
+															   true);
 
 						PyList_SetItem(result->rows, i, row);
 					}

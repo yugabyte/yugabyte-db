@@ -50,14 +50,12 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: op_index_key, collation_index_key, both_index_key
-   Conflict Filter: (alternatives: SubPlan 1 or hashed SubPlan 2)
+   Conflict Filter: (SubPlan 1)
    ->  Result
    SubPlan 1
      ->  Index Only Scan using both_index_expr_key on insertconflicttest ii
            Index Cond: (key = excluded.key)
-   SubPlan 2
-     ->  Seq Scan on insertconflicttest ii_1
-(10 rows)
+(8 rows)
 
 -- Neither collation nor operator class specifications are required --
 -- supplying them merely *limits* matches to indexes with matching opclasses
@@ -206,6 +204,7 @@ explain (costs off, format json) insert into insertconflicttest values (0, 'Bilb
        "Node Type": "ModifyTable",                                     +
        "Operation": "Insert",                                          +
        "Parallel Aware": false,                                        +
+       "Async Capable": false,                                         +
        "Relation Name": "insertconflicttest",                          +
        "Alias": "insertconflicttest",                                  +
        "Conflict Resolution": "UPDATE",                                +
@@ -214,8 +213,9 @@ explain (costs off, format json) insert into insertconflicttest values (0, 'Bilb
        "Plans": [                                                      +
          {                                                             +
            "Node Type": "Result",                                      +
-           "Parent Relationship": "Member",                            +
-           "Parallel Aware": false                                     +
+           "Parent Relationship": "Outer",                             +
+           "Parallel Aware": false,                                    +
+           "Async Capable": false                                      +
          }                                                             +
        ]                                                               +
      }                                                                 +
@@ -248,7 +248,7 @@ insert into insertconflicttest values (1, 'Apple') on conflict (keyy) do update 
 ERROR:  column "keyy" does not exist
 LINE 1: ...nsertconflicttest values (1, 'Apple') on conflict (keyy) do ...
                                                              ^
-HINT:  Perhaps you meant to reference the column "insertconflicttest.key".
+HINT:  Perhaps you meant to reference the column "insertconflicttest.key" or the column "excluded.key".
 -- Have useful HINT for EXCLUDED.* RTE within UPDATE:
 insert into insertconflicttest values (1, 'Apple') on conflict (key) do update set fruit = excluded.fruitt;
 ERROR:  column excluded.fruitt does not exist
@@ -373,7 +373,7 @@ drop index fruit_index;
 create unique index partial_key_index on insertconflicttest(key) where fruit like '%berry';
 -- Succeeds
 insert into insertconflicttest values (23, 'Blackberry') on conflict (key) where fruit like '%berry' do update set fruit = excluded.fruit;
-insert into insertconflicttest values (23, 'Blackberry') on conflict (key) where fruit like '%berry' and fruit = 'inconsequential' do nothing;
+insert into insertconflicttest as t values (23, 'Blackberry') on conflict (key) where fruit like '%berry' and t.fruit = 'inconsequential' do nothing;
 -- fails
 insert into insertconflicttest values (23, 'Blackberry') on conflict (key) do update set fruit = excluded.fruit;
 ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
@@ -443,17 +443,13 @@ drop table insertconflicttest;
 --
 -- Verify that EXCLUDED does not allow system column references. These
 -- do not make sense because EXCLUDED isn't an already stored tuple
--- (and thus doesn't have a ctid, oids are not assigned yet, etc).
+-- (and thus doesn't have a ctid etc).
 --
-create table syscolconflicttest(key int4, data text) WITH OIDS;
+create table syscolconflicttest(key int4, data text);
 insert into syscolconflicttest values (1);
 insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.ctid::text;
 ERROR:  column excluded.ctid does not exist
 LINE 1: ...values (1) on conflict (key) do update set data = excluded.c...
-                                                             ^
-insert into syscolconflicttest values (1) on conflict (key) do update set data = excluded.oid::text;
-ERROR:  column excluded.oid does not exist
-LINE 1: ...values (1) on conflict (key) do update set data = excluded.o...
                                                              ^
 drop table syscolconflicttest;
 --
@@ -620,65 +616,6 @@ insert into excluded values(1, '2') on conflict (key) do update set data = 3 RET
 
 -- clean up
 drop table excluded;
--- Check tables w/o oids are handled correctly
-create table testoids(key int primary key, data text) without oids;
--- first without oids
-insert into testoids values(1, '1') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   1 | 1
-(1 row)
-
-insert into testoids values(1, '2') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   1 | 2
-(1 row)
-
--- add oids
-alter table testoids set with oids;
--- update existing row, that didn't have an oid
-insert into testoids values(1, '3') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   1 | 3
-(1 row)
-
--- insert a new row
-insert into testoids values(2, '1') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   2 | 1
-(1 row)
-
--- and update it
-insert into testoids values(2, '2') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   2 | 2
-(1 row)
-
--- remove oids again, test
-alter table testoids set without oids;
-insert into testoids values(1, '4') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   1 | 4
-(1 row)
-
-insert into testoids values(3, '1') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   3 | 1
-(1 row)
-
-insert into testoids values(3, '2') on conflict (key) do update set data = excluded.data RETURNING *;
- key | data 
------+------
-   3 | 2
-(1 row)
-
-DROP TABLE testoids;
 -- check that references to columns after dropped columns are handled correctly
 create table dropcol(key int primary key, drop1 int, keep1 text, drop2 numeric, keep2 float);
 insert into dropcol(key, drop1, keep1, drop2, keep2) values(1, 1, '1', '1', 1);
@@ -904,4 +841,26 @@ select * from parted_conflict order by a;
  50 | cincuenta | 2
 (1 row)
 
+-- test with statement level triggers
+create or replace function parted_conflict_update_func() returns trigger as $$
+declare
+    r record;
+begin
+ for r in select * from inserted loop
+	raise notice 'a = %, b = %, c = %', r.a, r.b, r.c;
+ end loop;
+ return new;
+end;
+$$ language plpgsql;
+create trigger parted_conflict_update
+    after update on parted_conflict
+    referencing new table as inserted
+    for each statement
+    execute procedure parted_conflict_update_func();
+truncate parted_conflict;
+insert into parted_conflict values (0, 'cero', 1);
+insert into parted_conflict values(0, 'cero', 1)
+  on conflict (a,b) do update set c = parted_conflict.c + 1;
+NOTICE:  a = 0, b = cero, c = 2
 drop table parted_conflict;
+drop function parted_conflict_update_func();

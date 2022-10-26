@@ -8,7 +8,7 @@
 
 INSERT INTO tenk2 SELECT * FROM tenk1;
 
-SELECT * INTO TABLE onek2 FROM onek;
+CREATE TABLE onek2 AS SELECT * FROM onek;
 
 INSERT INTO fast_emp4000 SELECT * FROM slow_emp4000;
 
@@ -191,6 +191,14 @@ INSERT INTO f_star (class, f)
    VALUES ('f', '(11111111,33333333),(22222222,44444444)'::polygon);
 
 INSERT INTO f_star (class) VALUES ('f');
+
+-- Analyze the X_star tables for better plan stability in later tests
+ANALYZE a_star;
+ANALYZE b_star;
+ANALYZE c_star;
+ANALYZE d_star;
+ANALYZE e_star;
+ANALYZE f_star;
 
 
 --

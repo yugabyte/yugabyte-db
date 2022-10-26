@@ -44,4 +44,12 @@ CATALOG(pg_yb_tablegroup,8036,YbTablegroupRelationId) BKI_ROWTYPE_OID(8038,YbTab
  */
 typedef FormData_pg_yb_tablegroup *Form_pg_yb_tablegroup;
 
+#define Anum_pg_tablegroup_oid 1
+
+#define YbTablegroupOidIndexId  8037
+DECLARE_UNIQUE_INDEX(pg_yb_tablegroup_oid_index, 8037, YbTablegroupOidIndexId, on pg_yb_tablegroup using btree(oid oid_ops));
+
+#define YBCatalogVersionDbOidIndexId 8012
+DECLARE_UNIQUE_INDEX(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVersionDbOidIndexId, on pg_yb_catalog_version using btree(db_oid oid_ops));
+
 #endif							/* PG_YB_TABLEGROUP_H */

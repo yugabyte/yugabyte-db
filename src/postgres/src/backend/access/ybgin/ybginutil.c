@@ -25,9 +25,9 @@
 #include "postgres.h"
 
 #include "access/gin_private.h"
+#include "access/relation.h"
 #include "access/reloptions.h"
 #include "c.h"
-#include "nodes/relation.h"
 #include "nodes/nodes.h"
 #include "utils/index_selfuncs.h"
 

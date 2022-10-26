@@ -25,7 +25,7 @@ ALTER PUBLICATION <replaceable class="parameter">name</replaceable> ADD TABLE [ 
 ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET TABLE [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ] [, ...]
 ALTER PUBLICATION <replaceable class="parameter">name</replaceable> DROP TABLE [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ] [, ...]
 ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">publication_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
-ALTER PUBLICATION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 ALTER PUBLICATION <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
 </synopsis>
  </refsynopsisdiv>
@@ -62,11 +62,12 @@ ALTER PUBLICATION <replaceable class="parameter">name</replaceable> RENAME TO <r
 
   <para>
    You must own the publication to use <command>ALTER PUBLICATION</command>.
+   Adding a table to a publication additionally requires owning that table.
    To alter the owner, you must also be a direct or indirect member of the new
    owning role. The new owner must have <literal>CREATE</literal> privilege on
    the database.  Also, the new owner of a <literal>FOR ALL TABLES</literal>
    publication must be a superuser.  However, a superuser can change the
-   ownership of a publication while circumventing these restrictions.
+   ownership of a publication regardless of these restrictions.
   </para>
  </refsect1>
 

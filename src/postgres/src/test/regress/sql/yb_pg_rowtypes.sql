@@ -162,9 +162,6 @@ reset enable_sort;
 -- Check row comparisons with IN
 select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
 
--- See issue #16993
-/*+Set(yb_bnl_batch_size 1024)*/select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
-
 -- TODO(jason): uncomment when issue #2076 is closed or closing.
 -- explain (costs off)
 -- select * from int8_tbl i8

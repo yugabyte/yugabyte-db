@@ -163,6 +163,11 @@ SELECT * FROM foo;
 SELECT a, b, a < b as lt FROM
   (VALUES ('a', 'B'), ('A', 'b' COLLATE "C")) v(a,b);
 
+-- collation mismatch in subselects
+SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y, x FROM collate_test10);
+-- now it works with overrides
+SELECT * FROM collate_test10 WHERE (x COLLATE "POSIX", y COLLATE "C") NOT IN (SELECT y, x FROM collate_test10);
+SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y COLLATE "C", x COLLATE "POSIX" FROM collate_test10);
 
 -- casting
 
@@ -170,6 +175,14 @@ SELECT CAST('42' AS text COLLATE "C");
 
 SELECT a, CAST(b AS varchar) FROM collate_test1 ORDER BY 2;
 SELECT a, CAST(b AS varchar) FROM collate_test2 ORDER BY 2;
+
+
+-- result of a SQL function
+
+CREATE FUNCTION vc (text) RETURNS text LANGUAGE sql
+    AS 'select $1::varchar';
+
+SELECT a, b FROM collate_test1 ORDER BY a, vc(b);
 
 
 -- polymorphism
@@ -253,11 +266,37 @@ SELECT collation for ('foo'::text);
 SELECT collation for ((SELECT a FROM collate_test1 LIMIT 1)); -- non-collatable type - error
 SELECT collation for ((SELECT b FROM collate_test1 LIMIT 1));
 
+-- old bug with not dropping COLLATE when coercing to non-collatable type
+CREATE VIEW collate_on_int AS
+SELECT c1+1 AS c1p FROM
+  (SELECT ('4' COLLATE "C")::INT AS c1) ss;
+\d+ collate_on_int
+
+-- Check conflicting or redundant options in CREATE COLLATION
+-- LC_COLLATE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LC_COLLATE = "NONSENSE", LC_CTYPE = "POSIX");
+-- LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_CTYPE = "POSIX", LC_CTYPE = "NONSENSE", LC_COLLATE = "POSIX");
+-- PROVIDER
+CREATE COLLATION coll_dup_chk (PROVIDER = icu, PROVIDER = NONSENSE, LC_COLLATE = "POSIX", LC_CTYPE = "POSIX");
+-- LOCALE
+CREATE COLLATION case_sensitive (LOCALE = '', LOCALE = "NONSENSE");
+-- DETERMINISTIC
+CREATE COLLATION coll_dup_chk (DETERMINISTIC = TRUE, DETERMINISTIC = NONSENSE, LOCALE = '');
+-- VERSION
+CREATE COLLATION coll_dup_chk (VERSION = '1', VERSION = "NONSENSE", LOCALE = '');
+-- LOCALE conflicts with LC_COLLATE and LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LC_CTYPE = "POSIX", LOCALE = '');
+-- LOCALE conflicts with LC_COLLATE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LOCALE = '');
+-- LOCALE conflicts with LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_CTYPE = "POSIX", LOCALE = '');
+-- FROM conflicts with any other option
+CREATE COLLATION coll_dup_chk (FROM = "C", VERSION = "1");
 
 --
 -- Clean up.  Many of these table names will be re-used if the user is
 -- trying to run any platform-specific collation tests later, so we
 -- must get rid of them.
 --
-\set VERBOSITY terse
 DROP SCHEMA collate_tests CASCADE;

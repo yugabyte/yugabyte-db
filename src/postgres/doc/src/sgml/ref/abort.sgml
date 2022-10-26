@@ -21,7 +21,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ABORT [ WORK | TRANSACTION ]
+ABORT [ WORK | TRANSACTION ] [ AND [ NO ] CHAIN ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -33,7 +33,7 @@ ABORT [ WORK | TRANSACTION ]
    all the updates made by the transaction to be discarded.
    This command is identical
    in behavior to the standard <acronym>SQL</acronym> command
-   <xref linkend="sql-rollback"/>,
+   <link linkend="sql-rollback"><command>ROLLBACK</command></link>,
    and is present only for historical reasons.
   </para>
  </refsect1>
@@ -51,6 +51,18 @@ ABORT [ WORK | TRANSACTION ]
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><literal>AND CHAIN</literal></term>
+    <listitem>
+     <para>
+      If <literal>AND CHAIN</literal> is specified, a new transaction is
+      immediately started with the same transaction characteristics (see <link
+      linkend="sql-set-transaction"><command>SET TRANSACTION</command></link>) as the just finished one.  Otherwise,
+      no new transaction is started.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
  </refsect1>
 
@@ -58,7 +70,7 @@ ABORT [ WORK | TRANSACTION ]
   <title>Notes</title>
 
   <para>
-   Use <xref linkend="sql-commit"/> to
+   Use <link linkend="sql-commit"><command>COMMIT</command></link> to
    successfully terminate a transaction.
   </para>
 

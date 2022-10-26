@@ -8,7 +8,7 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/ipc.h
@@ -17,8 +17,6 @@
  */
 #ifndef IPC_H
 #define IPC_H
-
-#include <stdatomic.h>
 
 typedef void (*pg_on_exit_callback) (int code, Datum arg);
 typedef void (*shmem_startup_hook_type) (void);
@@ -64,8 +62,8 @@ typedef void (*shmem_startup_hook_type) (void);
 
 
 /* ipc.c */
-extern PGDLLIMPORT atomic_bool proc_exit_inprogress;
-extern PGDLLIMPORT atomic_bool shmem_exit_inprogress;
+extern PGDLLIMPORT bool proc_exit_inprogress;
+extern PGDLLIMPORT bool shmem_exit_inprogress;
 
 extern void proc_exit(int code) pg_attribute_noreturn();
 extern void shmem_exit(int code);
@@ -74,10 +72,13 @@ extern void on_shmem_exit(pg_on_exit_callback function, Datum arg);
 extern void before_shmem_exit(pg_on_exit_callback function, Datum arg);
 extern void cancel_before_shmem_exit(pg_on_exit_callback function, Datum arg);
 extern void on_exit_reset(void);
+extern void check_on_shmem_exit_lists_are_empty(void);
 
 /* ipci.c */
 extern PGDLLIMPORT shmem_startup_hook_type shmem_startup_hook;
 
-extern void CreateSharedMemoryAndSemaphores(int port);
+extern Size CalculateShmemSize(int *num_semaphores);
+extern void CreateSharedMemoryAndSemaphores(void);
+extern void InitializeShmemGUCs(void);
 
 #endif							/* IPC_H */

@@ -1,28 +1,16 @@
-/*-------------------------------------------------------------------------
- *
- * ybgate_api.c
- *	  YbGate interface functions.
- *	  YbGate allows to execute Postgres code from DocDB
- *
- * Copyright (c) Yugabyte, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.  You may obtain a copy
- * of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
- * License for the specific language governing permissions and limitations
- * under the License.
- *
- * IDENTIFICATION
- *	  src/backend/ybgate/ybgate_api.c
- *
- *-------------------------------------------------------------------------
- */
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//--------------------------------------------------------------------------------------------------
 
 #include "postgres.h"
 
@@ -40,6 +28,8 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
+#include "utils/array.h"
+#include "utils/acl.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 #include "utils/rowtypes.h"
@@ -47,7 +37,6 @@
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "funcapi.h"
-#include "pg_yb_utils.h"
 
 YbgStatus YbgInit()
 {
@@ -55,7 +44,7 @@ YbgStatus YbgInit()
 
 	SetDatabaseEncoding(PG_UTF8);
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -63,14 +52,27 @@ YbgStatus YbgInit()
 //-----------------------------------------------------------------------------
 
 
-YbgMemoryContext YbgGetCurrentMemoryContext()
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
 {
-	return GetThreadLocalCurrentMemoryContext();
+	PG_SETUP_ERROR_REPORTING();
+
+	*memctx = GetThreadLocalCurrentMemoryContext();
+
+	return PG_STATUS_OK;
 }
 
-YbgMemoryContext YbgSetCurrentMemoryContext(YbgMemoryContext memctx)
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx)
 {
-	return SetThreadLocalCurrentMemoryContext(memctx);
+	PG_SETUP_ERROR_REPORTING();
+
+	YbgMemoryContext prev = SetThreadLocalCurrentMemoryContext(memctx);
+	if (oldctx != NULL)
+	{
+		*oldctx = prev;
+	}
+
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
@@ -79,9 +81,9 @@ YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	*memctx = CreateThreadLocalMemoryContext(parent, name);
+	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgPrepareMemoryContext()
@@ -90,7 +92,7 @@ YbgStatus YbgPrepareMemoryContext()
 
 	PrepareThreadLocalCurrentMemoryContext();
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgResetMemoryContext()
@@ -99,7 +101,7 @@ YbgStatus YbgResetMemoryContext()
 
 	ResetThreadLocalCurrentMemoryContext();
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgDeleteMemoryContext()
@@ -108,7 +110,7 @@ YbgStatus YbgDeleteMemoryContext()
 
 	DeleteThreadLocalCurrentMemoryContext();
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -121,7 +123,7 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 
 	YbGetTypeTable(type_table, count);
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus
@@ -130,7 +132,7 @@ YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype, uint32_t typbasetype,
 {
 	PG_SETUP_ERROR_REPORTING();
 	*primitive_type_oid = YbGetPrimitiveTypeOid(type_oid, typtype, typbasetype);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -350,7 +352,7 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 	ctx->attr_nulls = NULL;
 
 	*expr_ctx = ctx;
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
@@ -361,7 +363,7 @@ YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
 	memset(expr_ctx->attr_vals, 0, sizeof(Datum) * num_attrs);
 	expr_ctx->attr_nulls = NULL;
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
@@ -380,44 +382,51 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
 		expr_ctx->attr_vals[attno - expr_ctx->min_attno] = (Datum) datum;
 	}
 
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typid = exprType((Node *) expr);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typmod = exprTypmod((Node *) expr);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*collid = exprCollation((Node *) expr);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
+/* YB_TODO(Deepthi@yugabyte)
+ * - Postgres 13 has added some new types. Need to update this function accordingly.
+ * - It'd be best if you use the table "static const YBCPgTypeEntity YbTypeEntityTable[]". Just
+ *   as the attributes that you need, such as (elmlen, elmbyval, ...), and fill the table with
+ *   their values. That way, when upgrading we don't have to seek for location of datatypes every
+ *   where and update the info.
+ */
 YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			     const int type,
 			     uint64_t **result_datum_array,
@@ -427,9 +436,7 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
 
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
-		return YbgStatusCreateError(
-				"Type of given datum array does not match the given type",
-				__FILE__, __LINE__);
+		return PG_STATUS(ERROR, "Type of given datum array does not match the given type");
 
 	int32 elmlen;
 	bool elmbyval;
@@ -574,21 +581,6 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			elmlen = 8;
 			elmbyval = FLOAT8PASSBYVAL;
 			elmalign = 'd';
-			break;
-		case ABSTIMEOID:
-			elmlen = sizeof(int32);
-			elmbyval = true;
-			elmalign = 'i';
-			break;
-		case RELTIMEOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
-			break;
-		case TINTERVALOID:
-			elmlen = -1;
-			elmbyval = false;
-			elmalign = 'i';
 			break;
 		case ACLITEMOID:
 			elmlen = sizeof(AclItem);
@@ -752,13 +744,11 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			break;
 		/* TODO: Extend support to other types as well. */
 		default:
-			return YbgStatusCreateError(
-					"Only Text type supported for split of datum of array types",
-					__FILE__, __LINE__);
+			return PG_STATUS(ERROR, "Only Text type supported for split of datum of array types");
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 //-----------------------------------------------------------------------------
@@ -776,7 +766,7 @@ YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirStat
 	rstate->rs.W = rstate_w;
 	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
 	*yb_rs = rstate;
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
@@ -784,7 +774,7 @@ YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t
 	PG_SETUP_ERROR_REPORTING();
 	*rstate_w = yb_rs->rs.W;
 	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
@@ -792,14 +782,14 @@ YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 	PG_SETUP_ERROR_REPORTING();
 	ReservoirState rs = &yb_rs->rs;
 	*value = sampler_random_fract(rs->randstate);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
-	PG_STATUS_OK();
+	return PG_STATUS_OK;
 }
 
 char* DecodeDatum(char const* fn_name, uintptr_t datum)
@@ -949,7 +939,7 @@ DecodeRecordDatum(uintptr_t datum, void *attrs, size_t natts)
 	HeapTupleHeader rec = DatumGetHeapTupleHeader(datum);
 	Oid				tupType = HeapTupleHeaderGetTypeId(rec);
 	int32			tupTypmod = HeapTupleHeaderGetTypMod(rec);
-	TupleDesc		tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc		tupdesc = CreateTupleDesc(natts, attrs);
 	finfo->fn_extra = MemoryContextAlloc(GetCurrentMemoryContext(),
 										 offsetof(RecordIOData, columns) +
 											 natts * sizeof(ColumnIOData));
@@ -973,6 +963,12 @@ char *
 GetOutFuncName(const int pg_data_type)
 {
 	char *func_name;
+
+	/* YB_TODO(jasonk@yugabyte)
+	 * - Need to visit all datatypes and update this function accordingly.
+	 * - Should this code have been a table that map OID to "typiofunc" instead of a "switch"?
+	 *   Look at yb_type to see if you can add a new entry and fill that entry.
+	 */
 	switch (pg_data_type)
 	{
 		case BOOLOID:
@@ -1002,9 +998,6 @@ GetOutFuncName(const int pg_data_type)
 		case TEXTOID:
 			func_name = "textout";
 			break;
-		case OIDOID:
-			func_name = "oidout";
-			break;
 		case TIDOID:
 			func_name = "tidout";
 			break;
@@ -1019,21 +1012,6 @@ GetOutFuncName(const int pg_data_type)
 			break;
 		case XMLOID:
 			func_name = "xml_out";
-			break;
-		case PGNODETREEOID:
-			func_name = "pg_node_tree_out";
-			break;
-		case PGNDISTINCTOID:
-			func_name = "pg_ndistinct_out";
-			break;
-		case PGDEPENDENCIESOID:
-			func_name = "pg_dependencies_out";
-			break;
-		case PGDDLCOMMANDOID:
-			func_name = "pg_ddl_command_out";
-			break;
-		case SMGROID:
-			func_name = "smgrout";
 			break;
 		case POINTOID:
 			func_name = "point_out";
@@ -1167,17 +1145,11 @@ GetOutFuncName(const int pg_data_type)
 		case TRIGGEROID:
 			func_name = "trigger_out";
 			break;
-		case EVTTRIGGEROID:
-			func_name = "event_trigger_out";
-			break;
 		case LANGUAGE_HANDLEROID:
 			func_name = "language_handler_out";
 			break;
 		case INTERNALOID:
 			func_name = "internal_out";
-			break;
-		case OPAQUEOID:
-			func_name = "opaque_out";
 			break;
 		case ANYELEMENTOID:
 			func_name = "anyelement_out";
@@ -1317,15 +1289,6 @@ GetOutFuncName(const int pg_data_type)
 		case FLOAT8ARRAYOID:
 			func_name = "float8out";
 			break;
-		case ABSTIMEARRAYOID:
-			func_name = "abstimeout";
-			break;
-		case RELTIMEARRAYOID:
-			func_name = "reltimeout";
-			break;
-		case TINTERVALARRAYOID:
-			func_name = "tintervalout";
-			break;
 		case ACLITEMARRAYOID:
 			func_name = "aclitemout";
 			break;
@@ -1446,6 +1409,8 @@ GetOutFuncName(const int pg_data_type)
 		case INT8RANGEARRAYOID:
 			func_name = "int8out";
 			break;
+		default:
+			func_name = NULL;
 	}
 	return func_name;
 }
@@ -1460,7 +1425,7 @@ GetRecordTypeId(uintptr_t datum)
 uintptr_t
 HeapFormTuple(void *attrs, size_t natts, uintptr_t *values, bool *nulls)
 {
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	PG_RETURN_HEAPTUPLEHEADER(heap_form_tuple(tupdesc, values, nulls)->t_data);
 }
 
@@ -1474,7 +1439,7 @@ HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
 	tuple.t_data = rec;
-	TupleDesc tupdesc = CreateTupleDesc(natts, true, attrs);
+	TupleDesc tupdesc = CreateTupleDesc(natts, attrs);
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 }

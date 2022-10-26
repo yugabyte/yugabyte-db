@@ -1,10 +1,13 @@
 # contrib/xml2/Makefile
 
 MODULE_big = pgxml
-OBJS = xpath.o xslt_proc.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	xpath.o \
+	xslt_proc.o
 
 EXTENSION = xml2
-DATA = xml2--1.1.sql xml2--1.0--1.1.sql xml2--unpackaged--1.0.sql
+DATA = xml2--1.1.sql xml2--1.0--1.1.sql
 PGFILEDESC = "xml2 - XPath querying and XSLT"
 
 REGRESS = xml2

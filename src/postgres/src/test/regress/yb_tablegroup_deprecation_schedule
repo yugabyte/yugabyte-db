@@ -1,6 +1,0 @@
-# src/test/regress/yb_tablegroup_deprecation_schedule
-#
-####################################################################################################
-# TABLEGROUP Testsuite: TABLEGROUP Deprecation Warning
-####################################################################################################
-test: yb_tablegroup_deprecation

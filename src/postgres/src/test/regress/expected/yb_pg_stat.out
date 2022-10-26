@@ -622,7 +622,7 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='pendt
 (1 row)
 
 -- test for colocated table
-create database colocated_db with colocation = true;
+create database colocated_db with colocated = true;
 -- TODO: pg_sleep is a workaround, remove it after fixing of #14519
 select pg_sleep(3);
  pg_sleep

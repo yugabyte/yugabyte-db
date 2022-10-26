@@ -114,12 +114,6 @@ extern const char *YBGetCurrentUUID();
 extern const char *YBGetCurrentMetricNodeName();
 
 /**
- * Returns a null-terminated string representing the custom tmp path
- * Postgres process will use to keep some of its temporary files.
- */
-extern const char *YbGetTmpDir();
-
-/**
  * Returns whether COLLATION support is enabled.
  */
 extern bool YBIsCollationEnabled();
@@ -144,10 +138,5 @@ extern int YBGetYsqlOutputBufferSize();
  * The text columns of all system tables will have en_US.UTF-8 collation.
  */
 extern const bool kTestOnlyUseOSDefaultCollation;
-
-/**
- * Returns whether colocation is enabled by default for each database.
- */
-extern bool YBColocateDatabaseByDefault();
 
 #endif /* PG_YB_COMMON_H */

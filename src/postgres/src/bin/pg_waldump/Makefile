@@ -7,8 +7,13 @@ subdir = src/bin/pg_waldump
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = pg_waldump.o compat.o xlogreader.o rmgrdesc.o \
-	$(RMGRDESCOBJS) $(WIN32RES)
+OBJS = \
+	$(RMGRDESCOBJS) \
+	$(WIN32RES) \
+	compat.o \
+	pg_waldump.o \
+	rmgrdesc.o \
+	xlogreader.o
 
 override CPPFLAGS := -DFRONTEND $(CPPFLAGS)
 
@@ -38,3 +43,10 @@ uninstall:
 
 clean distclean maintainer-clean:
 	rm -f pg_waldump$(X) $(OBJS) $(RMGRDESCSOURCES) xlogreader.c
+	rm -rf tmp_check
+
+check:
+	$(prove_check)
+
+installcheck:
+	$(prove_installcheck)

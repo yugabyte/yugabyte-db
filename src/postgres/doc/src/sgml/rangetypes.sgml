@@ -7,6 +7,10 @@
   <primary>range type</primary>
  </indexterm>
 
+ <indexterm>
+  <primary>multirange type</primary>
+ </indexterm>
+
  <para>
   Range types are data types representing a range of values of some
   element type (called the range's <firstterm>subtype</firstterm>).
@@ -27,40 +31,53 @@
   ranges from an instrument, and so forth can also be useful.
  </para>
 
+ <para>
+  Every range type has a corresponding multirange type. A multirange is
+  an ordered list of non-contiguous, non-empty, non-null ranges. Most
+  range operators also work on multiranges, and they have a few functions
+  of their own.
+ </para>
+
  <sect2 id="rangetypes-builtin">
-  <title>Built-in Range Types</title>
+  <title>Built-in Range and Multirange Types</title>
 
  <para>
   PostgreSQL comes with the following built-in range types:
   <itemizedlist>
     <listitem>
       <para>
-       <type>int4range</type> &mdash; Range of <type>integer</type>
+       <type>int4range</type> &mdash; Range of <type>integer</type>,
+       <type>int4multirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
     <listitem>
       <para>
-       <type>int8range</type> &mdash; Range of <type>bigint</type>
+       <type>int8range</type> &mdash; Range of <type>bigint</type>,
+       <type>int8multirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
     <listitem>
       <para>
-       <type>numrange</type> &mdash; Range of <type>numeric</type>
+       <type>numrange</type> &mdash; Range of <type>numeric</type>,
+       <type>nummultirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
     <listitem>
       <para>
-       <type>tsrange</type> &mdash; Range of <type>timestamp without time zone</type>
+       <type>tsrange</type> &mdash; Range of <type>timestamp without time zone</type>,
+       <type>tsmultirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
     <listitem>
       <para>
-       <type>tstzrange</type> &mdash; Range of <type>timestamp with time zone</type>
+       <type>tstzrange</type> &mdash; Range of <type>timestamp with time zone</type>,
+       <type>tstzmultirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
     <listitem>
       <para>
-       <type>daterange</type> &mdash; Range of <type>date</type>
+       <type>daterange</type> &mdash; Range of <type>date</type>,
+       <type>datemultirange</type> &mdash; corresponding Multirange
       </para>
     </listitem>
   </itemizedlist>
@@ -131,29 +148,26 @@ SELECT isempty(numrange(1, 5));
   <title>Infinite (Unbounded) Ranges</title>
 
   <para>
-   The lower bound of a range can be omitted, meaning that all points less
-   than the upper bound are included in the range. Likewise, if the upper
-   bound of the range is omitted, then all points greater than the lower bound
-   are included in the range. If both lower and upper bounds are omitted, all
-   values of the element type are considered to be in the range.
+   The lower bound of a range can be omitted, meaning that all
+   values less than the upper bound are included in the range, e.g.,
+   <literal>(,3]</literal>. Likewise, if the upper bound of the range
+   is omitted, then all values greater than the lower bound are included
+   in the range. If both lower and upper bounds are omitted, all values
+   of the element type are considered to be in the range.  Specifying a
+   missing bound as inclusive is automatically converted to exclusive,
+   e.g., <literal>[,]</literal> is converted to <literal>(,)</literal>.
+   You can think of these missing values as +/-infinity, but they are
+   special range type values and are considered to be beyond any range
+   element type's +/-infinity values.
   </para>
 
   <para>
-   This is equivalent to considering that the lower bound is <quote>minus
-   infinity</quote>, or the upper bound is <quote>plus infinity</quote>,
-   respectively.  But note that these infinite values are never values of
-   the range's element type, and can never be part of the range.  (So there
-   is no such thing as an inclusive infinite bound &mdash; if you try to
-   write one, it will automatically be converted to an exclusive bound.)
-  </para>
-
-  <para>
-   Also, some element types have a notion of <quote>infinity</quote>, but that
-   is just another value so far as the range type mechanisms are concerned.
-   For example, in timestamp ranges, <literal>[today,]</literal> means the same
-   thing as <literal>[today,)</literal>.  But <literal>[today,infinity]</literal> means
-   something different from <literal>[today,infinity)</literal> &mdash; the latter
-   excludes the special <type>timestamp</type> value <literal>infinity</literal>.
+   Element types that have the notion of <quote>infinity</quote> can
+   use them as explicit bound values.  For example, with timestamp
+   ranges, <literal>[today,infinity)</literal> excludes the special
+   <type>timestamp</type> value <literal>infinity</literal>,
+   while <literal>[today,infinity]</literal> include it, as does
+   <literal>[today,)</literal> and <literal>[today,]</literal>.
   </para>
 
   <para>
@@ -235,10 +249,30 @@ SELECT '[4,4]'::int4range;
 SELECT '[4,4)'::int4range;
 </programlisting>
   </para>
+
+  <para>
+   The input for a multirange is curly brackets (<literal>{</literal> and
+   <literal>}</literal>) containing zero or more valid ranges,
+   separated by commas. Whitespace is permitted around the brackets and
+   commas. This is intended to be reminiscent of array syntax, although
+   multiranges are much simpler: they have just one dimension and there is
+   no need to quote their contents. (The bounds of their ranges may be
+   quoted as above however.)
+  </para>
+
+  <para>
+  Examples:
+<programlisting>
+SELECT '{}'::int4multirange;
+SELECT '{[3,7)}'::int4multirange;
+SELECT '{[3,7), [8,9)}'::int4multirange;
+</programlisting>
+  </para>
+
  </sect2>
 
  <sect2 id="rangetypes-construct">
-  <title>Constructing Ranges</title>
+  <title>Constructing Ranges and Multiranges</title>
 
   <para>
    Each range type has a constructor function with the same name as the range
@@ -270,6 +304,19 @@ SELECT int8range(1, 14, '(]');
 
 -- Using NULL for either bound causes the range to be unbounded on that side.
 SELECT numrange(NULL, 2.2);
+</programlisting>
+  </para>
+
+  <para>
+   Each range type also has a multirange constructor with the same name as the
+   multirange type.  The constructor function takes zero or more arguments
+   which are all ranges of the appropriate type.
+   For example:
+
+<programlisting>
+SELECT nummultirange();
+SELECT nummultirange(numrange(1.0, 14.0));
+SELECT nummultirange(numrange(1.0, 14.0), numrange(20.0, 25.0));
 </programlisting>
   </para>
  </sect2>
@@ -342,6 +389,11 @@ SELECT '[1.234, 5.678]'::floatrange;
    Because <type>float8</type> has no meaningful
    <quote>step</quote>, we do not define a canonicalization
    function in this example.
+  </para>
+
+  <para>
+   When you define your own range you automatically get a corresponding
+   multirange type.
   </para>
 
   <para>
@@ -421,11 +473,13 @@ SELECT '[11:10, 23:00]'::timerange;
 
   <para>
    GiST and SP-GiST indexes can be created for table columns of range types.
+   GiST indexes can be also created for table columns of multirange types.
    For instance, to create a GiST index:
 <programlisting>
 CREATE INDEX reservation_idx ON reservation USING GIST (during);
 </programlisting>
-   A GiST or SP-GiST index can accelerate queries involving these range operators:
+   A GiST or SP-GiST index on ranges can accelerate queries involving these
+   range operators:
    <literal>=</literal>,
    <literal>&amp;&amp;</literal>,
    <literal>&lt;@</literal>,
@@ -434,8 +488,21 @@ CREATE INDEX reservation_idx ON reservation USING GIST (during);
    <literal>&gt;&gt;</literal>,
    <literal>-|-</literal>,
    <literal>&amp;&lt;</literal>, and
-   <literal>&amp;&gt;</literal>
-   (see <xref linkend="range-operators-table"/> for more information).
+   <literal>&amp;&gt;</literal>.
+   A GiST index on multiranges can accelerate queries involving the same
+   set of multirange operators.
+   A GiST index on ranges and GiST index on multiranges can also accelerate
+   queries involving these cross-type range to multirange and multirange to
+   range operators correspondingly:
+   <literal>&amp;&amp;</literal>,
+   <literal>&lt;@</literal>,
+   <literal>@&gt;</literal>,
+   <literal>&lt;&lt;</literal>,
+   <literal>&gt;&gt;</literal>,
+   <literal>-|-</literal>,
+   <literal>&amp;&lt;</literal>, and
+   <literal>&amp;&gt;</literal>.
+   See <xref linkend="range-operators-table"/> for more information.
   </para>
 
   <para>

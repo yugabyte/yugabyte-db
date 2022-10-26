@@ -300,6 +300,7 @@ drop table list_parted;
 create table mlparted (a int, b int) partition by range (a, b);
 create table mlparted1 (b int not null, a int not null) partition by range ((b+0));
 create table mlparted11 (like mlparted1);
+/* Enable below tests after LIKE clause and alter table are supported.
 alter table mlparted11 drop a;
 alter table mlparted11 add a int;
 alter table mlparted11 drop a;
@@ -399,7 +400,8 @@ insert into mlparted_def2 values (34, 50);
 create table mlparted_defd partition of mlparted_def default;
 insert into mlparted values (70, 100);
 
-select tableoid::regclass, * from mlparted_def order by tableoid,a;
+select tableoid::regclass, * from mlparted_def;
+*/
 
 -- check that message shown after failure to find a partition shows the
 -- appropriate key description (or none) in various situations

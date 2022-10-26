@@ -89,6 +89,15 @@ SELECT citext_cmp('aardvark'::citext, 'aardVark'::citext) AS zero;
 SELECT citext_cmp('AARDVARK'::citext, 'AARDVARK'::citext) AS zero;
 SELECT citext_cmp('B'::citext, 'a'::citext) > 0 AS true;
 
+-- Check the citext_hash() and citext_hash_extended() function explicitly.
+SELECT v as value, citext_hash(v)::bit(32) as standard,
+       citext_hash_extended(v, 0)::bit(32) as extended0,
+       citext_hash_extended(v, 1)::bit(32) as extended1
+FROM   (VALUES (NULL::citext), ('PostgreSQL'), ('eIpUEtqmY89'), ('AXKEJBTK'),
+       ('muop28x03'), ('yi3nm0d73')) x(v)
+WHERE  citext_hash(v)::bit(32) != citext_hash_extended(v, 0)::bit(32)
+       OR citext_hash(v)::bit(32) = citext_hash_extended(v, 1)::bit(32);
+
 -- Do some tests using a table and index.
 
 CREATE TEMP TABLE try (
@@ -555,7 +564,7 @@ SELECT substring('alphabet'::citext, 3, 2) = 'ph' AS t;
 SELECT substring('Thomas'::citext from 2 for 3) = 'hom' AS t;
 SELECT substring('Thomas'::citext from 2) = 'homas' AS t;
 SELECT substring('Thomas'::citext from '...$') = 'mas' AS t;
-SELECT substring('Thomas'::citext from '%#"o_a#"_' for '#') = 'oma' AS t;
+SELECT substring('Thomas'::citext similar '%#"o_a#"_' escape '#') = 'oma' AS t;
 
 SELECT trim('    trim    '::citext)               = 'trim' AS t;
 SELECT trim('xxxxxtrimxxxx'::citext, 'x'::citext) = 'trim' AS t;
@@ -801,7 +810,7 @@ SELECT citext_pattern_ge('b'::citext, 'a'::citext) AS true;
 SELECT citext_pattern_ge('B'::citext, 'a'::citext) AS true;
 SELECT citext_pattern_ge('b'::citext, 'A'::citext) AS true;
 
--- Multi-byte tests below are diabled like the sanity tests above.
+-- Multi-byte tests below are disabled like the sanity tests above.
 -- Uncomment to run them.
 
 -- Test ~<~ and ~<=~

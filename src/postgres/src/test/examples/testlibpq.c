@@ -43,12 +43,11 @@ main(int argc, char **argv)
 	/* Check to see that the backend connection was successfully made */
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
-		fprintf(stderr, "Connection to database failed: %s",
-				PQerrorMessage(conn));
+		fprintf(stderr, "%s", PQerrorMessage(conn));
 		exit_nicely(conn);
 	}
 
-	/* Set always-secure search path, so malicous users can't take control. */
+	/* Set always-secure search path, so malicious users can't take control. */
 	res = PQexec(conn,
 				 "SELECT pg_catalog.set_config('search_path', '', false)");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)

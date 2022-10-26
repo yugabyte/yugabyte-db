@@ -5,7 +5,7 @@
  * Basically this is stuff that is useful in both pg_dump and pg_dumpall.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/dumputils.c
@@ -21,12 +21,12 @@
 
 
 static bool parseAclItem(const char *item, const char *type,
-			 const char *name, const char *subname, int remoteVersion,
-			 PQExpBuffer grantee, PQExpBuffer grantor,
-			 PQExpBuffer privs, PQExpBuffer privswgo);
+						 const char *name, const char *subname, int remoteVersion,
+						 PQExpBuffer grantee, PQExpBuffer grantor,
+						 PQExpBuffer privs, PQExpBuffer privswgo);
 static char *copyAclUserName(PQExpBuffer output, char *input);
 static void AddAcl(PQExpBuffer aclbuf, const char *keyword,
-	   const char *subname);
+				   const char *subname);
 
 
 /*
@@ -95,6 +95,8 @@ buildACLCommands(const char *name, const char *subname, const char *nspname,
 	{
 		if (!parsePGArray(racls, &raclitems, &nraclitems))
 		{
+			if (aclitems)
+				free(aclitems);
 			if (raclitems)
 				free(raclitems);
 			return false;
@@ -403,7 +405,7 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 
 	if (strlen(initacls) != 0 || strlen(initracls) != 0)
 	{
-		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
+		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
 		if (!buildACLCommands("", NULL, NULL, type,
 							  initacls, initracls, owner,
 							  prefix->data, remoteVersion, sql))
@@ -411,7 +413,7 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 			destroyPQExpBuffer(prefix);
 			return false;
 		}
-		appendPQExpBuffer(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
+		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
 	}
 
 	if (!buildACLCommands("", NULL, NULL, type,
@@ -462,15 +464,13 @@ parseAclItem(const char *item, const char *type,
 	char	   *slpos;
 	char	   *pos;
 
-	buf = strdup(item);
-	if (!buf)
-		return false;
+	buf = pg_strdup(item);
 
 	/* user or group name is string up to = */
 	eqpos = copyAclUserName(grantee, buf);
 	if (*eqpos != '=')
 	{
-		free(buf);
+		pg_free(buf);
 		return false;
 	}
 
@@ -482,13 +482,13 @@ parseAclItem(const char *item, const char *type,
 		slpos = copyAclUserName(grantor, slpos);
 		if (*slpos != '\0')
 		{
-			free(buf);
+			pg_free(buf);
 			return false;
 		}
 	}
 	else
 	{
-		free(buf);
+		pg_free(buf);
 		return false;
 	}
 
@@ -598,7 +598,7 @@ do { \
 			appendPQExpBuffer(privs, "(%s)", subname);
 	}
 
-	free(buf);
+	pg_free(buf);
 
 	return true;
 }
@@ -668,7 +668,7 @@ AddAcl(PQExpBuffer aclbuf, const char *keyword, const char *subname)
  * keep this file free of assumptions about how to deal with SQL errors.)
  */
 void
-buildShSecLabelQuery(PGconn *conn, const char *catalog_name, Oid objectId,
+buildShSecLabelQuery(const char *catalog_name, Oid objectId,
 					 PQExpBuffer sql)
 {
 	appendPQExpBuffer(sql,
@@ -725,6 +725,7 @@ void
 buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 				PQExpBuffer init_acl_subquery, PQExpBuffer init_racl_subquery,
 				const char *acl_column, const char *acl_owner,
+				const char *initprivs_expr,
 				const char *obj_kind, bool binary_upgrade)
 {
 	/*
@@ -765,23 +766,25 @@ buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 					  "WITH ORDINALITY AS perm(acl,row_n) "
 					  "WHERE NOT EXISTS ( "
 					  "SELECT 1 FROM "
-					  "pg_catalog.unnest(coalesce(pip.initprivs,pg_catalog.acldefault(%s,%s))) "
+					  "pg_catalog.unnest(coalesce(%s,pg_catalog.acldefault(%s,%s))) "
 					  "AS init(init_acl) WHERE acl = init_acl)) as foo)",
 					  acl_column,
 					  obj_kind,
 					  acl_owner,
+					  initprivs_expr,
 					  obj_kind,
 					  acl_owner);
 
 	printfPQExpBuffer(racl_subquery,
 					  "(SELECT pg_catalog.array_agg(acl ORDER BY row_n) FROM "
 					  "(SELECT acl, row_n FROM "
-					  "pg_catalog.unnest(coalesce(pip.initprivs,pg_catalog.acldefault(%s,%s))) "
+					  "pg_catalog.unnest(coalesce(%s,pg_catalog.acldefault(%s,%s))) "
 					  "WITH ORDINALITY AS initp(acl,row_n) "
 					  "WHERE NOT EXISTS ( "
 					  "SELECT 1 FROM "
 					  "pg_catalog.unnest(coalesce(%s,pg_catalog.acldefault(%s,%s))) "
 					  "AS permp(orig_acl) WHERE acl = orig_acl)) as foo)",
+					  initprivs_expr,
 					  obj_kind,
 					  acl_owner,
 					  acl_column,
@@ -807,12 +810,13 @@ buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 		printfPQExpBuffer(init_acl_subquery,
 						  "CASE WHEN privtype = 'e' THEN "
 						  "(SELECT pg_catalog.array_agg(acl ORDER BY row_n) FROM "
-						  "(SELECT acl, row_n FROM pg_catalog.unnest(pip.initprivs) "
+						  "(SELECT acl, row_n FROM pg_catalog.unnest(%s) "
 						  "WITH ORDINALITY AS initp(acl,row_n) "
 						  "WHERE NOT EXISTS ( "
 						  "SELECT 1 FROM "
 						  "pg_catalog.unnest(pg_catalog.acldefault(%s,%s)) "
 						  "AS privm(orig_acl) WHERE acl = orig_acl)) as foo) END",
+						  initprivs_expr,
 						  obj_kind,
 						  acl_owner);
 
@@ -823,10 +827,11 @@ buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 						  "pg_catalog.unnest(pg_catalog.acldefault(%s,%s)) "
 						  "WITH ORDINALITY AS privp(acl,row_n) "
 						  "WHERE NOT EXISTS ( "
-						  "SELECT 1 FROM pg_catalog.unnest(pip.initprivs) "
+						  "SELECT 1 FROM pg_catalog.unnest(%s) "
 						  "AS initp(init_acl) WHERE acl = init_acl)) as foo) END",
 						  obj_kind,
-						  acl_owner);
+						  acl_owner,
+						  initprivs_expr);
 	}
 	else
 	{
@@ -848,11 +853,12 @@ buildACLQueries(PQExpBuffer acl_subquery, PQExpBuffer racl_subquery,
 bool
 variable_is_guc_list_quote(const char *name)
 {
-	if (pg_strcasecmp(name, "temp_tablespaces") == 0 ||
+	if (pg_strcasecmp(name, "local_preload_libraries") == 0 ||
+		pg_strcasecmp(name, "search_path") == 0 ||
 		pg_strcasecmp(name, "session_preload_libraries") == 0 ||
 		pg_strcasecmp(name, "shared_preload_libraries") == 0 ||
-		pg_strcasecmp(name, "local_preload_libraries") == 0 ||
-		pg_strcasecmp(name, "search_path") == 0)
+		pg_strcasecmp(name, "temp_tablespaces") == 0 ||
+		pg_strcasecmp(name, "unix_socket_directories") == 0)
 		return true;
 	else
 		return false;

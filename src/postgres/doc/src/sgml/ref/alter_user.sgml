@@ -35,8 +35,6 @@ ALTER USER <replaceable class="parameter">role_specification</replaceable> [ WIT
     | CONNECTION LIMIT <replaceable class="parameter">connlimit</replaceable>
     | [ ENCRYPTED ] PASSWORD '<replaceable class="parameter">password</replaceable>' | PASSWORD NULL
     | VALID UNTIL '<replaceable class="parameter">timestamp</replaceable>'
-    | PROFILE <replaceable class="parameter">profile_name</replaceable> | NOPROFILE
-    | ACCOUNT LOCK | ACCOUNT UNLOCK
 
 ALTER USER <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
 
@@ -48,6 +46,7 @@ ALTER USER { <replaceable class="parameter">role_specification</replaceable> | A
 <phrase>where <replaceable class="parameter">role_specification</replaceable> can be:</phrase>
 
     <replaceable class="parameter">role_name</replaceable>
+  | CURRENT_ROLE
   | CURRENT_USER
   | SESSION_USER
 </synopsis>
@@ -58,7 +57,7 @@ ALTER USER { <replaceable class="parameter">role_specification</replaceable> | A
 
   <para>
    <command>ALTER USER</command> is now an alias for
-   <xref linkend="sql-alterrole"/>.
+   <link linkend="sql-alterrole"><command>ALTER ROLE</command></link>.
   </para>
  </refsect1>
 

@@ -58,6 +58,42 @@ longest(struct vars *v,
 	if (hitstopp != NULL)
 		*hitstopp = 0;
 
+	/* if this is a backref to a known string, just match against that */
+	if (d->backno >= 0)
+	{
+		assert((size_t) d->backno < v->nmatch);
+		if (v->pmatch[d->backno].rm_so >= 0)
+		{
+			cp = dfa_backref(v, d, start, start, stop, false);
+			if (cp == v->stop && stop == v->stop && hitstopp != NULL)
+				*hitstopp = 1;
+			return cp;
+		}
+	}
+
+	/* fast path for matchall NFAs */
+	if (d->cnfa->flags & MATCHALL)
+	{
+		size_t		nchr = stop - start;
+		size_t		maxmatchall = d->cnfa->maxmatchall;
+
+		if (nchr < d->cnfa->minmatchall)
+			return NULL;
+		if (maxmatchall == DUPINF)
+		{
+			if (stop == v->stop && hitstopp != NULL)
+				*hitstopp = 1;
+		}
+		else
+		{
+			if (stop == v->stop && nchr <= maxmatchall + 1 && hitstopp != NULL)
+				*hitstopp = 1;
+			if (nchr > maxmatchall)
+				return start + maxmatchall;
+		}
+		return stop;
+	}
+
 	/* initialize */
 	css = initialize(v, d, start);
 	if (css == NULL)
@@ -187,6 +223,38 @@ shortest(struct vars *v,
 	if (hitstopp != NULL)
 		*hitstopp = 0;
 
+	/* if this is a backref to a known string, just match against that */
+	if (d->backno >= 0)
+	{
+		assert((size_t) d->backno < v->nmatch);
+		if (v->pmatch[d->backno].rm_so >= 0)
+		{
+			cp = dfa_backref(v, d, start, min, max, true);
+			if (cp != NULL && coldp != NULL)
+				*coldp = start;
+			/* there is no case where we should set *hitstopp */
+			return cp;
+		}
+	}
+
+	/* fast path for matchall NFAs */
+	if (d->cnfa->flags & MATCHALL)
+	{
+		size_t		nchr = min - start;
+
+		if (d->cnfa->maxmatchall != DUPINF &&
+			nchr > d->cnfa->maxmatchall)
+			return NULL;
+		if ((max - start) < d->cnfa->minmatchall)
+			return NULL;
+		if (nchr < d->cnfa->minmatchall)
+			min = start + d->cnfa->minmatchall;
+		if (coldp != NULL)
+			*coldp = start;
+		/* there is no case where we should set *hitstopp */
+		return min;
+	}
+
 	/* initialize */
 	css = initialize(v, d, start);
 	if (css == NULL)
@@ -312,6 +380,18 @@ matchuntil(struct vars *v,
 	struct sset *ss;
 	struct colormap *cm = d->cm;
 
+	/* fast path for matchall NFAs */
+	if (d->cnfa->flags & MATCHALL)
+	{
+		size_t		nchr = probe - v->start;
+
+		if (nchr < d->cnfa->minmatchall)
+			return 0;
+		/* maxmatchall will always be infinity, cf. makesearch() */
+		assert(d->cnfa->maxmatchall == DUPINF);
+		return 1;
+	}
+
 	/* initialize and startup, or restart, if necessary */
 	if (cp == NULL || cp > probe)
 	{
@@ -411,6 +491,94 @@ matchuntil(struct vars *v,
 }
 
 /*
+ * dfa_backref - find best match length for a known backref string
+ *
+ * When the backref's referent is already available, we can deliver an exact
+ * answer with considerably less work than running the backref node's NFA.
+ *
+ * Return match endpoint for longest or shortest valid repeated match,
+ * or NULL if there is no valid match.
+ *
+ * Should be in sync with cbrdissect(), although that has the different task
+ * of checking a match to a predetermined section of the string.
+ */
+static chr *
+dfa_backref(struct vars *v,
+			struct dfa *d,
+			chr *start,			/* where the match should start */
+			chr *min,			/* match must end at or after here */
+			chr *max,			/* match must end at or before here */
+			bool shortest)
+{
+	int			n = d->backno;
+	int			backmin = d->backmin;
+	int			backmax = d->backmax;
+	size_t		numreps;
+	size_t		minreps;
+	size_t		maxreps;
+	size_t		brlen;
+	chr		   *brstring;
+	chr		   *p;
+
+	/* get the backreferenced string (caller should have checked this) */
+	if (v->pmatch[n].rm_so == -1)
+		return NULL;
+	brstring = v->start + v->pmatch[n].rm_so;
+	brlen = v->pmatch[n].rm_eo - v->pmatch[n].rm_so;
+
+	/* special-case zero-length backreference to avoid divide by zero */
+	if (brlen == 0)
+	{
+		/*
+		 * matches only a zero-length string, but any number of repetitions
+		 * can be considered to be present
+		 */
+		if (min == start && backmin <= backmax)
+			return start;
+		return NULL;
+	}
+
+	/*
+	 * convert min and max into numbers of possible repetitions of the backref
+	 * string, rounding appropriately
+	 */
+	if (min <= start)
+		minreps = 0;
+	else
+		minreps = (min - start - 1) / brlen + 1;
+	maxreps = (max - start) / brlen;
+
+	/* apply bounds, then see if there is any allowed match length */
+	if (minreps < backmin)
+		minreps = backmin;
+	if (backmax != DUPINF && maxreps > backmax)
+		maxreps = backmax;
+	if (maxreps < minreps)
+		return NULL;
+
+	/* quick exit if zero-repetitions match is valid and preferred */
+	if (shortest && minreps == 0)
+		return start;
+
+	/* okay, compare the actual string contents */
+	p = start;
+	numreps = 0;
+	while (numreps < maxreps)
+	{
+		if ((*v->g->compare) (brstring, p, brlen) != 0)
+			break;
+		p += brlen;
+		numreps++;
+		if (shortest && numreps >= minreps)
+			break;
+	}
+
+	if (numreps >= minreps)
+		return p;
+	return NULL;
+}
+
+/*
  * lastcold - determine last point at which no progress had been made
  */
 static chr *					/* endpoint, or NULL */
@@ -432,6 +600,8 @@ lastcold(struct vars *v,
 
 /*
  * newdfa - set up a fresh DFA
+ *
+ * Returns NULL (and sets v->err) on failure.
  */
 static struct dfa *
 newdfa(struct vars *v,
@@ -442,7 +612,7 @@ newdfa(struct vars *v,
 	struct dfa *d;
 	size_t		nss = cnfa->nstates * 2;
 	int			wordsper = (cnfa->nstates + UBITS - 1) / UBITS;
-	struct smalldfa *smallwas = sml;
+	bool		ismalloced = false;
 
 	assert(cnfa != NULL && cnfa->nstates != 0);
 
@@ -457,6 +627,7 @@ newdfa(struct vars *v,
 				ERR(REG_ESPACE);
 				return NULL;
 			}
+			ismalloced = true;
 		}
 		d = &sml->dfa;
 		d->ssets = sml->ssets;
@@ -464,8 +635,8 @@ newdfa(struct vars *v,
 		d->work = &d->statesarea[nss];
 		d->outsarea = sml->outsarea;
 		d->incarea = sml->incarea;
-		d->cptsmalloced = 0;
-		d->mallocarea = (smallwas == NULL) ? (char *) sml : NULL;
+		d->ismalloced = ismalloced;
+		d->arraysmalloced = false;	/* not separately allocated, anyway */
 	}
 	else
 	{
@@ -483,8 +654,9 @@ newdfa(struct vars *v,
 											  sizeof(struct sset *));
 		d->incarea = (struct arcp *) MALLOC(nss * cnfa->ncolors *
 											sizeof(struct arcp));
-		d->cptsmalloced = 1;
-		d->mallocarea = (char *) d;
+		d->ismalloced = true;
+		d->arraysmalloced = true;
+		/* now freedfa() will behave sanely */
 		if (d->ssets == NULL || d->statesarea == NULL ||
 			d->outsarea == NULL || d->incarea == NULL)
 		{
@@ -504,6 +676,8 @@ newdfa(struct vars *v,
 	d->lastpost = NULL;
 	d->lastnopr = NULL;
 	d->search = d->ssets;
+	d->backno = -1;				/* may be set by caller */
+	d->backmin = d->backmax = 0;
 
 	/* initialization of sset fields is done as needed */
 
@@ -516,7 +690,7 @@ newdfa(struct vars *v,
 static void
 freedfa(struct dfa *d)
 {
-	if (d->cptsmalloced)
+	if (d->arraysmalloced)
 	{
 		if (d->ssets != NULL)
 			FREE(d->ssets);
@@ -528,8 +702,8 @@ freedfa(struct dfa *d)
 			FREE(d->incarea);
 	}
 
-	if (d->mallocarea != NULL)
-		FREE(d->mallocarea);
+	if (d->ismalloced)
+		FREE(d);
 }
 
 /*
@@ -612,6 +786,7 @@ miss(struct vars *v,
 	unsigned	h;
 	struct carc *ca;
 	struct sset *p;
+	int			ispseudocolor;
 	int			ispost;
 	int			noprogress;
 	int			gotstate;
@@ -643,13 +818,15 @@ miss(struct vars *v,
 	 */
 	for (i = 0; i < d->wordsper; i++)
 		d->work[i] = 0;			/* build new stateset bitmap in d->work */
+	ispseudocolor = d->cm->cd[co].flags & PSEUDO;
 	ispost = 0;
 	noprogress = 1;
 	gotstate = 0;
 	for (i = 0; i < d->nstates; i++)
 		if (ISBSET(css->states, i))
 			for (ca = cnfa->states[i]; ca->co != COLORLESS; ca++)
-				if (ca->co == co)
+				if (ca->co == co ||
+					(ca->co == RAINBOW && !ispseudocolor))
 				{
 					BSET(d->work, ca->to);
 					gotstate = 1;
@@ -765,12 +942,12 @@ lacon(struct vars *v,
 	d = getladfa(v, n);
 	if (d == NULL)
 		return 0;
-	if (LATYPE_IS_AHEAD(sub->subno))
+	if (LATYPE_IS_AHEAD(sub->latype))
 	{
 		/* used to use longest() here, but shortest() could be much cheaper */
 		end = shortest(v, d, cp, cp, v->stop,
 					   (chr **) NULL, (int *) NULL);
-		satisfied = LATYPE_IS_POS(sub->subno) ? (end != NULL) : (end == NULL);
+		satisfied = LATYPE_IS_POS(sub->latype) ? (end != NULL) : (end == NULL);
 	}
 	else
 	{
@@ -783,7 +960,7 @@ lacon(struct vars *v,
 		 * nominal match.
 		 */
 		satisfied = matchuntil(v, d, cp, &v->lblastcss[n], &v->lblastcp[n]);
-		if (!LATYPE_IS_POS(sub->subno))
+		if (!LATYPE_IS_POS(sub->latype))
 			satisfied = !satisfied;
 	}
 	FDEBUG(("=== lacon %d satisfied %d\n", n, satisfied));

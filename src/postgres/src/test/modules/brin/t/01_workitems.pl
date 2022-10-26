@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021, PostgreSQL Global Development Group
+
 # Verify that work items work correctly
 
 use strict;
@@ -7,7 +10,7 @@ use TestLib;
 use Test::More tests => 2;
 use PostgresNode;
 
-my $node = get_new_node('tango');
+my $node = PostgresNode->new('tango');
 $node->init;
 $node->append_conf('postgresql.conf', 'autovacuum_naptime=1s');
 $node->start;

@@ -111,7 +111,7 @@
     <term><acronym>CVE</acronym></term>
     <listitem>
      <para>
-      <ulink url="http://cve.mitre.org/">Common Vulnerabilities and Exposures</ulink>
+      <ulink url="https://cve.mitre.org/">Common Vulnerabilities and Exposures</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -321,7 +321,7 @@
     <term><acronym>IEEE</acronym></term>
     <listitem>
      <para>
-      <ulink url="http://standards.ieee.org/">Institute of Electrical and
+      <ulink url="https://standards.ieee.org/">Institute of Electrical and
       Electronics Engineers</ulink>
      </para>
     </listitem>
@@ -384,7 +384,7 @@
     <listitem>
      <para>
       <ulink
-      url="http://json.org">JavaScript Object Notation</ulink>
+      url="https://www.json.org">JavaScript Object Notation</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -406,6 +406,17 @@
      <para>
       Log Sequence Number, see <link linkend="datatype-pg-lsn"><type>pg_lsn</type></link>
       and <link linkend="wal-internals">WAL Internals</link>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><acronym>MITM</acronym></term>
+    <listitem>
+     <para>
+      <ulink
+      url="https://en.wikipedia.org/wiki/Man-in-the-middle_attack">
+      Man-in-the-middle attack</ulink>
      </para>
     </listitem>
    </varlistentry>
@@ -591,6 +602,18 @@
    </varlistentry>
 
    <varlistentry>
+    <term><acronym>SNI</acronym></term>
+    <listitem>
+     <para>
+      <ulink
+      url="https://en.wikipedia.org/wiki/Server_Name_Indication">
+       Server Name Indication</ulink>,
+      <ulink url="https://tools.ietf.org/html/rfc6066#section-3">RFC 6066</ulink>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><acronym>SPI</acronym></term>
     <listitem>
      <para>
@@ -685,6 +708,16 @@
    </varlistentry>
 
    <varlistentry>
+    <term><acronym>TLS</acronym></term>
+    <listitem>
+     <para>
+      <ulink url="https://en.wikipedia.org/wiki/Transport_Layer_Security">
+      Transport Layer Security</ulink>
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
     <term><acronym>TOAST</acronym></term>
     <listitem>
      <para>
@@ -728,7 +761,7 @@
     <term><acronym>UTF</acronym></term>
     <listitem>
      <para>
-      <ulink url="http://www.unicode.org/">Unicode Transformation
+      <ulink url="https://www.unicode.org/">Unicode Transformation
       Format</ulink>
      </para>
     </listitem>

@@ -3,7 +3,7 @@
  * sinvaladt.c
  *	  POSTGRES shared cache invalidation data manager.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "access/transam.h"
 #include "miscadmin.h"
 #include "storage/backendid.h"
 #include "storage/ipc.h"
@@ -25,8 +26,6 @@
 #include "storage/shmem.h"
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
-#include "access/transam.h"
-
 
 /*
  * Conceptually, the shared cache invalidation messages are stored in an
@@ -135,8 +134,6 @@
 #define SIG_THRESHOLD (MAXNUMMESSAGES / 2)
 #define WRITE_QUANTUM 64
 
-struct SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
-
 /* Per-backend state in shared invalidation structure */
 typedef struct ProcState
 {
@@ -191,8 +188,12 @@ typedef struct SISeg
 	ProcState	procState[FLEXIBLE_ARRAY_MEMBER];
 } SISeg;
 
+static SISeg *shmInvalBuffer;	/* pointer to the shared inval buffer */
+
 
 static LocalTransactionId nextLocalTransactionId;
+
+static void CleanupInvalidationState(int status, Datum arg);
 
 
 /*
@@ -325,10 +326,15 @@ SharedInvalBackendInit(bool sendOnly)
 /*
  * CleanupInvalidationState
  *		Mark the current backend as no longer active.
+ *
+ * This function is called via on_shmem_exit() during backend shutdown.
+ *
+ * arg is really of type "SISeg*".
  */
 static void
-CleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
+CleanupInvalidationState(int status, Datum arg)
 {
+	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
 	ProcState  *stateP;
 	int			i;
 
@@ -336,7 +342,7 @@ CleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 
 	LWLockAcquire(SInvalWriteLock, LW_EXCLUSIVE);
 
-	stateP = &segP->procState[proc->backendId - 1];
+	stateP = &segP->procState[MyBackendId - 1];
 
 	/* Update next local transaction ID for next holder of this backendID */
 	stateP->nextLXID = nextLocalTransactionId;
@@ -357,34 +363,6 @@ CleanupInvalidationStateInternal(SISeg *segP, PGPROC *proc)
 	segP->lastBackend = i;
 
 	LWLockRelease(SInvalWriteLock);
-}
-
-/*
- * CleanupInvalidationState
- *		Mark the current backend as no longer active.
- *
- * This function is called via on_shmem_exit() during backend shutdown.
- *
- * arg is really of type "SISeg*".
- */
-void
-CleanupInvalidationState(int status, Datum arg)
-{
-	SISeg	   *segP = (SISeg *) DatumGetPointer(arg);
-	CleanupInvalidationStateInternal(segP, MyProc);
-}
-
-/*
- * CleanupInvalidationStateForProc
- *		Mark the current backend as no longer active.
- *
- * This function is called from reaper() when the parent is notified that its
- * child died unexpectedly.
- */
-void
-CleanupInvalidationStateForProc(PGPROC *proc)
-{
-	CleanupInvalidationStateInternal(shmInvalBuffer, proc);
 }
 
 /*
@@ -439,10 +417,8 @@ BackendIdGetTransactionIds(int backendID, TransactionId *xid, TransactionId *xmi
 
 		if (proc != NULL)
 		{
-			PGXACT	   *xact = &ProcGlobal->allPgXact[proc->pgprocno];
-
-			*xid = xact->xid;
-			*xmin = xact->xmin;
+			*xid = proc->xid;
+			*xmin = proc->xmin;
 		}
 	}
 

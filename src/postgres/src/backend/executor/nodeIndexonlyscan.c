@@ -3,7 +3,7 @@
  * nodeIndexonlyscan.c
  *	  Routines to support index-only scans
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -30,7 +30,10 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/relscan.h"
+#include "access/tableam.h"
+#include "access/tupdesc.h"
 #include "access/visibilitymap.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexonlyscan.h"
@@ -41,11 +44,13 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+/* Yugabyte includes */
 #include "pg_yb_utils.h"
+#include "access/yb_scan.h"
 
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup,
-				TupleDesc itupdesc);
+							TupleDesc itupdesc);
 
 
 /* ----------------------------------------------------------------
@@ -83,23 +88,6 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 	if (scandesc == NULL)
 	{
-		if (IsYugaByteEnabled() && node->yb_ioss_aggrefs)
-		{
-			/*
-			 * For aggregate pushdown, we only read aggregate results from
-			 * DocDB and pass that up to the aggregate node (agg pushdown
-			 * wouldn't be enabled if we needed to read other expressions). Set
-			 * up a dummy scan slot to hold as many attributes as there are
-			 * pushed aggregates.
-			 */
-			TupleDesc tupdesc =
-				CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs),
-										false /* hasoid */);
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc);
-			/* Refresh the local pointer. */
-			slot = node->ss.ss_ScanTupleSlot;
-		}
-
 		IndexOnlyScan *plan = castNode(IndexOnlyScan, node->ss.ps.plan);
 
 		/*
@@ -114,19 +102,13 @@ IndexOnlyNext(IndexOnlyScanState *node)
 								   node->ioss_NumOrderByKeys);
 
 		node->ioss_ScanDesc = scandesc;
-
+		scandesc->yb_scan_plan = (Scan *) plan;
+		scandesc->yb_rel_pushdown =
+			YbInstantiateRemoteParams(&plan->remote, estate);
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
 		node->ioss_VMBuffer = InvalidBuffer;
-
-		if (IsYugaByteEnabled())
-		{
-			scandesc->yb_scan_plan = (Scan *) plan;
-			scandesc->yb_rel_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
-		}
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -140,21 +122,14 @@ IndexOnlyNext(IndexOnlyScanState *node)
 						 node->ioss_NumOrderByKeys);
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		/*
-		 * Set up LIMIT and future execution parameter before calling Yugabyte
-		 * scanning rountines.
-		 */
+	/*
+	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 */
+	if (IsYugaByteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
-		/* TODO(hector) Add row marks for INDEX_ONLY_SCAN. */
-		scandesc->yb_exec_params->rowmark = -1;
 
-		/*
-		 * Set reference to slot in scan desc so that YB amgettuple can use it
-		 * during aggregate pushdown.
-		 */
-		scandesc->yb_agg_slot = slot;
+		// TODO(hector) Add row marks for INDEX_ONLY_SCAN
+		scandesc->yb_exec_params->rowmark = -1;
 	}
 
 	/*
@@ -169,7 +144,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tid = index_getnext_tid(scandesc, direction)) != NULL)
 	{
-		HeapTuple	tuple = NULL;
+		bool		tuple_from_heap = false;
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -218,9 +193,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			 * Rats, we have to visit the heap to check visibility.
 			 */
 			InstrCountTuples2(node, 1);
-			tuple = index_fetch_heap(scandesc);
-			if (tuple == NULL)
+			if (!index_fetch_heap(scandesc, node->ioss_TableSlot))
 				continue;		/* no visible tuple, try next index entry */
+
+			ExecClearTuple(node->ioss_TableSlot);
 
 			/*
 			 * Only MVCC snapshots are supported here, so there should be no
@@ -228,7 +204,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			 * been found.  If we did want to allow that, we'd need to keep
 			 * more state to remember not to call index_getnext_tid next time.
 			 */
-			if (scandesc->xs_continue_hot)
+			if (scandesc->xs_heap_continue)
 				elog(ERROR, "non-MVCC snapshots are not supported in index-only scans");
 
 			/*
@@ -237,6 +213,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			 * but it's not clear whether it's a win to do so.  The next index
 			 * entry might require a visit to the same heap page.
 			 */
+
+			tuple_from_heap = true;
 		}
 
 		/*
@@ -254,14 +232,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			 */
 			Assert(slot->tts_tupleDescriptor->natts ==
 				   scandesc->xs_hitupdesc->natts);
-			ExecStoreHeapTuple(scandesc->xs_hitup, slot, false);
+			ExecForceStoreHeapTuple(scandesc->xs_hitup, slot, false);
 		}
 		else if (scandesc->xs_itup)
 			StoreIndexTuple(slot, scandesc->xs_itup, scandesc->xs_itupdesc);
-		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
-		{
-			/* Slot should have already been updated by YB amgettuple. */
-		}
 		else
 			elog(ERROR, "no data returned for index-only scan");
 
@@ -298,15 +272,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 					 errmsg("lossy distance functions are not supported in index-only scans")));
 
 		/*
-		 * Predicate locks for index-only scans must be acquired at the page
-		 * level when the heap is not accessed, since tuple-level predicate
-		 * locks need the tuple's xmin value.  If we had to visit the tuple
-		 * anyway, then we already have the tuple-level lock and can skip the
-		 * page lock.
+		 * If we didn't access the heap, then we'll need to take a predicate
+		 * lock explicitly, as if we had.  For now we do that at page level.
 		 *
 		 * YugaByte index tuple does not require locking.
 		 */
-		if (tuple == NULL && !IsYugaByteEnabled())
+		if (!IsYugaByteEnabled() && !tuple_from_heap)
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);
@@ -334,23 +305,17 @@ IndexOnlyNext(IndexOnlyScanState *node)
 static void
 StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup, TupleDesc itupdesc)
 {
-	int			nindexatts = itupdesc->natts;
-	Datum	   *values = slot->tts_values;
-	bool	   *isnull = slot->tts_isnull;
-	int			i;
-
 	/*
-	 * Note: we must use the tupdesc supplied by the AM in index_getattr, not
-	 * the slot's tupdesc, in case the latter has different datatypes (this
-	 * happens for btree name_ops in particular).  They'd better have the same
-	 * number of columns though, as well as being datatype-compatible which is
-	 * something we can't so easily check.
+	 * Note: we must use the tupdesc supplied by the AM in index_deform_tuple,
+	 * not the slot's tupdesc, in case the latter has different datatypes
+	 * (this happens for btree name_ops in particular).  They'd better have
+	 * the same number of columns though, as well as being datatype-compatible
+	 * which is something we can't so easily check.
 	 */
-	Assert(slot->tts_tupleDescriptor->natts == nindexatts);
+	Assert(slot->tts_tupleDescriptor->natts == itupdesc->natts);
 
 	ExecClearTuple(slot);
-	for (i = 0; i < nindexatts; i++)
-		values[i] = index_getattr(itup, i + 1, itupdesc, &isnull[i]);
+	index_deform_tuple(itup, itupdesc, slot->tts_values, slot->tts_isnull);
 	ExecStoreVirtualTuple(slot);
 }
 
@@ -423,21 +388,9 @@ ExecReScanIndexOnlyScan(IndexOnlyScanState *node)
 
 	/* reset index scan */
 	if (node->ioss_ScanDesc)
-	{
-		if (IsYugaByteEnabled())
-		{
-			IndexScanDesc scandesc = node->ioss_ScanDesc;
-			IndexOnlyScan *plan = (IndexOnlyScan *) scandesc->yb_scan_plan;
-			EState *estate = node->ss.ps.state;
-			scandesc->yb_rel_pushdown =
-				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
-			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
-		}
-
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
-	}
 
 	ExecScanReScan(&node->ss);
 }
@@ -452,14 +405,12 @@ ExecEndIndexOnlyScan(IndexOnlyScanState *node)
 {
 	Relation	indexRelationDesc;
 	IndexScanDesc indexScanDesc;
-	Relation	relation;
 
 	/*
 	 * extract information from the node
 	 */
 	indexRelationDesc = node->ioss_RelationDesc;
 	indexScanDesc = node->ioss_ScanDesc;
-	relation = node->ss.ss_currentRelation;
 
 	/* Release VM buffer pin, if any. */
 	if (node->ioss_VMBuffer != InvalidBuffer)
@@ -491,11 +442,6 @@ ExecEndIndexOnlyScan(IndexOnlyScanState *node)
 		index_endscan(indexScanDesc);
 	if (indexRelationDesc)
 		index_close(indexRelationDesc, NoLock);
-
-	/*
-	 * close the heap relation.
-	 */
-	ExecCloseScanRelation(relation);
 }
 
 /* ----------------------------------------------------------------
@@ -509,25 +455,27 @@ void
 ExecIndexOnlyMarkPos(IndexOnlyScanState *node)
 {
 	EState	   *estate = node->ss.ps.state;
+	EPQState   *epqstate = estate->es_epq_active;
 
-	if (estate->es_epqTuple != NULL)
+	if (epqstate != NULL)
 	{
 		/*
 		 * We are inside an EvalPlanQual recheck.  If a test tuple exists for
 		 * this relation, then we shouldn't access the index at all.  We would
 		 * instead need to save, and later restore, the state of the
-		 * es_epqScanDone flag, so that re-fetching the test tuple is
-		 * possible.  However, given the assumption that no caller sets a mark
-		 * at the start of the scan, we can only get here with es_epqScanDone
+		 * relsubs_done flag, so that re-fetching the test tuple is possible.
+		 * However, given the assumption that no caller sets a mark at the
+		 * start of the scan, we can only get here with relsubs_done[i]
 		 * already set, and so no state need be saved.
 		 */
 		Index		scanrelid = ((Scan *) node->ss.ps.plan)->scanrelid;
 
 		Assert(scanrelid > 0);
-		if (estate->es_epqTupleSet[scanrelid - 1])
+		if (epqstate->relsubs_slot[scanrelid - 1] != NULL ||
+			epqstate->relsubs_rowmark[scanrelid - 1] != NULL)
 		{
 			/* Verify the claim above */
-			if (!estate->es_epqScanDone[scanrelid - 1])
+			if (!epqstate->relsubs_done[scanrelid - 1])
 				elog(ERROR, "unexpected ExecIndexOnlyMarkPos call in EPQ recheck");
 			return;
 		}
@@ -544,17 +492,19 @@ void
 ExecIndexOnlyRestrPos(IndexOnlyScanState *node)
 {
 	EState	   *estate = node->ss.ps.state;
+	EPQState   *epqstate = estate->es_epq_active;
 
-	if (estate->es_epqTuple != NULL)
+	if (estate->es_epq_active != NULL)
 	{
-		/* See comments in ExecIndexOnlyMarkPos */
+		/* See comments in ExecIndexMarkPos */
 		Index		scanrelid = ((Scan *) node->ss.ps.plan)->scanrelid;
 
 		Assert(scanrelid > 0);
-		if (estate->es_epqTupleSet[scanrelid - 1])
+		if (epqstate->relsubs_slot[scanrelid - 1] != NULL ||
+			epqstate->relsubs_rowmark[scanrelid - 1] != NULL)
 		{
 			/* Verify the claim above */
-			if (!estate->es_epqScanDone[scanrelid - 1])
+			if (!epqstate->relsubs_done[scanrelid - 1])
 				elog(ERROR, "unexpected ExecIndexOnlyRestrPos call in EPQ recheck");
 			return;
 		}
@@ -579,7 +529,7 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 {
 	IndexOnlyScanState *indexstate;
 	Relation	currentRelation;
-	bool		relistarget;
+	LOCKMODE	lockmode;
 	TupleDesc	tupDesc;
 
 	/*
@@ -598,7 +548,7 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &indexstate->ss.ps);
 
 	/*
-	 * open the base relation and acquire appropriate lock on it.
+	 * open the scan relation
 	 */
 	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
 
@@ -612,8 +562,18 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * types of the original datums.  (It's the AM's responsibility to return
 	 * suitable data anyway.)
 	 */
-	tupDesc = ExecTypeFromTL(node->indextlist, false);
-	ExecInitScanTupleSlot(estate, &indexstate->ss, tupDesc);
+	tupDesc = ExecTypeFromTL(node->indextlist);
+	ExecInitScanTupleSlot(estate, &indexstate->ss, tupDesc,
+						  &TTSOpsVirtual);
+
+	/*
+	 * We need another slot, in a format that's suitable for the table AM, for
+	 * when we need to fetch a tuple from the table for rechecking visibility.
+	 */
+	indexstate->ioss_TableSlot =
+		ExecAllocTableSlot(&estate->es_tupleTable,
+						   RelationGetDescr(currentRelation),
+						   table_slot_callbacks(currentRelation));
 
 	/*
 	 * Initialize result type and projection info.  The node's targetlist will
@@ -645,16 +605,9 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return indexstate;
 
-	/*
-	 * Open the index relation.
-	 *
-	 * If the parent table is one of the target relations of the query, then
-	 * InitPlan already opened and write-locked the index, so we can avoid
-	 * taking another lock here.  Otherwise we need a normal reader's lock.
-	 */
-	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
-	indexstate->ioss_RelationDesc = index_open(node->indexid,
-											   relistarget ? NoLock : AccessShareLock);
+	/* Open the index relation. */
+	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
+	indexstate->ioss_RelationDesc = index_open(node->indexid, lockmode);
 
 	/*
 	 * Initialize index-specific scan state
@@ -820,4 +773,15 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
+}
+
+void
+YbExecUpdateInstrumentIndexOnlyScan(IndexOnlyScanState *node,
+									Instrumentation *instr)
+{
+	YbScanDesc ybscan = (YbScanDesc)node->ioss_ScanDesc->opaque;
+	Assert(PointerIsValid(ybscan));
+	if (ybscan->handle)
+		YbUpdateReadRpcStats(ybscan->handle,
+							 &instr->yb_read_rpcs, &instr->yb_tbl_read_rpcs);
 }

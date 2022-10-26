@@ -4,7 +4,7 @@
  *	   Win32 open() replacement
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  *
  * src/port/open.c
  *
@@ -21,6 +21,7 @@
 
 #include <fcntl.h>
 #include <assert.h>
+#include <sys/stat.h>
 
 
 static int
@@ -70,6 +71,23 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 						 (O_RANDOM | O_SEQUENTIAL | O_TEMPORARY) |
 						 _O_SHORT_LIVED | O_DSYNC | O_DIRECT |
 						 (O_CREAT | O_TRUNC | O_EXCL) | (O_TEXT | O_BINARY))) == fileFlags);
+#ifndef FRONTEND
+	Assert(pgwin32_signal_event != NULL);	/* small chance of pg_usleep() */
+#endif
+
+#ifdef FRONTEND
+
+	/*
+	 * Since PostgreSQL 12, those concurrent-safe versions of open() and
+	 * fopen() can be used by frontends, having as side-effect to switch the
+	 * file-translation mode from O_TEXT to O_BINARY if none is specified.
+	 * Caller may want to enforce the binary or text mode, but if nothing is
+	 * defined make sure that the default mode maps with what versions older
+	 * than 12 have been doing.
+	 */
+	if ((fileFlags & O_BINARY) == 0)
+		fileFlags |= O_TEXT;
+#endif
 
 	sa.nLength = sizeof(sa);
 	sa.bInheritHandle = TRUE;
@@ -94,17 +112,14 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 	{
 		/*
 		 * Sharing violation or locking error can indicate antivirus, backup
-		 * or similar software that's locking the file. Try again for 30
-		 * seconds before giving up.
+		 * or similar software that's locking the file.  Wait a bit and try
+		 * again, giving up after 30 seconds.
 		 */
 		DWORD		err = GetLastError();
 
 		if (err == ERROR_SHARING_VIOLATION ||
 			err == ERROR_LOCK_VIOLATION)
 		{
-			pg_usleep(100000);
-			loops++;
-
 #ifndef FRONTEND
 			if (loops == 50)
 				ereport(LOG,
@@ -115,7 +130,42 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 #endif
 
 			if (loops < 300)
+			{
+				pg_usleep(100000);
+				loops++;
 				continue;
+			}
+		}
+
+		/*
+		 * ERROR_ACCESS_DENIED is returned if the file is deleted but not yet
+		 * gone (Windows NT status code is STATUS_DELETE_PENDING).  In that
+		 * case we want to wait a bit and try again, giving up after 1 second
+		 * (since this condition should never persist very long).  However,
+		 * there are other commonly-hit cases that return ERROR_ACCESS_DENIED,
+		 * so care is needed.  In particular that happens if we try to open a
+		 * directory, or of course if there's an actual file-permissions
+		 * problem.  To distinguish these cases, try a stat().  In the
+		 * delete-pending case, it will either also get STATUS_DELETE_PENDING,
+		 * or it will see the file as gone and fail with ENOENT.  In other
+		 * cases it will usually succeed.  The only somewhat-likely case where
+		 * this coding will uselessly wait is if there's a permissions problem
+		 * with a containing directory, which we hope will never happen in any
+		 * performance-critical code paths.
+		 */
+		if (err == ERROR_ACCESS_DENIED)
+		{
+			if (loops < 10)
+			{
+				struct stat st;
+
+				if (stat(fileName, &st) != 0)
+				{
+					pg_usleep(100000);
+					loops++;
+					continue;
+				}
+			}
 		}
 
 		_dosmaperr(err);

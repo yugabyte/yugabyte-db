@@ -5,71 +5,6 @@
 CREATE TABLE subtransaction_tbl (
     i integer
 );
--- Explicit case for Python <2.6
-CREATE FUNCTION subtransaction_test(what_error text = NULL) RETURNS text
-AS $$
-import sys
-subxact = plpy.subtransaction()
-subxact.__enter__()
-exc = True
-try:
-    try:
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (1)")
-        plpy.execute("INSERT INTO subtransaction_tbl VALUES (2)")
-        if what_error == "SPI":
-            plpy.execute("INSERT INTO subtransaction_tbl VALUES ('oops')")
-        elif what_error == "Python":
-            raise Exception("Python exception")
-    except:
-        exc = False
-        subxact.__exit__(*sys.exc_info())
-        raise
-finally:
-    if exc:
-        subxact.__exit__(None, None, None)
-$$ LANGUAGE plpythonu;
-SELECT subtransaction_test();
- subtransaction_test 
----------------------
- 
-(1 row)
-
-SELECT * FROM subtransaction_tbl;
- i 
----
- 1
- 2
-(2 rows)
-
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('SPI');
-ERROR:  spiexceptions.InvalidTextRepresentation: invalid input syntax for integer: "oops"
-LINE 1: INSERT INTO subtransaction_tbl VALUES ('oops')
-                                               ^
-QUERY:  INSERT INTO subtransaction_tbl VALUES ('oops')
-CONTEXT:  Traceback (most recent call last):
-  PL/Python function "subtransaction_test", line 11, in <module>
-    plpy.execute("INSERT INTO subtransaction_tbl VALUES ('oops')")
-PL/Python function "subtransaction_test"
-SELECT * FROM subtransaction_tbl;
- i 
----
-(0 rows)
-
-TRUNCATE subtransaction_tbl;
-SELECT subtransaction_test('Python');
-ERROR:  Exception: Python exception
-CONTEXT:  Traceback (most recent call last):
-  PL/Python function "subtransaction_test", line 13, in <module>
-    raise Exception("Python exception")
-PL/Python function "subtransaction_test"
-SELECT * FROM subtransaction_tbl;
- i 
----
-(0 rows)
-
-TRUNCATE subtransaction_tbl;
--- Context manager case for Python >=2.6
 CREATE FUNCTION subtransaction_ctx_test(what_error text = NULL) RETURNS text
 AS $$
 with plpy.subtransaction():
@@ -95,7 +30,7 @@ SELECT * FROM subtransaction_tbl;
 
 TRUNCATE subtransaction_tbl;
 SELECT subtransaction_ctx_test('SPI');
-ERROR:  spiexceptions.InvalidTextRepresentation: invalid input syntax for integer: "oops"
+ERROR:  spiexceptions.InvalidTextRepresentation: invalid input syntax for type integer: "oops"
 LINE 1: INSERT INTO subtransaction_tbl VALUES ('oops')
                                                ^
 QUERY:  INSERT INTO subtransaction_tbl VALUES ('oops')
@@ -131,7 +66,7 @@ with plpy.subtransaction():
         with plpy.subtransaction():
             plpy.execute("INSERT INTO subtransaction_tbl VALUES (3)")
             plpy.execute("error")
-    except plpy.SPIError, e:
+    except plpy.SPIError as e:
         if not swallow:
             raise
         plpy.notice("Swallowed %s(%r)" % (e.__class__.__name__, e.args[0]))
@@ -236,8 +171,11 @@ with plpy.subtransaction() as s:
 $$ LANGUAGE plpythonu;
 CREATE FUNCTION subtransaction_exit_subtransaction_in_with() RETURNS void
 AS $$
-with plpy.subtransaction() as s:
-    s.__exit__(None, None, None)
+try:
+    with plpy.subtransaction() as s:
+        s.__exit__(None, None, None)
+except ValueError as e:
+    raise ValueError(e)
 $$ LANGUAGE plpythonu;
 SELECT subtransaction_exit_without_enter();
 ERROR:  ValueError: this subtransaction has not been entered
@@ -289,8 +227,8 @@ PL/Python function "subtransaction_enter_subtransaction_in_with"
 SELECT subtransaction_exit_subtransaction_in_with();
 ERROR:  ValueError: this subtransaction has already been exited
 CONTEXT:  Traceback (most recent call last):
-  PL/Python function "subtransaction_exit_subtransaction_in_with", line 3, in <module>
-    s.__exit__(None, None, None)
+  PL/Python function "subtransaction_exit_subtransaction_in_with", line 6, in <module>
+    raise ValueError(e)
 PL/Python function "subtransaction_exit_subtransaction_in_with"
 -- Make sure we don't get a "current transaction is aborted" error
 SELECT 1 as test;
