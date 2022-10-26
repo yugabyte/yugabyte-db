@@ -46,17 +46,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-// On OSX, the maxrss is in bytes.
-// https://www.manpagez.com/man/2/getrusage/osx-10.12.3.php
-static long
-convert_rss_if_on_OSX(maxrss)
-{
-#ifdef __APPLE__
-	maxrss = maxrss / 1024;
-#endif
-	return maxrss;
-}
-
 /*
  * Get memory usage of the current session.
  * - The return value is a ROW of unix getrusage().
@@ -140,7 +129,7 @@ yb_mem_usage(PG_FUNCTION_ARGS)
 
 	// Get usage.
 	getrusage(RUSAGE_SELF, &r);
-	sprintf(a, "Session memory usage = %ld kbs", convert_rss_if_on_OSX(r.ru_maxrss));
+	sprintf(a, "Session memory usage = %ld kbs", r.ru_maxrss);
 	PG_RETURN_TEXT_P(cstring_to_text(a));
 }
 
@@ -149,7 +138,7 @@ yb_mem_usage_kb(PG_FUNCTION_ARGS)
 {
 	struct rusage r;
 	getrusage(RUSAGE_SELF, &r);
-	PG_RETURN_INT64(convert_rss_if_on_OSX(r.ru_maxrss));
+	PG_RETURN_INT64(r.ru_maxrss);
 }
 
 /*
