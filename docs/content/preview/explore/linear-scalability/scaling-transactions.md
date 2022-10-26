@@ -1,12 +1,12 @@
 ---
-title: Scaling Transactions
-headerTitle: Scaling Concurrent Transactions
-linkTitle: Scaling Concurrent Transactions
-description: Scaling Concurrent Transactions in YugabyteDB.
-headcontent: Scaling Concurrent Transactions in YugabyteDB.
+title: Scaling transactions
+headerTitle: Scaling concurrent transactions
+linkTitle: Scaling concurrent transactions
+description: Scaling concurrent transactions in YugabyteDB.
+headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
-    name: Scaling Transactions
+    name: Scaling transactions
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
     weight: 200

@@ -1,12 +1,12 @@
 ---
-title: Sharding Data
-headerTitle: Sharding Data Across Nodes
-linkTitle: Sharding Data Across Nodes
-description: Sharding Data Across Nodes in YugabyteDB
-headcontent: Sharding Data Across Nodes in YugabyteDB
+title: Sharding data
+headerTitle: Sharding data across nodes
+linkTitle: Sharding data across nodes
+description: Sharding data across nodes in YugabyteDB
+headcontent: Hash and range sharding in YugabyteDB
 menu:
   preview:
-    name: Sharding Data
+    name: Sharding data
     identifier: explore-transactions-sharding-data-1-ysql
     parent: explore-scalability
     weight: 210

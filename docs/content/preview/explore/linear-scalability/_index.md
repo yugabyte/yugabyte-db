@@ -1,9 +1,9 @@
 ---
-title: Horizontal Scalability
-headerTitle: Horizontal Scalability
+title: Horizontal scalability
+headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
-description: Horizontal Scalability in YugabyteDB.
-headcontent: Horizontal Scalability in YugabyteDB.
+description: Horizontal scalability in YugabyteDB.
+headcontent: Dynamically add and remove nodes in a running cluster
 aliases:
   - /explore/linear-scalability/
   - /preview/explore/linear-scalability/
