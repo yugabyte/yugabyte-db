@@ -48,13 +48,13 @@ The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a 
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an application](../../../develop/build-apps/python/ysql-psycopg2/).
+The following sections demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Add the YugabyteDB driver dependency
 
-Building Psycopg requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
+Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
 
@@ -133,7 +133,7 @@ import psycopg2
 
 # Create the database connection.
 
-connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte     load_balance=True"
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte load_balance=True"
 
 conn = psycopg2.connect(connString)
 
@@ -184,7 +184,13 @@ cur.close()
 conn.close()
 ```
 
-When you run the `QuickStartApp.py` project, you should see output similar to the following:
+Run the project `QuickStartApp.py` using the following command:
+
+```python
+python3 QuickStartApp.py
+```
+
+You should see output similar to the following:
 
 ```text
 Created table employee
@@ -196,7 +202,8 @@ If there is no output or you get an error, verify the parameters included in the
 
 ## Learn more
 
-- Build Python applications using [Django](../../../drivers-orms/python/django/)
-- Build Python applications using [SQLAlchemy](../../../drivers-orms/python/sqlalchemy/)
-- [Python driver reference](../../../reference/drivers/python/yugabyte-psycopg2-reference/#fundamentals)
+- Refer to [YugabyteDB Psycopg2 driver reference](../../../reference/drivers/python/yugabyte-psycopg2-reference/) and [Try it out](../../../reference/drivers/python/yugabyte-psycopg2-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Python applications using [PostgreSQL Psycopg2 smart driver](../postgres-psycopg2/)
+- Build Python applications using [Django](../django/)
+- Build Python applications using [SQLAlchemy](../sqlalchemy/)
