@@ -1,12 +1,12 @@
 ---
-title: Scaling Transactions
-headerTitle: Scaling Concurrent Transactions
-linkTitle: Scaling Concurrent Transactions
-description: Scaling Concurrent Transactions in YugabyteDB.
-headcontent: Scaling Concurrent Transactions in YugabyteDB.
+title: Scaling transactions
+headerTitle: Scaling concurrent transactions
+linkTitle: Scaling concurrent transactions
+description: Scaling concurrent transactions in YugabyteDB.
+headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
-    name: Scaling Transactions
+    name: Scaling transactions
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
     weight: 200
@@ -31,13 +31,13 @@ type: docs
 -->
 </ul>
 
-On this page, you'll observe horizontal scale-out and scale-in in action. In particular, you’ll see how in YugabyteDB, you can add nodes to scale your cluster up very efficiently and reliably in order to achieve more read and write IOPS (input/output operations per second). In this tutorial, you will look at how YugabyteDB can scale while a workload is running. You will run a read-write workload using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, and add nodes to it while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+This page demonstrates YugabyteDB's horizontal scale-out and scale-in capability. With YugabyteDB, you can add nodes to upscale your cluster efficiently and reliably to achieve more read and write IOPS (input/output operations per second). This tutorial shows how YugabyteDB can scale while running a read-write workload. Using the prepackaged [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) against a 3-node local cluster with a replication factor of 3, you add nodes while the workload is running. Next, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
 This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) cluster management utility.
 
-## 1. Create universe
+## Create cluster
 
-Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down. <br />
+Start a new three-node cluster with a replication factor (RF) of `3` and set the number of [shards](../../../architecture/docdb-sharding/sharding/) (also called tablets) per table per YB-TServer to `4` so that you can better observe the load balancing during scale-up and scale-down.
 
 Create the first node:
 
@@ -69,12 +69,13 @@ $ ./bin/yugabyted start \
                   --tserver_flags "ysql_num_shards_per_tserver=4,follower_unavailable_considered_failed_sec=30"
 ```
 
-* `ysql_num_shards_per_tserver` defines the number of shards of a table that one node will have. This means that for our example above, a table will have a total of 12 shards across all the 3 nodes combined.
-* `follower_unavailable_considered_failed_sec` sets the time after which other nodes consider an inactive node to be unavailable and remove it from the cluster.
+`ysql_num_shards_per_tserver` defines the number of shards of a table that one node will have. This means that for the preceding example, a table will have a total of 12 shards across all the 3 nodes combined.
+
+`follower_unavailable_considered_failed_sec` sets the time after which other nodes consider an inactive node to be unavailable and remove it from the cluster.
 
 Each table now has four tablet-leaders in each YB-TServer and with a replication factor (RF) of `3`; there are two tablet-followers for each tablet-leader distributed in the two other YB-TServers. So each YB-TServer has 12 tablets (that is, the sum of 4 tablet-leaders plus 8 tablet-followers) per table.
 
-## 2. Run the YugabyteDB workload generator
+## Run the YugabyteDB workload generator
 
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
@@ -91,20 +92,20 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                  --num_threads_read 4
 ```
 
-The workload application prints some statistics while running, an example is shown here. You can read more details about the output of the sample applications [here](https://github.com/yugabyte/yb-sample-apps).
+The workload application prints some statistics while running, an example is shown here. For more details about the output of the sample applications, refer to the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps).
 
 ```output
 2018-05-10 09:10:19,538 [INFO|...] Read: 8988.22 ops/sec (0.44 ms/op), 818159 total ops  |  Write: 1095.77 ops/sec (0.91 ms/op), 97120 total ops  | ...
 2018-05-10 09:10:24,539 [INFO|...] Read: 9110.92 ops/sec (0.44 ms/op), 863720 total ops  |  Write: 1034.06 ops/sec (0.97 ms/op), 102291 total ops  | ...
 ```
 
-## 3. Observe IOPS per node
+## Observe IOPS per node
 
 You can check a lot of the per-node stats by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. It should look like this. The total read and write IOPS per node are highlighted in the screenshot below. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
 
 ![Read and write IOPS with 3 nodes](/images/ce/transactions_observe.png)
 
-## 4. Add node and observe linear scaling
+## Add node and observe linear scaling
 
 Add a node to the universe with the same flags.
 
@@ -125,7 +126,7 @@ The YugabyteDB universe automatically lets the client know to use the newly adde
 
 ![Read and write IOPS with 4 nodes](/images/ce/transactions_newnode_added_observe.png)
 
-## 5. Remove node and observe linear scale in
+## Remove node and observe linear scale in
 
 Remove the recently added node from the universe.
 
@@ -140,7 +141,7 @@ Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see t
 
 ![Read and write IOPS with 4th node removed](/images/ce/transactions_deleted_observe.png)
 
-## 6. Clean up (optional)
+## Clean up (optional)
 
 Optionally, you can shut down the local cluster you created earlier.
 
