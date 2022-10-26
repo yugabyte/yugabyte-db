@@ -6,7 +6,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType
 import com.yugabyte.yw.commissioner.Common
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams
 
-import java.sql.Connection
+import java.sql.{Connection, PreparedStatement}
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.libs.Json
 
@@ -26,9 +26,12 @@ class V208__Universe_Details_Fill_Storage_Type extends JdbcMigration {
         .anyMatch(asJavaPredicate[UniverseDefinitionTaskParams.Cluster]
           (cluster => processCluster(cluster)))
       if (updated) {
-        val newUnivDetails = Json.toJson(universeDefinition)
-        connection.createStatement().execute(s"UPDATE universe SET universe_details_json = " +
-          s"'$newUnivDetails' WHERE universe_uuid = '$univUuid'")
+        val newUnivDetails = Json.stringify(Json.toJson(universeDefinition))
+        val statement = connection.prepareStatement(
+          "UPDATE universe SET universe_details_json = ? WHERE universe_uuid = ?::uuid")
+        statement.setString(1, newUnivDetails)
+        statement.setString(2, univUuid)
+        statement.execute()
       }
     }
   }

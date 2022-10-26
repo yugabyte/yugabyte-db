@@ -163,6 +163,13 @@
   to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
 
+# Build an app for aiopg, now in integrations
+
+[[redirects]]
+  from = "/preview/develop/build-apps/python/ysql-aiopg/"
+  to = "/preview/integrations/aiopg/"
+  force = true
+
 # Manual import was in migrate, now in manage
 
 [[redirects]]
@@ -411,6 +418,10 @@
 [[redirects]]
    from = "/preview/develop/build-apps/ruby/ysql-rails-activerecord/"
    to = "/preview/drivers-orms/ruby/activerecord/"
+
+[[redirects]]
+   from = "/preview/develop/build-apps/python/ysql-psycopg2/"
+   to = "/preview/drivers-orms/python/postgres-psycopg2/"
 
 [[redirects]]
    from = "/preview/develop/build-apps/:lang/:driver/"

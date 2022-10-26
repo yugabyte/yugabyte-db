@@ -895,6 +895,8 @@ Status CatalogManager::Init() {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
+  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
 
@@ -9498,8 +9500,6 @@ Status CatalogManager::EnableBgTasks() {
       [this]() { RebuildYQLSystemPartitions(); }));
 
   cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
-
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
   return Status::OK();
 }
