@@ -1552,7 +1552,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return Status::OK();
   }
 
-  virtual Status ResumeCdcAfterNewSchema(const TableInfo& table_info) {
+  virtual Status ResumeCdcAfterNewSchema(const TableInfo& table_info,
+                                         SchemaVersion last_compatible_consumer_schema_version) {
     return Status::OK();
   }
 

@@ -297,7 +297,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema)
       const override;
 
-  Status ResumeCdcAfterNewSchema(const TableInfo& table_info) override;
+  Status ResumeCdcAfterNewSchema(const TableInfo& table_info,
+                                 SchemaVersion consumer_schema_version) override;
 
   tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
@@ -444,6 +445,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
 
   Result<std::map<std::string, KeyRange>> GetTableKeyRanges(const TableId& table_id);
+
+  Result<SchemaVersion> GetTableSchemaVersion(const TableId& table_id);
 
   Result<SysRowEntries> CollectEntries(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
