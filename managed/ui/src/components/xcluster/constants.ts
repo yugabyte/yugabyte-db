@@ -157,3 +157,8 @@ export const XClusterModalName = {
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
   TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
 } as const;
+
+/**
+ * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
+ */
+export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;

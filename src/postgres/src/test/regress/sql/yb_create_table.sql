@@ -551,6 +551,8 @@ CREATE TABLE tab_with_unique (i int, UNIQUE (i));
 COMMIT;
 
 -- Test temp table/view are automatically dropped.
+-- TODO: Remove DISCARD TEMP after the fix of #14519
+DISCARD TEMP;
 \c yugabyte
 create temporary table temp_tab(a int);
 create temporary view temp_view as select * from temp_tab;

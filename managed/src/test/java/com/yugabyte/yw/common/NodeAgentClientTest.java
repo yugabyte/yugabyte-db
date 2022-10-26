@@ -57,6 +57,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
                       io.grpc.stub.StreamObserver<PingResponse> responseObserver) {
                     responseObserver.onNext(
                         PingResponse.newBuilder().setData(request.getData()).build());
+                    responseObserver.onCompleted();
                   }
                 }));
     // Generate a unique in-process server name.

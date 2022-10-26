@@ -88,6 +88,16 @@ namespace pggate {
 //--------------------------------------------------------------------------------------------------
 namespace {
 
+inline YBCStatus YBCStatusOK() {
+  return nullptr;
+}
+
+YBCStatus YBCStatusNotSupport(const string& feature_name = std::string()) {
+  return ToYBCStatus(feature_name.empty()
+      ? STATUS(NotSupported, "Feature is not supported")
+      : STATUS_FORMAT(NotSupported, "Feature '$0' not supported", feature_name));
+}
+
 // Using a raw pointer here to fully control object initialization and destruction.
 pggate::PgApiImpl* pgapi;
 std::atomic<bool> pgapi_shutdown_done;
@@ -1056,7 +1066,7 @@ YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
   if (typeentity == nullptr
       || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
       || !typeentity->allow_for_primary_key) {
-    return YBCStatusNotSupport("");
+    return YBCStatusNotSupport();
   }
 
   if (typeentity->datum_fixed_size > 0) {

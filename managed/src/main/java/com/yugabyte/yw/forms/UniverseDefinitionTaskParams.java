@@ -185,7 +185,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   /** Types of Clusters that can make up a universe. */
   public enum ClusterType {
     PRIMARY,
-    ASYNC
+    ASYNC,
+    ADDON
   }
 
   /** Allowed states for an exposing service of a universe */
@@ -384,6 +385,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   /** The user defined intent for the universe. */
   public static class UserIntent {
+
     // Nice name for the universe.
     @Constraints.Required() @ApiModelProperty public String universeName;
 
@@ -729,6 +731,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   public Cluster upsertCluster(
       UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
+    return upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.ASYNC);
+  }
+
+  /**
+   * Add a cluster with the specified UserIntent, PlacementInfo, and uuid to the list of clusters if
+   * one does not already exist. Otherwise, update the existing cluster with the specified
+   * UserIntent and PlacementInfo.
+   *
+   * @param userIntent UserIntent describing the cluster.
+   * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param clusterUuid uuid of the cluster we want to change.
+   * @param clusterType type of the cluster we want to change.
+   * @return the updated/inserted cluster.
+   */
+  public Cluster upsertCluster(
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      UUID clusterUuid,
+      ClusterType clusterType) {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster != null) {
       if (userIntent != null) {
@@ -738,7 +759,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         cluster.placementInfo = placementInfo;
       }
     } else {
-      cluster = new Cluster(ClusterType.ASYNC, userIntent == null ? new UserIntent() : userIntent);
+      cluster = new Cluster(clusterType, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
       clusters.add(cluster);
     }
@@ -798,9 +819,32 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public List<Cluster> getReadOnlyClusters() {
+    return getClusterByType(ClusterType.ASYNC);
+  }
+
+  /**
+   * Helper API to retrieve a Cluster in the Universe represented by these Params by its UUID.
+   *
+   * @return a list of all AddOns in the Universe represented by these Params.
+   */
+  @JsonIgnore
+  public List<Cluster> getAddOnClusters() {
+    return getClusterByType(ClusterType.ADDON);
+  }
+
+  @JsonIgnore
+  public List<Cluster> getClusterByType(ClusterType clusterType) {
     return clusters
         .stream()
-        .filter(c -> c.clusterType.equals(ClusterType.ASYNC))
+        .filter(c -> c.clusterType.equals(clusterType))
+        .collect(Collectors.toList());
+  }
+
+  @JsonIgnore
+  public List<Cluster> getNonPrimaryClusters() {
+    return clusters
+        .stream()
+        .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
 
@@ -838,12 +882,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public Set<NodeDetails> getNodesInCluster(UUID uuid) {
-    if (nodeDetailsSet == null) return null;
+    if (nodeDetailsSet == null) {
+      return null;
+    }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
   public static class BaseConverter<T extends UniverseDefinitionTaskParams>
       extends StdConverter<T, T> {
+
     @Override
     public T convert(T taskParams) {
       // If there is universe level communication port set then push it down to node level
@@ -877,6 +924,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       allowGetters = true)
   @ToString
   public static class XClusterInfo {
+
     @ApiModelProperty("The value of certs_for_cdc_dir gflag")
     public String sourceRootCertDirPath;
 
