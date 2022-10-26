@@ -80,6 +80,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -3326,5 +3327,63 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         params, customer.getCustomerId(), params.getReadOnlyClusters().get(0).uuid, CREATE);
 
     assertNotNull(params.getReadOnlyClusters().get(0).placementInfo);
+  }
+
+  @Test
+  public void testChangeMasterInstanceTypeDedicated() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region, "z2", "z2", "subnet-2");
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.uuid.toString();
+    userIntent.regionList = Collections.singletonList(region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.dedicatedNodes = true;
+    userIntent.providerType = provider.getCloudCode();
+    userIntent.preferredRegion = null;
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null);
+    params.currentClusterType = ClusterType.PRIMARY;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, CREATE);
+    assertEquals(6, params.nodeDetailsSet.size()); // 3 master-only and 3 tserver-only
+
+    Universe.create(params, customer.getCustomerId());
+
+    params.nodeDetailsSet.forEach(node -> node.state = Live);
+    params.getPrimaryCluster().userIntent.masterInstanceType = "new_type";
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getCustomerId(), params.getPrimaryCluster().uuid, EDIT);
+    List<NodeDetails> toBeAdded =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.state == ToBeAdded)
+            .collect(Collectors.toList());
+    List<NodeDetails> toBeRemoved =
+        params
+            .nodeDetailsSet
+            .stream()
+            .filter(n -> n.state == ToBeRemoved)
+            .collect(Collectors.toList());
+    assertEquals(3, toBeAdded.size());
+    assertEquals(3, toBeRemoved.size());
+    Stream.concat(toBeAdded.stream(), toBeRemoved.stream())
+        .forEach(
+            node -> {
+              assertEquals(UniverseTaskBase.ServerType.MASTER, node.dedicatedTo);
+            });
   }
 }
