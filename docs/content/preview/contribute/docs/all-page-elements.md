@@ -2,16 +2,20 @@
 title: YugabyteDB Managed quick start
 headerTitle: Page with elements
 linkTitle: Page with elements
-headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
-description: Get started using YugabyteDB Managed in less than five minutes.
+headcontent: All page elements on a single page
+description: YugabyteDB Documentation page elements on a single page.
 layout: single
 type: docs
 menu:
   preview:
     identifier: all-page-elements
-    parent: docs
+    parent: docs-edit
     weight: 9000
 ---
+
+This page includes typical styles and widgets used for the YugabyteDB Documentation site.
+
+## Tab widgets
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
@@ -21,14 +25,16 @@ menu:
       </a>
     </li>
     <li>
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
+      <a href="../all-page-elements/" class="nav-link">
+        Tab 2
       </a>
     </li>
   </ul>
 </div>
 
 This is a top-level tab widget, that uses different files for each tab. Everything that follows is in this tab's file. If you change tabs, you get a whole new page. This style is possibly only used for the quick start.
+
+### Second tab widget style
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
@@ -39,19 +45,19 @@ This is a top-level tab widget, that uses different files for each tab. Everythi
       </a>
     </li>
     <li>
-      <a href="../quick-start/linux/" class="nav-link">
+      <a href="../all-page-elements/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
-      <a href="../quick-start/docker/" class="nav-link">
+      <a href="../all-page-elements/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
+      <a href="../all-page-elements/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -63,129 +69,9 @@ This is a second-level tab widget, that uses different files for each tab - same
 
 Everything that follows is in this tab's file. If you change tabs, you get a whole new page.
 
-## Heading 2
+### In-page tab widget
 
-The following is a basic markdown table.
-
-| Table | A column |
-| :--- | :--- |
-| A row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
-| Another row | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
-| Another row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-: Another paragraph in the definition.
-
-Glossary term
-: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
-: Another paragraph in the definition.
-
-### Heading 3
-
-An ordinary paragraph.
-
->**Blockquote**
->
->For content that is outside of a set of instructions; sort of explanatory but peripheral to the task at hand. Advice, what's happening here sort of thing. But not a full blown Note or Warning. It's actually a blockquote in markdown. I'm the only one who uses it. Sorry.
->
->The "heading" is just bold text.
-
-{{< note title="Note" >}}
-
-This is an actual Note. Maybe a bit overkill.
-
-{{< /note >}}
-
-{{< tip title="Tip" >}}
-
-This is an actual Tip. Maybe there's a cool alternative to what you are doing.
-
-{{< /tip >}}
-
-{{< warning title="Warning" >}}
-
-This is an actual Warning. Whatever you are doing may threaten your data if you do it wrong.
-
-{{< /warning >}}
-
-What follows is an image, some numbered steps, some code, text indented under a step:
-
-![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
-
-1. Numbered list with indented lists.
-
-    1. Second level numbered list indent.
-
-    1. Second level numbered list indent.
-
-        1. Third level numbered list indent.
-
-        1. Third level numbered list indent.
-
-1. Under **Cloud Shell**, click **Launch Cloud Shell**.
-
-1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API type, and click **Confirm**.
-
-    Cloud Shell opens in a separate browser window. Cloud Shell can take up to 30 seconds to be ready.
-
-    ```output
-    Enter your DB password:
-    ```
-
-1. Enter the password for the admin user credentials that you saved when you created the cluster.
-
-    The shell prompt appears and is ready to use.
-
-    ```output
-    ysqlsh (11.2-YB-2.2.0.0-b0)
-    SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-    Type "help" for help.
-
-    yugabyte=>
-    ```
-
-Bulleted lists with levels of indent:
-
-- Bulleted list with indented lists.
-
-  - Second level Bulleted list indent.
-
-  - Second level Bulleted list indent.
-
-    - Third level Bulleted list indent.
-
-    - Third level Bulleted list indent.
-
-#### Heading 4
-
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
-
-Some bullets:
-
-- a cluster deployed in YugabyteDB Managed.
-- the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
-- your computer added to the cluster IP allow list.
-
-Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
-
-#### Details tag
-
-The details HTML tag is used to create an interactive widget that the user can open and close. By default, the widget is closed. When open, it expands, and displays the contents.
-
-<details>
-  <summary>Tiresomely long code block</summary>
-
-These contents might be a very long bit of code or somesuch.
-
-</details>
-
-### Another tab widget style - in-page
-
-This tab widget doesn't use separate files to fill in the content and then link between. Here the content is placed inside shortcode.
+This tab widget doesn't use separate files to fill in the content and then link between. Here the content is placed inside the `tabpane` shortcode.
 
 {{< tabpane code=false >}}
 
@@ -224,18 +110,6 @@ To build and run the application, do the following:
 
 If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
 
-You should see output similar to the following:
-
-```output
->>>> Successfully connected to YugabyteDB!
->>>> Successfully created DemoAccount table.
->>>> Selecting accounts:
-name = Jessica, age = 28, country = USA, balance = 10000
-name = John, age = 28, country = Canada, balance = 9000
-```
-
-You have successfully executed a basic Java application that works with YugabyteDB Managed.
-
   {{% /tab %}}
 
   {{% tab header="Go" lang="go" %}}
@@ -272,27 +146,133 @@ To build and run the application, do the following:
     $ go run sample-app.go
     ```
 
-You should see output similar to the following:
-
-```output
->>>> Successfully connected to YugabyteDB!
->>>> Successfully created table DemoAccount.
->>>> Selecting accounts:
-name = Jessica, age = 28, country = USA, balance = 10000
-name = John, age = 28, country = Canada, balance = 9000
->>>> Transferred 800 between accounts.
->>>> Selecting accounts:
-name = Jessica, age = 28, country = USA, balance = 9200
-name = John, age = 28, country = Canada, balance = 9800
-```
-
-You have successfully executed a basic Go application that works with YugabyteDB Managed.
-
-[Explore the application logic](../develop/build-apps/go/cloud-ysql-go/#explore-the-application-logic)
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+## Table
+
+The following is a basic markdown table.
+
+| Table | A column |
+| :--- | :--- |
+| A row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+| Another row | Another row in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+| Another row | Another column in a table. Maybe to describe stuff. Might have bulleted lists etc, but that all has to be done using HTML. |
+
+## Glossary entries
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+: Another paragraph in the definition.
+
+Glossary term
+: Definition. This text is a definition for a glossary term, or any sort of definition list. We don't use this much, but it might be useful in some contexts.
+: Another paragraph in the definition.
+
+## Notes and blockquote
+
+An ordinary paragraph.
+
+>**Blockquote**
+>
+>For content that is outside of a set of instructions; sort of explanatory but peripheral to the task at hand. Advice, what's happening here sort of thing. But not a full blown Note or Warning. It's actually a blockquote in markdown. I'm the only one who uses it. Sorry.
+>
+>The "heading" is just bold text.
+
+{{< note title="Note" >}}
+
+This is an actual Note. Maybe a bit overkill.
+
+{{< /note >}}
+
+{{< tip title="Tip" >}}
+
+This is an actual Tip. Maybe there's a cool alternative to what you are doing.
+
+{{< /tip >}}
+
+{{< warning title="Warning" >}}
+
+This is an actual Warning. Whatever you are doing may threaten your data if you do it wrong.
+
+{{< /warning >}}
+
+## Images and video
+
+What follows is an image:
+
+![Connect using cloud shell](/images/yb-cloud/cloud-connect-shell.gif)
+
+What follows is an embedded youtube video:
+
+{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+
+## Lists
+
+What follows are some numbered steps, some code, text indented under a step:
+
+1. Numbered list with indented lists.
+
+    1. Second level numbered list indent.
+
+    1. Second level numbered list indent.
+
+        1. Third level numbered list indent.
+
+        1. Third level numbered list indent.
+
+1. Second list item. Some text in **bold**. Some text in _italics_.
+
+1. Third list item.
+
+    Indented text under a list.
+
+    ```output
+    Some code
+    ```
+
+1. Fourth list item.
+
+Bulleted lists with levels of indent:
+
+- Bulleted list with indented lists.
+
+  - Second level Bulleted list indent.
+
+  - Second level Bulleted list indent.
+
+    - Third level Bulleted list indent.
+
+    - Third level Bulleted list indent.
+
+### Heading 3
+
+#### Heading 4
+
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
+
+Some bullets:
+
+- a cluster deployed in YugabyteDB Managed.
+- the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
+- your computer added to the cluster IP allow list.
+
+Refer to [Before you begin](../../../develop/build-apps/cloud-add-ip/).
+
+## Details tag
+
+The details HTML tag is used to create an interactive widget that the user can open and close. By default, the widget is closed. When open, it expands, and displays the contents.
+
+<details>
+  <summary>Tiresomely long code block</summary>
+
+These contents might be a very long bit of code or somesuch.
+
+</details>
 
 ## Syntax documentation
 
