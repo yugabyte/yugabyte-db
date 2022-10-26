@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.api.client.util.Throwables;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.BackupUtil;
@@ -11,8 +12,11 @@ import com.yugabyte.yw.common.YbcBackupUtil;
 import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,6 +33,7 @@ import org.yb.ybc.BackupServiceTaskCreateResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
 import org.yb.ybc.BackupServiceTaskResultResponse;
 import org.yb.ybc.ControllerStatus;
+import play.libs.Json;
 
 @Slf4j
 public class BackupTableYbc extends YbcTaskBase {
@@ -53,52 +58,77 @@ public class BackupTableYbc extends YbcTaskBase {
     this.ybcManager = ybcManager;
   }
 
+  public static class Params extends BackupTableParams {
+    public Params(BackupTableParams tableParams) {
+      super(tableParams);
+    }
+    // Node-ip to use as co-ordinator for the backup.
+    public String nodeIp = null;
+    public int index;
+  }
+
   @Override
-  public BackupTableParams taskParams() {
-    return (BackupTableParams) taskParams;
+  public BackupTableYbc.Params taskParams() {
+    return (BackupTableYbc.Params) taskParams;
   }
 
   @Override
   public void run() {
-    int idx = 0;
     try {
-      ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID);
+      ybcClient = ybcBackupUtil.getYbcClient(taskParams().universeUUID, taskParams().nodeIp);
       // Check if it is an incremental backup
-      if (taskParams().baseBackupUUID != taskParams().backupUuid) {
+      if (!taskParams().baseBackupUUID.equals(taskParams().backupUuid)) {
         previousBackup =
             Backup.getLastSuccessfulBackupInChain(
                 taskParams().customerUuid, taskParams().baseBackupUUID);
         previousBackupKeyspaces =
             ybcBackupUtil.getBackupKeyspaceToParamsMap(previousBackup.getBackupInfo().backupList);
       }
-      for (BackupTableParams tableParams : taskParams().backupList) {
-        baseLogMessage =
-            ybcBackupUtil.getBaseLogMessage(tableParams.backupUuid, tableParams.getKeyspace());
+
+      baseLogMessage =
+          ybcBackupUtil.getBaseLogMessage(taskParams().backupUuid, taskParams().getKeyspace());
+
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+      boolean isResumable = false;
+      if (taskInfo.getTaskType().equals(TaskType.CreateBackup)) {
+        isResumable = true;
+      }
+      BackupRequestParams backupRequestParams = null;
+      JsonNode backupParams = null;
+      if (isResumable) {
+        backupRequestParams = Json.fromJson(taskInfo.getTaskDetails(), BackupRequestParams.class);
+        taskID = backupRequestParams.currentYbcTaskId;
+      }
+
+      if (taskID == null) {
         taskID =
             ybcBackupUtil.getYbcTaskID(
-                tableParams.backupUuid, tableParams.backupType.name(), tableParams.getKeyspace());
+                taskParams().backupUuid,
+                taskParams().backupType.name(),
+                taskParams().getKeyspace());
         String successMarkerString = null;
         BackupTableParams previousKeyspaceParams = null;
         if (MapUtils.isNotEmpty(previousBackupKeyspaces)
             && previousBackupKeyspaces.containsKey(
-                ImmutablePair.of(tableParams.backupType, tableParams.getKeyspace()))) {
+                ImmutablePair.of(taskParams().backupType, taskParams().getKeyspace()))) {
           previousKeyspaceParams =
               previousBackupKeyspaces.get(
-                  ImmutablePair.of(tableParams.backupType, tableParams.getKeyspace()));
+                  ImmutablePair.of(taskParams().backupType, taskParams().getKeyspace()));
+          String dsmTaskId = taskID.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
           successMarkerString =
               ybcManager.downloadSuccessMarker(
                   ybcBackupUtil.createDsmRequest(
                       taskParams().customerUuid,
                       taskParams().storageConfigUUID,
-                      taskID,
+                      dsmTaskId,
                       previousKeyspaceParams),
                   taskParams().universeUUID,
-                  taskID);
+                  dsmTaskId);
           if (StringUtils.isBlank(successMarkerString)) {
             throw new RuntimeException(
                 String.format(
                     "Got empty success marker for base backup with keyspace %s",
-                    tableParams.getKeyspace()));
+                    taskParams().getKeyspace()));
           }
         }
         // Send create backup request to yb-controller.
@@ -108,8 +138,8 @@ public class BackupTableYbc extends YbcTaskBase {
           // it's an incremental backup.
           BackupServiceTaskCreateRequest backupServiceTaskCreateRequest =
               previousKeyspaceParams == null
-                  ? ybcBackupUtil.createYbcBackupRequest(tableParams)
-                  : ybcBackupUtil.createYbcBackupRequest(tableParams, previousKeyspaceParams);
+                  ? ybcBackupUtil.createYbcBackupRequest(taskParams())
+                  : ybcBackupUtil.createYbcBackupRequest(taskParams(), previousKeyspaceParams);
           if (previousKeyspaceParams != null) {
             // Fail if validation fails.
             YbcBackupResponse successMarker =
@@ -124,6 +154,10 @@ public class BackupTableYbc extends YbcTaskBase {
                 String.format(
                     "%s Successfully submitted backup task to YB-controller with taskID: %s",
                     baseLogMessage, taskID));
+          } else if (response.getStatus().getCode().equals(ControllerStatus.EXISTS)) {
+            log.info(
+                String.format(
+                    "%s Already present on YB-controller with taskID: %s", baseLogMessage, taskID));
           } else {
             throw new PlatformServiceException(
                 response.getStatus().getCodeValue(),
@@ -138,44 +172,40 @@ public class BackupTableYbc extends YbcTaskBase {
               e.getMessage());
           Throwables.propagate(e);
         }
+      }
 
-        // Poll create backup progress on yb-controller and handle result
-        try {
-          pollTaskProgress(ybcClient, taskID);
-          handleBackupResult(tableParams, idx);
-        } catch (Exception e) {
-          log.error(
-              "{} Polling backup task progress on YB-Controller failed with error {}",
-              baseLogMessage,
-              e.getMessage());
-          Throwables.propagate(e);
+      if (isResumable) {
+        backupRequestParams.currentYbcTaskId = taskID;
+        backupRequestParams.currentIdx = taskParams().index;
+        backupParams = Json.toJson(backupRequestParams);
+        getRunnableTask().setTaskDetails(backupParams);
+      }
+
+      // Poll create backup progress on yb-controller and handle result
+      try {
+        pollTaskProgress(ybcClient, taskID);
+        handleBackupResult();
+        if (isResumable) {
+          backupRequestParams.currentYbcTaskId = null;
+          backupRequestParams.currentIdx++;
+          backupParams = Json.toJson(backupRequestParams);
+          getRunnableTask().setTaskDetails(backupParams);
         }
-        ybcManager.deleteYbcBackupTask(tableParams.universeUUID, taskID);
-        idx++;
+      } catch (Exception e) {
+        log.error(
+            "{} Polling backup task progress on YB-Controller failed with error {}",
+            baseLogMessage,
+            e.getMessage());
+        Throwables.propagate(e);
       }
-      Backup backup = Backup.getOrBadRequest(taskParams().customerUuid, taskParams().backupUuid);
-
-      // Update base backup's expiry time if this increment succeeds and expires after the base
-      // backup.
-      if (taskParams().baseBackupUUID != taskParams().backupUuid) {
-        Backup baseBackup =
-            Backup.getOrBadRequest(taskParams().customerUuid, taskParams().baseBackupUUID);
-        baseBackup.onIncrementCompletion(backup.getCreateTime(), totalSizeinBytes);
-        // Unset expiry time for increment, only the base backup's expiry is what we need.
-        backup.onCompletion(totalTimeTaken, totalSizeinBytes, true);
-      } else {
-        backup.onCompletion(totalTimeTaken, totalSizeinBytes, false);
-      }
+      ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID, ybcClient);
     } catch (CancellationException ce) {
-      if (!ce.getMessage().contains("Yb-Controller task aborted")) {
-        ybcManager.abortBackupTask(taskParams().customerUuid, taskParams().backupUuid, taskID);
-      }
-      ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID);
-      // Backup stopped state will be updated in the main createBackup task.
       Throwables.propagate(ce);
     } catch (Throwable e) {
       // Backup state will be set to Failed in main task.
-      ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID);
+      if (StringUtils.isNotBlank(taskID)) {
+        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskID, ybcClient);
+      }
       Throwables.propagate(e);
     } finally {
       if (ybcClient != null) {
@@ -184,14 +214,8 @@ public class BackupTableYbc extends YbcTaskBase {
     }
   }
 
-  /**
-   * Update backup object with success metadata
-   *
-   * @param tableParams
-   * @param idx
-   */
-  private void handleBackupResult(BackupTableParams tableParams, int idx)
-      throws PlatformServiceException {
+  /** Update backup object with success metadata */
+  private void handleBackupResult() throws PlatformServiceException {
     BackupServiceTaskResultRequest backupServiceTaskResultRequest =
         ybcBackupUtil.createYbcBackupResultRequest(taskID);
     BackupServiceTaskResultResponse backupServiceTaskResultResponse =
@@ -201,16 +225,15 @@ public class BackupTableYbc extends YbcTaskBase {
       YbcBackupUtil.YbcBackupResponse response =
           ybcBackupUtil.parseYbcBackupResponse(backupServiceTaskResultResponse.getMetadataJson());
       long backupSize = Long.parseLong(response.backupSize);
-      backup.setBackupSizeInBackupList(idx, backupSize);
-      totalSizeinBytes += backupSize;
-      totalTimeTaken += backupServiceTaskResultResponse.getTimeTakenMs();
+      backup.onPartialCompletion(
+          taskParams().index, backupServiceTaskResultResponse.getTimeTakenMs(), backupSize);
 
       // Add specific storage locations for regional backups
       if (MapUtils.isNotEmpty(response.responseCloudStoreSpec.regionLocations)) {
         backup.setPerRegionLocations(
-            idx,
+            taskParams().index,
             ybcBackupUtil.extractRegionLocationFromMetadata(
-                response.responseCloudStoreSpec.regionLocations, tableParams));
+                response.responseCloudStoreSpec.regionLocations, taskParams()));
       }
     } else {
       throw new PlatformServiceException(
