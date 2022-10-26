@@ -224,7 +224,7 @@ class SysCatalogTable {
                                  int64_t leader_term);
 
   // Drop YSQL table by removing the table metadata in sys-catalog.
-  Status DeleteYsqlSystemTable(const std::string& table_id);
+  Status DeleteYsqlSystemTable(const std::string& table_id, int64_t term);
 
   const Schema& schema();
 
